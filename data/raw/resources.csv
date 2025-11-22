@@ -1,0 +1,26 @@
+resource_id,name,vendor,catalog_number,unit_size,unit,cost_usd,category
+R_mTeSR_Plus,mTeSR Plus Kit,STEMCELL,100-0276,500,mL,407.00,media
+R_Adv_DMEM_F12,Advanced DMEM/F-12,Thermo,12634010,500,mL,79.50,media
+R_GlutaMAX,GlutaMAX Supplement,Thermo,35050061,100,mL,49.65,media
+R_RevitaCell,RevitaCell Supplement,Thermo,A2644501,5,mL,233.65,media
+R_Doxycycline,Doxycycline hyclate,Sigma,D9891,1,g,65.00,small_molecule
+R_IL34,Recombinant Human IL-34,PeproTech,200-34,100,ug,1236.00,cytokine
+R_GMCSF,Recombinant Human GM-CSF,PeproTech,300-03,100,ug,937.00,cytokine
+R_MCSF,Recombinant Human M-CSF,PeproTech,300-25,100,ug,793.00,cytokine
+R_TGFB1,Recombinant Human TGF-beta1,PeproTech,100-21,10,ug,269.00,cytokine
+R_CX3CL1,Recombinant Human CX3CL1,PeproTech,300-31,10,ug,229.00,cytokine
+R_Laminin521,Biolaminin 521 LN,BioLamina,LN521,100,ug,223.00,coating
+R_PDL,Poly-D-lysine,Sigma,P6407,100,mL,146.65,coating
+R_Borate_Buffer,Borate Buffer 20x,Thermo,28341,500,mL,114.65,buffer
+R_Accutase,StemPro Accutase,Thermo,A1110501,100,mL,74.65,reagent
+R_Trypsin,Trypsin-EDTA,Thermo,25200056,100,mL,28.00,reagent
+R_DPBS,DPBS no Ca/Mg,Thermo,14190144,1000,mL,36.40,buffer
+R_Y27632,Y-27632 10mM,MedChemExpress,HY-10071,1,mL,78.00,small_molecule
+R_CryoStor,CryoStor CS10,STEMCELL,07930,100,mL,400.00,reagent
+R_Micronic_Tube,Micronic 0.75mL Tubes,Micronic,MP52704,960,unit,395.60,consumable
+R_Plate_12well,Falcon 12-well Plate,Corning,353043,50,unit,161.53,consumable
+R_Plate_6well,Falcon 6-well Plate,Corning,353046,50,unit,150.00,consumable
+R_T75,Falcon T75 Flask,Corning,353136,100,unit,132.00,consumable
+R_HepG2_Vial,HepG2 Cryovial,Cytion,85011430,1,unit,540.00,cell_line
+R_iPSC_Vial,iPSC KOLF2.1J,JAX,JIPSC002072,1,unit,1300.00,cell_line
+R_RNA_Seq_Bulk,Bulk RNA-seq Service,Core_Facility,NA,1,sample,350.00,service

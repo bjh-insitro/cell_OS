@@ -1,0 +1,357 @@
+items:
+  # Media Components
+  mtesr_plus_kit:
+    name: "mTeSR Plus Kit"
+    category: media
+    vendor: "STEMCELL"
+    catalog_number: "100-0276"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 407.0
+    logical_unit: mL
+    unit_price_usd: 0.814
+
+  adv_dmem_f12:
+    name: "Advanced DMEM/F-12"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "12634010"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 79.5
+    logical_unit: mL
+    unit_price_usd: 0.159
+
+  glutamax:
+    name: "GlutaMAX Supplement"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "35050061"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 49.65
+    logical_unit: mL
+    unit_price_usd: 0.4965
+
+  revitacell:
+    name: "RevitaCell Supplement"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "A2644501"
+    pack_size: 5
+    pack_unit: mL
+    pack_price_usd: 233.65
+    logical_unit: mL
+    unit_price_usd: 46.73
+
+  # Small Molecules
+  doxycycline:
+    name: "Doxycycline hyclate"
+    category: small_molecule
+    vendor: "Sigma"
+    catalog_number: "D9891"
+    pack_size: 1
+    pack_unit: g
+    pack_price_usd: 65.0
+    logical_unit: g
+    unit_price_usd: 65.0
+
+  y27632:
+    name: "Y-27632 10mM"
+    category: small_molecule
+    vendor: "MedChemExpress"
+    catalog_number: "HY-10071"
+    pack_size: 1
+    pack_unit: mL
+    pack_price_usd: 78.0
+    logical_unit: mL
+    unit_price_usd: 78.0
+
+  # Cytokines
+  il34:
+    name: "Recombinant Human IL-34"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "200-34"
+    pack_size: 100
+    pack_unit: ug
+    pack_price_usd: 1236.0
+    logical_unit: ug
+    unit_price_usd: 12.36
+
+  gmcsf:
+    name: "Recombinant Human GM-CSF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "300-03"
+    pack_size: 100
+    pack_unit: ug
+    pack_price_usd: 937.0
+    logical_unit: ug
+    unit_price_usd: 9.37
+
+  mcsf:
+    name: "Recombinant Human M-CSF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "300-25"
+    pack_size: 100
+    pack_unit: ug
+    pack_price_usd: 793.0
+    logical_unit: ug
+    unit_price_usd: 7.93
+
+  tgfb1:
+    name: "Recombinant Human TGF-beta1"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "100-21"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 269.0
+    logical_unit: ug
+    unit_price_usd: 26.9
+
+  cx3cl1:
+    name: "Recombinant Human CX3CL1"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "300-31"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 229.0
+    logical_unit: ug
+    unit_price_usd: 22.9
+
+  # Coating & Matrix
+  laminin_521:
+    name: "Biolaminin 521 LN"
+    category: coating
+    vendor: "BioLamina"
+    catalog_number: "LN521"
+    pack_size: 100
+    pack_unit: ug
+    pack_price_usd: 223.0
+    logical_unit: ug
+    unit_price_usd: 2.23
+
+  pdl:
+    name: "Poly-D-lysine"
+    category: coating
+    vendor: "Sigma"
+    catalog_number: "P6407"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 146.65
+    logical_unit: mL
+    unit_price_usd: 1.4665
+
+  borate_buffer:
+    name: "Borate Buffer 20x"
+    category: buffer
+    vendor: "Thermo"
+    catalog_number: "28341"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 114.65
+    logical_unit: mL
+    unit_price_usd: 0.2293
+
+  # Reagents & Buffers
+  accutase:
+    name: "StemPro Accutase"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "A1110501"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 74.65
+    logical_unit: mL
+    unit_price_usd: 0.7465
+
+  dpbs:
+    name: "DPBS no Ca/Mg"
+    category: buffer
+    vendor: "Thermo"
+    catalog_number: "14190144"
+    pack_size: 1000
+    pack_unit: mL
+    pack_price_usd: 36.4
+    logical_unit: mL
+    unit_price_usd: 0.0364
+
+  cryostor_cs10:
+    name: "CryoStor CS10"
+    category: reagent
+    vendor: "STEMCELL"
+    catalog_number: "07930"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 400.0
+    logical_unit: mL
+    unit_price_usd: 4.0
+
+  # Consumables
+  micronic_tube:
+    name: "Micronic 0.75mL Tubes"
+    category: consumable
+    vendor: "Micronic"
+    catalog_number: "MP52704"
+    pack_size: 960
+    pack_unit: unit
+    pack_price_usd: 395.6
+    logical_unit: unit
+    unit_price_usd: 0.412
+
+  plate_12well:
+    name: "Falcon 12-well Plate"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "353043"
+    pack_size: 50
+    pack_unit: unit
+    pack_price_usd: 161.53
+    logical_unit: unit
+    unit_price_usd: 3.2306
+
+  plate_6well:
+    name: "Falcon 6-well Plate"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "353046"
+    pack_size: 50
+    pack_unit: unit
+    pack_price_usd: 150.0
+    logical_unit: unit
+    unit_price_usd: 3.0
+
+  # Services
+  bulk_rna_seq:
+    name: "Bulk RNA-seq Service"
+    category: service
+    vendor: "Core_Facility"
+    logical_unit: sample
+    unit_price_usd: 350.0
+
+  # NGN2 Specific Reagents
+  neurobasal:
+    name: "Neurobasal Medium"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "21103049"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 180.0
+    logical_unit: mL
+    unit_price_usd: 0.36
+
+  b27_supp:
+    name: "B27 Supplement (50X)"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "17504044"
+    pack_size: 10
+    pack_unit: mL
+    pack_price_usd: 160.0
+    logical_unit: mL
+    unit_price_usd: 16.0
+
+  n2_supp:
+    name: "N2 Supplement (100X)"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "17502048"
+    pack_size: 5
+    pack_unit: mL
+    pack_price_usd: 60.0
+    logical_unit: mL
+    unit_price_usd: 12.0
+
+  bdnf:
+    name: "Recombinant Human BDNF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "450-02"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 220.0
+    logical_unit: ug
+    unit_price_usd: 22.0
+
+  gdnf:
+    name: "Recombinant Human GDNF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "450-10"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 220.0
+    logical_unit: ug
+    unit_price_usd: 22.0
+
+  cntf:
+    name: "Recombinant Human CNTF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "450-13"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 220.0
+    logical_unit: ug
+    unit_price_usd: 22.0
+
+  plo:
+    name: "Poly-L-Ornithine"
+    category: coating
+    vendor: "Sigma"
+    catalog_number: "P4957"
+    pack_size: 100
+    pack_unit: mg
+    pack_price_usd: 100.0
+    logical_unit: mg
+    unit_price_usd: 1.0
+
+  puromycin:
+    name: "Puromycin"
+    category: antibiotic
+    vendor: "Thermo"
+    catalog_number: "A1113803"
+    pack_size: 100
+    pack_unit: mg
+    pack_price_usd: 150.0
+    logical_unit: mg
+    unit_price_usd: 1.5
+
+  # Phagocytosis Reagents
+  phrodo_ecoli:
+    name: "pHrodo Red E. coli BioParticles"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "P35361"
+    pack_size: 2
+    pack_unit: mg
+    pack_price_usd: 340.0
+    logical_unit: mg
+    unit_price_usd: 170.0
+
+  fluorobrite_dmem:
+    name: "FluoroBrite DMEM"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "A1896701"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 60.0
+    logical_unit: mL
+    unit_price_usd: 0.12
+
+  hoechst:
+    name: "Hoechst 33342"
+    category: stain
+    vendor: "Thermo"
+    catalog_number: "H3570"
+    pack_size: 10
+    pack_unit: mL
+    pack_price_usd: 100.0
+    logical_unit: mL
+    unit_price_usd: 10.0

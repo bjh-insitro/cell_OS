@@ -1,0 +1,11 @@
+uo_id,name,category,time_score,cost_score,automation_fit,failure_risk,staff_attention,instrument
+U1,Seed_cells,cell_handling,3,2,4,2,3,None
+U2,Media_change,cell_handling,4,1,5,1,2,None
+U3,Add_compound,liquid_handling,4,1,5,1,1,liquid_handler
+U4,Incubate_24h,incubation,2,0,5,1,0,incubator
+U5,Fix_cells,fixed_prep,2,1,4,2,2,hood
+U6,Permeabilize,fixed_prep,2,1,4,2,2,hood
+U7,Stain_multiplex,staining,1,2,3,3,3,hood
+U8,Wash_plate,liquid_handling,3,1,4,2,2,washer
+U9,Image_fixed_HC,imaging,1,3,3,2,2,HC_microscope
+U10,Plate_QC_and_upload,data_flow,3,1,4,1,1,storage_compute

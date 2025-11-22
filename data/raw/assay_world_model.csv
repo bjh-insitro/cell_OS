@@ -1,0 +1,14 @@
+assay,modality,info_richness,cost,cycle_time,robustness,throughput,pooled_compat
+viability_resazurin,scalar,1,1,5,5,5,5
+viability_CellTiterGlo,scalar,1,1,5,5,5,5
+single_channel_reporter_imaging,imaging,2,1,4,4,4,4
+cell_painting_POSH,imaging,5,2,3,4,5,5
+live_cell_imaging,imaging,4,2,2,3,3,4
+bulk_RNAseq,RNA,3,3,2,3,2,3
+single_cell_RNAseq,RNA,5,5,1,2,1,2
+Perturb_seq,RNA,5,5,1,2,1,5
+multiplex_protein_Olink,protein,3,4,3,3,2,3
+Luminex_multiplex,protein,3,3,3,3,2,3
+CyTOF,protein,4,4,2,2,1,2
+ATAC_seq,ATAC,4,4,1,2,1,2
+multiomic_scRNA_ATAC,multiomic,5,5,1,1,1,2
