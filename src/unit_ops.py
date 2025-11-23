@@ -1629,6 +1629,216 @@ class ParametricOps:
             material_cost_usd=total_mat_cost,
             instrument_cost_usd=instrument_cost
         )
+    
+    # ===================================================================
+    # ZOMBIE POSH (PerturbView) OPERATIONS
+    # ===================================================================
+    
+    def op_decross_linking(
+        self,
+        vessel_id: str,
+        duration_h: float = 4.0,
+        temp_c: float = 65.0,
+        tissue: bool = False
+    ) -> UnitOp:
+        """
+        Decross-linking step for Zombie POSH (PerturbView).
+        
+        Reverses PFA cross-links to enable T7 polymerase access to gDNA.
+        
+        Args:
+            vessel_id: Vessel containing PFA-fixed cells
+            duration_h: Decross-linking duration (4h for cells, 24h for tissue)
+            temp_c: Temperature (default: 65°C)
+            tissue: Whether processing tissue (longer duration)
+        """
+        v = self.vessels.get(vessel_id)
+        
+        if tissue:
+            duration_h = 24.0  # Overnight for tissue
+        
+        steps = []
+        
+        # Decross-linking buffer: 0.1 M sodium bicarbonate + 0.3 M NaCl
+        # Cost is negligible (pennies per liter)
+        buffer_cost = 0.1  # Estimate for buffer components
+        
+        # Incubation at 65°C
+        duration_min = int(duration_h * 60)
+        steps.append(self.op_incubate(vessel_id, duration_min, temp_c))
+        
+        return UnitOp(
+            uo_id=f"Decrosslink_{vessel_id}",
+            name=f"Decross-linking ({duration_h}h @ {temp_c}°C)",
+            layer="genetic_supply_chain",
+            category="molecular_biology",
+            time_score=2 if tissue else 1,
+            cost_score=0,
+            automation_fit=1,
+            failure_risk=0,
+            staff_attention=0,
+            instrument="Incubator",
+            material_cost_usd=buffer_cost,
+            instrument_cost_usd=0.01 * duration_min,
+            sub_steps=steps
+        )
+    
+    def op_t7_ivt(
+        self,
+        vessel_id: str,
+        duration_h: float = 4.0,
+        temp_c: float = 37.0
+    ) -> UnitOp:
+        """
+        T7 In Vitro Transcription for Zombie POSH (PerturbView).
+        
+        Transcribes RNA from genomic DNA using T7 RNA polymerase.
+        Produces nuclear-localized RNA amplicons with high signal.
+        
+        Args:
+            vessel_id: Vessel containing decross-linked cells
+            duration_h: IVT duration (default: 4h, can extend to 12h)
+            temp_c: IVT temperature (default: 37°C)
+        """
+        v = self.vessels.get(vessel_id)
+        
+        steps = []
+        
+        # HiScribe T7 Quick High Yield RNA Synthesis Kit
+        # Components: T7 RNA Polymerase Mix, NTP Buffer Mix (10 mM)
+        # Plus Ribolock RNase inhibitor (0.4 U/µL)
+        
+        ivt_vol_ml = v.working_volume_ml
+        
+        # Kit cost (per reaction)
+        t7_kit_cost = self.inv.get_price("hiscribe_t7_kit")
+        
+        # Ribolock cost
+        ribolock_cost = self.inv.get_price("ribolock") * 0.4 * ivt_vol_ml * 1000  # U
+        
+        total_cost = t7_kit_cost + ribolock_cost
+        
+        # Incubation
+        duration_min = int(duration_h * 60)
+        steps.append(self.op_incubate(vessel_id, duration_min, temp_c))
+        
+        return UnitOp(
+            uo_id=f"T7_IVT_{vessel_id}",
+            name=f"T7 In Vitro Transcription ({duration_h}h @ {temp_c}°C)",
+            layer="genetic_supply_chain",
+            category="molecular_biology",
+            time_score=1,
+            cost_score=1,
+            automation_fit=2,
+            failure_risk=0,
+            staff_attention=0,
+            instrument="Incubator",
+            material_cost_usd=total_cost,
+            instrument_cost_usd=0.01 * duration_min
+        )
+    
+    def op_hcr_fish(
+        self,
+        vessel_id: str,
+        num_genes: int = 3
+    ) -> UnitOp:
+        """
+        Hybridization Chain Reaction (HCR) FISH for Zombie POSH multimodal imaging.
+        
+        Args:
+            vessel_id: Vessel containing fixed cells
+            num_genes: Number of genes to probe (default: 3)
+        """
+        v = self.vessels.get(vessel_id)
+        
+        steps = []
+        
+        # HCR FISH workflow:
+        # 1. Probe hybridization (37°C, 4h)
+        # 2. Amplification (RT, 2h)
+        # 3. Imaging
+        # 4. Stripping (80% formamide, 37°C, 30min)
+        
+        # Probe cost (per gene)
+        probe_cost = self.inv.get_price("hcr_probe_set") * num_genes
+        
+        # Amplifier cost (per gene)
+        amplifier_cost = self.inv.get_price("hcr_amplifier_set") * num_genes / 5  # B1-B5 set
+        
+        # Formamide for stripping
+        formamide_cost = self.inv.get_price("formamide") * v.working_volume_ml * 0.8  # 80%
+        
+        total_cost = probe_cost + amplifier_cost + formamide_cost
+        
+        # Incubations
+        steps.append(self.op_incubate(vessel_id, 240, temp_c=37.0))  # Hybridization 4h
+        steps.append(self.op_incubate(vessel_id, 120, temp_c=25.0))  # Amplification 2h
+        steps.append(self.op_incubate(vessel_id, 30, temp_c=37.0))   # Stripping 30min
+        
+        return UnitOp(
+            uo_id=f"HCR_FISH_{vessel_id}",
+            name=f"HCR FISH ({num_genes} genes)",
+            layer="phenotyping",
+            category="molecular_imaging",
+            time_score=2,
+            cost_score=2,
+            automation_fit=1,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Incubator",
+            material_cost_usd=total_cost,
+            instrument_cost_usd=3.0
+        )
+    
+    def op_ibex_immunofluorescence(
+        self,
+        vessel_id: str,
+        num_proteins: int = 4
+    ) -> UnitOp:
+        """
+        IBEX iterative immunofluorescence for Zombie POSH multimodal imaging.
+        
+        Uses direct-conjugated antibodies followed by lithium borohydride bleaching.
+        
+        Args:
+            vessel_id: Vessel containing fixed cells
+            num_proteins: Number of proteins to stain (default: 4)
+        """
+        v = self.vessels.get(vessel_id)
+        
+        steps = []
+        
+        # IBEX workflow per cycle:
+        # 1. Staining (direct-conjugated antibodies, 1h)
+        # 2. Imaging
+        # 3. Bleaching (1 mg/mL lithium borohydride, 30min)
+        
+        # Antibody cost (assume $200 per antibody, average)
+        antibody_cost = 200.0 * num_proteins
+        
+        # Lithium borohydride for bleaching
+        lbh4_cost = self.inv.get_price("lithium_borohydride") * 0.001 * v.working_volume_ml  # 1 mg/mL
+        
+        total_cost = antibody_cost + lbh4_cost
+        
+        # Incubations
+        steps.append(self.op_incubate(vessel_id, 60, temp_c=25.0))   # Staining 1h
+        steps.append(self.op_incubate(vessel_id, 30, temp_c=25.0))   # Bleaching 30min
+        
+        return UnitOp(
+            uo_id=f"IBEX_{vessel_id}",
+            name=f"IBEX Immunofluorescence ({num_proteins} proteins)",
+            layer="phenotyping",
+            category="immunofluorescence",
+            time_score=1,
+            cost_score=2,
+            automation_fit=1,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Incubator",
+            material_cost_usd=total_cost,
+            instrument_cost_usd=1.5
+        )
 
     def op_count(self, vessel_id: str, method: str = "automated") -> UnitOp:
         """
@@ -2099,6 +2309,92 @@ def get_vanilla_posh_complete_recipe(
                 (ops.op_compute_analysis("base_calling", 96 * num_sbs_cycles), 1),
                 (ops.op_compute_analysis("barcode_stitching", 96), 1),
                 (ops.op_compute_analysis("feature_extraction", 96), 1),  # CellStats or DINO
+            ]
+        }
+    )
+
+def get_zombie_posh_complete_recipe(
+    ops: 'ParametricOps',
+    num_grnas: int = 1000,
+    representation: int = 250,
+    vessel: str = "plate_6well",
+    stressor: str = "tbhp",
+    stressor_conc_um: float = 100.0,
+    treatment_duration_h: float = 24.0,
+    num_sbs_cycles: int = 13,
+    multimodal: bool = False,
+    num_rna_genes: int = 3,
+    num_proteins: int = 4,
+    automated: bool = False,
+    tissue: bool = False
+) -> AssayRecipe:
+    """
+    Complete Zombie POSH (PerturbView) workflow.
+    
+    Simpler, faster, and cheaper than Vanilla POSH with higher signal.
+    Full workflow: Fixation → Decross-linking → T7 IVT → (Optional: Multimodal) → SBS
+    
+    Args:
+        ops: ParametricOps instance
+        num_grnas: Library size
+        representation: Coverage multiplier
+        vessel: Plate format (plate_6well recommended for POSH)
+        stressor: Stressor compound (tbhp, tunicamycin, thapsigargin, etc.)
+        stressor_conc_um: Stressor concentration in µM
+        treatment_duration_h: Stressor treatment duration in hours
+        num_sbs_cycles: Number of SBS cycles (default: 13 for full barcode)
+        multimodal: Whether to include HCR FISH + IBEX immunofluorescence
+        num_rna_genes: Number of RNA genes for HCR FISH (if multimodal)
+        num_proteins: Number of proteins for IBEX (if multimodal)
+        automated: Whether to use automated liquid handling
+        tissue: Whether processing tissue sections (longer decross-linking)
+    """
+    
+    # SBS cycles (same as Vanilla POSH)
+    sbs_ops = [(ops.op_sbs_cycle(vessel, cycle_number=i+1, automated=automated), 1) 
+               for i in range(num_sbs_cycles)]
+    
+    # Multimodal phenotyping (optional)
+    multimodal_ops = []
+    if multimodal:
+        multimodal_ops = [
+            (ops.op_hcr_fish(vessel, num_genes=num_rna_genes), 1),
+            (ops.op_ibex_immunofluorescence(vessel, num_proteins=num_proteins), 1),
+        ]
+    
+    return AssayRecipe(
+        name=f"ZombiePOSH_{num_grnas}g_{stressor}_{vessel}_{'multi' if multimodal else 'simple'}_{'auto' if automated else 'manual'}",
+        layers={
+            "genetic_supply_chain": [
+                # Zombie POSH core workflow (much simpler than Vanilla!)
+                (ops.op_decross_linking(vessel, duration_h=4.0 if not tissue else 24.0, tissue=tissue), 1),
+                (ops.op_t7_ivt(vessel, duration_h=4.0), 1),
+            ] + sbs_ops,  # Add all SBS cycles
+            "cell_prep": [
+                # Stressor treatment (optional, before fixation)
+                (ops.op_stressor_treatment(
+                    vessel,
+                    stressor=stressor,
+                    concentration_um=stressor_conc_um,
+                    duration_h=treatment_duration_h
+                ), 1),
+            ],
+            "phenotyping": [
+                # Fixation (standard PFA)
+                (ops.op_fix_cells(vessel), 1),
+            ] + multimodal_ops + [  # Optional multimodal phenotyping
+                # SBS imaging (10x, 4-color + Hoechst, per cycle)
+                # Note: 4x magnification possible for even higher throughput!
+                (ops.op_imaging(vessel, num_sites_per_well=9, channels=5, objective="10x"), num_sbs_cycles),
+            ],
+            "compute": [
+                # Image processing and analysis (same as Vanilla POSH)
+                (ops.op_compute_analysis("illumination_correction", 96), 1),
+                (ops.op_compute_analysis("cell_segmentation", 96), 1),
+                (ops.op_compute_analysis("image_registration", 96), 1),
+                (ops.op_compute_analysis("base_calling", 96 * num_sbs_cycles), 1),
+                (ops.op_compute_analysis("barcode_stitching", 96), 1),
+                (ops.op_compute_analysis("feature_extraction", 96), 1),
             ]
         }
     )
