@@ -9,6 +9,9 @@ import yaml
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Union
+import math
+import src.cellpaint_panels as cp
+import src.upstream as up
 
 # Import cell line database for automatic method selection
 try:
@@ -996,6 +999,239 @@ class ParametricOps:
         )
 
     # ------------------------------------------------------------------
+    # UPSTREAM OPERATIONS (Path A: Genetic Supply Chain)
+    # ------------------------------------------------------------------
+
+    def op_design_guides(self, design: up.LibraryDesign) -> UnitOp:
+        """
+        In silico design of gRNA library.
+        Cost is primarily computational/personnel time.
+        """
+        n_guides = design.total_guides()
+        # Assume 1 minute per 100 guides for computation/manual review
+        time_min = max(60, int(n_guides / 100))
+        
+        return UnitOp(
+            uo_id=f"Design_{design.design_id}",
+            name=f"Library Design ({n_guides} guides)",
+            layer="genetic_supply_chain",
+            category="computational",
+            time_score=1,
+            cost_score=0,
+            automation_fit=2,
+            failure_risk=0,
+            staff_attention=2,
+            instrument="Workstation",
+            material_cost_usd=0.0,
+            instrument_cost_usd=10.0 # Compute time
+        )
+
+    def op_order_oligos(self, pool: up.OligoPool) -> UnitOp:
+        """
+        Ordering oligo pool from vendor.
+        """
+        cost = pool.cost_usd
+        # Lead time is usually 2-4 weeks
+        lead_time_days = 21 
+        
+        return UnitOp(
+            uo_id=f"Order_{pool.design.design_id}",
+            name=f"Order Oligo Pool ({pool.vendor})",
+            layer="genetic_supply_chain",
+            category="logistics",
+            time_score=3, # Takes weeks
+            cost_score=3, # Expensive
+            automation_fit=0,
+            failure_risk=1, # Shipping delays
+            staff_attention=0,
+            instrument=None,
+            material_cost_usd=cost,
+            instrument_cost_usd=0.0
+        )
+
+    def op_golden_gate_assembly(self, vessel_id: str, num_reactions: int = 1) -> UnitOp:
+        """
+        Golden Gate cloning reaction (BsmBI + T4 Ligase).
+        """
+        steps = []
+        
+        # Add Enzymes
+        # BsmBI-v2: $84 / 2500 U = $0.0336/U. Use 10U per rxn.
+        cost_bsmbi = 10 * 0.0336 * num_reactions
+        steps.append(self.op_dispense(vessel_id, 1.0, "bsmbi_v2")) # Mock vol
+        
+        # T4 Ligase: $88 / 100000 U = negligible. Use 400U.
+        cost_ligase = 400 * (88/100000) * num_reactions
+        steps.append(self.op_dispense(vessel_id, 1.0, "t4_ligase_conc"))
+        
+        # Cycling (37C/16C x 30 cycles -> 55C -> 80C)
+        # Takes ~2-3 hours
+        steps.append(self.op_incubate(vessel_id, 180, temp_c=37.0))
+        
+        return UnitOp(
+            uo_id=f"GoldenGate_{vessel_id}",
+            name="Golden Gate Assembly",
+            layer="genetic_supply_chain",
+            category="molecular_biology",
+            time_score=1,
+            cost_score=1,
+            automation_fit=2,
+            failure_risk=1,
+            staff_attention=1,
+            instrument="Thermocycler",
+            material_cost_usd=cost_bsmbi + cost_ligase,
+            instrument_cost_usd=5.0,
+            sub_steps=steps
+        )
+
+    def op_transformation(self, vessel_id: str, num_reactions: int = 1) -> UnitOp:
+        """
+        Transformation into Stbl3 competent cells.
+        """
+        # Stbl3: $450 / 20 rxn = $22.50 per rxn
+        cost_cells = 22.50 * num_reactions
+        
+        return UnitOp(
+            uo_id=f"Transform_{vessel_id}",
+            name="Transformation (Stbl3)",
+            layer="genetic_supply_chain",
+            category="molecular_biology",
+            time_score=1, # 1-2h + overnight plate
+            cost_score=1,
+            automation_fit=1,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Water Bath / Incubator",
+            material_cost_usd=cost_cells,
+            instrument_cost_usd=2.0
+        )
+
+    def op_plasmid_prep(self, vessel_id: str, scale: str = "maxi") -> UnitOp:
+        """
+        Plasmid Maxiprep (Endotoxin-free).
+        """
+        # Qiagen Endo-free Maxi: $280 / 10 = $28 per prep
+        cost_kit = 28.0
+        
+        return UnitOp(
+            uo_id=f"Maxiprep_{vessel_id}",
+            name=f"Plasmid Prep ({scale})",
+            layer="genetic_supply_chain",
+            category="molecular_biology",
+            time_score=1, # 2-3h
+            cost_score=1,
+            automation_fit=1,
+            failure_risk=0,
+            staff_attention=2,
+            instrument="Centrifuge",
+            material_cost_usd=cost_kit,
+            instrument_cost_usd=5.0
+        )
+
+    def op_ngs_verification(self, vessel_id: str) -> UnitOp:
+        """
+        NGS verification of plasmid library (MiSeq).
+        """
+        # MiSeq Kit: $1300. Assume we run 1 library per run or multiplex.
+        # Let's assume multiplexing 4 libraries -> $325 per library.
+        cost_seq = 325.0
+        
+        return UnitOp(
+            uo_id=f"NGS_Verify_{vessel_id}",
+            name="NGS Verification (MiSeq)",
+            layer="genetic_supply_chain",
+            category="qc",
+            time_score=2, # 24h run
+            cost_score=2,
+            automation_fit=2,
+            failure_risk=1,
+            staff_attention=1,
+            instrument="Illumina MiSeq",
+            material_cost_usd=cost_seq,
+            instrument_cost_usd=50.0
+        )
+
+    def op_transfect_hek293t(self, vessel_id: str, vessel_type: str = "flask_t175") -> UnitOp:
+        """
+        Transfection of HEK293T for virus production.
+        """
+        # Reagents:
+        # Lipofectamine 3000: $680 / 1.5mL. Use ~50uL per T175 -> $22.6
+        # HEK293T: Amortized cell culture cost ~ $10
+        # Media: ~50mL DMEM/FBS -> $5
+        cost_transfection = 22.6 + 10.0 + 5.0
+        
+        return UnitOp(
+            uo_id=f"Transfect_{vessel_id}",
+            name="Transfection (HEK293T)",
+            layer="genetic_supply_chain",
+            category="cell_culture",
+            time_score=1,
+            cost_score=1,
+            automation_fit=1,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Biosafety Cabinet",
+            material_cost_usd=cost_transfection,
+            instrument_cost_usd=5.0
+        )
+
+    def op_harvest_virus(self, vessel_id: str) -> UnitOp:
+        """
+        Harvest and concentrate virus.
+        """
+        # Amicon Ultra-15: $280 / 24 = $11.66
+        cost_filter = 11.66
+        
+        return UnitOp(
+            uo_id=f"Harvest_{vessel_id}",
+            name="Harvest & Concentrate Virus",
+            layer="genetic_supply_chain",
+            category="cell_culture",
+            time_score=1,
+            cost_score=1,
+            automation_fit=0, # Manual
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Centrifuge",
+            material_cost_usd=cost_filter,
+            instrument_cost_usd=5.0
+        )
+
+    # ------------------------------------------------------------------
+    # RECIPES
+    # ------------------------------------------------------------------
+
+    def get_upstream_workflow_recipe(
+        self,
+        design: up.LibraryDesign,
+        vendor: str = "Twist Bioscience",
+        cloning_vessel: str = "tube_15ml",
+        virus_vessel: str = "flask_t175"
+    ) -> AssayRecipe:
+        """
+        Recipe for Path A: Genetic Supply Chain.
+        Design -> Order -> Clone -> Verify -> Virus Production.
+        """
+        pool = up.OligoPool(design, vendor=vendor)
+        
+        return AssayRecipe(
+            name=f"Upstream_{design.design_id}_{vendor}",
+            layers={
+                "genetic_supply_chain": [
+                    (self.op_design_guides(design), 1),
+                    (self.op_order_oligos(pool), 1),
+                    (self.op_golden_gate_assembly(cloning_vessel), 1),
+                    (self.op_transformation(cloning_vessel), 1),
+                    (self.op_plasmid_prep(cloning_vessel), 1),
+                    (self.op_ngs_verification(cloning_vessel), 1),
+                    (self.op_transfect_hek293t(virus_vessel), 1),
+                    (self.op_harvest_virus(virus_vessel), 1)
+                ]
+            }
+        )
+
+    # ------------------------------------------------------------------
     # Atomic Operations
     # ------------------------------------------------------------------
 
@@ -1238,96 +1474,186 @@ class ParametricOps:
     def op_cell_painting(
         self,
         vessel_id: str,
-        dye_panel: str = "standard_5channel"
+        dye_panel: Union[str, cp.CellPaintPanel] = "standard_5channel"
     ) -> UnitOp:
         """
         Cell Painting staining protocol.
 
         Args:
             vessel_id: Vessel containing fixed cells
-            dye_panel: Dye panel to use
-                - standard_5channel: Hoechst, ConA, Phalloidin, WGA, MitoTracker
+            dye_panel: Dye panel to use. Can be a string alias or a CellPaintPanel object.
+                - standard_5channel: Core Cell Painting (Hoechst, ConA, Phalloidin, WGA, MitoTracker)
+                - posh_5channel: ISS-compatible (MitoProbe instead of MitoTracker)
+                - posh_6channel: ISS-compatible + pS6 antibody
+                - neuropaint: Neuronal panel (MAP2)
+                - hepatopaint: Hepatocyte panel (BODIPY)
+                - alspaint: ALS panel (TDP-43, STMN2)
                 - minimal_3channel: Hoechst, Phalloidin, MitoTracker
-                - custom: Define later
         """
         v = self.vessels.get(vessel_id)
-
         steps = []
 
-        # Define dye panels
-        if dye_panel == "standard_5channel":
-            dyes = [
-                ("hoechst_33342", 1.0),      # Nucleus (blue)
-                ("concanavalin_a_647", 5.0), # ER (far-red)
-                ("phalloidin_488", 2.0),     # Actin (green)
-                ("wga_594", 5.0),            # Golgi/PM (red)
-                ("mitotracker_deep_red", 0.5) # Mitochondria (deep red)
-            ]
-        elif dye_panel == "posh_5channel":
-            # ISS-compatible Cell Painting with Mitoprobe
-            dyes = [
-                ("hoechst_33342", 0.5),       # Nucleus (µg/mL)
-                ("concanavalin_a_488", 12.5), # ER (µg/mL)
-                ("wga_555", 1.5),             # Golgi/Membrane (µg/mL)
-                ("phalloidin_568", 0.33),     # Actin (µM)
-                ("mitoprobe_12s_cy5", 0.25),  # Mitochondria (µM, RNA probe)
-                ("mitoprobe_16s_cy5", 0.25),  # Mitochondria (µM, RNA probe)
-            ]
-        elif dye_panel == "posh_6channel":
-            # ISS-compatible Cell Painting + pS6 biomarker
-            dyes = [
-                ("hoechst_33342", 0.5),
-                ("concanavalin_a_488", 12.5),
-                ("wga_555", 1.5),
-                ("phalloidin_568", 0.33),
-                ("mitoprobe_12s_cy5", 0.25),
-                ("mitoprobe_16s_cy5", 0.25),
-                ("ps6_primary", 0.004),       # 1:250 dilution (antibody)
-                ("dylight_755_secondary", 0.001), # 1:1000 dilution
-            ]
-        elif dye_panel == "minimal_3channel":
-            dyes = [
-                ("hoechst_33342", 1.0),
-                ("phalloidin_488", 2.0),
-                ("mitotracker_deep_red", 0.5)
-            ]
+        # 1. Resolve Panel
+        if isinstance(dye_panel, str):
+            if dye_panel == "standard_5channel":
+                panel = cp.get_core_cellpaint_panel()
+            elif dye_panel == "posh_5channel":
+                panel = cp.get_posh_cellpaint_panel(include_mitoprobe=True)
+            elif dye_panel == "posh_6channel":
+                # Custom construction for backward compatibility: POSH + pS6
+                base = cp.get_posh_cellpaint_panel(include_mitoprobe=True)
+                builder = cp.CellPaintPanelBuilder(base)
+                builder.add_marker(cp.CellPaintMarker(
+                    name="pS6 Primary",
+                    marker_type=cp.MarkerType.ANTIBODY_PRIMARY,
+                    target="pS6",
+                    organelle=cp.Organelle.CUSTOM,
+                    fluorophore="DyLight755", # via secondary
+                    channel="Cy7",
+                    species="rabbit",
+                    concentration=0.004, # 1:250 dilution (approx)
+                    concentration_unit="dilution",
+                    vendor="CST",
+                    catalog="custom"
+                ))
+                panel = builder.build()
+                panel.name = "POSH CellPaint (6-channel + pS6)"
+            elif dye_panel == "neuropaint":
+                panel = cp.get_neuropaint_panel()
+            elif dye_panel == "hepatopaint":
+                panel = cp.get_hepatopaint_panel()
+            elif dye_panel == "alspaint":
+                panel = cp.get_als_paint_panel()
+            elif dye_panel == "minimal_3channel":
+                # Custom minimal panel
+                builder = cp.CellPaintPanelBuilder()
+                builder.add_marker(cp.CellPaintMarker("Hoechst 33342", cp.MarkerType.DYE, "DNA", cp.Organelle.NUCLEUS, "Hoechst", "DAPI", 1.0, "ug/mL"))
+                builder.add_marker(cp.CellPaintMarker("Phalloidin 488", cp.MarkerType.DYE, "Actin", cp.Organelle.ACTIN, "Alexa488", "FITC", 2.0, "uM"))
+                builder.add_marker(cp.CellPaintMarker("MitoTracker Deep Red", cp.MarkerType.DYE, "Mito", cp.Organelle.MITOCHONDRIA, "DeepRed", "Cy5", 0.5, "uM"))
+                panel = builder.build()
+                panel.name = "Minimal 3-Channel"
+            else:
+                raise ValueError(f"Unknown dye panel alias: {dye_panel}")
         else:
-            raise ValueError(f"Unknown dye panel: {dye_panel}")
+            panel = dye_panel
 
-        # Permeabilization (if needed for intracellular dyes)
+        # 2. Permeabilization (Standard)
         steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "triton_x100_0.1pct"))
         steps.append(self.op_incubate(vessel_id, 10, temp_c=25.0))
         steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
 
-        # Blocking (optional, reduces background)
+        # 3. Blocking (Standard)
         steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "bsa_1pct"))
         steps.append(self.op_incubate(vessel_id, 30, temp_c=25.0))
         steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
 
-        # Staining
-        for dye_name, conc_ug_ml in dyes:
-            # Add dye (assume working volume with appropriate dilution)
-            dye_vol_ml = v.working_volume_ml * conc_ug_ml * 0.001  # Simplified
-            steps.append(self.op_dispense(vessel_id, dye_vol_ml, dye_name))
+        # 4. Primary Antibodies (if any)
+        primaries = panel.get_primary_antibodies()
+        if primaries:
+            for p in primaries:
+                # Slugify name for resource key: "MAP2 (Chicken)" -> "map2_chicken"
+                # This requires the resource to exist in pricing.yaml.
+                # For now, we'll use a robust slugification or fallback.
+                resource_key = p.name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+                
+                # Calculate volume. If unit is 'dilution' or small float < 0.1, treat as dilution factor.
+                # Otherwise treat as ug/mL (simplified cost model: 1 ug ~ 1 uL of stock for pricing purposes? 
+                # No, pricing is usually per unit. Let's assume cost model handles 'units' or 'ug'.)
+                # For simplicity in this prototype, we dispense the *solution* containing the Ab.
+                # The cost comes from the 'material' consumed.
+                # We need to calculate the amount of STOCK reagent used.
+                # Volume of staining solution = v.working_volume_ml
+                # Amount of Ab = vol * conc.
+                
+                # We will model the cost by dispensing a small amount of the CONCENTRATED reagent 
+                # into the buffer (which is cheap/negligible or modeled separately).
+                # Actually, op_dispense typically takes the volume of the *reagent* to add.
+                # If we are adding a staining mix, we are adding v.working_volume_ml of the MIX.
+                # But the cost is driven by the expensive components.
+                # We will simulate adding the expensive components individually for cost tracking.
+                
+                amount_needed = 0.0
+                if p.concentration_unit == "dilution" or (p.concentration and p.concentration < 0.1):
+                     # e.g. 1:1000 = 0.001. Vol needed = 1mL * 0.001 = 1uL.
+                     amount_needed = v.working_volume_ml * (p.concentration or 0.001)
+                else:
+                     # e.g. 1 ug/mL. Vol needed depends on stock conc. 
+                     # Let's assume 1 mg/mL stock for all Abs for simplicity -> 1:1000 dilution.
+                     # So 1 ug/mL final = 1 uL stock per mL.
+                     amount_needed = v.working_volume_ml * (p.concentration or 1.0) * 0.001
 
-        # Incubate with dyes
+                steps.append(self.op_dispense(vessel_id, amount_needed, resource_key))
+            
+            # Add buffer volume (cheap)
+            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "staining_buffer"))
+            
+            # Incubate Primaries
+            steps.append(self.op_incubate(vessel_id, 60, temp_c=4.0)) # Often 4C or RT overnight/1h
+            
+            # Wash 3x
+            for _ in range(3):
+                steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
+                steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "dpbs"))
+                steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
+
+        # 5. Secondary Antibodies + Dyes
+        dyes = panel.get_dyes()
+        fish_probes = [m for m in panel.markers if m.marker_type == cp.MarkerType.FISH_PROBE]
+        secondaries_needed = panel.get_required_secondaries() # {species: fluorophore}
+
+        # Add Dyes
+        for d in dyes:
+            resource_key = d.name.lower().replace(" ", "_").replace("/", "_")
+            # Assume 1:1000-like usage for dyes if not specified
+            amount_needed = v.working_volume_ml * 0.001 
+            if d.concentration and d.concentration > 0.1:
+                 # If > 0.1, likely ug/mL or uM. Assume 1:1000 dilution from stock.
+                 amount_needed = v.working_volume_ml * 0.001
+            steps.append(self.op_dispense(vessel_id, amount_needed, resource_key))
+
+        # Add FISH Probes (MitoProbe)
+        for f in fish_probes:
+            resource_key = f.name.lower().replace(" ", "_")
+            amount_needed = v.working_volume_ml * 0.001 # 1:1000
+            steps.append(self.op_dispense(vessel_id, amount_needed, resource_key))
+
+        # Add Secondary Antibodies
+        for species, fluor in secondaries_needed.items():
+            sec_info = cp.get_secondary_antibody(species, fluor)
+            if sec_info:
+                # "Alexa Fluor 488 goat anti-chicken IgG (H+L)" -> "alexa_fluor_488_goat_anti_chicken_igg_h_l"
+                # This is getting long. Let's try to map to what we likely have in pricing.yaml
+                # Or just use a constructed key: f"secondary_{species}_{fluor}"
+                # Let's use the constructed key and ensure pricing.yaml has it or generic fallback.
+                resource_key = f"secondary_{species}_{fluor}".lower()
+                amount_needed = v.working_volume_ml * 0.001 # 1:1000
+                steps.append(self.op_dispense(vessel_id, amount_needed, resource_key))
+            else:
+                # Fallback
+                steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.001, f"secondary_{species}_generic"))
+
+        # Add buffer
+        steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "staining_buffer"))
+
+        # Incubate Secondaries/Dyes
         steps.append(self.op_incubate(vessel_id, 30, temp_c=25.0))
 
         # Wash 3x
         for _ in range(3):
             steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
             steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "dpbs"))
+            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
 
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
 
         return UnitOp(
-            uo_id=f"CellPaint_{dye_panel}_{vessel_id}",
-            name=f"Cell Painting ({dye_panel})",
+            uo_id=f"CellPaint_{panel.name.replace(' ', '_')}_{vessel_id}",
+            name=f"Cell Painting ({panel.name})",
             layer="phenotyping",
             category="staining",
             time_score=1,
-            cost_score=2,  # Dyes are expensive
+            cost_score=2,
             automation_fit=1,
             failure_risk=1,
             staff_attention=2,
@@ -2250,6 +2576,9 @@ def get_vanilla_posh_complete_recipe(
     """
     Complete Vanilla POSH (CellPaint-POSH) workflow.
     
+    DEPRECATED: Use `get_zombie_posh_complete_recipe` instead.
+    This function is preserved for historical cost comparison and benchmarking.
+    
     Full workflow: Fixation → RT → RCA → Cell Painting → SBS (13 cycles) → Analysis
     
     Args:
@@ -2264,6 +2593,12 @@ def get_vanilla_posh_complete_recipe(
         use_ps6: Whether to include pS6 biomarker (6th channel)
         automated: Whether to use automated liquid handling
     """
+    import warnings
+    warnings.warn(
+        "Vanilla POSH is deprecated. Please use Zombie POSH (get_zombie_posh_complete_recipe) for new experiments.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     
     # Determine dye panel
     dye_panel = "posh_6channel" if use_ps6 else "posh_5channel"

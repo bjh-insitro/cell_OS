@@ -1501,3 +1501,177 @@ items:
     pack_price_usd: 400.0
     logical_unit: plate
     unit_price_usd: 40.0
+# New Cell Painting Reagents
+
+# Primary Antibodies
+map2_chicken:
+  category: antibody_primary
+  unit_size: 100 uL
+  cost_usd: 350.00
+  vendor: Novus
+  catalog: NB300-213
+
+tdp_43_rabbit:
+  category: antibody_primary
+  unit_size: 100 uL
+  cost_usd: 380.00
+  vendor: Proteintech
+  catalog: 10782-2-AP
+
+stmn2_rabbit:
+  category: antibody_primary
+  unit_size: 100 uL
+  cost_usd: 360.00
+  vendor: Novus
+  catalog: NBP2-49461
+
+ps6_primary:
+  category: antibody_primary
+  unit_size: 100 uL
+  cost_usd: 400.00
+  vendor: CST
+  catalog: custom
+
+# Dyes
+bodipy_493_503:
+  category: dye
+  unit_size: 10 mg
+  cost_usd: 180.00
+  vendor: Invitrogen
+  catalog: D3922
+
+# Secondary Antibodies
+secondary_chicken_alexa488:
+  category: antibody_secondary
+  unit_size: 500 uL
+  cost_usd: 180.00
+  vendor: Invitrogen
+  catalog: A11039
+
+secondary_rabbit_alexa594:
+  category: antibody_secondary
+  unit_size: 500 uL
+  cost_usd: 180.00
+  vendor: Invitrogen
+  catalog: A11012
+
+secondary_rabbit_alexa647:
+  category: antibody_secondary
+  unit_size: 500 uL
+  cost_usd: 180.00
+  vendor: Invitrogen
+  catalog: A21244
+
+secondary_rabbit_dylight755:
+  category: antibody_secondary
+  unit_size: 500 uL
+  cost_usd: 200.00
+  vendor: Invitrogen
+  catalog: SA5-10043
+
+secondary_mouse_alexa488:
+  category: antibody_secondary
+  unit_size: 500 uL
+  cost_usd: 180.00
+  vendor: Invitrogen
+  catalog: A11001
+
+secondary_mouse_alexa647:
+  category: antibody_secondary
+  unit_size: 500 uL
+  cost_usd: 180.00
+  vendor: Invitrogen
+  catalog: A21235
+
+# Buffers
+staining_buffer:
+  category: buffer
+  unit_size: 500 mL
+  cost_usd: 45.00
+  vendor: In-house
+  catalog: N/A
+# Upstream / Genetic Supply Chain Reagents
+
+# Oligo Synthesis
+oligo_pool_twist_12k:
+  category: service
+  unit_size: 1 pool
+  cost_usd: 1500.00
+  vendor: Twist Bioscience
+  catalog: custom_pool_12k
+  notes: "Up to 12,000 oligos, uniform synthesis"
+
+oligo_pool_genscript_12k:
+  category: service
+  unit_size: 1 pool
+  cost_usd: 1800.00
+  vendor: GenScript
+  catalog: custom_pool_12k
+
+# Cloning (Golden Gate)
+bsmbi_v2:
+  category: enzyme
+  unit_size: 2500 units
+  cost_usd: 84.00
+  vendor: NEB
+  catalog: R0739L
+
+t4_ligase_conc:
+  category: enzyme
+  unit_size: 100000 units
+  cost_usd: 88.00
+  vendor: NEB
+  catalog: M0202T
+
+stbl3_competent_cells:
+  category: cells
+  unit_size: 20 rxn
+  cost_usd: 450.00
+  vendor: ThermoFisher
+  catalog: C737303
+
+# Plasmid Prep
+endo_free_maxiprep_kit:
+  category: kit
+  unit_size: 10 preps
+  cost_usd: 280.00
+  vendor: Qiagen
+  catalog: 12362
+
+# Virus Production (HEK293T)
+hek293t_cells:
+  category: cells
+  unit_size: 1 vial
+  cost_usd: 600.00
+  vendor: ATCC
+  catalog: CRL-3216
+
+lipofectamine_3000:
+  category: reagent
+  unit_size: 1.5 mL
+  cost_usd: 680.00
+  vendor: ThermoFisher
+  catalog: L3000015
+
+pei_max:
+  category: reagent
+  unit_size: 1 g
+  cost_usd: 150.00
+  vendor: Polysciences
+  catalog: 24765-1
+  notes: "Cheap alternative to Lipofectamine for large scale"
+
+amicon_ultra_15_100k:
+  category: consumable
+  unit_size: 24 pack
+  cost_usd: 280.00
+  vendor: Millipore
+  catalog: UFC910024
+
+# NGS Verification
+miseq_v2_kit_300:
+  category: kit
+  unit_size: 1 kit
+  cost_usd: 1300.00
+  vendor: Illumina
+  catalog: MS-102-2002
