@@ -95,6 +95,17 @@ python verify_cell_line_database.py
 *   [ ] **Multi-Fidelity Learning**: Transfer learning from cheap assays to expensive ones.
 *   [ ] **Multi-Fidelity Learning**: Transfer learning from cheap assays to expensive ones.
 
+## Recent Updates
+
+- Added **Zombie POSH** protocol implementation, including decross‑linking, T7 IVT operations, and a complete recipe function.
+- Created a **shopping list generator** (`src/zombie_posh_shopping_list.py`) for Zombie POSH experiments.
+- Developed **QC checkpoints** (`zombie_posh_qc_checkpoints.md`) covering critical stages of the Zombie POSH workflow.
+- Implemented a **modular Cell Painting panel system** (`src/cellpaint_panels.py`) with core, specialized (NeuroPaint, HepatoPaint, ALSPaint), and custom panels, plus automatic secondary antibody selection.
+- Updated **pricing.yaml** with detailed reagent costs for Zombie POSH and new Cell Painting dyes/antibodies.
+- Added verification script `tests/integration/verify_zombie_posh.py` to validate Zombie POSH operations and cost savings.
+- Refactored `src/unit_ops.py` to include new operations (`op_decross_linking`, `op_t7_ivt`, `op_hcr_fish`, `op_ibex_immunofluorescence`) and updated the Zombie POSH recipe.
+- Updated documentation files (`zombie_posh_protocol.md`, `zombie_posh_inhouse_protocol.md`).
+
 ## Philosophy
 
 This repo treats biology as a landscape that can be learned.
@@ -103,4 +114,5 @@ This repo treats biology as a landscape that can be learned.
 *   **Phase 1**: Choose experiments that reduce ignorance per unit pain.
 
 Nothing here is optimized. This is the backbone you iterate on.
+
 The OS grows from here.
