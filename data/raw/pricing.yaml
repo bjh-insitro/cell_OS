@@ -356,6 +356,39 @@ items:
     logical_unit: mL
     unit_price_usd: 0.35
 
+  tryple_express:
+    name: "TrypLE Express"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "12604013"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 35.0
+    logical_unit: mL
+    unit_price_usd: 0.35
+
+  trypsin_edta:
+    name: "Trypsin-EDTA 0.25%"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "25200056"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 22.0
+    logical_unit: mL
+    unit_price_usd: 0.22
+
+  versene_edta:
+    name: "Versene (EDTA) Solution"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "15040066"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 18.0
+    logical_unit: mL
+    unit_price_usd: 0.18
+
   trypan_blue:
     name: "Trypan Blue Stain"
     category: reagent
@@ -388,6 +421,39 @@ items:
     pack_price_usd: 400.0
     logical_unit: mL
     unit_price_usd: 4.0
+
+  bambanker:
+    name: "Bambanker Freezing Medium"
+    category: reagent
+    vendor: "Wako/Fujifilm"
+    catalog_number: "302-14681"
+    pack_size: 20
+    pack_unit: mL
+    pack_price_usd: 120.0
+    logical_unit: mL
+    unit_price_usd: 6.0
+
+  mfresr:
+    name: "mFreSR Cryopreservation Medium"
+    category: reagent
+    vendor: "STEMCELL"
+    catalog_number: "100-0485"
+    pack_size: 50
+    pack_unit: mL
+    pack_price_usd: 300.0
+    logical_unit: mL
+    unit_price_usd: 6.0
+
+  dmso:
+    name: "Dimethyl Sulfoxide (DMSO)"
+    category: reagent
+    vendor: "Sigma"
+    catalog_number: "D2650"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 45.0
+    logical_unit: mL
+    unit_price_usd: 0.45
 
   phrodo_ecoli:
     name: "pHrodo Red E. coli BioParticles"
@@ -773,6 +839,83 @@ items:
     pack_price_usd: 200.0
     logical_unit: mg
     unit_price_usd: 2.0
+
+  lipofectamine_3000:
+    name: "Lipofectamine 3000 Reagent"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "L3000015"
+    pack_size: 1.5
+    pack_unit: mL
+    pack_price_usd: 450.0
+    logical_unit: mL
+    unit_price_usd: 300.0
+
+  fugene_hd:
+    name: "FuGENE HD Transfection Reagent"
+    category: reagent
+    vendor: "Promega"
+    catalog_number: "E2311"
+    pack_size: 1
+    pack_unit: mL
+    pack_price_usd: 250.0
+    logical_unit: mL
+    unit_price_usd: 250.0
+
+  nucleofection_buffer:
+    name: "Nucleofection Buffer (P3 Primary Cell Kit)"
+    category: reagent
+    vendor: "Lonza"
+    catalog_number: "V4XP-3024"
+    pack_size: 2
+    pack_unit: mL
+    pack_price_usd: 400.0
+    logical_unit: mL
+    unit_price_usd: 200.0
+
+  optimem:
+    name: "Opti-MEM Reduced Serum Medium"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "31985070"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 50.0
+    logical_unit: mL
+    unit_price_usd: 0.1
+
+  calcium_chloride:
+    name: "Calcium Chloride 2.5M Solution"
+    category: reagent
+    vendor: "Sigma"
+    catalog_number: "C7902"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 40.0
+    logical_unit: mL
+    unit_price_usd: 0.4
+
+  hepes_buffered_saline:
+    name: "HEPES Buffered Saline (HBS) 2x"
+    category: buffer
+    vendor: "Sigma"
+    catalog_number: "H0887"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 35.0
+    logical_unit: mL
+    unit_price_usd: 0.35
+
+  cell_scraper:
+    name: "Cell Scraper (Disposable)"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "3010"
+    pack_size: 100
+    pack_unit: each
+    pack_price_usd: 80.0
+    logical_unit: each
+    unit_price_usd: 0.8
 
   lenti_x_concentrator:
     name: "Lenti-X Concentrator"

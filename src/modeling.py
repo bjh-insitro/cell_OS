@@ -79,6 +79,9 @@ class DoseResponseGP:
     # Raw training data in log10-dose space
     X_train: ArrayLike
     y_train: ArrayLike
+    
+    # Optional prior model for transfer learning
+    prior_model: Optional["DoseResponseGP"] = None
 
     @classmethod
     def from_dataframe(
@@ -90,6 +93,7 @@ class DoseResponseGP:
         config: Optional[DoseResponseGPConfig] = None,
         dose_col: str = "dose_uM",
         viability_col: str = "viability",
+        prior_model: Optional["DoseResponseGP"] = None,
     ) -> "DoseResponseGP":
         """
         Build and fit a GP from a long-format DataFrame.
@@ -127,6 +131,11 @@ class DoseResponseGP:
         X = np.log10(df_slice[dose_col].to_numpy()).reshape(-1, 1)
         y = df_slice[viability_col].to_numpy().astype(float)
 
+        # If prior model exists, fit to residual
+        if prior_model is not None:
+            prior_mean, _ = prior_model.predict(df_slice[dose_col].to_numpy(), return_std=True)
+            y = y - prior_mean
+
         model = _build_gp_model(config)
         model.fit(X, y)
 
@@ -138,6 +147,7 @@ class DoseResponseGP:
             model=model,
             X_train=X,
             y_train=y,
+            prior_model=prior_model,
         )
 
     def predict(
@@ -164,9 +174,27 @@ class DoseResponseGP:
 
         if return_std:
             mean, std = self.model.predict(X, return_std=True)
+            
+            # Add prior mean if exists
+            if self.prior_model is not None:
+                prior_mean, prior_std = self.prior_model.predict(dose_uM, return_std=True)
+                mean = mean + prior_mean
+                # Combine uncertainties (assuming independence for simplicity, though they are correlated)
+                # For now, just return the posterior std of the residual GP + prior std?
+                # Actually, if we treat prior as fixed mean function, we don't add its variance.
+                # But if prior is also a GP, we should.
+                # Let's assume prior is a fixed baseline for now to keep it simple.
+                # Or better: sqrt(std^2 + prior_std^2)
+                std = np.sqrt(std**2 + prior_std**2)
+                
             return mean, std
         else:
             mean = self.model.predict(X, return_std=False)
+            
+            if self.prior_model is not None:
+                prior_mean, _ = self.prior_model.predict(dose_uM, return_std=False)
+                mean = mean + prior_mean
+                
             return mean, None
 
     def predict_on_grid(

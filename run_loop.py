@@ -6,6 +6,7 @@ Executes the closed loop: Simulate -> Model -> Acquire -> Repeat.
 """
 
 import sys
+import os
 import numpy as np
 import pandas as pd
 
@@ -21,9 +22,11 @@ from src.schema import Phase0WorldModel, SliceKey
 from src.acquisition import propose_next_experiments
 from src.reporting import MissionLogger
 from src.campaign import Campaign, PotencyGoal, SelectivityGoal
-from src.assay_selector import GreedyROISelector, get_assay_candidates
+from src.assay_selector import CostConstrainedSelector, get_assay_candidates
 from src.inventory import Inventory
-from src.unit_ops import UnitOpLibrary
+from src.unit_ops import UnitOpLibrary, ParametricOps, VesselLibrary
+from src.recipe_optimizer import RecipeOptimizer, RecipeConstraints
+from src.llm_scientist import LLMScientist
 
 
 def execute_experiments(experiment_df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
@@ -119,30 +122,77 @@ def main():
     
     # Initialize Economic Engine
     print("  [Economics] Initializing Inventory and Assay Selector...")
-    inv = Inventory('data/raw/pricing.yaml', 'data/raw/unit_ops.yaml')
-    lib = UnitOpLibrary([
-        'data/raw/unit_ops_genetic_supply.csv', 
-        'data/raw/unit_ops_cell_prep.csv', 
-        'data/raw/unit_ops_phenotyping.csv', 
-        'data/raw/unit_ops_compute.csv'
-    ])
-    selector = GreedyROISelector()
-    candidates = get_assay_candidates(lib, inv)
+    inv = Inventory('data/raw/pricing.yaml')
+    vessel_lib = VesselLibrary('data/raw/vessels.yaml')
+    ops = ParametricOps(vessel_lib, inv)
+    
+    optimizer = RecipeOptimizer(ops)
+    selector = CostConstrainedSelector()
+    
+    # Initial Budget
+    wallet_balance = 5000.0
+    print(f"  [Economics] Starting Budget: ${wallet_balance:.2f}")
     
     print(f"Starting Campaign: {goal.description()}")
     
     for cycle in range(1, n_cycles + 1):
         campaign.current_cycle = cycle
         print(f"\n--- Cycle {cycle} ---")
+        print(f"  [Economics] Remaining Budget: ${wallet_balance:.2f}")
+        
+        if wallet_balance <= 0:
+            print("  ! Budget exhausted! Stopping campaign.")
+            break
         
         # 0. Assay Selection
-        # Simulate a budget that might change or just be fixed
-        budget = 5000.0 
-        selected_assay = selector.select(candidates, budget)
+        # Generate candidates for relevant cell lines
+        candidates = []
+        for cell_line in ["HepG2", "U2OS"]:
+            # Create constraints based on budget status
+            budget_tier = "standard"
+            if wallet_balance < 1000:
+                budget_tier = "budget"
+            
+            constraints = RecipeConstraints(
+                cell_line=cell_line,
+                budget_tier=budget_tier
+            )
+            
+            # Generate optimized recipes
+            # For this loop, we'll stick to our standard assay types but optimized
+            # 1. POSH (Screening)
+            # 2. High Content (Phagocytosis proxy for now)
+            # 3. Transcriptomics (Bulk RNA-seq)
+            
+            # Note: In a real system, we'd have a more dynamic way to generate these.
+            # For now, let's use the factory but we need to update it to use optimizer
+            # OR we just manually create candidates here using the optimizer.
+            
+            # Let's use the existing get_assay_candidates but update it to be dynamic?
+            # Actually, let's just use the static ones for now but filter by budget
+            # To do this properly requires refactoring get_assay_candidates to take optimizer.
+            # Let's stick to the plan: Use CostConstrainedSelector on existing candidates.
+            pass
+
+        # Re-generate candidates with current pricing/optimization
+        # For simplicity in this step, we'll use the static generator but filter dynamically
+        # In a full implementation, we'd generate candidates per cell line.
+        raw_candidates = get_assay_candidates(ops, inv)
+        
+        # Select best assay within budget
+        selected_assay = selector.select(raw_candidates, wallet_balance, prioritize_info=True)
+        
         if selected_assay:
-            print(f"  [Assay Selector] Budget=${budget} -> Selected: {selected_assay.recipe.name} (ROI={selected_assay.roi:.4f} bits/$)")
+            print(f"  [Assay Selector] Selected: {selected_assay.recipe.name}")
+            print(f"    Cost: ${selected_assay.cost_usd:.2f}")
+            print(f"    ROI: {selected_assay.roi:.4f} bits/$")
+            
+            # Deduct cost
+            wallet_balance -= selected_assay.cost_usd
         else:
-            print(f"  [Assay Selector] Budget=${budget} -> No assay selected!")
+            print(f"  [Assay Selector] No assay fits within budget ${wallet_balance:.2f}!")
+            print("  ! Stopping campaign due to budget constraints.")
+            break
         
         # ... (Modeling code remains same) ...
         
@@ -243,6 +293,29 @@ def main():
     output_path = "results/experiment_history.csv"
     df_history.to_csv(output_path, index=False)
     print(f"\nSaved experiment history to {output_path}")
+
+    # Finalize Mission Log
+    logger.finalize()
+    print(f"Mission Log saved to {logger.filepath}")
+    
+    # LLM Scientist Analysis
+    print("\n[LLM Scientist] Analyzing Mission Log...")
+    scientist = LLMScientist()
+    if os.path.exists(logger.filepath):
+        with open(logger.filepath, "r") as f:
+            log_content = f.read()
+            
+        insight = scientist.analyze_mission_log(log_content)
+        
+        print(f"  Summary: {insight.summary}")
+        print(f"  Hypothesis: {insight.hypothesis}")
+        
+        # Append to log
+        with open(logger.filepath, "a") as f:
+            f.write("\n\n## 🧠 Scientist's Conclusion\n\n")
+            f.write(f"**Summary**: {insight.summary}\n\n")
+            f.write(f"**Hypothesis**: {insight.hypothesis}\n\n")
+            f.write(f"*(Confidence: {insight.confidence})*\n")
 
     print("\n=== Loop Complete ===")
 

@@ -67,4 +67,14 @@ class MissionLogger:
             
             f.write("\n---\n\n")
             
-        print(f"  -> Appended to Mission Log: {self.log_path}")
+    def finalize(self):
+        """
+        Add a closing entry to the log.
+        """
+        with open(self.log_path, "a") as f:
+            f.write("\n## Mission Complete\n\n")
+            f.write("Autonomous loop finished execution.\n")
+            
+    @property
+    def filepath(self) -> str:
+        return self.log_path

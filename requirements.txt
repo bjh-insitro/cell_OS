@@ -4,3 +4,5 @@ scikit-learn
 matplotlib
 jupyter
 ipykernel
+streamlit
+pyyaml

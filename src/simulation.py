@@ -55,6 +55,8 @@ def simulate_plate_data(
     n_plates_per_line: int = 3,
     replicates_per_dose: int = 3,
     random_seed: int = 42,
+    batch_factor_cv: float = 0.0, # Coefficient of variation for batch effects
+    pipetting_cv: float = 0.0     # Coefficient of variation for pipetting error
 ) -> pd.DataFrame:
     """
     Generate a DataFrame of synthetic plate data.
@@ -67,6 +69,8 @@ def simulate_plate_data(
         n_plates_per_line: Number of plates to generate per cell line.
         replicates_per_dose: Number of technical replicates per condition.
         random_seed: Seed for reproducibility.
+        batch_factor_cv: CV for random batch effect multiplier (Normal(1, cv)).
+        pipetting_cv: CV for random pipetting error on dose (Normal(1, cv)).
         
     Returns:
         pd.DataFrame with columns matching the project schema.
@@ -75,19 +79,33 @@ def simulate_plate_data(
     rows = []
     assay_time_h = 24
     
+    # Generate a batch factor for this "experiment run" (all plates share it for now, 
+    # or we could make it per plate. Let's make it per plate to simulate day-to-day drift)
+    
     for cell in cell_lines:
         for p in range(1, n_plates_per_line + 1):
             plate_id = f"{cell}_P{p}"
             
             # Plate-level multiplicative noise (e.g. pipetting error, cell count diffs)
+            # This is "drift"
             plate_factor = rng.normal(loc=1.0, scale=0.05)
+            
+            # Batch effect (e.g. reagent lot, incubator temp)
+            # If batch_factor_cv > 0, add extra variability
+            batch_effect = 1.0
+            if batch_factor_cv > 0:
+                batch_effect = rng.normal(loc=1.0, scale=batch_factor_cv)
+            
+            # Combine factors
+            total_plate_factor = plate_factor * batch_effect
+            
             date = f"2025-11-0{p}"
             
             # -------------------------------------------------------
             # 1. Generate Control Wells (DMSO)
             # -------------------------------------------------------
             # Pretend 4 rows * 4 cols = 16 controls (simplified from notebook)
-            control_signal_mean = 1.0 * plate_factor
+            control_signal_mean = 1.0 * total_plate_factor
             
             for row_char in ["A", "B", "C", "D"]:
                 for col_idx in range(9, 13): # Cols 9-12
@@ -131,12 +149,18 @@ def simulate_plate_data(
                         col_index = np.where(doses == dose)[0][0] + 1
                         well_id = f"{row_char}{col_index:02d}"
                         
+                        # Apply pipetting error to dose
+                        actual_dose = dose
+                        if pipetting_cv > 0 and dose > 0:
+                            actual_dose = dose * rng.normal(loc=1.0, scale=pipetting_cv)
+                            actual_dose = max(0.0, actual_dose) # No negative doses
+                        
                         # Get Ground Truth
                         ic50 = TRUE_IC50.get((cell, compound), 1.0)
                         h = HILL_SLOPES.get(compound, 1.0)
                         
-                        true_viab = logistic_viability(dose, ic50, h)
-                        true_viab *= plate_factor
+                        true_viab = logistic_viability(actual_dose, ic50, h)
+                        true_viab *= total_plate_factor
                         
                         # Add measurement noise
                         raw_viab = rng.normal(loc=true_viab, scale=0.05)
@@ -146,7 +170,7 @@ def simulate_plate_data(
                             "well_id": well_id,
                             "cell_line": cell,
                             "compound": compound,
-                            "dose_uM": float(dose),
+                            "dose_uM": float(dose), # Record TARGET dose, not actual
                             "time_h": assay_time_h,
                             "raw_signal": raw_viab * 10000,
                             "is_control": 0,
@@ -175,3 +199,54 @@ def simulate_plate_data(
     df["viability_norm"] = df["viability_norm"].clip(lower=0, upper=2.0)
     
     return df
+
+
+def simulate_low_fidelity_data(
+    cell_lines: List[str],
+    compounds: List[str],
+    doses: List[float] = [0.001, 0.01, 0.1, 1.0, 10.0],
+    time_points: List[int] = [24, 48, 72],
+    n_replicates: int = 3,
+    bias: float = 0.1,
+    noise_scale: float = 0.1,
+    random_seed: int = 42
+) -> pd.DataFrame:
+    """
+    Simulate low-fidelity data (e.g., Imaging) that is correlated with ground truth
+    but has bias and higher noise.
+    
+    Args:
+        bias: Systematic offset (e.g., imaging overestimates viability)
+        noise_scale: Standard deviation of measurement noise (higher than standard)
+    """
+    rng = np.random.default_rng(random_seed)
+    results = []
+    
+    for cell in cell_lines:
+        for cmpd in compounds:
+            # Ground truth parameters
+            ic50 = TRUE_IC50.get((cell, cmpd), 1.0)
+            h = HILL_SLOPES.get(cmpd, 1.0)
+            
+            for t in time_points:
+                for d in doses:
+                    # True viability
+                    y_true = logistic_viability(d, ic50, h)
+                    
+                    for _ in range(n_replicates):
+                        # Add bias and noise
+                        y_biased = y_true + bias
+                        y_obs = rng.normal(loc=y_biased, scale=noise_scale)
+                        y_obs = max(0.0, y_obs) # Clip at 0
+                        
+                        results.append({
+                            "cell_line": cell,
+                            "compound": cmpd,
+                            "dose_uM": d,
+                            "time_h": t,
+                            "viability_norm": y_obs,
+                            "is_control": 0,
+                            "assay_type": "low_fidelity"
+                        })
+                        
+    return pd.DataFrame(results)

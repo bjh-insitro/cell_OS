@@ -14,6 +14,10 @@ class Resource:
     logical_unit: str
     unit_price_usd: float
     category: str
+    stock_level: float = 0.0  # Current stock in logical units
+
+class OutOfStockError(Exception):
+    pass
 
 @dataclass
 class BOMItem:
@@ -30,11 +34,12 @@ class UnitOpDef:
     overhead_cost: float = 0.0
 
 class Inventory:
-    def __init__(self, pricing_path: str, unit_ops_path: str):
+    def __init__(self, pricing_path: str):
         self.resources: Dict[str, Resource] = {}
-        self.unit_ops: Dict[str, UnitOpDef] = {}
         self._load_pricing(pricing_path)
-        self._load_unit_ops(unit_ops_path)
+        # Initialize stock with a default amount (e.g. 10 packs)
+        for r in self.resources.values():
+            r.stock_level = r.pack_size * 10.0
 
     def _load_pricing(self, path: str):
         with open(path, 'r') as f:
@@ -54,76 +59,26 @@ class Inventory:
                 category=item_data.get('category', '')
             )
 
-    def _load_unit_ops(self, path: str):
-        with open(path, 'r') as f:
-            data = yaml.safe_load(f)
-            
-        for uo_id, uo_data in data.get('unit_ops', {}).items():
-            items = []
-            for item_id, item_spec in uo_data.get('items', {}).items():
-                items.append(BOMItem(
-                    resource_id=item_id,
-                    quantity=float(item_spec.get('quantity', 0.0))
-                ))
-            
-            overhead = 0.0
-            for _, ov_data in uo_data.get('overhead', {}).items():
-                overhead += float(ov_data.get('cost_usd', 0.0))
-
-            self.unit_ops[uo_id] = UnitOpDef(
-                uo_id=uo_id,
-                name=uo_data.get('name', ''),
-                layer=uo_data.get('layer', ''),
-                description=uo_data.get('description', ''),
-                items=items,
-                overhead_cost=overhead
-            )
-
-    def calculate_uo_cost(self, uo_id: str) -> float:
-        if uo_id not in self.unit_ops:
-            return 0.0
-        
-        uo = self.unit_ops[uo_id]
-        total_cost = uo.overhead_cost
-        
-        for item in uo.items:
-            if item.resource_id not in self.resources:
-                print(f"Warning: Resource {item.resource_id} not found for UO {uo_id}")
-                continue
-            
-            resource = self.resources[item.resource_id]
-            cost = item.quantity * resource.unit_price_usd
-            total_cost += cost
-            
-        return total_cost
-
     def get_price(self, resource_id: str) -> float:
         if resource_id not in self.resources:
-            # Try to find by name or return 0 with warning
-            # print(f"Warning: Resource {resource_id} not found in pricing.")
             return 0.0
         return self.resources[resource_id].unit_price_usd
 
-    def get_bom_breakdown(self, uo_id: str) -> str:
-        if uo_id not in self.unit_ops:
-            return "No definition found."
+    def deplete_stock(self, resource_id: str, quantity: float):
+        """
+        Deduct quantity from stock. Raise OutOfStockError if insufficient.
+        """
+        if resource_id not in self.resources:
+            # Ignore unknown resources for now
+            return
+            
+        res = self.resources[resource_id]
+        if res.stock_level < quantity:
+            raise OutOfStockError(f"Resource {resource_id} ({res.name}) out of stock! Required: {quantity}, Available: {res.stock_level}")
         
-        uo = self.unit_ops[uo_id]
-        lines = []
-        total = uo.overhead_cost
-        
-        lines.append(f"Unit Op: {uo.name}")
-        if uo.overhead_cost > 0:
-             lines.append(f"- Overhead: ${uo.overhead_cost:.2f}")
+        res.stock_level -= quantity
 
-        for item in uo.items:
-            res = self.resources.get(item.resource_id)
-            if res:
-                cost = item.quantity * res.unit_price_usd
-                lines.append(f"- {res.name}: {item.quantity} {res.logical_unit} @ ${res.unit_price_usd:.4f}/{res.logical_unit} = ${cost:.2f}")
-                total += cost
-            else:
-                lines.append(f"- {item.resource_id}: Resource not found")
-        
-        lines.append(f"Total: ${total:.2f}")
-        return "\n".join(lines)
+    def restock(self, resource_id: str, quantity: float):
+        """Add stock."""
+        if resource_id in self.resources:
+            self.resources[resource_id].stock_level += quantity

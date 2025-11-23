@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Protocol, Optional
-from src.unit_ops import AssayRecipe, UnitOpLibrary
+from src.unit_ops import UnitOpLibrary, UnitOp, AssayRecipe, ParametricOps
 from src.inventory import Inventory
 
 @dataclass
@@ -36,97 +36,128 @@ class GreedyROISelector:
         
         return valid_candidates[0]
 
-def get_assay_candidates(library: UnitOpLibrary, inventory: Inventory) -> List[AssayCandidate]:
+
+class CostConstrainedSelector:
+    """
+    Advanced selector that considers budget constraints and can optimize methods.
+    
+    Features:
+    - Filters by budget
+    - Can suggest method optimizations to fit budget
+    - Provides explanations for selections
+    """
+    
+    def __init__(self, cell_line: Optional[str] = None):
+        """
+        Args:
+            cell_line: If provided, will optimize methods for this cell type
+        """
+        self.cell_line = cell_line
+    
+    def select(
+        self, 
+        candidates: List[AssayCandidate], 
+        budget_usd: float,
+        prioritize_info: bool = True
+    ) -> Optional[AssayCandidate]:
+        """
+        Select best assay within budget.
+        
+        Args:
+            candidates: List of assay candidates
+            budget_usd: Maximum budget
+            prioritize_info: If True, maximize info gain. If False, maximize ROI.
+            
+        Returns:
+            Selected candidate or None if nothing fits budget
+        """
+        # Filter by budget
+        valid_candidates = [c for c in candidates if c.cost_usd <= budget_usd]
+        
+        if not valid_candidates:
+            return None
+        
+        # Sort by priority
+        if prioritize_info:
+            # Maximize information gain (even if ROI is lower)
+            valid_candidates.sort(key=lambda x: x.information_score, reverse=True)
+        else:
+            # Maximize ROI
+            valid_candidates.sort(key=lambda x: x.roi, reverse=True)
+        
+        return valid_candidates[0]
+    
+    def explain_selection(
+        self,
+        selected: AssayCandidate,
+        candidates: List[AssayCandidate],
+        budget_usd: float
+    ) -> str:
+        """Generate explanation for why this assay was selected."""
+        
+        explanation = []
+        explanation.append(f"Selected: {selected.recipe.name}")
+        explanation.append(f"Cost: ${selected.cost_usd:.2f} (Budget: ${budget_usd:.2f})")
+        explanation.append(f"Information: {selected.information_score:.1f} bits")
+        explanation.append(f"ROI: {selected.roi:.2f} bits/$")
+        
+        # Compare to alternatives
+        valid_alternatives = [c for c in candidates if c.cost_usd <= budget_usd and c != selected]
+        if valid_alternatives:
+            explanation.append("\nAlternatives within budget:")
+            for alt in valid_alternatives[:3]:  # Top 3
+                explanation.append(f"  - {alt.recipe.name}: ${alt.cost_usd:.2f}, "
+                                 f"{alt.information_score:.1f} bits, ROI={alt.roi:.2f}")
+        
+        # Show what's excluded by budget
+        excluded = [c for c in candidates if c.cost_usd > budget_usd]
+        if excluded:
+            explanation.append(f"\nExcluded by budget ({len(excluded)} assays):")
+            for exc in excluded[:2]:
+                explanation.append(f"  - {exc.recipe.name}: ${exc.cost_usd:.2f} "
+                                 f"(${exc.cost_usd - budget_usd:.2f} over budget)")
+        
+        return "\n".join(explanation)
+
+def get_assay_candidates(ops: ParametricOps, inventory: Inventory) -> List[AssayCandidate]:
     """
     Factory function to generate the standard list of available assays with their costs and info scores.
     """
     from src.unit_ops import (
-        get_posh_full_stack_recipe, 
         get_imicroglia_differentiation_recipe, 
         get_ngn2_differentiation_recipe,
         get_imicroglia_phagocytosis_recipe
     )
     
-    # Define heuristic information scores (Bits)
-    # POSH (Viability) = 1 bit
-    # Phagocytosis (Imaging) = 10 bits
-    # Bulk RNA-seq = 100 bits
-    
-    # We need a way to calculate cost from recipe using Inventory
-    # Since UnitOpLibrary is currently CSV based but we want Inventory costs,
-    # we need a bridge or update UnitOpLibrary.
-    # For now, let's calculate cost by summing up unit ops in the recipe using Inventory.
-    
-    def calculate_recipe_cost(recipe: AssayRecipe) -> float:
-        total = 0.0
-        for layer_name, steps in recipe.layers.items():
-            for uo_id, count in steps:
-                # Try to get cost from Inventory
-                cost = inventory.calculate_uo_cost(uo_id)
-                if cost == 0.0:
-                    # Fallback to UnitOpLibrary if not in Inventory (e.g. D15 compute)
-                    # or if it's a CSV-only op.
-                    # Ideally everything should be in Inventory now.
-                    # For this prototype, we assume 0 if not found, or maybe we should check library?
-                    # The library has material_cost_usd but that's static. Inventory is dynamic.
-                    # Let's trust Inventory.
-                    pass
-                total += cost * count
-        return total
-
     candidates = []
     
-    # 1. POSH (Screening)
-    posh = get_posh_full_stack_recipe()
-    # POSH uses C7, C8, C9, P1-P7.
-    # We need to make sure these are in unit_ops.yaml or we add them.
-    # For now, let's assume they are NOT in YAML yet (we only added Diff/NGN2/Phago).
-    # So we might need to add them or fallback.
-    # Let's add a fallback in calculate_recipe_cost to use library.get(uo_id).material_cost_usd
-    
-    def calculate_recipe_cost_robust(recipe: AssayRecipe) -> float:
-        total = 0.0
-        for layer_name, steps in recipe.layers.items():
-            for uo_id, count in steps:
-                cost = inventory.calculate_uo_cost(uo_id)
-                if cost == 0.0:
-                    # Fallback to static library cost
-                    try:
-                        uo = library.get(uo_id)
-                        cost = uo.material_cost_usd + uo.instrument_cost_usd
-                    except:
-                        cost = 0.0
-                total += cost * count
-        return total
+    def calculate_recipe_cost(recipe: AssayRecipe) -> float:
+        # Use the derive_score method which now handles UnitOp objects with costs
+        # We pass None as library since we expect all items to be UnitOp objects from ParametricOps
+        score = recipe.derive_score(None)
+        return score.total_usd
 
-    # POSH
-    candidates.append(AssayCandidate(
-        recipe=posh,
-        cost_usd=calculate_recipe_cost_robust(posh),
-        information_score=1.0
-    ))
-    
-    # iMicroglia Differentiation (RNA-seq)
-    imicroglia = get_imicroglia_differentiation_recipe()
+    # 1. iMicroglia Differentiation (RNA-seq)
+    imicroglia = get_imicroglia_differentiation_recipe(ops)
     candidates.append(AssayCandidate(
         recipe=imicroglia,
-        cost_usd=calculate_recipe_cost_robust(imicroglia),
+        cost_usd=calculate_recipe_cost(imicroglia),
         information_score=100.0
     ))
     
-    # NGN2 Differentiation (RNA-seq)
-    ngn2 = get_ngn2_differentiation_recipe()
+    # 2. NGN2 Differentiation (RNA-seq)
+    ngn2 = get_ngn2_differentiation_recipe(ops)
     candidates.append(AssayCandidate(
         recipe=ngn2,
-        cost_usd=calculate_recipe_cost_robust(ngn2),
+        cost_usd=calculate_recipe_cost(ngn2),
         information_score=100.0
     ))
     
-    # iMicroglia Phagocytosis (Imaging)
-    phago = get_imicroglia_phagocytosis_recipe()
+    # 3. iMicroglia Phagocytosis (Imaging)
+    phago = get_imicroglia_phagocytosis_recipe(ops)
     candidates.append(AssayCandidate(
         recipe=phago,
-        cost_usd=calculate_recipe_cost_robust(phago),
+        cost_usd=calculate_recipe_cost(phago),
         information_score=10.0
     ))
     
