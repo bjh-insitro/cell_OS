@@ -1,0 +1,247 @@
+- [ ] Explore codebase structure <!-- id: 0 -->
+    - [x] List root directory files <!-- id: 1 -->
+    - [x] Read `requirements.txt` <!-- id: 2 -->
+    - [x] Read `README.md` (if exists) <!-- id: 3 -->
+    - [x] Analyze `notebooks/` directory <!-- id: 4 -->
+- [x] Summarize findings for the user <!-- id: 5 -->
+- [ ] Implement `src/schema.py` <!-- id: 6 -->
+    - [x] Create `implementation_plan.md` <!-- id: 7 -->
+    - [x] Create `src/schema.py` <!-- id: 8 -->
+    - [x] Verify with simple script <!-- id: 9 -->
+- [ ] Implement `src/acquisition.py` <!-- id: 10 -->
+    - [x] Create `implementation_plan.md` <!-- id: 11 -->
+    - [x] Create `src/acquisition.py` <!-- id: 12 -->
+    - [x] Verify with simple script <!-- id: 13 -->
+- [ ] Refactor simulation logic <!-- id: 14 -->
+    - [x] Create `implementation_plan.md` <!-- id: 15 -->
+    - [x] Create `src/simulation.py` <!-- id: 16 -->
+    - [x] Verify with simple script <!-- id: 17 -->
+- [ ] Implement `run_loop.py` <!-- id: 18 -->
+    - [x] Create `implementation_plan.md` <!-- id: 19 -->
+    - [x] Create `run_loop.py` <!-- id: 20 -->
+    - [x] Run the loop <!-- id: 21 -->
+- [ ] Update `README.md` <!-- id: 22 -->
+    - [x] Create `zombie_posh_qc_checkpoints.md` <!-- id: 202 -->
+- [x] Define System Ontology (`ONTOLOGY.md`) <!-- id: 203 -->
+    - [x] Update `README.md` <!-- id: 24 -->
+- [ ] Analyze loop results <!-- id: 25 -->
+    - [x] Save history to CSV in `run_loop.py` <!-- id: 26 -->
+    - [x] Create `src/plotting.py` <!-- id: 27 -->
+    - [x] Generate and show plots <!-- id: 28 -->
+- [ ] Debug agent behavior <!-- id: 29 -->
+    - [x] Check GP fitting logs <!-- id: 30 -->
+    - [x] Inspect uncertainty scores <!-- id: 31 -->
+    - [x] Explain behavior to user <!-- id: 32 -->
+- [ ] Implement Mission Log <!-- id: 33 -->
+    - [x] Create `implementation_plan.md` <!-- id: 34 -->
+    - [x] Modify `src/acquisition.py` to return context <!-- id: 35 -->
+    - [x] Create `src/reporting.py` <!-- id: 36 -->
+    - [x] Integrate into `run_loop.py` <!-- id: 37 -->
+    - [x] Verify Mission Log <!-- id: 38 -->
+- [ ] Implement Campaign Manager <!-- id: 39 -->
+    - [x] Create `implementation_plan.md` <!-- id: 40 -->
+    - [x] Create `src/campaign.py` <!-- id: 41 -->
+    - [x] Update `run_loop.py` to run campaigns <!-- id: 42 -->
+    - [x] Verify goal-seeking behavior <!-- id: 43 -->
+- [ ] Implement Selectivity Goal <!-- id: 44 -->
+    - [x] Check ground truth in `src/simulation.py` <!-- id: 45 -->
+    - [x] Create `implementation_plan.md` <!-- id: 46 -->
+    - [x] Add `SelectivityGoal` to `src/campaign.py` <!-- id: 47 -->
+    - [/] Run selectivity campaign <!-- id: 48 -->
+- [ ] Implement Unit Op Model <!-- id: 49 -->
+    - [x] Create `data/raw/unit_op_world_model.csv` <!-- id: 50 -->
+    - [x] Create `src/unit_ops.py` to manage recipes <!-- id: 51 -->
+    - [x] Define POSH recipe and derive scores <!-- id: 52 -->
+- [ ] Refine Unit Op Model (Layered) <!-- id: 53 -->
+    - [x] Create `data/raw/unit_ops_genetic_supply.csv` <!-- id: 54 -->
+    - [x] Create `data/raw/unit_ops_cell_prep.csv` <!-- id: 55 -->
+    - [x] Create `data/raw/unit_ops_phenotyping.csv` <!-- id: 56 -->
+    - [x] Create `data/raw/unit_ops_compute.csv` <!-- id: 57 -->
+    - [x] Update `src/unit_ops.py` for layered recipes <!-- id: 58 -->
+    - [x] Define full-stack POSH recipe <!-- id: 59 -->
+- [ ] Implement Perturb-seq Recipe <!-- id: 60 -->
+    - [x] Update CSVs with new UOs (C10, P10-P15, D9-D14) <!-- id: 61 -->
+    - [x] Define Perturb-seq recipe in `src/unit_ops.py` <!-- id: 62 -->
+    - [x] Compare POSH vs Perturb-seq scores <!-- id: 63 -->
+- [ ] Implement Bulk RNA QC Recipe <!-- id: 64 -->
+    - [x] Update CSVs with new UOs (C11-C12, P16-P21, D15-D18) <!-- id: 65 -->
+    - [x] Define Bulk RNA QC recipe in `src/unit_ops.py` <!-- id: 66 -->
+    - [x] Compare all three assays <!-- id: 67 -->
+- [ ] Model Cell Culture Costs (Granular) <!-- id: 68 -->
+    - [x] Update `src/unit_ops.py` to support USD costs <!-- id: 69 -->
+    - [x] Update CSVs with `material_cost_usd` and `instrument_cost_usd` columns <!-- id: 70 -->
+    - [x] Add `C_Pass_T75`, `C_Buy_HepG2`, `C_Buy_U2OS` to `unit_ops_cell_prep.csv` <!-- id: 71 -->
+    - [x] Create `Weekly_Maintenance` recipe and calculate annual cost <!-- id: 72 -->
+    - [x] Model Cell Line Spin-Up Costs <!-- id: 73 -->
+        - [x] Add CC1-CC9 UOs to `unit_ops_cell_prep.csv` <!-- id: 74 -->
+        - [x] Define `Spin_Up_Immortalized_Line` recipe <!-- id: 75 -->
+        - [x] Verify spin-up cost <!-- id: 76 -->
+    - [x] Model iPSC Spin-Up Costs <!-- id: 77 -->
+        - [x] Add IC1-IC7 UOs to `unit_ops_cell_prep.csv` <!-- id: 78 -->
+        - [x] Define `Spin_Up_iPSC_Master_Bank` recipe <!-- id: 79 -->
+        - [x] Verify iPSC spin-up cost <!-- id: 80 -->
+    - [x] Model iPSC Maintenance Costs <!-- id: 81 -->
+        - [x] Add IC8 (Feed) and IC9 (Passage) to `unit_ops_cell_prep.csv` <!-- id: 82 -->
+        - [x] Define `Weekly_Maintenance_iPSC` recipe <!-- id: 83 -->
+        - [x] Verify maintenance cost <!-- id: 84 -->
+    - [x] Model MCB to WCB Workflow <!-- id: 85 -->
+        - [x] Add W1-W6 (Immortalized & iPSC variants) to `unit_ops_cell_prep.csv` <!-- id: 86 -->
+        - [x] Define `MCB_to_WCB` recipes for both types <!-- id: 87 -->
+        - [x] Verify MCB to WCB costs <!-- id: 88 -->
+    - [x] Model iMicroglia Differentiation Costs <!-- id: 89 -->
+        - [x] Add Diff1-Diff5 UOs to CSVs <!-- id: 90 -->
+        - [x] Define `iMicroglia_Differentiation_9well` recipe <!-- id: 91 -->
+        - [x] Verify differentiation cost <!-- id: 92 -->
+    - [x] Implement Reagent Database <!-- id: 93 -->
+        - [x] Create `data/raw/resources.csv` <!-- id: 94 -->
+        - [x] Create `data/raw/unit_op_bom.csv` <!-- id: 95 -->
+        - [x] Create `src/inventory.py` <!-- id: 96 -->
+        - [x] Verify BOM-based cost calculation <!-- id: 97 -->
+    - [x] Refactor Inventory to YAML Catalog <!-- id: 98 -->
+        - [x] Create `data/raw/pricing.yaml` <!-- id: 99 -->
+        - [x] Create `data/raw/unit_ops.yaml` <!-- id: 100 -->
+        - [x] Update `src/inventory.py` to support YAML <!-- id: 101 -->
+        - [x] Verify YAML-based cost calculation <!-- id: 102 -->
+    - [x] Model NGN2 Differentiation Costs <!-- id: 103 -->
+        - [x] Add NGN2 reagents to `pricing.yaml` <!-- id: 104 -->
+        - [x] Add NGN2 unit ops to `unit_ops.yaml` <!-- id: 105 -->
+        - [x] Define `NGN2_Differentiation` recipe in `src/unit_ops.py` <!-- id: 106 -->
+        - [x] Verify NGN2 costs <!-- id: 107 -->
+    - [x] Compare NGN2 vs Microglia <!-- id: 108 -->
+        - [x] Update walkthrough with comparison table <!-- id: 109 -->
+    - [x] Model Phagocytosis Assay Costs <!-- id: 110 -->
+        - [x] Add Phagocytosis reagents to `pricing.yaml` <!-- id: 111 -->
+        - [x] Add Phagocytosis unit ops to `unit_ops.yaml` <!-- id: 112 -->
+        - [x] Define `iMicroglia_Phagocytosis` recipe <!-- id: 113 -->
+        - [x] Verify Phagocytosis costs <!-- id: 114 -->
+    - [x] Implement Assay Selector <!-- id: 115 -->
+        - [x] Create `src/assay_selector.py` <!-- id: 116 -->
+        - [x] Define `AssayCandidate` and `Selector` interface <!-- id: 117 -->
+        - [x] Implement `ROISelector` (Bits per Dollar) <!-- id: 118 -->
+        - [x] Integrate into `run_loop.py` <!-- id: 119 -->
+    - [x] Model LV Cloning and Production Costs <!-- id: 120 -->
+        - [x] Add Cloning & LV reagents to `pricing.yaml` <!-- id: 121 -->
+        - [x] Add Cloning & LV unit ops to `unit_ops.yaml` <!-- id: 122 -->
+        - [x] Define `LV_Cloning_Production` recipe <!-- id: 123 -->
+        - [x] Verify LV costs <!-- id: 124 -->
+        - [x] Review and Correct Outsourced Cloning Pricing <!-- id: 130 -->
+    - [x] Refactor Unit Ops for Modularity <!-- id: 131 -->
+        - [x] Add Generic Unit Ops to `unit_ops.yaml` <!-- id: 132 -->
+        - [x] Refactor Recipes in `src/unit_ops.py` <!-- id: 133 -->
+        - [x] Verify Refactored Costs <!-- id: 134 -->
+    - [x] Implement Parametric Unit Ops <!-- id: 135 -->
+        - [x] Create `ParametricOps` class
+        - [x] Migrate `op_thaw`, `op_passage`, `op_feed`
+        - [x] Migrate `op_transduce`, `op_coat`, `op_transfect`, `op_harvest`
+        - [x] Migrate `op_freeze`, `op_bulk_rna_seq`, `op_flow_stain`, `op_p24_elisa`
+        - [x] Migrate remaining ops (`op_outsource_service`, `op_purchase`, `op_store`, `op_qc`, `op_compute`)
+        - [x] Update recipes to use parametric ops
+        - [x] Remove static ops from `unit_ops.yaml`
+        - [x] Delete `unit_ops.yaml`
+        - [x] Verify Parametric Costs <!-- id: 139 -->
+    - [x] Model Flow Cytometry Costs <!-- id: 125 -->
+        - [x] Add Flow reagents to `pricing.yaml` <!-- id: 126 -->
+        - [x] Add Flow unit ops to `unit_ops.yaml` <!-- id: 127 -->
+        - [x] Define `Flow_Live` and `Flow_Fixed` recipes <!-- id: 128 -->
+        - [x] Verify Flow costs <!-- id: 129 -->
+    - [x] Model Granular Cell Culture Steps <!-- id: 140 -->
+        - [x] Update `UnitOp` to support `sub_steps` <!-- id: 141 -->
+        - [x] Implement Atomic Ops (`op_aspirate`, `op_dispense`, `op_incubate`, `op_centrifuge`, `op_count`) <!-- id: 142 -->
+        - [x] Re-implement `op_passage`, `op_thaw`, `op_freeze` as Composite Ops <!-- id: 143 -->
+        - [x] Verify Granular Passage Cost <!-- id: 144 -->
+    - [x] Parameterize High-Level Operations <!-- id: 145 -->
+        - [x] Parameterize `op_transfect` (PEI, Lipo, Nucleofection) <!-- id: 146 -->
+        - [x] Parameterize `op_transduce` (Passive, Spinoculation) <!-- id: 147 -->
+        - [x] Parameterize `op_passage` (Trypsin, Accutase, Scraping) <!-- id: 148 -->
+        - [x] Parameterize `op_freeze` (FBS/DMSO, CryoStor, Bambanker) <!-- id: 149 -->
+        - [x] Add missing reagents to `pricing.yaml` <!-- id: 150 -->
+        - [x] Verify parameterized costs <!-- id: 151 -->
+    - [x] Implement Cell Line Database <!-- id: 152 -->
+        - [x] Create `src/cell_line_database.py` <!-- id: 153 -->
+        - [x] Define defaults for 14 cell types <!-- id: 154 -->
+        - [x] Verify cell line defaults <!-- id: 155 -->
+    - [x] Implement Automation Feasibility Scoring <!-- id: 156 -->
+        - [x] Create `src/automation_analysis.py` <!-- id: 157 -->
+        - [x] Implement labor cost estimation <!-- id: 158 -->
+        - [x] Verify automation scoring <!-- id: 159 -->
+    - [x] Implement Cost-Aware Decision Support <!-- id: 160 -->
+        - [x] Create `src/recipe_optimizer.py` <!-- id: 161 -->
+        - [x] Create `src/workflow_optimizer.py` <!-- id: 162 -->
+        - [x] Add `CostConstrainedSelector` to `src/assay_selector.py` <!-- id: 163 -->
+        - [x] Verify decision support system <!-- id: 164 -->
+    - [x] Integrate and Document <!-- id: 165 -->
+        - [x] Update `run_loop.py` with cost-aware logic <!-- id: 166 -->
+        - [x] Create System Architecture Document <!-- id: 167 -->
+        - [x] Update README.md <!-- id: 168 -->
+        - [x] Update Changelog <!-- id: 169 -->
+- [ ] Implement Multi-Fidelity Learning <!-- id: 170 -->
+    - [ ] Create `implementation_plan.md` <!-- id: 171 -->
+    - [ ] Define Correlation Model (Cheap -> Expensive) <!-- id: 172 -->
+    - [ ] Update `Acquisition` to support multi-fidelity <!-- id: 173 -->
+    - [ ] Verify multi-fidelity benefit <!-- id: 174 -->
+- [ ] Implement Advanced Simulation & Realism <!-- id: 175 -->
+    - [ ] Create `implementation_plan.md` <!-- id: 176 -->
+    - [ ] Add Batch Effects to `simulation.py` <!-- id: 177 -->
+    - [ ] Add Pipetting/Process Noise <!-- id: 178 -->
+    - [ ] Implement Inventory Depletion <!-- id: 179 -->
+    - [ ] Verify robustness <!-- id: 180 -->
+- [x] Implement Visualization Dashboard <!-- id: 181 -->
+    - [x] Create `implementation_plan.md` <!-- id: 182 -->
+    - [x] Create `dashboard.py` (Streamlit) <!-- id: 183 -->
+    - [x] Visualize Budget Burn vs Knowledge Gain <!-- id: 184 -->
+    - [x] Visualize Dose-Response Curves <!-- id: 185 -->
+- [x] Implement LLM Scientist Integration (Prototype/Mock) <!-- id: 186 -->
+    - [x] Create `implementation_plan.md` <!-- id: 187 -->
+    - [x] Connect to LLM API (Mocked) <!-- id: 188 -->
+    - [x] Generate Hypotheses from Mission Logs (Heuristic) <!-- id: 189 -->
+
+- [x] Refactor and Cleanup <!-- id: 190 -->
+    - [x] Create `tests/` directory structure <!-- id: 191 -->
+    - [x] Move cost verification scripts to `tests/costs/` (Deleted obsolete) <!-- id: 192 -->
+    - [x] Move unit verification scripts to `tests/unit/` <!-- id: 193 -->
+    - [x] Move integration verification scripts to `tests/integration/` <!-- id: 194 -->
+    - [x] Verify scripts still run from root <!-- id: 195 -->
+
+- [ ] Build POSH Protocol Library <!-- id: 196 -->
+    - [x] Define Vanilla POSH (CellPaint-POSH) (Legacy) <!-- id: 196a -->
+        - [x] Implemented RT, RCA, SBS operations <!-- id: 196a1 -->
+        - [x] Added ISS-compatible Cell Painting panels <!-- id: 196a2 -->
+        - [x] Created complete recipe function <!-- id: 196a3 -->
+        - [x] Verified workflow and costs <!-- id: 196a4 -->
+        - [x] Added proper reagent pricing to pricing.yaml <!-- id: 196a5 -->
+        - [x] Added automation equipment costs ($500K system) <!-- id: 196a6 -->
+        - [x] Added computational costs (GPU, storage) <!-- id: 196a7 -->
+        - [x] Created decision trees for manual vs automated <!-- id: 196a8 -->
+    - [x] Define Zombie POSH <!-- id: 196b -->
+        - [x] Documented T7 transcription approach <!-- id: 196b1 -->
+        - [x] Workflow comparison with Vanilla POSH <!-- id: 196b2 -->
+        - [x] Cost analysis ($647 savings per plate) <!-- id: 196b3 -->
+        - [x] Added Zombie POSH reagents to pricing.yaml <!-- id: 196b4 -->
+        - [x] Implemented decross-linking and T7 IVT operations <!-- id: 196b5 -->
+        - [x] Implemented multimodal imaging (HCR FISH, IBEX) <!-- id: 196b6 -->
+        - [x] Created complete Zombie POSH recipe function <!-- id: 196b7 -->
+        - [x] Verified workflow ($2,513 savings vs Vanilla, 76% faster) <!-- id: 196b8 -->
+        - [x] Documented in-house protocol with exact reagents <!-- id: 196b9 -->
+        - [x] Created shopping list generator with catalog numbers <!-- id: 196b10 -->
+        - [x] Added QC checkpoints for each protocol step <!-- id: 196b11 -->
+    - [x] Define gRNA design tools and constraints <!-- id: 197 -->
+    - [x] Define LV gRNA plasmid specifications <!-- id: 198 -->
+    - [x] Model Path A: In Silico Design → Synthesis → Cloning → Verification → LV Production <!-- id: 199 -->
+        - [x] gRNA library design (gene selection, gRNA picker) <!-- id: 200 -->
+            - [ ] Integrate `guide_design_v2` script <!-- id: 200a -->
+        - [x] Oligo synthesis (vendor: Genscript/Twist) <!-- id: 201 -->
+        - [x] Cloning into LV gRNA plasmid (Golden Gate) <!-- id: 202 -->
+        - [x] NGS verification (primer design, amplification) <!-- id: 203 -->
+        - [x] LV particle production <!-- id: 204 -->
+    - [ ] Model Path B: LV Stock → Transduction → Screening <!-- id: 205 -->
+        - [ ] Cell line preparation <!-- id: 206 -->
+        - [ ] Transduction protocol (MOI optimization) <!-- id: 207 -->
+        - [ ] Selection and expansion <!-- id: 208 -->
+        - [x] Optical readout (imaging/flow) <!-- id: 209 -->
+            - [x] Implemented `op_stressor_treatment` <!-- id: 209a -->
+            - [x] Implemented `op_fix_cells` <!-- id: 209b -->
+            - [x] Implemented `op_cell_painting` (5-channel standard panel) <!-- id: 209c -->
+            - [x] Implemented `op_imaging` (high-content microscopy) <!-- id: 209d -->
+            - [x] Created `get_posh_screening_recipe` <!-- id: 209e -->
+    - [ ] Create decision trees for POSH variants <!-- id: 210 -->
+    - [ ] Implement cost models for each step <!-- id: 211 -->
