@@ -55,35 +55,9 @@ unit_ops:
       bulk_rna_seq:
         quantity: 1
 
-  IC8:
-    name: "Feed_iPSC_daily_6well"
-    layer: cell_prep
-    description: "Daily feed of iPSC in 6-well plate"
-    items:
-      mtesr_plus_kit:
-        quantity: 2
-      plate_6well:
-        quantity: 0.166
-    overhead:
-      hood_time:
-        cost_usd: 1.0
 
-  IC9:
-    name: "Passage_iPSC_6well"
-    layer: cell_prep
-    description: "Passage iPSC in 6-well plate"
-    items:
-      mtesr_plus_kit:
-        quantity: 12
-      plate_6well:
-        quantity: 1
-      laminin_521:
-        quantity: 60
-      accutase:
-        quantity: 1
-    overhead:
-      hood_time:
-        cost_usd: 2.8
+
+
 
   W4_immortalized:
     name: "Freeze_WCB_10x1e6_immortalized"
@@ -128,6 +102,167 @@ unit_ops:
     overhead:
       hood_time:
         cost_usd: 2.8
+
+  # Flow Cytometry Unit Ops
+  Flow_Prep_250k:
+    name: "Grow_250k_Cells"
+    layer: cell_prep
+    description: "Seed and grow 250k cells (e.g. 24-well)"
+    items:
+      plate_6well: # Using 6-well as proxy for larger surface area/plastic cost
+        quantity: 0.04 # 1/24 of a plate roughly, or just use cost equivalent
+      dmem_high_glucose:
+        quantity: 1.0 # 1 mL
+      fbs:
+        quantity: 0.1 # 10%
+    overhead:
+      hood_time:
+        cost_usd: 0.5
+
+  Flow_Prep_1M:
+    name: "Grow_1M_Cells"
+    layer: cell_prep
+    description: "Seed and grow 1M cells (e.g. 6-well)"
+    items:
+      plate_6well:
+        quantity: 0.16 # 1/6 of a plate
+      dmem_high_glucose:
+        quantity: 3.0 # 3 mL
+      fbs:
+        quantity: 0.3 # 10%
+    overhead:
+      hood_time:
+        cost_usd: 1.0
+
+  Flow_Live_Stain:
+    name: "Flow_Stain_Live_Cells"
+    layer: phenotyping
+    description: "Harvest, Wash, Stain with DAPI/Antibody (250k cells)"
+    items:
+      plate_96_v_bottom:
+        quantity: 0.01 # 1 plate per 96 samples
+      dpbs:
+        quantity: 20 # Wash steps (mL)
+      facs_buffer_bsa:
+        quantity: 0.1 # 1% BSA in PBS
+      dapi:
+        quantity: 0.001 # Trace
+      flow_antibody_generic:
+        quantity: 0.5 # 0.5 ug per test
+    overhead:
+      hood_time:
+        cost_usd: 5.0 # 30 mins
+
+  Flow_Fixed_Stain:
+    name: "Flow_Stain_Fixed_Cells"
+    layer: phenotyping
+    description: "Harvest, Fix, Perm, Stain Intracellular (1M cells)"
+    items:
+      plate_96_v_bottom:
+        quantity: 0.01
+      dpbs:
+        quantity: 30
+      pfa_4pct:
+        quantity: 0.5 # Increased for 1M cells
+      triton_x100:
+        quantity: 0.5 # Increased for 1M cells
+      viability_dye_zombie:
+        quantity: 1.0 # 1 test
+      flow_antibody_generic:
+        quantity: 2.0 # 2 ug per test (more cells = more Ab often needed)
+    overhead:
+      hood_time:
+        cost_usd: 8.0 # 45 mins
+
+  # Cloning Unit Ops (Outsourced)
+  Outsource_Oligo_Syn:
+    name: "Service_Oligo_Synthesis"
+    layer: genetic_supply_chain
+    description: "Order oligos/fragments"
+    items:
+      service_oligo_synthesis:
+        quantity: 1
+    overhead: {}
+
+  Outsource_Cloning:
+    name: "Service_Cloning_Assembly"
+    layer: genetic_supply_chain
+    description: "Vendor performs assembly"
+    items:
+      service_cloning:
+        quantity: 1
+    overhead: {}
+
+  Outsource_NGS_QC:
+    name: "Service_NGS_Verification"
+    layer: genetic_supply_chain
+    description: "Vendor performs NGS QC"
+    items:
+      service_ngs_verification:
+        quantity: 1
+    overhead: {}
+
+  Outsource_Plasmid_Exp:
+    name: "Service_Plasmid_Expansion"
+    layer: genetic_supply_chain
+    description: "Vendor performs Maxiprep"
+    items:
+      service_plasmid_expansion:
+        quantity: 1
+    overhead: {}
+
+  # LV Production Unit Ops
+  LV_Transfect:
+    name: "HEK293T_Transfection_T175"
+    layer: genetic_supply_chain
+    description: "Transfect packaging mix + transfer plasmid"
+    items:
+      t175_flask:
+        quantity: 1
+      dmem_high_glucose:
+        quantity: 25 # 25 mL
+      fbs:
+        quantity: 2.5 # 10%
+      pei_transfection:
+        quantity: 0.1 # 100 ug
+    overhead:
+      hood_time:
+        cost_usd: 3.0
+
+  LV_Harvest_Conc:
+    name: "LV_Harvest_Concentrate"
+    layer: genetic_supply_chain
+    description: "Harvest supernatant and concentrate"
+    items:
+      lenti_x_concentrator:
+        quantity: 8 # 1:3 ratio for ~25mL supe
+      tube_50ml_conical:
+        quantity: 1
+    overhead:
+      hood_time:
+        cost_usd: 2.0
+
+  LV_Titration:
+    name: "LV_p24_Titration"
+    layer: genetic_supply_chain
+    description: "Measure titer via p24 ELISA"
+    items:
+      p24_elisa_kit:
+        quantity: 0.04 # 1/24 of kit (duplicates + stds)
+    overhead:
+      hood_time:
+        cost_usd: 1.0
+
+  Flow_Acquisition:
+    name: "Flow_Cytometer_Run"
+    layer: phenotyping
+    description: "Run samples on Cytometer"
+    items:
+      flow_tubes_5ml:
+        quantity: 0 # Assuming plate loader, if tubes then 1
+    overhead:
+      instrument_usage:
+        cost_usd: 5.0 # Per sample (time + sheath fluid):
 
   NGN2_Induction:
     name: "NGN2_Induction_Feed_12well"
@@ -183,3 +318,34 @@ unit_ops:
     overhead:
       hood_time:
         cost_usd: 1.0
+
+  # Generic Cell Culture Ops
+
+
+
+
+
+
+  Cell_Freeze_10vials:
+    name: "Freeze_10_Vials"
+    layer: cell_prep
+    description: "Harvest and freeze 10 vials"
+    items:
+      cryostor_cs10:
+        quantity: 10
+      micronic_tube:
+        quantity: 10
+      accutase:
+        quantity: 5 # Harvest volume
+    overhead:
+      hood_time:
+        cost_usd: 5.0
+
+  D15:
+    name: "Demultiplex_bulk_reads"
+    layer: compute
+    description: "Demultiplexing and initial QC of sequencing data"
+    items: {}
+    overhead:
+      compute_time:
+        cost_usd: 2.0

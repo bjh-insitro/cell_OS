@@ -4,7 +4,7 @@ items:
     name: "mTeSR Plus Kit"
     category: media
     vendor: "STEMCELL"
-    catalog_number: "100-0276"
+    catalog_number: "100-0276" # Kit (Basal 100-0274 + Supp 100-0275)
     pack_size: 500
     pack_unit: mL
     pack_price_usd: 407.0
@@ -21,6 +21,72 @@ items:
     pack_price_usd: 79.5
     logical_unit: mL
     unit_price_usd: 0.159
+
+  dmem_high_glucose:
+    name: "DMEM High Glucose (GlutaMAX, Pyruvate)"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "10569010"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 25.0
+    logical_unit: mL
+    unit_price_usd: 0.05
+
+  fbs:
+    name: "Fetal Bovine Serum"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "10082147"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 500.0
+    logical_unit: mL
+    unit_price_usd: 1.0
+
+  pen_strep:
+    name: "Penicillin-Streptomycin"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "15140122"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 30.0
+    logical_unit: mL
+    unit_price_usd: 0.3
+
+  neaa:
+    name: "MEM Non-Essential Amino Acids"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "11140050"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 25.0
+    logical_unit: mL
+    unit_price_usd: 0.25
+
+  sodium_pyruvate:
+    name: "Sodium Pyruvate 100mM"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "11360070"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 20.0
+    logical_unit: mL
+    unit_price_usd: 0.2
+
+  bme_2mercaptoethanol:
+    name: "2-Mercaptoethanol"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "21985023"
+    pack_size: 50
+    pack_unit: mL
+    pack_price_usd: 40.0
+    logical_unit: mL
+    unit_price_usd: 0.8
 
   glutamax:
     name: "GlutaMAX Supplement"
@@ -44,6 +110,50 @@ items:
     logical_unit: mL
     unit_price_usd: 46.73
 
+  fluorobrite_dmem:
+    name: "FluoroBrite DMEM"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "A1896701"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 60.0
+    logical_unit: mL
+    unit_price_usd: 0.12
+
+  neurobasal:
+    name: "Neurobasal Plus Medium"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "A3582901"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 180.0
+    logical_unit: mL
+    unit_price_usd: 0.36
+
+  b27_supp:
+    name: "B27 Plus Supplement (50X)"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "A3582801"
+    pack_size: 10
+    pack_unit: mL
+    pack_price_usd: 160.0
+    logical_unit: mL
+    unit_price_usd: 16.0
+
+  n2_supp:
+    name: "N2 Supplement (100X)"
+    category: media
+    vendor: "Thermo"
+    catalog_number: "17502048"
+    pack_size: 5
+    pack_unit: mL
+    pack_price_usd: 60.0
+    logical_unit: mL
+    unit_price_usd: 12.0
+
   # Small Molecules
   doxycycline:
     name: "Doxycycline hyclate"
@@ -66,6 +176,17 @@ items:
     pack_price_usd: 78.0
     logical_unit: mL
     unit_price_usd: 78.0
+
+  puromycin:
+    name: "Puromycin"
+    category: antibiotic
+    vendor: "Thermo"
+    catalog_number: "A1113803"
+    pack_size: 100
+    pack_unit: mg
+    pack_price_usd: 150.0
+    logical_unit: mg
+    unit_price_usd: 1.5
 
   # Cytokines
   il34:
@@ -123,6 +244,39 @@ items:
     logical_unit: ug
     unit_price_usd: 22.9
 
+  bdnf:
+    name: "Recombinant Human BDNF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "450-02"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 220.0
+    logical_unit: ug
+    unit_price_usd: 22.0
+
+  gdnf:
+    name: "Recombinant Human GDNF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "450-10"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 220.0
+    logical_unit: ug
+    unit_price_usd: 22.0
+
+  cntf:
+    name: "Recombinant Human CNTF"
+    category: cytokine
+    vendor: "PeproTech"
+    catalog_number: "450-13"
+    pack_size: 10
+    pack_unit: ug
+    pack_price_usd: 220.0
+    logical_unit: ug
+    unit_price_usd: 22.0
+
   # Coating & Matrix
   laminin_521:
     name: "Biolaminin 521 LN"
@@ -135,6 +289,17 @@ items:
     logical_unit: ug
     unit_price_usd: 2.23
 
+  matrigel:
+    name: "Matrigel hESC-qualified"
+    category: coating
+    vendor: "Corning"
+    catalog_number: "354277"
+    pack_size: 5
+    pack_unit: mL
+    pack_price_usd: 250.0
+    logical_unit: mL
+    unit_price_usd: 50.0
+
   pdl:
     name: "Poly-D-lysine"
     category: coating
@@ -145,6 +310,17 @@ items:
     pack_price_usd: 146.65
     logical_unit: mL
     unit_price_usd: 1.4665
+
+  plo:
+    name: "Poly-L-Ornithine"
+    category: coating
+    vendor: "Sigma"
+    catalog_number: "P4957"
+    pack_size: 100
+    pack_unit: mg
+    pack_price_usd: 100.0
+    logical_unit: mg
+    unit_price_usd: 1.0
 
   borate_buffer:
     name: "Borate Buffer 20x"
@@ -169,6 +345,28 @@ items:
     logical_unit: mL
     unit_price_usd: 0.7465
 
+  tryple:
+    name: "TrypLE Express"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "12604013"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 35.0
+    logical_unit: mL
+    unit_price_usd: 0.35
+
+  trypan_blue:
+    name: "Trypan Blue Stain"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "15250061"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 20.0
+    logical_unit: mL
+    unit_price_usd: 0.2
+
   dpbs:
     name: "DPBS no Ca/Mg"
     category: buffer
@@ -184,12 +382,34 @@ items:
     name: "CryoStor CS10"
     category: reagent
     vendor: "STEMCELL"
-    catalog_number: "07930"
+    catalog_number: "100-1061"
     pack_size: 100
     pack_unit: mL
     pack_price_usd: 400.0
     logical_unit: mL
     unit_price_usd: 4.0
+
+  phrodo_ecoli:
+    name: "pHrodo Red E. coli BioParticles"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "P35361"
+    pack_size: 2
+    pack_unit: mg
+    pack_price_usd: 340.0
+    logical_unit: mg
+    unit_price_usd: 170.0
+
+  hoechst:
+    name: "Hoechst 33342"
+    category: stain
+    vendor: "Thermo"
+    catalog_number: "H3570"
+    pack_size: 10
+    pack_unit: mL
+    pack_price_usd: 100.0
+    logical_unit: mL
+    unit_price_usd: 10.0
 
   # Consumables
   micronic_tube:
@@ -225,7 +445,139 @@ items:
     logical_unit: unit
     unit_price_usd: 3.0
 
-  # Services
+  plate_96well_imaging_black_clearbottom:
+    name: "96-well Black/Clear Imaging Plate"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "3603"
+    pack_size: 48
+    pack_unit: unit
+    pack_price_usd: 400.0
+    logical_unit: unit
+    unit_price_usd: 8.33
+
+  t75_flask:
+    name: "Falcon T75 Flask"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "353136"
+    pack_size: 100
+    pack_unit: unit
+    pack_price_usd: 132.0
+    logical_unit: unit
+    unit_price_usd: 1.32
+
+  t175_flask:
+    name: "Falcon T175 Flask"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "353112"
+    pack_size: 40
+    pack_unit: unit
+    pack_price_usd: 150.0
+    logical_unit: unit
+    unit_price_usd: 3.75
+
+  tube_15ml_conical:
+    name: "Falcon 15mL Conical Tube"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "352096"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 150.0
+    logical_unit: unit
+    unit_price_usd: 0.3
+
+  tube_50ml_conical:
+    name: "Falcon 50mL Conical Tube"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "352070"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 180.0
+    logical_unit: unit
+    unit_price_usd: 0.36
+
+  serological_pipette_10ml:
+    name: "Serological Pipette 10mL"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "357551"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 60.0
+    logical_unit: unit
+    unit_price_usd: 0.3
+
+  serological_pipette_25ml:
+    name: "Serological Pipette 25mL"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "357525"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 80.0
+    logical_unit: unit
+    unit_price_usd: 0.4
+
+  pipette_tip_20ul_filter:
+    name: "Filter Tips 20uL"
+    category: consumable
+    vendor: "Rainin"
+    catalog_number: "30389225"
+    pack_size: 960
+    pack_unit: unit
+    pack_price_usd: 120.0
+    logical_unit: unit
+    unit_price_usd: 0.125
+
+  pipette_tip_200ul_filter:
+    name: "Filter Tips 200uL"
+    category: consumable
+    vendor: "Rainin"
+    catalog_number: "30389239"
+    pack_size: 960
+    pack_unit: unit
+    pack_price_usd: 120.0
+    logical_unit: unit
+    unit_price_usd: 0.125
+
+  pipette_tip_1000ul_filter:
+    name: "Filter Tips 1000uL"
+    category: consumable
+    vendor: "Rainin"
+    catalog_number: "30389212"
+    pack_size: 768
+    pack_unit: unit
+    pack_price_usd: 110.0
+    logical_unit: unit
+    unit_price_usd: 0.143
+
+  cell_counter_cassette:
+    name: "Cell Counter Slides"
+    category: consumable
+    vendor: "Thermo"
+    catalog_number: "C10228"
+    pack_size: 50
+    pack_unit: unit
+    pack_price_usd: 150.0
+    logical_unit: unit
+    unit_price_usd: 3.0
+
+  # QC & Services
+  mycoplasma_kit:
+    name: "MycoAlert Mycoplasma Detection Kit"
+    category: QC
+    vendor: "Lonza"
+    catalog_number: "LT07-318"
+    pack_size: 100
+    pack_unit: test
+    pack_price_usd: 400.0
+    logical_unit: test
+    unit_price_usd: 4.0
+
   bulk_rna_seq:
     name: "Bulk RNA-seq Service"
     category: service
@@ -233,125 +585,269 @@ items:
     logical_unit: sample
     unit_price_usd: 350.0
 
-  # NGN2 Specific Reagents
-  neurobasal:
-    name: "Neurobasal Medium"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "21103049"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 180.0
-    logical_unit: mL
-    unit_price_usd: 0.36
-
-  b27_supp:
-    name: "B27 Supplement (50X)"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "17504044"
-    pack_size: 10
-    pack_unit: mL
-    pack_price_usd: 160.0
-    logical_unit: mL
-    unit_price_usd: 16.0
-
-  n2_supp:
-    name: "N2 Supplement (100X)"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "17502048"
-    pack_size: 5
-    pack_unit: mL
-    pack_price_usd: 60.0
-    logical_unit: mL
-    unit_price_usd: 12.0
-
-  bdnf:
-    name: "Recombinant Human BDNF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "450-02"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 220.0
-    logical_unit: ug
-    unit_price_usd: 22.0
-
-  gdnf:
-    name: "Recombinant Human GDNF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "450-10"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 220.0
-    logical_unit: ug
-    unit_price_usd: 22.0
-
-  cntf:
-    name: "Recombinant Human CNTF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "450-13"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 220.0
-    logical_unit: ug
-    unit_price_usd: 22.0
-
-  plo:
-    name: "Poly-L-Ornithine"
-    category: coating
+  # Flow Cytometry Reagents
+  facs_buffer_bsa:
+    name: "BSA for FACS Buffer"
+    category: reagent
     vendor: "Sigma"
-    catalog_number: "P4957"
+    catalog_number: "A9647"
     pack_size: 100
-    pack_unit: mg
-    pack_price_usd: 100.0
-    logical_unit: mg
-    unit_price_usd: 1.0
-
-  puromycin:
-    name: "Puromycin"
-    category: antibiotic
-    vendor: "Thermo"
-    catalog_number: "A1113803"
-    pack_size: 100
-    pack_unit: mg
+    pack_unit: g
     pack_price_usd: 150.0
-    logical_unit: mg
+    logical_unit: g
     unit_price_usd: 1.5
 
-  # Phagocytosis Reagents
-  phrodo_ecoli:
-    name: "pHrodo Red E. coli BioParticles"
+  pfa_4pct:
+    name: "Paraformaldehyde 4%"
     category: reagent
     vendor: "Thermo"
-    catalog_number: "P35361"
-    pack_size: 2
-    pack_unit: mg
-    pack_price_usd: 340.0
-    logical_unit: mg
-    unit_price_usd: 170.0
-
-  fluorobrite_dmem:
-    name: "FluoroBrite DMEM"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "A1896701"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 60.0
-    logical_unit: mL
-    unit_price_usd: 0.12
-
-  hoechst:
-    name: "Hoechst 33342"
-    category: stain
-    vendor: "Thermo"
-    catalog_number: "H3570"
+    catalog_number: "28908"
     pack_size: 10
     pack_unit: mL
-    pack_price_usd: 100.0
+    pack_price_usd: 50.0
     logical_unit: mL
+    unit_price_usd: 5.0
+
+  triton_x100:
+    name: "Triton X-100"
+    category: reagent
+    vendor: "Sigma"
+    catalog_number: "T8787"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 40.0
+    logical_unit: mL
+    unit_price_usd: 0.4
+
+  flow_antibody_generic:
+    name: "Flow Antibody (Generic)"
+    category: antibody
+    vendor: "BioLegend"
+    catalog_number: "BL-GENERIC"
+    pack_size: 100
+    pack_unit: ug
+    pack_price_usd: 300.0
+    logical_unit: ug
+    unit_price_usd: 3.0
+
+  viability_dye_zombie:
+    name: "Zombie NIR Fixable Viability Kit"
+    category: stain
+    vendor: "BioLegend"
+    catalog_number: "423105"
+    pack_size: 100
+    pack_unit: test
+    pack_price_usd: 250.0
+    logical_unit: test
+    unit_price_usd: 2.5
+
+  dapi:
+    name: "DAPI Stain"
+    category: stain
+    vendor: "Thermo"
+    catalog_number: "D1306"
+    pack_size: 10
+    pack_unit: mg
+    pack_price_usd: 100.0
+    logical_unit: mg
     unit_price_usd: 10.0
+
+  flow_tubes_5ml:
+    name: "Falcon 5mL Round Bottom Tubes"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "352054"
+    pack_size: 1000
+    pack_unit: unit
+    pack_price_usd: 200.0
+    logical_unit: unit
+    unit_price_usd: 0.2
+
+  plate_96_v_bottom:
+    name: "96-well V-bottom Plate"
+    category: consumable
+    vendor: "Corning"
+    catalog_number: "3894"
+    pack_size: 50
+    pack_unit: unit
+    pack_price_usd: 200.0
+    logical_unit: unit
+    unit_price_usd: 4.0
+
+  # Cloning Reagents
+  bsmbi_enzyme:
+    name: "BsmBI-v2"
+    category: enzyme
+    vendor: "NEB"
+    catalog_number: "R0739S"
+    pack_size: 50
+    pack_unit: reaction
+    pack_price_usd: 80.0
+    logical_unit: reaction
+    unit_price_usd: 1.6
+
+  t4_ligase:
+    name: "T4 DNA Ligase"
+    category: enzyme
+    vendor: "NEB"
+    catalog_number: "M0202S"
+    pack_size: 100
+    pack_unit: reaction
+    pack_price_usd: 70.0
+    logical_unit: reaction
+    unit_price_usd: 0.7
+
+  dna_synthesis_fragment:
+    name: "gBlock Gene Fragment"
+    category: service
+    vendor: "IDT"
+    logical_unit: fragment
+    unit_price_usd: 89.0
+
+  miniprep_kit:
+    name: "Plasmid Miniprep Kit"
+    category: kit
+    vendor: "Qiagen"
+    catalog_number: "27104"
+    pack_size: 50
+    pack_unit: prep
+    pack_price_usd: 100.0
+    logical_unit: prep
+    unit_price_usd: 2.0
+
+  maxiprep_kit:
+    name: "Plasmid Maxiprep Kit"
+    category: kit
+    vendor: "Qiagen"
+    catalog_number: "12162"
+    pack_size: 10
+    pack_unit: prep
+    pack_price_usd: 150.0
+    logical_unit: prep
+    unit_price_usd: 15.0
+
+  sanger_sequencing:
+    name: "Sanger Sequencing"
+    category: service
+    vendor: "Genewiz"
+    logical_unit: read
+    unit_price_usd: 5.0
+
+  # Cloning Services (Outsourced)
+  service_oligo_synthesis:
+    name: "Oligo Synthesis Service"
+    category: service
+    vendor: "IDT"
+    logical_unit: reaction
+    unit_price_usd: 20.0 # Primers/Oligos
+
+  service_cloning:
+    name: "Custom Cloning Service"
+    category: service
+    vendor: "Genscript"
+    logical_unit: construct
+    unit_price_usd: 150.0
+
+  service_ngs_verification:
+    name: "Full Plasmid NGS"
+    category: service
+    vendor: "Plasmidsaurus"
+    logical_unit: sample
+    unit_price_usd: 15.0
+
+  service_plasmid_expansion:
+    name: "Plasmid Maxiprep Service"
+    category: service
+    vendor: "Genscript"
+    logical_unit: prep
+    unit_price_usd: 50.0
+
+  # LV Production Reagents
+  pei_transfection:
+    name: "PEI MAX Transfection Grade"
+    category: reagent
+    vendor: "Polysciences"
+    catalog_number: "24765"
+    pack_size: 100
+    pack_unit: mg
+    pack_price_usd: 200.0
+    logical_unit: mg
+    unit_price_usd: 2.0
+
+  lenti_x_concentrator:
+    name: "Lenti-X Concentrator"
+    category: reagent
+    vendor: "Takara"
+    catalog_number: "631231"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 350.0
+    logical_unit: mL
+    unit_price_usd: 3.5
+
+  p24_elisa_kit:
+    name: "Lenti-X p24 Rapid Titer Kit"
+    category: kit
+    vendor: "Takara"
+    catalog_number: "632200"
+    pack_size: 96
+    pack_unit: test
+    pack_price_usd: 600.0
+    logical_unit: test
+    unit_price_usd: 6.25
+
+  # New ULS Inventory Items
+  geneticin:
+    name: "Geneticin (G418) 50mg/mL"
+    category: antibiotic
+    vendor: "Thermo"
+    catalog_number: "10131027"
+    pack_size: 20
+    pack_unit: mL
+    pack_price_usd: 150.0 # Estimate
+    logical_unit: mL
+    unit_price_usd: 7.5
+
+  rneasy_kit:
+    name: "RNeasy Mini Kit"
+    category: kit
+    vendor: "Qiagen"
+    catalog_number: "74182"
+    pack_size: 50
+    pack_unit: prep
+    pack_price_usd: 300.0 # Estimate
+    logical_unit: prep
+    unit_price_usd: 6.0
+
+  kapa_hifi:
+    name: "KAPA HiFi HotStart ReadyMix"
+    category: reagent
+    vendor: "Roche"
+    catalog_number: "501965299"
+    pack_size: 500
+    pack_unit: reaction
+    pack_price_usd: 500.0 # Estimate
+    logical_unit: reaction
+    unit_price_usd: 1.0
+
+  superscript_iv_vilo:
+    name: "SuperScript IV VILO Master Mix"
+    category: reagent
+    vendor: "Thermo"
+    catalog_number: "11756500"
+    pack_size: 500
+    pack_unit: reaction
+    pack_price_usd: 1500.0 # Estimate
+    logical_unit: reaction
+    unit_price_usd: 3.0
+
+  gemx_flex_chip:
+    name: "GEM-X Flex Gene Expression Chip"
+    category: kit
+    vendor: "10x Genomics"
+    catalog_number: "1000791"
+    pack_size: 4
+    pack_unit: chip
+    pack_price_usd: 2000.0 # Estimate
+    logical_unit: chip
+    unit_price_usd: 500.0

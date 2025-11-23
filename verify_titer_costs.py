@@ -1,5 +1,5 @@
 from src.inventory import Inventory
-from src.unit_ops import get_mcb_to_wcb_recipe
+from src.unit_ops import get_lv_functional_titer_recipe, VesselLibrary, ParametricOps
 import sys
 
 print("Starting verification...", flush=True)
@@ -13,13 +13,15 @@ try:
             from src.unit_ops import UnitOp
             cost = self.inv.calculate_uo_cost(uo_id)
             if uo_id in self.inv.unit_ops:
+                uo = self.inv.unit_ops[uo_id]
                 return UnitOp(
-                    uo_id=uo_id, name=self.inv.unit_ops[uo_id].name, layer=self.inv.unit_ops[uo_id].layer,
+                    uo_id=uo_id, name=uo.name, layer=uo.layer,
                     category="test", time_score=0, cost_score=0, automation_fit=0, failure_risk=0, staff_attention=0,
                     instrument=None, material_cost_usd=cost, instrument_cost_usd=0.0
                 )
             else:
-                 return UnitOp(
+                # print(f"WARNING: UnitOp {uo_id} not found in Inventory!")
+                return UnitOp(
                     uo_id=uo_id, name=uo_id, layer="test", category="test", time_score=0, cost_score=0,
                     automation_fit=0, failure_risk=0, staff_attention=0, instrument=None,
                     material_cost_usd=0.0, instrument_cost_usd=0.0
@@ -27,25 +29,17 @@ try:
 
     inv = Inventory('data/raw/pricing.yaml', 'data/raw/unit_ops.yaml')
     bridge = InventoryBridge(inv)
-
-    # Parametric Ops Setup
-    from src.unit_ops import VesselLibrary, ParametricOps
+    
     vessel_lib = VesselLibrary('data/raw/vessels.yaml')
     ops = ParametricOps(vessel_lib, inv)
 
-    # 1. Immortalized
-    recipe_imm = get_mcb_to_wcb_recipe(ops, "immortalized")
-    score_imm = recipe_imm.derive_score(bridge)
-    print(f"\n--- Immortalized MCB->WCB ---")
-    print(f"Total Cost: ${score_imm.total_usd:.2f}")
-    print(f"Cost per WCB vial: ${score_imm.total_usd / 10:.2f}", flush=True)
-
-    # 2. iPSC
-    recipe_ipsc = get_mcb_to_wcb_recipe(ops, "iPSC")
-    score_ipsc = recipe_ipsc.derive_score(bridge)
-    print(f"\n--- iPSC MCB->WCB ---")
-    print(f"Total Cost: ${score_ipsc.total_usd:.2f}")
-    print(f"Cost per WCB vial: ${score_ipsc.total_usd / 10:.2f}", flush=True)
+    recipe = get_lv_functional_titer_recipe(ops)
+    score = recipe.derive_score(bridge)
+    
+    print(f"\n--- LV Functional Titer (24-well, 6-point) ---")
+    print(f"Total Cost: ${score.total_usd:.2f}")
+    print(f"Breakdown:")
+    print(score)
 
 except Exception as e:
     print(f"Error: {e}", flush=True)

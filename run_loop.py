@@ -21,6 +21,9 @@ from src.schema import Phase0WorldModel, SliceKey
 from src.acquisition import propose_next_experiments
 from src.reporting import MissionLogger
 from src.campaign import Campaign, PotencyGoal, SelectivityGoal
+from src.assay_selector import GreedyROISelector, get_assay_candidates
+from src.inventory import Inventory
+from src.unit_ops import UnitOpLibrary
 
 
 def execute_experiments(experiment_df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
@@ -114,11 +117,32 @@ def main():
     )
     campaign = Campaign(goal=goal, max_cycles=n_cycles)
     
+    # Initialize Economic Engine
+    print("  [Economics] Initializing Inventory and Assay Selector...")
+    inv = Inventory('data/raw/pricing.yaml', 'data/raw/unit_ops.yaml')
+    lib = UnitOpLibrary([
+        'data/raw/unit_ops_genetic_supply.csv', 
+        'data/raw/unit_ops_cell_prep.csv', 
+        'data/raw/unit_ops_phenotyping.csv', 
+        'data/raw/unit_ops_compute.csv'
+    ])
+    selector = GreedyROISelector()
+    candidates = get_assay_candidates(lib, inv)
+    
     print(f"Starting Campaign: {goal.description()}")
     
     for cycle in range(1, n_cycles + 1):
         campaign.current_cycle = cycle
         print(f"\n--- Cycle {cycle} ---")
+        
+        # 0. Assay Selection
+        # Simulate a budget that might change or just be fixed
+        budget = 5000.0 
+        selected_assay = selector.select(candidates, budget)
+        if selected_assay:
+            print(f"  [Assay Selector] Budget=${budget} -> Selected: {selected_assay.recipe.name} (ROI={selected_assay.roi:.4f} bits/$)")
+        else:
+            print(f"  [Assay Selector] Budget=${budget} -> No assay selected!")
         
         # ... (Modeling code remains same) ...
         

@@ -97,6 +97,13 @@ class Inventory:
             
         return total_cost
 
+    def get_price(self, resource_id: str) -> float:
+        if resource_id not in self.resources:
+            # Try to find by name or return 0 with warning
+            # print(f"Warning: Resource {resource_id} not found in pricing.")
+            return 0.0
+        return self.resources[resource_id].unit_price_usd
+
     def get_bom_breakdown(self, uo_id: str) -> str:
         if uo_id not in self.unit_ops:
             return "No definition found."

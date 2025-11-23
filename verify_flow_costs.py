@@ -1,8 +1,8 @@
 from src.inventory import Inventory
-from src.unit_ops import get_mcb_to_wcb_recipe
+from src.inventory import Inventory
 import sys
 
-print("Starting verification...", flush=True)
+print("Starting Flow Cytometry Verification...", flush=True)
 
 try:
     # Mock Bridge
@@ -19,33 +19,31 @@ try:
                     instrument=None, material_cost_usd=cost, instrument_cost_usd=0.0
                 )
             else:
-                 return UnitOp(
+                # Fallback for generic ops
+                return UnitOp(
                     uo_id=uo_id, name=uo_id, layer="test", category="test", time_score=0, cost_score=0,
                     automation_fit=0, failure_risk=0, staff_attention=0, instrument=None,
-                    material_cost_usd=0.0, instrument_cost_usd=0.0
+                    material_cost_usd=1.0, instrument_cost_usd=0.0
                 )
 
     inv = Inventory('data/raw/pricing.yaml', 'data/raw/unit_ops.yaml')
     bridge = InventoryBridge(inv)
-
-    # Parametric Ops Setup
-    from src.unit_ops import VesselLibrary, ParametricOps
-    vessel_lib = VesselLibrary('data/raw/vessels.yaml')
-    ops = ParametricOps(vessel_lib, inv)
-
-    # 1. Immortalized
-    recipe_imm = get_mcb_to_wcb_recipe(ops, "immortalized")
-    score_imm = recipe_imm.derive_score(bridge)
-    print(f"\n--- Immortalized MCB->WCB ---")
-    print(f"Total Cost: ${score_imm.total_usd:.2f}")
-    print(f"Cost per WCB vial: ${score_imm.total_usd / 10:.2f}", flush=True)
-
-    # 2. iPSC
-    recipe_ipsc = get_mcb_to_wcb_recipe(ops, "iPSC")
-    score_ipsc = recipe_ipsc.derive_score(bridge)
-    print(f"\n--- iPSC MCB->WCB ---")
-    print(f"Total Cost: ${score_ipsc.total_usd:.2f}")
-    print(f"Cost per WCB vial: ${score_ipsc.total_usd / 10:.2f}", flush=True)
+    
+    # 1. Live Flow
+    from src.unit_ops import get_flow_live_condition_recipe, get_flow_fixed_condition_recipe
+    
+    live_recipe = get_flow_live_condition_recipe()
+    live_score = live_recipe.derive_score(bridge)
+    print(f"\n--- Live Flow (1 Condition, 3 Reps) ---")
+    print(f"Total Cost: ${live_score.total_usd:.2f}")
+    print(f"Cost per Rep: ${live_score.total_usd/3:.2f}")
+    
+    # 2. Fixed Flow
+    fixed_recipe = get_flow_fixed_condition_recipe()
+    fixed_score = fixed_recipe.derive_score(bridge)
+    print(f"\n--- Fixed Flow (1 Condition, 3 Reps) ---")
+    print(f"Total Cost: ${fixed_score.total_usd:.2f}")
+    print(f"Cost per Rep: ${fixed_score.total_usd/3:.2f}")
 
 except Exception as e:
     print(f"Error: {e}", flush=True)

@@ -1,0 +1,49 @@
+vessels:
+  plate_96well:
+    name: "96-well Plate"
+    surface_area_cm2: 0.32
+    working_volume_ml: 0.2
+    coating_volume_ml: 0.1
+    max_volume_ml: 0.3
+    
+  plate_24well:
+    name: "24-well Plate"
+    surface_area_cm2: 1.9
+    working_volume_ml: 1.0
+    coating_volume_ml: 0.5
+    max_volume_ml: 3.4
+
+  plate_12well:
+    name: "12-well Plate"
+    surface_area_cm2: 3.8
+    working_volume_ml: 2.0
+    coating_volume_ml: 1.0
+    max_volume_ml: 6.9
+
+  plate_6well:
+    name: "6-well Plate"
+    surface_area_cm2: 9.5
+    working_volume_ml: 3.0
+    coating_volume_ml: 1.5
+    max_volume_ml: 16.8
+
+  flask_t25:
+    name: "T25 Flask"
+    surface_area_cm2: 25.0
+    working_volume_ml: 5.0
+    coating_volume_ml: 3.0
+    max_volume_ml: 50.0
+
+  flask_t75:
+    name: "T75 Flask"
+    surface_area_cm2: 75.0
+    working_volume_ml: 15.0
+    coating_volume_ml: 8.0
+    max_volume_ml: 250.0
+
+  flask_t175:
+    name: "T175 Flask"
+    surface_area_cm2: 175.0
+    working_volume_ml: 30.0
+    coating_volume_ml: 15.0
+    max_volume_ml: 600.0
