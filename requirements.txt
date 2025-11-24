@@ -6,3 +6,7 @@ jupyter
 ipykernel
 streamlit
 pyyaml
+graphviz
+altair
+plotly
+networkx

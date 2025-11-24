@@ -68,6 +68,18 @@ class UnitOp:
     instrument_cost_usd: float = 0.0
     sub_steps: List['UnitOp'] = field(default_factory=list)
 
+@dataclass
+class AssayRecipe:
+    name: str
+    ops: List[UnitOp]
+    total_time_score: int = 0
+    total_cost_score: int = 0
+    total_automation_fit: int = 0
+    total_failure_risk: int = 0
+    total_staff_attention: int = 0
+    total_material_cost_usd: float = 0.0
+    total_instrument_cost_usd: float = 0.0
+
 class UnitOpLibrary:
     def __init__(self, csv_paths: List[str]):
         self.ops: Dict[str, UnitOp] = {}
@@ -207,7 +219,8 @@ class ParametricOps:
                 staff_attention=3,  # High attention
                 instrument="Cell Scraper",
                 material_cost_usd=self.inv.get_price("cell_scraper"),
-                instrument_cost_usd=2.0
+                instrument_cost_usd=2.0,
+                sub_steps=[]
             ))
             
             # 4. Collect cells
@@ -567,7 +580,8 @@ class ParametricOps:
                 staff_attention=2,
                 instrument="Nucleofector",
                 material_cost_usd=0.0,
-                instrument_cost_usd=electroporation_cost
+                instrument_cost_usd=electroporation_cost,
+                sub_steps=[]
             ))
             
             # 5. Recovery in complete media
@@ -628,7 +642,8 @@ class ParametricOps:
                 staff_attention=3,
                 instrument="Cell Scraper",
                 material_cost_usd=self.inv.get_price("cell_scraper"),
-                instrument_cost_usd=2.0
+                instrument_cost_usd=2.0,
+                sub_steps=[]
             ))
             steps.append(self.op_aspirate(vessel_id, v.working_volume_ml))
             
@@ -1363,6 +1378,10 @@ class ParametricOps:
             category="separation",
             time_score=1,
             cost_score=0,
+            automation_fit=1,
+            failure_risk=0,
+            staff_attention=0,
+            instrument="Centrifuge",
             material_cost_usd=0.0,
             instrument_cost_usd=0.5  # Usage cost
         )

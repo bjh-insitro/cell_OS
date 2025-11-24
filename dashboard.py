@@ -37,7 +37,7 @@ df, pricing = load_data()
 # -------------------------------------------------------------------
 # Tabs
 # -------------------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["🚀 Mission Control", "🔬 Science", "💰 Economics"])
+tab1, tab2, tab3, tab4 = st.tabs(["🚀 Mission Control", "🔬 Science", "💰 Economics", "🕸️ Workflow Visualizer"])
 
 # -------------------------------------------------------------------
 # Tab 1: Mission Control
@@ -99,9 +99,13 @@ with tab2:
             # Plot Data
             chart = alt.Chart(df_slice).mark_circle(size=60).encode(
                 x=alt.X("dose_uM", scale=alt.Scale(type="log")),
-                y="viability",
+                y=alt.Y("viability", type="quantitative"),
                 color="cycle:O",
-                tooltip=["dose_uM", "viability", "cycle"]
+                tooltip=[
+                    alt.Tooltip("dose_uM", type="quantitative"),
+                    alt.Tooltip("viability", type="quantitative"),
+                    alt.Tooltip("cycle", type="ordinal")
+                ]
             ).interactive()
             
             # Fit GP (On the fly!)
@@ -118,22 +122,17 @@ with tab2:
                     
                     line = alt.Chart(df_grid).mark_line(color='red').encode(
                         x=alt.X("dose_uM", scale=alt.Scale(type="log")),
-                        y="mean"
+                        y=alt.Y("mean", type="quantitative")
                     )
                     
-                    band = alt.Chart(df_grid).mark_area(opacity=0.3, color='red').encode(
-                        x=alt.X("dose_uM", scale=alt.Scale(type="log")),
-                        y="mean",
-                        y2="mean + std" # Altair calculation? No, need to pre-calc
-                    )
                     # Pre-calc bounds
                     df_grid["upper"] = df_grid["mean"] + df_grid["std"]
                     df_grid["lower"] = df_grid["mean"] - df_grid["std"]
                     
                     band = alt.Chart(df_grid).mark_area(opacity=0.2, color='red').encode(
                         x=alt.X("dose_uM", scale=alt.Scale(type="log")),
-                        y="lower",
-                        y2="upper"
+                        y=alt.Y("lower", type="quantitative"),
+                        y2=alt.Y2("upper")
                     )
                     
                     st.altair_chart(chart + line + band, use_container_width=True)
@@ -174,3 +173,112 @@ with tab3:
     
     st.dataframe(pd.DataFrame(items), use_container_width=True)
     st.info("Live inventory tracking requires persisting the Inventory state to a file (TODO).")
+
+# -------------------------------------------------------------------
+# Tab 4: Workflow Visualizer
+# -------------------------------------------------------------------
+from src.workflow_renderer import render_workflow_graph
+from src.workflow_renderer_plotly import render_workflow_plotly
+from src.unit_ops import ParametricOps, VesselLibrary
+from src.inventory import Inventory
+from src.workflows import WorkflowBuilder, Workflow
+
+with tab4:
+    st.header("Workflow Visualization")
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        st.subheader("Configuration")
+        
+        # Initialize Resources
+        try:
+            vessel_lib = VesselLibrary("data/raw/vessels.yaml")
+            inv = Inventory("data/raw/pricing.yaml")
+            ops = ParametricOps(vessel_lib, inv)
+            builder = WorkflowBuilder(ops)
+            
+            # Define available workflows
+            workflow_options = {
+                "POSH": lambda: builder.build_zombie_posh(),
+            }
+            
+            all_options = workflow_options
+            
+            selected_option_name = st.selectbox("Select Workflow / Recipe", list(all_options.keys()))
+            
+            # Add visualization engine toggle
+            viz_engine = st.radio(
+                "Visualization",
+                ["Interactive (Plotly)", "Static (Graphviz)"],
+                index=0,
+                horizontal=True
+            )
+            
+            # Add detail level toggle (only for Graphviz)
+            if "Graphviz" in viz_engine:
+                detail_level = st.radio(
+                    "Detail Level",
+                    ["Process (High-level)", "Unit Operations (Detailed)"],
+                    index=0,
+                    horizontal=True
+                )
+                detail_mode = "process" if "Process" in detail_level else "unitop"
+            
+            if st.button("Render Graph"):
+                # Generate Object
+                obj_func = all_options[selected_option_name]
+                result_obj = obj_func()
+                
+                # Determine what to render
+                if isinstance(result_obj, Workflow):
+                    # Choose renderer based on selection
+                    if "Plotly" in viz_engine:
+                        # Interactive Plotly visualization
+                        fig = render_workflow_plotly(result_obj, detail_level="process")
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        # Static Graphviz visualization
+                        dot = render_workflow_graph(result_obj, title=selected_option_name, detail_level=detail_mode)
+                        st.graphviz_chart(dot)
+                    
+                    # Calculate Total Costs
+                    all_ops = result_obj.all_ops
+                    total_mat = sum(op.material_cost_usd for op in all_ops)
+                    total_inst = sum(op.instrument_cost_usd for op in all_ops)
+                    
+                    st.subheader("Workflow Cost Estimate")
+                    st.metric("Total Material Cost", f"${total_mat:.2f}")
+                    st.metric("Total Instrument Cost", f"${total_inst:.2f}")
+                    
+                    # Add expandable process details
+                    st.subheader("Process Details")
+                    for process in result_obj.processes:
+                        with st.expander(f"📋 {process.name} ({len(process.ops)} operations)"):
+                            for op in process.ops:
+                                op_name = getattr(op, 'name', 'Unknown')
+                                op_cost = op.material_cost_usd + op.instrument_cost_usd
+                                st.write(f"- **{op_name}** (${op_cost:.2f})")
+                                if hasattr(op, 'sub_steps') and op.sub_steps:
+                                    st.caption(f"  └─ {len(op.sub_steps)} sub-steps")
+                    
+                else:
+                    # It's a single UnitOp (Recipe)
+                    root_op = result_obj
+                    if root_op.sub_steps:
+                        recipe_to_render = root_op.sub_steps
+                        st.info(f"Showing {len(recipe_to_render)} granular steps for {root_op.name}")
+                    else:
+                        recipe_to_render = [root_op]
+                        
+                    dot = render_workflow_graph(recipe_to_render, title=selected_option_name)
+                    st.graphviz_chart(dot)
+                    
+                    st.subheader("Recipe Cost Estimate")
+                    st.metric("Material Cost", f"${root_op.material_cost_usd:.2f}")
+                    st.metric("Instrument Cost", f"${root_op.instrument_cost_usd:.2f}")
+                
+        except Exception as e:
+            st.error(f"Error initializing workflow engine: {e}")
+            st.warning("Ensure 'data/raw/vessels.yaml' and 'data/raw/pricing.yaml' exist.")
+
