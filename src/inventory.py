@@ -139,6 +139,45 @@ class Inventory:
                 f"Required: {quantity}, Available: {res.stock_level}"
             )
         res.stock_level -= quantity
+    
+    def consume(self, resource_id: str, amount: float, unit: str = None) -\u003e bool:
+        """
+        Consume reagent from inventory.
+        
+        Args:
+            resource_id: ID of resource to consume
+            amount: Amount to consume
+            unit: Unit (currently ignored, assumed to match logical_unit)
+            
+        Returns:
+            True if consumed successfully, False if insufficient stock
+        """
+        try:
+            self.deplete_stock(resource_id, amount)
+            return True
+        except OutOfStockError:
+            return False
+    
+    def check_availability(self, bom: List[BOMItem]) -\u003e Dict[str, bool]:
+        """
+        Check if all BOM items are in stock.
+        
+        Args:
+            bom: List of BOMItem objects
+            
+        Returns:
+            Dict mapping resource_id to availability (True/False)
+        """
+        availability = {}
+        for item in bom:
+            if item.resource_id not in self.resources:
+                availability[item.resource_id] = False
+                continue
+            
+            res = self.resources[item.resource_id]
+            availability[item.resource_id] = res.stock_level \u003e= item.quantity
+        
+        return availability
 
     def restock(self, resource_id: str, quantity: float):
         """Add stock."""

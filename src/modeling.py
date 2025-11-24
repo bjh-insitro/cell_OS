@@ -111,66 +111,142 @@ class DoseResponseGP:
         cell_line: str,
         compound: str,
         time_h: float,
-        config: Optional[DoseResponseGPConfig] = None,
-        dose_col: str = "dose_uM",
+        config: DoseResponseGPConfig = None,
+        dose_col: str = "dose",
         viability_col: str = "viability",
-        prior_model: Optional["DoseResponseGP"] = None,
     ) -> "DoseResponseGP":
         """
-        Build and fit a GP from a long-format DataFrame.
+        Fit a GP model from a dataframe slice.
 
-        Expected columns:
-            - 'cell_line'
-            - 'compound'
-            - 'time_h'  (or similar, numeric)
-            - dose_col  (default 'dose_uM')
-            - viability_col  (default 'viability')
-
-        Rows should already correspond to a single plate type
-        and readout (viability).
+        Args:
+            df: DataFrame with at least 'dose' and 'viability' columns
+            cell_line, compound, time_h: identifiers for the slice
+            config: Optional GP configuration
+            dose_col: Name of dose column
+            viability_col: Name of viability column
         """
+
         if config is None:
             config = DoseResponseGPConfig()
 
-        # Filter down to the slice we care about
-        mask = (
+        # Filter data to this slice
+        df_slice = df[
             (df["cell_line"] == cell_line)
             & (df["compound"] == compound)
             & (df["time_h"] == time_h)
-        )
-        df_slice = df.loc[mask].copy()
+        ].copy()
 
         if df_slice.empty:
             raise ValueError(
-                f"No rows found for cell_line={cell_line}, compound={compound}, time_h={time_h}"
+                f"No data found for slice: {cell_line}, {compound}, {time_h}"
             )
 
-        # Convert dose to log10 space to make GP easier to fit
+        # Convert dose to log10 scale
         if (df_slice[dose_col] <= 0).any():
             raise ValueError("All doses must be positive to use log10 dose space.")
+        X_train = np.log10(df_slice[dose_col].values).reshape(-1, 1)
+        y_train = df_slice[viability_col].values
 
-        X = np.log10(df_slice[dose_col].to_numpy()).reshape(-1, 1)
-        y = df_slice[viability_col].to_numpy().astype(float)
+        # Build and fit model
+        gp_model = _build_gp_model(config)
 
-        # If prior model exists, fit to residual
-        if prior_model is not None:
-            prior_mean, _ = prior_model.predict(
-                df_slice[dose_col].to_numpy(), return_std=True
-            )
-            y = y - prior_mean
-
-        model = _build_gp_model(config)
-        model.fit(X, y)
+        try:
+            gp_model.fit(X_train, y_train)
+        except Exception as e:
+            print(f"[DoseResponseGP] Failed to fit GP for {compound}/{cell_line}: {e}")
+            # Return with unfitted model - predict will just return mean
+            pass
 
         return cls(
             cell_line=cell_line,
             compound=compound,
             time_h=time_h,
             config=config,
-            model=model,
-            X_train=X,
-            y_train=y,
-            prior_model=prior_model,
+            model=gp_model,
+            X_train=X_train,
+            y_train=y_train,
+        )
+
+    @classmethod
+    def from_dataframe_with_prior(
+        cls,
+        df: pd.DataFrame,
+        cell_line: str,
+        compound: str,
+        time_h: float,
+        prior_model: Optional["DoseResponseGP"] = None,
+        prior_weight: float = 0.3,
+        config: DoseResponseGPConfig = None,
+        dose_col: str = "dose",
+        viability_col: str = "viability",
+    ) -> "DoseResponseGP":
+        """
+        Fit GP with informative prior from related assay (multi-fidelity learning).
+        
+        Transfer learning:  cheap assay GP → expensive assay
+        
+        Args:
+            prior_model: GP from related assay (e.g., reporter assay)
+            prior_weight: Weight for prior predictions (0-1)
+            
+        Returns:
+            GP combining prior knowledge and new data
+        """
+        
+        if config is None:
+            config = DoseResponseGPConfig()
+            
+        # Get new data
+        df_slice = df[
+            (df["cell_line"] == cell_line)
+            & (df["compound"] == compound)
+            & (df["time_h"] == time_h)
+        ].copy()
+        
+        if df_slice.empty and prior_model is None:
+            raise ValueError(f"No data and no prior for: {cell_line}, {compound}, {time_h}")
+        
+        # If no prior, just use standard method
+        if prior_model is None:
+            return cls.from_dataframe(
+                df, cell_line, compound, time_h, config, dose_col, viability_col
+            )
+        
+        # If no new data, return prior as-is
+        if df_slice.empty:
+            gp = prior_model
+            gp.cell_line = cell_line  # Update identifiers
+            return gp
+        
+        # Combine prior predictions with new data
+        if (df_slice[dose_col] <= 0).any():
+            raise ValueError("All doses must be positive to use log10 dose space.")
+        X_new = np.log10(df_slice[dose_col].values).reshape(-1, 1)
+        y_new = df_slice[viability_col].values
+        
+        # Get prior predictions at new data points
+        prior_mean, prior_std = prior_model.predict(df_slice[dose_col].values, return_std=True)
+       
+        # Weight new observations toward prior
+        y_combined = (1 - prior_weight) * y_new + prior_weight * prior_mean
+        
+        # Build and fit model on combined data
+        gp_model = _build_gp_model(config)
+        
+        try:
+            gp_model.fit(X_new, y_combined)
+        except Exception as e:
+            print(f"[DoseResponseGP] Failed to fit GP with prior: {e}")
+        
+        return cls(
+            cell_line=cell_line,
+            compound=compound,
+            time_h=time_h,
+            config=config,
+            model=gp_model,
+            X_train=X_new,
+            y_train=y_combined,
+            prior_model=prior_model
         )
 
     def predict(
