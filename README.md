@@ -12,14 +12,40 @@ The system is built on three pillars of "Scientific Superintelligence" (SSI):
 2.  **Campaign Manager (Goal Seeking)**: A high-level orchestration layer that pursues specific scientific objectives (e.g., "Find a selective compound").
 3.  **Economic Engine (Physics of Cost)**: A detailed economic model that calculates the true cost, time, and risk of assays by breaking them down into atomic Unit Operations (UOs) and Bill of Materials (BOM).
 
-## Key Features
+## ✨ New Features
 
-*   **Closed-Loop Experimentation**: Automatically proposes, executes (simulates), and analyzes experiments to reduce uncertainty.
-*   **Mission Logs**: Generates human-readable narratives explaining the agent's decision-making process.
-*   **Cost-Aware Decision Support**: Intelligent agent
-    *   **Recipe Optimizer**: Auto-selects methods (e.g., "trypsin" vs "accutase") based on cell type and budget.
-    *   **Workflow Optimizer**: Identifies cost-saving opportunities and calculates ROI.
-    *   **Automation Analysis**: Scores protocols for automation feasibility.
+### Multi-Fidelity Learning
+Transfer knowledge from cheap assays (e.g., reporter screens) to expensive assays (e.g., primary cells):
+```python
+# Train on cheap assay
+reporter_gp = DoseResponseGP.from_dataframe(df_reporter, ...)
+
+# Transfer to expensive assay with prior knowledge
+primary_gp = DoseResponseGP.from_dataframe_with_prior(
+    df_primary, ..., 
+    prior_model=reporter_gp,
+    prior_weight=0.3
+)
+```
+
+### Inventory Depletion Tracking
+Realistic resource management with stock tracking:
+```python
+inventory = Inventory("data/raw/pricing.yaml")
+
+# Check availability before experiments
+availability = inventory.check_availability(bom_items)
+
+# Consume reagents
+inventory.consume("DMEM_MEDIA", 500.0, "mL")
+```
+
+### gRNA Design Integration
+Constraint-based solver for optimal guide library design:
+- Hamming distance constraints for barcode conflicts
+- Location overlap prevention
+- Score optimization (VBC, CRISPick)
+- Integration with Path A workflow
 
 ## Quick Start
 
@@ -32,6 +58,12 @@ python scripts/run_loop.py
 
 # Launch dashboard
 streamlit run scripts/dashboard.py
+
+# Design gRNA library
+python src/create_library.py \
+  --config_yaml data/raw/guide_design.yaml \
+  --repositories_yaml data/raw/guide_repositories.yaml \
+  --output-path library.csv
 ```
 
 ## Directory Structure
@@ -80,17 +112,47 @@ python verify_automation_analysis.py
 python verify_cell_line_database.py
 ```
 
-## Documentation
+## Architecture
 
--   [System Architecture](ARCHITECTURE.md)
--   [Cost-Aware Decision Support](COST_AWARE_DECISION_SUPPORT.md)
--   [Automation Summary](AUTOMATION_SUMMARY.md)
--   [Reagent Pricing](REAGENT_PRICING_SUMMARY.md)
+```mermaid
+graph TB
+    subgraph "Autonomous Loop"
+        Campaign[Campaign Manager<br/>Goals & Budget] --> ActiveLearner[Active Learner<br/>GP Posterior]
+        ActiveLearner --> Acquisition[Acquisition Function<br/>Max Uncertainty]
+        Acquisition --> Simulation[Simulation Engine<br/>Virtual Lab]
+        Simulation --> ActiveLearner
+    end
+    
+    subgraph "Multi-Fidelity Learning"
+        CheapAssay[Cheap Assay Data<br/>Reporter Screen] --> CheapGP[GP Model]
+        CheapGP -->|Transfer Prior| ExpensiveGP[Expensive Assay GP<br/>Primary Cells]
+        ExpensiveData[Small Expensive Dataset] --> ExpensiveGP
+    end
+    
+    subgraph "Inventory & Economics"
+        Inventory[(Inventory<br/>Stock Levels)] --> Simulation
+        Simulation -->|Consume| Inventory
+        UnitOps[Unit Operations<br/>BOM] --> CostCalc[Cost Calculator]
+        CostCalc -->|Budget Check| Campaign
+    end
+    
+    subgraph "Path A: gRNA Design"
+        GeneList[Gene List] --> GuideSolver[Constraint Solver<br/>Hamming + Location]
+        GuideRepos[(sgRNA Repositories<br/>VBC, CRISPick)] --> GuideSolver
+        GuideSolver --> Library[Optimized Library]
+    end
+    
+    ActiveLearner -.->|World Model| Campaign
+    Library -.->|Screen Design| Campaign
+    
+    style Campaign fill:#e1f5ff
+    style ActiveLearner fill:#fff4e1
+    style Inventory fill:#f0e1ff
+    style GuideSolver fill:#e1ffe1
+```
 
 ## Roadmap
 
-*   [x] **Phase 0 World Model**: GP-based dose-response learning.
-*   [x] **Autonomous Loop**: Acquisition -> Execution -> Modeling.
 *   [x] **Mission Logs**: Explainable AI decisions.
 *   [x] **Economic Engine**: Granular cost modeling with Inventory & BOM.
 *   [x] **Complex Protocols**: iMicroglia, NGN2, Phagocytosis.
