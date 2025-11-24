@@ -84,6 +84,27 @@ class DoseResponseGP:
     prior_model: Optional["DoseResponseGP"] = None
 
     @classmethod
+    def empty(cls) -> "DoseResponseGP":
+        """
+        Create an empty GP model instance.
+        Useful for initialization before any data is available.
+        """
+        config = DoseResponseGPConfig()
+        model = _build_gp_model(config)
+        
+        # Initialize with dummy data to satisfy the type checker and structure
+        # This is a placeholder state
+        return cls(
+            cell_line="None",
+            compound="None",
+            time_h=0.0,
+            config=config,
+            model=model,
+            X_train=np.array([]).reshape(-1, 1),
+            y_train=np.array([]),
+        )
+
+    @classmethod
     def from_dataframe(
         cls,
         df: pd.DataFrame,

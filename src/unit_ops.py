@@ -69,16 +69,103 @@ class UnitOp:
     sub_steps: List['UnitOp'] = field(default_factory=list)
 
 @dataclass
+class LayerScore:
+    layer_name: str
+    cost_score: int = 0
+    time_score: int = 0
+    risk_sum: int = 0
+    count: int = 0
+    instruments: List[str] = field(default_factory=list)
+    total_material_usd: float = 0.0
+    total_instrument_usd: float = 0.0
+
+    @property
+    def avg_risk(self) -> float:
+        return self.risk_sum / self.count if self.count > 0 else 0.0
+
+@dataclass
+class AssayScore:
+    assay_name: str
+    total_cost_score: int
+    total_time_score: int
+    total_usd: float
+    layer_scores: Dict[str, LayerScore]
+    bottleneck_instrument: str
+
+    def __str__(self):
+        s = f"Assay: {self.assay_name}\n"
+        s += f"  Total Cost Score: {self.total_cost_score}\n"
+        s += f"  Total Time Score: {self.total_time_score}\n"
+        s += f"  Total USD: ${self.total_usd:.2f}\n"
+        s += "  Breakdown by Layer:\n"
+        for layer, score in self.layer_scores.items():
+            s += f"    [{layer.upper()}] CostScore: {score.cost_score}, TimeScore: {score.time_score}, USD: ${score.total_material_usd + score.total_instrument_usd:.2f}, Avg Risk: {score.avg_risk:.2f}\n"
+        s += f"  Bottleneck: {self.bottleneck_instrument}"
+        return s
+
 class AssayRecipe:
-    name: str
-    ops: List[UnitOp]
-    total_time_score: int = 0
-    total_cost_score: int = 0
-    total_automation_fit: int = 0
-    total_failure_risk: int = 0
-    total_staff_attention: int = 0
-    total_material_cost_usd: float = 0.0
-    total_instrument_cost_usd: float = 0.0
+    def __init__(self, name: str, layers: Dict[str, List[Tuple[Union[str, UnitOp], int]]]):
+        self.name = name
+        self.layers = layers # Dict[layer_name, List[(uo_id_or_obj, count)]]
+
+    def derive_score(self, library: "UnitOpLibrary") -> AssayScore:
+        total_cost_score = 0
+        total_time_score = 0
+        total_usd = 0.0
+        layer_scores = {}
+        all_instruments = []
+
+        for layer_name, steps in self.layers.items():
+            l_score = LayerScore(layer_name=layer_name)
+            
+            for item, count in steps:
+                if isinstance(item, str):
+                    # Legacy support or error if library is empty
+                    # For now, if we hit a string, we try to create a dummy op if library fails
+                    try:
+                        uo = library.get(item)
+                    except:
+                        # Fallback for legacy strings if library is gone
+                        uo = UnitOp(
+                            uo_id=item, name=item, layer=layer_name, category="legacy",
+                            time_score=0, cost_score=0, automation_fit=0, failure_risk=0,
+                            staff_attention=0, instrument=None, material_cost_usd=0.0, instrument_cost_usd=0.0
+                        )
+                else:
+                    uo = item
+                
+                # Scores
+                l_score.cost_score += uo.cost_score * count
+                l_score.time_score += uo.time_score * count
+                l_score.risk_sum += uo.failure_risk * count
+                l_score.count += count
+                
+                # Real USD
+                mat_cost = uo.material_cost_usd * count
+                inst_cost = uo.instrument_cost_usd * count
+                l_score.total_material_usd += mat_cost
+                l_score.total_instrument_usd += inst_cost
+                
+                if uo.instrument:
+                    l_score.instruments.append(uo.instrument)
+                    all_instruments.append(uo.instrument)
+            
+            layer_scores[layer_name] = l_score
+            total_cost_score += l_score.cost_score
+            total_time_score += l_score.time_score
+            total_usd += (l_score.total_material_usd + l_score.total_instrument_usd)
+
+        bottleneck = ", ".join(sorted(list(set(all_instruments)))) if all_instruments else "None"
+
+        return AssayScore(
+            assay_name=self.name,
+            total_cost_score=total_cost_score,
+            total_time_score=total_time_score,
+            total_usd=total_usd,
+            layer_scores=layer_scores,
+            bottleneck_instrument=bottleneck
+        )
+
 
 class UnitOpLibrary:
     def __init__(self, csv_paths: List[str]):
@@ -2260,103 +2347,7 @@ class ParametricOps:
         else:
             raise ValueError(f"Unknown counting method: {method}")
 
-@dataclass
-class LayerScore:
-    layer_name: str
-    cost_score: int = 0
-    time_score: int = 0
-    risk_sum: int = 0
-    count: int = 0
-    instruments: List[str] = field(default_factory=list)
-    total_material_usd: float = 0.0
-    total_instrument_usd: float = 0.0
 
-    @property
-    def avg_risk(self) -> float:
-        return self.risk_sum / self.count if self.count > 0 else 0.0
-
-@dataclass
-class AssayScore:
-    assay_name: str
-    total_cost_score: int
-    total_time_score: int
-    total_usd: float
-    layer_scores: Dict[str, LayerScore]
-    bottleneck_instrument: str
-
-    def __str__(self):
-        s = f"Assay: {self.assay_name}\n"
-        s += f"  Total Cost Score: {self.total_cost_score}\n"
-        s += f"  Total Time Score: {self.total_time_score}\n"
-        s += f"  Total USD: ${self.total_usd:.2f}\n"
-        s += "  Breakdown by Layer:\n"
-        for layer, score in self.layer_scores.items():
-            s += f"    [{layer.upper()}] CostScore: {score.cost_score}, TimeScore: {score.time_score}, USD: ${score.total_material_usd + score.total_instrument_usd:.2f}, Avg Risk: {score.avg_risk:.2f}\n"
-        s += f"  Bottleneck: {self.bottleneck_instrument}"
-        return s
-
-class AssayRecipe:
-    def __init__(self, name: str, layers: Dict[str, List[Tuple[Union[str, UnitOp], int]]]):
-        self.name = name
-        self.layers = layers # Dict[layer_name, List[(uo_id_or_obj, count)]]
-
-    def derive_score(self, library: UnitOpLibrary) -> AssayScore:
-        total_cost_score = 0
-        total_time_score = 0
-        total_usd = 0.0
-        layer_scores = {}
-        all_instruments = []
-
-        for layer_name, steps in self.layers.items():
-            l_score = LayerScore(layer_name=layer_name)
-            
-            for item, count in steps:
-                if isinstance(item, str):
-                    # Legacy support or error if library is empty
-                    # For now, if we hit a string, we try to create a dummy op if library fails
-                    try:
-                        uo = library.get(item)
-                    except:
-                        # Fallback for legacy strings if library is gone
-                        uo = UnitOp(
-                            uo_id=item, name=item, layer=layer_name, category="legacy",
-                            time_score=0, cost_score=0, automation_fit=0, failure_risk=0,
-                            staff_attention=0, instrument=None, material_cost_usd=0.0, instrument_cost_usd=0.0
-                        )
-                else:
-                    uo = item
-                
-                # Scores
-                l_score.cost_score += uo.cost_score * count
-                l_score.time_score += uo.time_score * count
-                l_score.risk_sum += uo.failure_risk * count
-                l_score.count += count
-                
-                # Real USD
-                mat_cost = uo.material_cost_usd * count
-                inst_cost = uo.instrument_cost_usd * count
-                l_score.total_material_usd += mat_cost
-                l_score.total_instrument_usd += inst_cost
-                
-                if uo.instrument:
-                    l_score.instruments.append(uo.instrument)
-                    all_instruments.append(uo.instrument)
-            
-            layer_scores[layer_name] = l_score
-            total_cost_score += l_score.cost_score
-            total_time_score += l_score.time_score
-            total_usd += (l_score.total_material_usd + l_score.total_instrument_usd)
-
-        bottleneck = ", ".join(sorted(list(set(all_instruments)))) if all_instruments else "None"
-
-        return AssayScore(
-            assay_name=self.name,
-            total_cost_score=total_cost_score,
-            total_time_score=total_time_score,
-            total_usd=total_usd,
-            layer_scores=layer_scores,
-            bottleneck_instrument=bottleneck
-        )
 
 # -------------------------------------------------------------------
 # Recipes

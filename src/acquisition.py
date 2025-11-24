@@ -6,10 +6,119 @@ Logic for Phase 1: Choosing the next set of experiments.
 
 from __future__ import annotations
 
-import numpy as np
+from typing import Any, Dict, Optional
+
 import pandas as pd
 
-from src.schema import Phase0WorldModel, SliceKey
+from src.schema import Phase0WorldModel
+
+
+class AcquisitionFunction:
+    """
+    Acquisition function for selecting experiments.
+    
+    Wraps the logic for proposing experiments based on the current model state,
+    constraints, and reward configuration.
+    """
+
+    def __init__(self, reward_config: Optional[Dict[str, Any]] = None):
+        self.reward_config = reward_config or {}
+
+    def propose(
+        self,
+        model: Any,  # DoseResponseGP or similar
+        assay: Any,  # Assay definition from selector
+        budget: Optional[float] = None,
+        n_experiments: int = 8,
+    ) -> pd.DataFrame:
+        """
+        Propose a batch of experiments.
+
+        Args:
+            model: The current GP model state.
+            assay: The selected assay/region to explore.
+            budget: Remaining budget (optional constraint).
+            n_experiments: Number of experiments to propose.
+
+        Returns:
+            DataFrame of proposed experiments with columns matching the schema.
+        """
+        # For now, we delegate to the existing logic if the model matches
+        # the Phase0WorldModel expectation, or we adapt.
+        
+        # If 'model' is actually the Phase0WorldModel (which it seems to be in legacy code),
+        # we can use the old function logic. But in the new loop, 'model' is DoseResponseGP.
+        # We need to bridge this.
+        
+        # ADAPTER LOGIC:
+        # The new loop passes DoseResponseGP as 'model'.
+        # The old logic expected Phase0WorldModel.
+        # For this refactor, we will implement a simplified version of "Max Uncertainty"
+        # directly on the DoseResponseGP, consistent with the new architecture.
+
+        candidates = []
+        
+        # 1. Define search grid based on the selected assay
+        # The assay object from AssaySelector likely contains cell_line and compound info
+        cell_line = getattr(assay, "cell_line", "Unknown")
+        compound = getattr(assay, "compound", "Unknown")
+        
+        # Use the model to predict on a grid if available
+        if hasattr(model, "predict_on_grid"):
+            # Predict on a standard grid
+            grid_results = model.predict_on_grid(
+                num_points=50,
+                dose_min=0.001,
+                dose_max=10.0
+            )
+            
+            doses = grid_results.get("dose_uM", [])
+            stds = grid_results.get("std", [])
+            
+            if stds is not None:
+                for dose, std in zip(doses, stds):
+                    candidates.append({
+                        "cell_line": cell_line,
+                        "compound": compound,
+                        "dose": dose,
+                        "time_h": 24.0, # Default
+                        "priority_score": std, # Max uncertainty
+                        "expected_cost_usd": 0.0, # Placeholder
+                        "expected_info_gain": std,
+                        "unit_ops": ["op_passage", "op_feed", "op_transduce", "op_stain", "op_image"] # Placeholder
+                    })
+
+        if not candidates:
+            # Fallback if model is empty or no predictions
+            # Return a single default experiment to keep the loop moving
+            candidates.append({
+                "cell_line": cell_line,
+                "compound": compound,
+                "dose": 1.0,
+                "time_h": 24.0,
+                "priority_score": 0.0,
+                "expected_cost_usd": 0.0,
+                "expected_info_gain": 0.0,
+                "unit_ops": ["op_passage", "op_feed"]
+            })
+
+        # 2. Convert to DataFrame and sort
+        df_candidates = pd.DataFrame(candidates)
+        df_candidates = df_candidates.sort_values("priority_score", ascending=False)
+        
+        # 3. Select top N
+        selected = df_candidates.head(n_experiments).copy()
+        
+        # 4. Assign metadata
+        selected["plate_id"] = "Phase1_Batch1"
+        
+        # Assign wells
+        rows = "ABCDEFGH"
+        cols = range(1, 13)
+        well_ids = [f"{r}{c:02d}" for r in rows for c in cols]
+        selected["well_id"] = well_ids[:len(selected)]
+        
+        return selected
 
 
 def propose_next_experiments(
@@ -20,32 +129,12 @@ def propose_next_experiments(
     dose_max: float = 10.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Select the next best experiments to run based on the current world model.
-    
-    Strategy: "Max Uncertainty" (Epistemic Gain).
-    We scan a grid of doses for every (cell, compound) slice and pick the
-    points where the GP model is most uncertain (highest standard deviation).
-    
-    Args:
-        world_model: The current belief state (Phase 0 model).
-        n_experiments: Number of wells to fill (default 8).
-        dose_grid_size: Number of candidate doses to evaluate per slice.
-        dose_min: Minimum candidate dose (uM).
-        dose_max: Maximum candidate dose (uM).
-        
-    Returns:
-        Tuple of (selected_experiments, all_candidates):
-            - selected_experiments: DataFrame of top N choices with plate/well IDs.
-            - all_candidates: DataFrame of ALL scored candidates (for reporting).
+    Legacy function kept for backward compatibility.
     """
+    # This logic is largely superseded by the class above but kept for reference
+    # or legacy calls.
     candidates = []
-
-    # 1. Generate candidates for every slice
     for key, gp in world_model.gp_models.items():
-        # Create a candidate grid
-        # We use the helper on the GP object if available, or manual
-        # The GP class in modeling.py has predict_on_grid, let's use that
-        # but we want to enforce specific bounds for the search
         grid_results = gp.predict_on_grid(
             num_points=dose_grid_size,
             dose_min=dose_min,
@@ -67,34 +156,15 @@ def propose_next_experiments(
             })
             
     if not candidates:
-        raise ValueError("No candidates generated. Is the world model empty?")
+        raise ValueError("No candidates generated.")
         
-    # 2. Convert to DataFrame and sort
     df_candidates = pd.DataFrame(candidates)
     df_candidates = df_candidates.sort_values("priority_score", ascending=False)
-    
-    # 3. Select top N
     selected = df_candidates.head(n_experiments).copy()
-    
-    # 4. Assign plate/well metadata (placeholders for now)
-    # We'll just put them all on "Phase1_Batch1"
     selected["plate_id"] = "Phase1_Batch1"
-    
-    # Assign wells A01, A02, ...
-    # Simple generator for well IDs
     rows = "ABCDEFGH"
     cols = range(1, 13)
     well_ids = [f"{r}{c:02d}" for r in rows for c in cols]
-    
-    if len(selected) > len(well_ids):
-        # Should not happen with n=8, but good to be safe
-        raise ValueError(f"Too many experiments selected ({len(selected)}) for one plate.")
-        
     selected["well_id"] = well_ids[:len(selected)]
     
-    # Reorder columns nicely
-    cols_order = [
-        "plate_id", "well_id", "cell_line", "compound", 
-        "dose_uM", "time_h", "priority_score"
-    ]
-    return selected[cols_order], df_candidates
+    return selected, df_candidates

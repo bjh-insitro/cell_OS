@@ -7,6 +7,8 @@ a complete end-to-end workflow from transduction to analysis.
 
 from src.unit_ops import AssayRecipe, ParametricOps
 from src.posh_screen_designer import create_screen_design
+from src.workflows import workflow_from_assay_recipe, Workflow
+
 
 def get_complete_posh_screen_workflow(
     ops: ParametricOps,
@@ -20,14 +22,14 @@ def get_complete_posh_screen_workflow(
     """
     Complete POSH screen workflow from transduction to analysis.
     Integrates with screen designer calculations.
-    
+
     This recipe captures all the information from the screen designer:
     - Cell counts at each stage
     - Plate numbers
     - Expansion requirements
     - Banking strategy (4 screens)
     - Thaw-flask-passage workflow
-    
+
     Args:
         ops: ParametricOps instance
         library_name: Name of gRNA library
@@ -36,11 +38,11 @@ def get_complete_posh_screen_workflow(
         viral_titer: Viral titer in TU/mL
         target_cells_per_grna: Target cells per gRNA (500-1000)
         moi: Multiplicity of infection
-        
+
     Returns:
         AssayRecipe with complete workflow and cost calculations
     """
-    
+
     # Generate screen design with all calculations
     design = create_screen_design(
         library_name=library_name,
@@ -50,13 +52,13 @@ def get_complete_posh_screen_workflow(
         target_cells_per_grna=target_cells_per_grna,
         moi=moi
     )
-    
+
     vessel = "plate_6well"
-    
+
     # Calculate number of passages needed for expansion
     # Assume ~3× expansion per passage
     passages_for_banking = int(design.expansion_fold_for_banking / 3)
-    
+
     return AssayRecipe(
         name=f"POSH_Screen_{library_name}_{num_genes}g_{cell_type}",
         layers={
@@ -66,52 +68,67 @@ def get_complete_posh_screen_workflow(
             ],
             "cell_prep": [
                 # Phase 1: Transduction (Day 0)
-                (ops.op_transduce(
-                    vessel,
-                    method="spinoculation",
-                    moi=moi,
-                    num_cells=design.transduction_cells_needed
-                ), design.transduction_plates),
-                
+                (
+                    ops.op_transduce(
+                        vessel,
+                        method="spinoculation",
+                        moi=moi,
+                        num_cells=design.transduction_cells_needed
+                    ),
+                    design.transduction_plates,
+                ),
+
                 # Phase 2: Selection (Days 2-7)
                 (ops.op_feed(vessel, antibiotic="puromycin"), 5),
-                
+
                 # Phase 3: Expansion for banking (Days 7-14)
                 # Expand to bank for 4 screens
                 (ops.op_passage(vessel, method="trypsin"), passages_for_banking),
-                
+
                 # Phase 4: Cryopreservation
                 # Bank 4 screens worth of cells in Micronic tubes
-                (ops.op_freeze(
-                    vessel,
-                    media="fbs_dmso",
-                    num_vials=design.cryo_vials_needed
-                ), 1),
-                
+                (
+                    ops.op_freeze(
+                        vessel,
+                        media="fbs_dmso",
+                        num_vials=design.cryo_vials_needed
+                    ),
+                    1,
+                ),
+
                 # === PER SCREEN WORKFLOW (repeat 4×) ===
-                
+
                 # Phase 5: Thaw and recovery
                 (ops.op_thaw(vessel, num_vials=design.vials_per_screen), 1),
-                
+
                 # Phase 6: Flask expansion (3-4 days)
                 (ops.op_passage(vessel, method="trypsin"), 2),
-                
+
                 # Phase 7: Seed screening plates at 40% confluence
-                (ops.op_seed(vessel, num_cells=design.screening_seeding_cells), design.screening_plates),
-                
+                (
+                    ops.op_seed(
+                        vessel,
+                        num_cells=design.screening_seeding_cells
+                    ),
+                    design.screening_plates,
+                ),
+
                 # Phase 8: Grow to 80% confluence (3-4 days)
                 (ops.op_feed(vessel), 3),
             ],
             "phenotyping": [
                 # Phase 9: Fixation at 80% confluence
                 (ops.op_fix_cells(vessel), design.screening_plates),
-                
+
                 # Phase 10: Zombie POSH workflow
                 (ops.op_decross_linking(vessel, duration_h=4.0), design.screening_plates),
                 (ops.op_t7_ivt(vessel, duration_h=4.0), design.screening_plates),
-                
+
                 # Phase 11: SBS imaging (13 cycles for full barcode)
-                (ops.op_sbs_cycle(vessel, cycle_number=1), design.screening_plates * 13),
+                (
+                    ops.op_sbs_cycle(vessel, cycle_number=1),
+                    design.screening_plates * 13,
+                ),
             ],
             "compute": [
                 # Phase 12: Image analysis
@@ -120,15 +137,45 @@ def get_complete_posh_screen_workflow(
                 (ops.op_compute_analysis("base_calling", design.screening_plates * 13), 1),
                 (ops.op_compute_analysis("barcode_stitching", design.screening_plates), 1),
                 (ops.op_compute_analysis("feature_extraction", design.screening_plates), 1),
-            ]
-        }
+            ],
+        },
     )
+
+
+def get_complete_posh_screen_engine_workflow(
+    ops: ParametricOps,
+    library_name: str,
+    num_genes: int,
+    cell_type: str = "A549",
+    viral_titer: float = 1e7,
+    target_cells_per_grna: int = 750,
+    moi: float = 0.3
+) -> Workflow:
+    """
+    Convenience wrapper that returns the complete POSH screen as the canonical
+    Workflow object instead of an AssayRecipe.
+
+    This is the object you want to feed into:
+      - workflow renderers
+      - WorkflowOptimizer
+      - any future OS / scheduler
+    """
+    recipe = get_complete_posh_screen_workflow(
+        ops=ops,
+        library_name=library_name,
+        num_genes=num_genes,
+        cell_type=cell_type,
+        viral_titer=viral_titer,
+        target_cells_per_grna=target_cells_per_grna,
+        moi=moi,
+    )
+    return workflow_from_assay_recipe(recipe)
 
 
 def get_workflow_metadata(design):
     """
     Extract key metadata from screen design for workflow tracking.
-    
+
     Returns dict with all critical parameters that should be stored
     with the workflow execution.
     """
@@ -173,5 +220,5 @@ def get_workflow_metadata(design):
         },
         "cost": {
             "estimated_total_usd": design.estimated_cost_usd,
-        }
+        },
     }

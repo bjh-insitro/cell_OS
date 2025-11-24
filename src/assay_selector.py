@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Protocol, Optional
+from typing import List, Protocol, Optional, Any
 from src.unit_ops import UnitOpLibrary, UnitOp, AssayRecipe, ParametricOps
 from src.inventory import Inventory
 
@@ -8,6 +8,9 @@ class AssayCandidate:
     recipe: AssayRecipe
     cost_usd: float
     information_score: float
+    # Add fields expected by AcquisitionFunction
+    cell_line: str = "Unknown"
+    compound: str = "Unknown"
 
     @property
     def roi(self) -> float:
@@ -16,9 +19,57 @@ class AssayCandidate:
             return 0.0
         return self.information_score / self.cost_usd
 
-class AssaySelector(Protocol):
+class AssaySelectorProtocol(Protocol):
     def select(self, candidates: List[AssayCandidate], budget_usd: float) -> Optional[AssayCandidate]:
         ...
+
+class AssaySelector:
+    """
+    Main AssaySelector used in the run loop.
+    Selects the best assay to run next based on the world model and campaign state.
+    """
+    def __init__(self, world_model: Any, campaign: Any):
+        self.world_model = world_model
+        self.campaign = campaign
+
+    def choose_assay(self, model: Any) -> AssayCandidate:
+        """
+        Choose the next assay to run.
+        
+        Args:
+            model: The current GP model (unused for now in this simple logic, 
+                   but could be used for info gain calculation).
+                   
+        Returns:
+            Selected AssayCandidate.
+        """
+        # For now, we return a dummy candidate to keep the loop running.
+        # In a real implementation, this would query the world model for available
+        # cell lines and compounds, estimate costs, and pick the best ROI.
+        
+        # Example logic:
+        # 1. Get allowed cell lines and compounds from world model
+        cell_lines = getattr(self.world_model, "allowed_cell_lines", ["HepG2"])
+        compounds = getattr(self.world_model, "allowed_compounds", ["staurosporine"])
+        
+        # Simple round-robin or random selection could go here.
+        # For this demo, we just pick the first one.
+        selected_cell = cell_lines[0] if cell_lines else "HepG2"
+        selected_compound = compounds[0] if compounds else "staurosporine"
+        
+        # Create a dummy recipe
+        recipe = AssayRecipe(
+            name=f"Screen_{selected_cell}_{selected_compound}",
+            layers={}
+        )
+        
+        return AssayCandidate(
+            recipe=recipe,
+            cost_usd=100.0,
+            information_score=10.0,
+            cell_line=selected_cell,
+            compound=selected_compound
+        )
 
 class GreedyROISelector:
     """
