@@ -12,3 +12,4 @@ plotly
 networkx
 ortools
 tqdm
+pytest
