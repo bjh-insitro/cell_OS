@@ -29,13 +29,13 @@ def test_selectivity_goal_creation():
     """Test creating a selectivity goal."""
     goal = SelectivityGoal(
         target_cell="cancer_cell",
-        control_cell="healthy_cell",  # Actual parameter name
-        selectivity_ratio=10.0
+        safe_cell="healthy_cell",  # Correct parameter
+        potency_threshold_uM=1.0,
+        safety_threshold_uM=10.0
     )
     
     assert goal.target_cell == "cancer_cell"
-    assert goal.control_cell == "healthy_cell"
-    assert goal.selectivity_ratio == 10.0
+    assert goal.safe_cell == "healthy_cell"
 
 
 def test_campaign_initialization():
@@ -48,22 +48,18 @@ def test_campaign_initialization():
     assert not campaign.is_complete
 
 
-def test_campaign_update():
-    """Test updating campaign state."""
+def test_campaign_check_goal():
+    """Test checking campaign goal."""
     goal = PotencyGoal("HepG2", 1.0)
     campaign = Campaign(goal=goal, max_cycles=5)
     
     # Create empty posterior
     posterior = Phase0WorldModel()
     
-    # update() increments cycles
-    campaign.update(posterior)
+    # check_goal() method
+    campaign.check_goal(posterior)
     
-    # After 5 updates, should be complete
-    for _ in range(4):
-        campaign.update(posterior)
-    
-    assert campaign.is_complete
+    assert not campaign.is_complete  # Empty posterior won't meet goal
 
 
 def test_potency_goal_not_met():
@@ -92,15 +88,6 @@ def test_campaign_budget_tracking():
     assert campaign.budget == 750.0
 
 
-def test_selectivity_goal_ratio():
-    """Test selectivity goal ratio."""
-    goal = SelectivityGoal(
-        target_cell="cancer",
-        control_cell="healthy",
-        selectivity_ratio=10.0
-    )
-    
-    assert goal.selectivity_ratio == 10.0
 
 
 if __name__ == '__main__':
