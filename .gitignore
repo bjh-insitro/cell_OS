@@ -57,3 +57,5 @@ results/experiment_history.csv
 # Data files (optional - uncomment if needed)
 # data/processed/*
 # !data/processed/.gitkeep
+.DS_Store
+__pycache__/
