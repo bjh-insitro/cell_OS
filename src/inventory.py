@@ -140,7 +140,7 @@ class Inventory:
             )
         res.stock_level -= quantity
     
-    def consume(self, resource_id: str, amount: float, unit: str = None) -\u003e bool:
+    def consume(self, resource_id: str, amount: float, unit: str = None) -> bool:
         """
         Consume reagent from inventory.
         
@@ -158,7 +158,7 @@ class Inventory:
         except OutOfStockError:
             return False
     
-    def check_availability(self, bom: List[BOMItem]) -\u003e Dict[str, bool]:
+    def check_availability(self, bom: List[BOMItem]) -> Dict[str, bool]:
         """
         Check if all BOM items are in stock.
         
@@ -175,7 +175,7 @@ class Inventory:
                 continue
             
             res = self.resources[item.resource_id]
-            availability[item.resource_id] = res.stock_level \u003e= item.quantity
+            availability[item.resource_id] = res.stock_level >= item.quantity
         
         return availability
 
