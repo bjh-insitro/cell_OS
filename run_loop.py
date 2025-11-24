@@ -9,11 +9,6 @@ This script runs the autonomous experimental loop:
 3. Execute (simulation or real)
 4. Update model and campaign state
 5. Iterate until convergence or budget depletion
-
-See:
-- docs/architecture/DATA_MODEL.md
-- docs/guides/REWARD_FUNCTIONS.md
-- docs/architecture/SYSTEM_GLUE.md
 """
 
 from __future__ import annotations
@@ -22,6 +17,8 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List
 
+import pandas as pd
+
 from src.inventory import Inventory
 from src.unit_ops import VesselLibrary
 from src.modeling import DoseResponseGP
@@ -29,11 +26,82 @@ from src.acquisition import AcquisitionFunction
 from src.simulation import SimulationEngine
 from src.assay_selector import AssaySelector
 from src.core.world_model import WorldModel
-from src.campaign import Campaign
+from src.campaign import Campaign, PotencyGoal, SelectivityGoal
+from src.schema import Phase0WorldModel, SliceKey
 
 
 RESULTS_DIR = Path("results")
 EXPERIMENT_LOG = RESULTS_DIR / "experiment_history.csv"
+
+
+class ActiveLearner:
+    """
+    Manages the online learning process.
+    Holds the current belief (Phase0WorldModel) and updates it with new data.
+    """
+
+    def __init__(self) -> None:
+        self.history: List[Dict[str, Any]] = []
+        self.posterior = Phase0WorldModel()
+
+    def update(self, records: List[Dict[str, Any]]) -> None:
+        """
+        Update the model with new experimental records.
+        """
+        self.history.extend(records)
+        self._rebuild_posterior()
+
+    def _rebuild_posterior(self) -> None:
+        """
+        Re fit GPs based on all history.
+        """
+        if not self.history:
+            return
+
+        df = pd.DataFrame(self.history)
+
+        # Ensure numeric types
+        df["dose"] = pd.to_numeric(df["dose"], errors="coerce")
+        df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
+        df["time_h"] = pd.to_numeric(df["time_h"], errors="coerce")
+
+        gp_models: Dict[SliceKey, DoseResponseGP] = {}
+
+        if "compound" not in df.columns or "cell_line" not in df.columns:
+            return
+
+        for (cell, cmpd, time_h), sub in df.groupby(["cell_line", "compound", "time_h"]):
+            valid_sub = sub[sub["dose"] > 0].copy()
+            if len(valid_sub) < 2:
+                continue
+
+            try:
+                gp = DoseResponseGP.from_dataframe(
+                    valid_sub,
+                    cell_line=cell,
+                    compound=cmpd,
+                    time_h=float(time_h),
+                    dose_col="dose",
+                    viability_col="viability",
+                )
+                key = SliceKey(cell, cmpd, float(time_h))
+                gp_models[key] = gp
+            except Exception as e:
+                print(f"[ActiveLearner] Failed to fit GP for {cell} {cmpd}: {e}")
+                continue
+
+        self.posterior = Phase0WorldModel(gp_models=gp_models)
+
+    @property
+    def gp_models(self) -> Dict[SliceKey, DoseResponseGP]:
+        return self.posterior.gp_models
+
+    def predict_on_grid(self, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Legacy stub kept for backwards compatibility.
+        AcquisitionFunction no longer calls this on the learner.
+        """
+        return {}
 
 
 def ensure_results_dirs() -> None:
@@ -47,9 +115,6 @@ def ensure_results_dirs() -> None:
 def append_experiments_to_csv(records: List[Dict[str, Any]]) -> None:
     """
     Append a batch of experimental records to results/experiment_history.csv.
-
-    This assumes each record is a flat dict whose keys match DATA_MODEL.md.
-    Adapt the field list if your schema differs.
     """
     if not records:
         return
@@ -79,6 +144,7 @@ def append_experiments_to_csv(records: List[Dict[str, Any]]) -> None:
         if not file_exists:
             writer.writeheader()
         for rec in records:
+            # Filter to only known fields
             row = {k: rec.get(k) for k in fieldnames}
             writer.writerow(row)
 
@@ -86,14 +152,6 @@ def append_experiments_to_csv(records: List[Dict[str, Any]]) -> None:
 def normalize_records(result: Any) -> List[Dict[str, Any]]:
     """
     Convert whatever SimulationEngine.run returns into a list of dict records.
-
-    This is intentionally forgiving.
-
-    Expected common cases:
-    - result is already a list of dicts
-    - result is a single dict
-    - result is a list of objects with .to_dict()
-    - result is a single object with .to_dict()
     """
     if result is None:
         return []
@@ -114,21 +172,13 @@ def normalize_records(result: Any) -> List[Dict[str, Any]]:
     if hasattr(result, "to_dict"):
         return [result.to_dict()]  # type: ignore
 
-    # As a last resort, wrap as a single opaque record
+    # Last resort
     return [{"raw_result": result}]
 
 
 def run_campaign(config: Dict[str, Any]) -> Any:
     """
     Top level loop.
-
-    Expected config keys (adjust to match your real config):
-      - initial_budget: float
-      - max_steps: int
-      - cell_lines: list[str]
-      - compounds: list[str]
-      - dose_grid: list[float]
-      - reward: dict (see REWARD_FUNCTIONS.md)
     """
     ensure_results_dirs()
 
@@ -136,106 +186,138 @@ def run_campaign(config: Dict[str, Any]) -> Any:
     inv = Inventory("data/raw/pricing.yaml")
     vessel_lib = VesselLibrary("data/raw/vessels.yaml")
 
-    # World model knows about cells, vessels, assays, constraints
-    # Keep signature matching your current implementation
-    # We attempt to pass inventory/vessel_lib if the constructor supports it,
-    # otherwise we assume it handles it internally or we update it later.
+    # World model (static knowledge)
     try:
         world = WorldModel.from_config(
             config,
             inventory=inv,
-            vessel_library=vessel_lib
+            vessel_library=vessel_lib,
         )
     except TypeError:
-        # Fallback if signature doesn't match yet
         world = WorldModel.from_config(config)
 
-    # Campaign tracks budget and history
-    # Your current code uses Campaign(config), so keep that
-    campaign = Campaign(config)
+    # Campaign goal and budget
+    goal_config = config.get("goal", {"type": "potency"})
+    goal_type = goal_config.get("type", "potency")
 
-    # Modeling: start from an empty GP
-    model = DoseResponseGP.empty()
+    if goal_type == "selectivity":
+        goal = SelectivityGoal(
+            target_cell=goal_config.get("target_cell", "HepG2"),
+            safe_cell=goal_config.get("safe_cell", "U2OS"),
+            potency_threshold_uM=goal_config.get("potency_threshold", 1.0),
+            safety_threshold_uM=goal_config.get("safety_threshold", 10.0),
+        )
+    else:
+        goal = PotencyGoal(
+            cell_line=goal_config.get("cell_line", "HepG2"),
+            ic50_threshold_uM=goal_config.get("threshold", 1.0),
+        )
 
-    # Assay selection: which region to explore
+    campaign = Campaign(goal=goal, max_cycles=config.get("max_steps", 20))
+    campaign.budget = config.get("initial_budget", 1000.0)
+
+    # Online learner and agents
+    learner = ActiveLearner()
     selector = AssaySelector(world, campaign)
 
-    # Acquisition: how to score candidate experiments
-    acquisition = AcquisitionFunction(
-        reward_config=config.get("reward", {})
-    ) if "reward" in config else AcquisitionFunction()
+    if "reward" in config:
+        acquisition = AcquisitionFunction(reward_config=config["reward"])
+    else:
+        acquisition = AcquisitionFunction()
 
-    # Execution engine: simulation for now
-    # We attempt to pass world, inventory, vessel_lib if supported
+    # Execution engine
     try:
         sim = SimulationEngine(
             world_model=world,
             inventory=inv,
-            vessel_library=vessel_lib
+            vessel_library=vessel_lib,
         )
     except TypeError:
-        # Fallback to just world if signature differs
         sim = SimulationEngine(world)
 
     max_steps = config.get("max_steps", 20)
+    batch_size = config.get("batch_size", 8)
 
     for step in range(max_steps):
-        if hasattr(campaign, "exhausted") and campaign.exhausted():
-            print(f"[loop] Stopping at step {step}: campaign exhausted")
+        if campaign.is_complete:
+            print(f"[loop] Stopping at step {step}: campaign complete (Success={campaign.success})")
             break
 
-        budget_val = getattr(campaign, "budget", None)
-        if budget_val is not None:
-            print(f"\n[loop] Step {step + 1} / {max_steps}")
-            print(f"[loop] Budget remaining: ${budget_val:.2f}")
-        else:
-            print(f"\n[loop] Step {step + 1} / {max_steps}")
+        if campaign.budget <= 0:
+            print(f"[loop] Stopping at step {step}: budget exhausted")
+            break
 
-        # 1. Choose assay / region to explore
-        assay = selector.choose_assay(model)
-        print(f"[loop] Selected assay: {assay}")
+        print(f"\n[loop] Step {step + 1} / {max_steps}")
+        print(f"[loop] Budget remaining: ${campaign.budget:.2f}")
 
-        # 2. Ask acquisition to propose the next experiment or batch
-        # If your AcquisitionFunction supports batches, you can switch to propose_batch
-        proposal = acquisition.propose(model, assay, getattr(campaign, "budget", None))
-        print(f"[loop] Proposed experiment: {proposal}")
+        # 1. Choose assay or region to explore
+        assay = selector.choose_assay(learner.posterior)
+        print(f"[loop] Selected assay: {assay.recipe.name}")
 
-        # 3. Execute proposal via simulation (or real lab later)
+        # 2. Ask acquisition to propose the next batch
+        # Always pass the *posterior* (world model), not the learner object itself
+        proposal = acquisition.propose(
+            model=learner.posterior,
+            assay=assay,
+            budget=campaign.budget,
+            n_experiments=batch_size,
+        )
+        print(f"[loop] Proposed {len(proposal)} experiments")
+
+        with pd.option_context("display.max_rows", 10, "display.max_columns", None):
+            print(
+                proposal[["cell_line", "compound", "dose_uM", "time_h", "priority_score"]]
+                .head()
+                .to_string(index=False)
+            )
+
+        # 3. Execute proposal via simulation
         result = sim.run(proposal)
         records = normalize_records(result)
         print(f"[loop] Executed {len(records)} experimental records")
 
-        # 4. Update modeling with new data
-        model.update(records)
+        # 4. Update budget
+        step_cost = sum(r.get("cost_usd", 0.0) for r in records)
+        campaign.budget -= step_cost
+        print(f"[loop] Step cost: ${step_cost:.2f} - New budget: ${campaign.budget:.2f}")
 
-        # 5. Update campaign: budget, history, stopping conditions
-        campaign.update(records)
+        # 5. Update learner with new data
+        learner.update(records)
 
-        # 6. Persist experimental records to CSV
+        # 6. Update campaign status
+        campaign.check_goal(learner.posterior)
+
+        # 7. Persist to CSV
         append_experiments_to_csv(records)
 
-    # Preserve your existing return type
-    return getattr(campaign, "history", campaign)
+    return learner.history
 
 
 if __name__ == "__main__":
-    # TODO: replace with a real YAML config loader
     example_config: Dict[str, Any] = {
         "initial_budget": 500,
         "max_steps": 20,
         "cell_lines": ["U2OS", "HepG2"],
         "compounds": ["staurosporine", "tunicamycin"],
         "dose_grid": [1e-3, 1e-2, 1e-1, 1.0, 10.0],
-        # Optional reward configuration
-        # "reward": {
-        #     "objective": "viability",
-        #     "mode": "balanced",
-        #     "w_epi": 0.5,
-        #     "w_geo": 0.5,
-        #     "lambda_cost": 0.01,
-        #     "automation_alpha": 0.6,
-        # },
+        "goal": {
+            "type": "potency",
+            "cell_line": "HepG2",
+            "threshold": 0.5,
+        },
+        "reward": {
+            # Cost model
+            "cost_per_well_usd": 2.5,
+            # GP dose grid for acquisition
+            "dose_grid_size": 50,
+            "dose_min": 0.001,
+            "dose_max": 10.0,
+            # Repeat penalty controls
+            "repeat_penalty": 0.02,
+            "repeat_tol_fraction": 0.05,
+        },
+        "batch_size": 8,
     }
 
     history = run_campaign(example_config)
-    print(history)
+    print(f"Campaign finished with {len(history)} records.")

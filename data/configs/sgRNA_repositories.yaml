@@ -1,0 +1,15 @@
+# sgRNA Repository Configuration
+# Paths to pre-scored sgRNA libraries for different design tools
+
+# Vienna Bioactivity CRISPR (VBC) library
+vbc: s3://insitro-posh-production/guide_repository/tech-dev/vbc_rs3_scored_w_location.csv
+
+# CRISPick library
+crispick: s3://insitro-posh-production/guide_repository/tech-dev/crispick_rs3_scored_w_location.csv
+
+# -------- Custom Repositories --------
+# Add your custom sgRNA repositories below
+# Format: repository_name: path/to/library.csv
+#
+# Example:
+# my_custom_lib: /path/to/custom_library.csv

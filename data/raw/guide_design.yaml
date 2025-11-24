@@ -1,0 +1,16 @@
+posh_barcode_hamming_distance: 2
+posh_barcode_length: 13
+
+min_guides_per_gene: 1
+max_guides_per_gene: 4
+overlap_threshold: 1000
+
+score_name: "On-Target Efficacy Score"
+gene_identifier_column: "Target Gene ID"
+
+solver_time_limit_seconds: 28800
+
+targeting_repositories: [crispick]
+nontargeting_repositories: [control_guides]
+
+gene_list: data/raw/sbat_gene_list.csv

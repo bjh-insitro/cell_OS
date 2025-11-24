@@ -79,7 +79,7 @@ class DoseResponseGP:
     # Raw training data in log10-dose space
     X_train: ArrayLike
     y_train: ArrayLike
-    
+
     # Optional prior model for transfer learning
     prior_model: Optional["DoseResponseGP"] = None
 
@@ -91,7 +91,7 @@ class DoseResponseGP:
         """
         config = DoseResponseGPConfig()
         model = _build_gp_model(config)
-        
+
         # Initialize with dummy data to satisfy the type checker and structure
         # This is a placeholder state
         return cls(
@@ -154,7 +154,9 @@ class DoseResponseGP:
 
         # If prior model exists, fit to residual
         if prior_model is not None:
-            prior_mean, _ = prior_model.predict(df_slice[dose_col].to_numpy(), return_std=True)
+            prior_mean, _ = prior_model.predict(
+                df_slice[dose_col].to_numpy(), return_std=True
+            )
             y = y - prior_mean
 
         model = _build_gp_model(config)
@@ -195,27 +197,26 @@ class DoseResponseGP:
 
         if return_std:
             mean, std = self.model.predict(X, return_std=True)
-            
+
             # Add prior mean if exists
             if self.prior_model is not None:
-                prior_mean, prior_std = self.prior_model.predict(dose_uM, return_std=True)
+                prior_mean, prior_std = self.prior_model.predict(
+                    dose_uM, return_std=True
+                )
                 mean = mean + prior_mean
-                # Combine uncertainties (assuming independence for simplicity, though they are correlated)
-                # For now, just return the posterior std of the residual GP + prior std?
-                # Actually, if we treat prior as fixed mean function, we don't add its variance.
-                # But if prior is also a GP, we should.
-                # Let's assume prior is a fixed baseline for now to keep it simple.
-                # Or better: sqrt(std^2 + prior_std^2)
-                std = np.sqrt(std**2 + prior_std**2)
-                
+                # Combine uncertainties (assuming independence for simplicity)
+                std = np.sqrt(std ** 2 + prior_std ** 2)
+
             return mean, std
         else:
             mean = self.model.predict(X, return_std=False)
-            
+
             if self.prior_model is not None:
-                prior_mean, _ = self.prior_model.predict(dose_uM, return_std=False)
+                prior_mean, _ = self.prior_model.predict(
+                    dose_uM, return_std=False
+                )
                 mean = mean + prior_mean
-                
+
             return mean, None
 
     def predict_on_grid(
@@ -223,16 +224,36 @@ class DoseResponseGP:
         num_points: int = 50,
         dose_min: Optional[float] = None,
         dose_max: Optional[float] = None,
+        grid_size: Optional[int] = None,
     ) -> Dict[str, ArrayLike]:
         """
         Predict on a regular grid between the min and max training dose
         (or user supplied dose_min and dose_max).
 
-        Returns a dict with:
-            - 'dose_uM'
-            - 'mean'
-            - 'std'
+        Args:
+            num_points: Number of points in the dose grid.
+            dose_min: Minimum dose (uM). If None, uses min training dose.
+            dose_max: Maximum dose (uM). If None, uses max training dose.
+            grid_size: Backwards compatible alias for num_points.
+
+        Returns:
+            Dict with:
+                - 'dose_uM'
+                - 'mean'
+                - 'std'
         """
+        # Backwards compat: allow callers to pass grid_size instead of num_points
+        if grid_size is not None:
+            num_points = int(grid_size)
+
+        # If no training data, return empty arrays
+        if self.X_train.size == 0:
+            return {
+                "dose_uM": np.array([]),
+                "mean": np.array([]),
+                "std": np.array([]),
+            }
+
         train_dose = 10 ** (self.X_train.flatten())
         if dose_min is None:
             dose_min = float(train_dose.min())

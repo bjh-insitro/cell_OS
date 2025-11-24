@@ -34,11 +34,67 @@ class LibraryDesign:
     genes: List[GeneTarget]
     guides_per_gene: int = 4
     controls_per_plate: int = 10
+    use_solver: bool = False  # Enable constraint-based solver
+    repositories_yaml: Optional[str] = None  # Path to sgRNA repo config
     
     def total_guides(self) -> int:
         return (len(self.genes) * self.guides_per_gene) + self.controls_per_plate
 
     def generate_guides(self) -> List[GuideRNA]:
+        """
+        Generate gRNA sequences.
+        
+        If use_solver=True, uses the constraint-based guide_design_v2 tool.
+        Otherwise, uses mock implementation.
+        """
+        if self.use_solver:
+            return self._generate_with_solver()
+        else:
+            return self._generate_mock()
+    
+    def _generate_with_solver(self) -> List[GuideRNA]:
+        """
+        Generate guides using constraint-based solver.
+        """
+        try:
+            from src.guide_design_v2 import GuideLibraryAdapter, GuideDesignConfig
+            
+            config = GuideDesignConfig(
+                min_guides_per_gene=1,
+                max_guides_per_gene=self.guides_per_gene,
+                repositories=["vbc", "crispick"]
+            )
+            
+            # Use default repositories_yaml if not provided
+            repos_yaml = self.repositories_yaml
+            if repos_yaml is None:
+                repos_yaml = "data/configs/sgRNA_repositories.yaml"
+            
+            adapter = GuideLibraryAdapter(
+                config=config,
+                repositories_yaml=repos_yaml,
+                verbose=True
+            )
+            
+            # Design library
+            library_df = adapter.design_library(self.genes)
+            
+            # Convert to GuideRNA objects
+            guides = adapter.to_guide_rnas(library_df)
+            
+            # Add controls if needed
+            n_controls_needed = self.controls_per_plate
+            if n_controls_needed > 0:
+                guides.extend(self._generate_mock_controls(n_controls_needed))
+            
+            return guides
+            
+        except Exception as e:
+            print(f"[LibraryDesign] Solver failed: {e}")
+            print("[LibraryDesign] Falling back to mock implementation")
+            return self._generate_mock()
+    
+    def _generate_mock(self) -> List[GuideRNA]:
         """
         Mock function to generate gRNA sequences.
         In a real system, this would query a database (e.g., Brunello, Dolcetto).
@@ -54,14 +110,20 @@ class LibraryDesign:
                 ))
         
         # Add controls
-        for i in range(self.controls_per_plate):
-            guides.append(GuideRNA(
+        guides.extend(self._generate_mock_controls(self.controls_per_plate))
+            
+        return guides
+    
+    def _generate_mock_controls(self, n: int) -> List[GuideRNA]:
+        """Generate mock non-targeting controls."""
+        controls = []
+        for i in range(n):
+            controls.append(GuideRNA(
                 sequence=f"NTC_SEQ{i+1}",
                 target_gene="NTC",
                 is_control=True
             ))
-            
-        return guides
+        return controls
 
 @dataclass
 class OligoPool:

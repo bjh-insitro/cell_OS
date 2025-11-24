@@ -17,15 +17,113 @@ Modeling products live in `posteriors.py`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import pandas as pd
 
 from src.posteriors import DoseResponsePosterior
 
 
-# Simple alias for readability
+# Simple aliases for readability
 CampaignId = str
+PathLike = Union[str, Path]
+
+
+# ----------------------------------------------------------------------
+# Internal helpers
+# ----------------------------------------------------------------------
+
+
+def _canonicalize_experiment_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize an experiment table into a canonical schema.
+
+    Tries to be forgiving about upstream differences and supports both
+    "raw plate" tables and your simulated experiment_history CSV.
+
+    Canonical columns we try to ensure:
+      - campaign_id
+      - workflow_id (if present)
+      - cell_line
+      - compound
+      - dose_uM
+      - time_h
+      - viability                (primary readout for Phase 0)
+      - readout_name / readout_value (if using multi-readout rows)
+      - replicate
+      - plate_id, well_id, timestamp (if present)
+    """
+    if df.empty:
+        return df.copy()
+
+    df = df.copy()
+
+    # ------------------------------------------------------------------
+    # Campaign id
+    # ------------------------------------------------------------------
+    if "campaign_id" not in df.columns:
+        # Fallback for older logs or ad hoc imports
+        df["campaign_id"] = "UNSPECIFIED_CAMPAIGN"
+
+    # ------------------------------------------------------------------
+    # Dose
+    # ------------------------------------------------------------------
+    if "dose_uM" in df.columns:
+        dose_col = "dose_uM"
+    elif "dose" in df.columns:
+        df = df.rename(columns={"dose": "dose_uM"})
+        dose_col = "dose_uM"
+    else:
+        # No dose column; create one so downstream code has something to hold
+        df["dose_uM"] = pd.NA
+        dose_col = "dose_uM"
+
+    df[dose_col] = pd.to_numeric(df[dose_col], errors="coerce")
+
+    # ------------------------------------------------------------------
+    # Time
+    # ------------------------------------------------------------------
+    if "time_h" in df.columns:
+        df["time_h"] = pd.to_numeric(df["time_h"], errors="coerce")
+
+    # ------------------------------------------------------------------
+    # Viability / primary readout
+    # ------------------------------------------------------------------
+    # Strategy:
+    #   - If there's already a "viability" column, use it.
+    #   - Else, if there is a (readout_name, readout_value) pair,
+    #     and some rows have readout_name == "viability", then keep
+    #     those rows and rename readout_value -> viability.
+    #   - Else, leave viability as NaN.
+    if "viability" in df.columns:
+        df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
+
+    elif "readout_value" in df.columns and "readout_name" in df.columns:
+        mask_viab = df["readout_name"] == "viability"
+        if mask_viab.any():
+            df = df.loc[mask_viab].copy()
+            df = df.rename(columns={"readout_value": "viability"})
+            df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
+        else:
+            # No explicit viability readout; keep table as-is
+            pass
+    else:
+        # No viability or readout_value; create an empty viability column
+        df["viability"] = pd.NA
+
+    # ------------------------------------------------------------------
+    # Timestamps
+    # ------------------------------------------------------------------
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+
+    return df
+
+
+# ----------------------------------------------------------------------
+# Core objects
+# ----------------------------------------------------------------------
 
 
 @dataclass
@@ -123,6 +221,77 @@ class LabWorldModel:
             pricing=pricing.copy() if pricing is not None else pd.DataFrame(),
         )
 
+    @classmethod
+    def from_experiment_csv(
+        cls,
+        experiment_csv: PathLike,
+        *,
+        cell_lines: Optional[pd.DataFrame] = None,
+        assays: Optional[pd.DataFrame] = None,
+        workflows: Optional[pd.DataFrame] = None,
+        pricing: Optional[pd.DataFrame] = None,
+    ) -> "LabWorldModel":
+        """
+        Build a LabWorldModel directly from a single experiment CSV.
+
+        This is ideal for loading your `results/experiment_history.csv` and
+        then attaching posteriors on top.
+        """
+        p = Path(experiment_csv)
+        if not p.exists():
+            raise FileNotFoundError(f"Experiment CSV not found: {p}")
+
+        if p.suffix.lower() != ".csv":
+            raise ValueError(f"Unsupported experiment file type: {p.suffix}")
+
+        raw = pd.read_csv(p)
+        experiments = _canonicalize_experiment_frame(raw)
+
+        return cls(
+            cell_lines=cell_lines.copy() if cell_lines is not None else pd.DataFrame(),
+            assays=assays.copy() if assays is not None else pd.DataFrame(),
+            workflows=workflows.copy() if workflows is not None else pd.DataFrame(),
+            pricing=pricing.copy() if pricing is not None else pd.DataFrame(),
+            experiments=experiments,
+        )
+
+    @classmethod
+    def from_experiment_files(
+        cls,
+        experiment_files: Sequence[PathLike],
+        *,
+        cell_lines: Optional[pd.DataFrame] = None,
+        assays: Optional[pd.DataFrame] = None,
+        workflows: Optional[pd.DataFrame] = None,
+        pricing: Optional[pd.DataFrame] = None,
+    ) -> "LabWorldModel":
+        """
+        Build a LabWorldModel from multiple experiment CSVs.
+
+        Each file is canonicalized and then concatenated.
+        """
+        frames: List[pd.DataFrame] = []
+        for f in experiment_files:
+            p = Path(f)
+            if not p.exists():
+                raise FileNotFoundError(f"Experiment file not found: {p}")
+            if p.suffix.lower() != ".csv":
+                raise ValueError(f"Unsupported experiment file type: {p.suffix}")
+            raw = pd.read_csv(p)
+            frames.append(_canonicalize_experiment_frame(raw))
+
+        experiments = (
+            pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        )
+
+        return cls(
+            cell_lines=cell_lines.copy() if cell_lines is not None else pd.DataFrame(),
+            assays=assays.copy() if assays is not None else pd.DataFrame(),
+            workflows=workflows.copy() if workflows is not None else pd.DataFrame(),
+            pricing=pricing.copy() if pricing is not None else pd.DataFrame(),
+            experiments=experiments,
+        )
+
     # ------------------------------------------------------------------
     # Campaign management
     # ------------------------------------------------------------------
@@ -159,19 +328,21 @@ class LabWorldModel:
              "time_h",
              "readout_name",
              "readout_value",
+             "viability",
              "replicate"]
 
-        This method is intentionally simple and permissive. Validation can be
-        added later once the schema is fully stabilized.
+        Incoming frames are canonicalized before being stored.
         """
         if df.empty:
             return
 
+        df_norm = _canonicalize_experiment_frame(df)
+
         if self.experiments.empty:
-            self.experiments = df.copy()
+            self.experiments = df_norm
         else:
             self.experiments = pd.concat(
-                [self.experiments, df], ignore_index=True
+                [self.experiments, df_norm], ignore_index=True
             )
 
     def get_experiments_for_campaign(self, campaign_id: CampaignId) -> pd.DataFrame:
@@ -183,11 +354,10 @@ class LabWorldModel:
         if self.experiments.empty:
             return pd.DataFrame(columns=self.experiments.columns)
 
-        mask = self.experiments.get("campaign_id") == campaign_id
-        if mask is None:
-            # No campaign_id column yet
+        if "campaign_id" not in self.experiments.columns:
             return pd.DataFrame(columns=self.experiments.columns)
 
+        mask = self.experiments["campaign_id"] == campaign_id
         return self.experiments.loc[mask].copy()
 
     def get_experiments_for_workflow(self, workflow_id: str) -> pd.DataFrame:
@@ -197,10 +367,10 @@ class LabWorldModel:
         if self.experiments.empty:
             return pd.DataFrame(columns=self.experiments.columns)
 
-        mask = self.experiments.get("workflow_id") == workflow_id
-        if mask is None:
+        if "workflow_id" not in self.experiments.columns:
             return pd.DataFrame(columns=self.experiments.columns)
 
+        mask = self.experiments["workflow_id"] == workflow_id
         return self.experiments.loc[mask].copy()
 
     # ------------------------------------------------------------------
@@ -283,7 +453,11 @@ class LabWorldModel:
     # Posterior attachment
     # ------------------------------------------------------------------
 
-    def attach_posterior(self, campaign_id: CampaignId, posterior: DoseResponsePosterior) -> None:
+    def attach_posterior(
+        self,
+        campaign_id: CampaignId,
+        posterior: DoseResponsePosterior,
+    ) -> None:
         """
         Attach a modeling posterior (for example a DoseResponsePosterior)
         to a given campaign.
@@ -295,3 +469,32 @@ class LabWorldModel:
         Retrieve a posterior for a given campaign id, if present.
         """
         return self.posteriors.get(campaign_id)
+
+    def build_dose_response_posterior(
+        self,
+        campaign_id: CampaignId,
+        readout_name: str = "viability",
+    ) -> DoseResponsePosterior:
+        """
+        Convenience helper: build a DoseResponsePosterior from this world
+        and attach it under the given campaign id.
+
+        This assumes DoseResponsePosterior exposes a constructor like:
+            DoseResponsePosterior.from_world(world, campaign_id, readout_name=...)
+
+        If the signature differs slightly in your code, adjust here.
+        """
+        df = self.get_experiments_for_campaign(campaign_id)
+        if df.empty:
+            raise ValueError(
+                f"No experiments found for campaign {campaign_id!r}; "
+                "cannot build dose-response posterior."
+            )
+
+        posterior = DoseResponsePosterior.from_world(
+            world=self,
+            campaign_id=campaign_id,
+            readout_name=readout_name,
+        )
+        self.attach_posterior(campaign_id, posterior)
+        return posterior
