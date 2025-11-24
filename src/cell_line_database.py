@@ -115,6 +115,23 @@ CELL_LINE_DATABASE: Dict[str, CellLineProfile] = {
         cost_tier="standard"
     ),
     
+    "A549": CellLineProfile(
+        name="A549 (Human Lung Carcinoma)",
+        cell_type="immortalized",
+        dissociation_method="trypsin",
+        dissociation_notes="Hardy adherent cells, trypsin works well",
+        transfection_method="lipofectamine",
+        transfection_efficiency="medium",
+        transfection_notes="Standard lipofectamine protocol",
+        transduction_method="spinoculation",
+        transduction_notes="Spinoculation at MOI 0.3 for POSH screens. Barcode efficiency: 55-65%",
+        freezing_media="fbs_dmso",
+        freezing_notes="Standard protocol",
+        coating="none",
+        media="f12k",
+        cost_tier="budget"
+    ),
+    
     # ============================================================================
     # PLURIPOTENT STEM CELLS (Sensitive, require gentle handling)
     # ============================================================================
