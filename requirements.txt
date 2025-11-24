@@ -10,3 +10,5 @@ graphviz
 altair
 plotly
 networkx
+ortools
+tqdm

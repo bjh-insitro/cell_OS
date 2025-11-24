@@ -16,26 +16,30 @@ The system is built on three pillars of "Scientific Superintelligence" (SSI):
 
 *   **Closed-Loop Experimentation**: Automatically proposes, executes (simulates), and analyzes experiments to reduce uncertainty.
 *   **Mission Logs**: Generates human-readable narratives explaining the agent's decision-making process.
-*   **Cost-Aware Decision Support**: Intelligent agent that optimizes for budget.
+*   **Cost-Aware Decision Support**: Intelligent agent
     *   **Recipe Optimizer**: Auto-selects methods (e.g., "trypsin" vs "accutase") based on cell type and budget.
     *   **Workflow Optimizer**: Identifies cost-saving opportunities and calculates ROI.
     *   **Automation Analysis**: Scores protocols for automation feasibility.
+
+## Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run autonomous loop (demo)
+python scripts/run_loop.py
+
+# Launch dashboard
+streamlit run scripts/dashboard.py
+```
 
 ## Directory Structure
 
 ```
 cell_OS/
+├── config/              # Configuration files (repos, designs)
 ├── data/
-│   ├── raw/
-│   │   ├── pricing.yaml             # Price catalog (Reagents, Plastics, Services)
-│   │   ├── vessels.yaml             # Labware definitions
-│   │   └── ...
-├── src/
-│   ├── acquisition.py    # Decision engine (Max Uncertainty)
-│   ├── assay_selector.py # Budget-aware assay selection
-│   ├── automation_analysis.py # Automation feasibility scoring
-│   ├── campaign.py       # Goal definitions
-│   ├── cell_line_database.py # Cell type specific defaults
 │   ├── inventory.py      # Inventory and Cost calculation logic
 │   ├── modeling.py       # Gaussian Process models
 │   ├── recipe_optimizer.py # Method optimization logic
