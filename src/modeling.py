@@ -91,6 +91,8 @@ class DoseResponseGP:
         """
         Create an empty GP model instance.
         Useful for initialization before any data is available.
+        
+        Note: Any call to predict() on an empty model will return NaN arrays.
         """
         config = DoseResponseGPConfig()
         model = _build_gp_model(config)
@@ -123,11 +125,11 @@ class DoseResponseGP:
         Fit a GP model from a dataframe slice.
 
         Args:
-            df: DataFrame with at least 'dose' and 'viability' columns
+            df: DataFrame with at least dose_col and viability_col columns
             cell_line, compound, time_h: identifiers for the slice
             config: Optional GP configuration
-            dose_col: Name of dose column
-            viability_col: Name of viability column
+            dose_col: Name of dose column (default: 'dose_uM')
+            viability_col: Name of viability column (default: 'viability')
         """
 
         if config is None:
@@ -186,16 +188,18 @@ class DoseResponseGP:
         viability_col: str = "viability",
     ) -> "DoseResponseGP":
         """
-        Fit GP with informative prior from related assay (multi-fidelity learning).
+        Fit GP with a shrinkage prior from a related assay.
         
-        Transfer learning:  cheap assay GP → expensive assay
+        We use the prior GP to pull the new observations toward the prior
+        before fitting, then train a standard GP on the shrunk targets.
+        This is a form of transfer learning: cheap assay GP → expensive assay.
         
         Args:
             prior_model: GP from related assay (e.g., reporter assay)
-            prior_weight: Weight for prior predictions (0-1)
+            prior_weight: Weight for prior predictions in shrinkage (0-1)
             
         Returns:
-            GP combining prior knowledge and new data
+            GP fitted on shrunk targets combining prior and new data
         """
         
         if config is None:
@@ -217,11 +221,20 @@ class DoseResponseGP:
                 df, cell_line, compound, time_h, config, dose_col, viability_col
             )
         
-        # If no new data, return prior as-is
+        # If no new data, return a copy of prior with updated identifiers
+        # (avoid mutating the original prior_model)
         if df_slice.empty:
-            gp = prior_model
-            gp.cell_line = cell_line  # Update identifiers
-            return gp
+            return cls(
+                cell_line=cell_line,
+                compound=compound,
+                time_h=time_h,
+                config=prior_model.config,
+                model=prior_model.model,
+                X_train=prior_model.X_train,
+                y_train=prior_model.y_train,
+                prior_model=prior_model.prior_model,
+                is_fitted=prior_model.is_fitted,
+            )
         
         # Combine prior predictions with new data
         if (df_slice[dose_col] <= 0).any():
@@ -277,6 +290,12 @@ class DoseResponseGP:
         
         # Defensive check: if model failed to fit, return NaN
         if not self.is_fitted:
+            import warnings
+            warnings.warn(
+                f"[DoseResponseGP] predict called on unfitted model "
+                f"({self.cell_line}/{self.compound}/{self.time_h}); returning NaNs.",
+                RuntimeWarning,
+            )
             nan_array = np.full_like(dose_uM, fill_value=np.nan, dtype=float)
             if return_std:
                 return nan_array, nan_array
@@ -407,7 +426,7 @@ def estimate_replicate_noise(
     df: pd.DataFrame,
     dose_col: str = "dose_uM",
     viability_col: str = "viability",
-    group_cols: Iterable[str] = ("cell_line", "compound", "time_h", "dose_uM"),
+    group_cols: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     """
     Estimate empirical noise from replicate wells.
@@ -423,6 +442,8 @@ def estimate_replicate_noise(
 
     You can later use this to build a "noise vs dose" map.
     """
+    if group_cols is None:
+        group_cols = ("cell_line", "compound", "time_h", dose_col)
     group_cols = list(group_cols)
 
     agg = (

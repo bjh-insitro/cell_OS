@@ -67,6 +67,12 @@ def _canonicalize_experiment_frame(df: pd.DataFrame) -> pd.DataFrame:
         df["campaign_id"] = "UNSPECIFIED_CAMPAIGN"
 
     # ------------------------------------------------------------------
+    # Workflow id
+    # ------------------------------------------------------------------
+    if "workflow_id" not in df.columns and "workflow" in df.columns:
+        df = df.rename(columns={"workflow": "workflow_id"})
+
+    # ------------------------------------------------------------------
     # Dose
     # ------------------------------------------------------------------
     if "dose_uM" in df.columns:
@@ -91,11 +97,11 @@ def _canonicalize_experiment_frame(df: pd.DataFrame) -> pd.DataFrame:
     # Viability / primary readout
     # ------------------------------------------------------------------
     # Strategy:
-    #   - If there's already a "viability" column, use it.
+    #   - If there is already a "viability" column, use it.
     #   - Else, if there is a (readout_name, readout_value) pair,
     #     and some rows have readout_name == "viability", then keep
     #     those rows and rename readout_value -> viability.
-    #   - Else, leave viability as NaN.
+    #   - Else, create an empty viability column.
     if "viability" in df.columns:
         df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
 
@@ -106,17 +112,46 @@ def _canonicalize_experiment_frame(df: pd.DataFrame) -> pd.DataFrame:
             df = df.rename(columns={"readout_value": "viability"})
             df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
         else:
-            # No explicit viability readout; keep table as-is
-            pass
+            df["viability"] = pd.NA
     else:
-        # No viability or readout_value; create an empty viability column
         df["viability"] = pd.NA
+
+    # ------------------------------------------------------------------
+    # Replicate
+    # ------------------------------------------------------------------
+    if "replicate" not in df.columns:
+        df["replicate"] = 0
+    df["replicate"] = pd.to_numeric(df["replicate"], errors="coerce")
 
     # ------------------------------------------------------------------
     # Timestamps
     # ------------------------------------------------------------------
     if "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+
+    # ------------------------------------------------------------------
+    # Stable column ordering for nicer CSVs and debugging
+    # ------------------------------------------------------------------
+    preferred_order = [
+        "experiment_id",
+        "campaign_id",
+        "workflow_id",
+        "plate_id",
+        "well_id",
+        "cell_line",
+        "compound",
+        "dose_uM",
+        "time_h",
+        "viability",
+        "readout_name",
+        "readout_value",
+        "replicate",
+        "timestamp",
+    ]
+    cols = [c for c in preferred_order if c in df.columns] + [
+        c for c in df.columns if c not in preferred_order
+    ]
+    df = df[cols]
 
     return df
 
@@ -186,6 +221,19 @@ class LabWorldModel:
 
     # Beliefs (modeling products)
     posteriors: Dict[CampaignId, DoseResponsePosterior] = field(default_factory=dict)
+
+    # ------------------------------------------------------------------
+    # Dataclass invariant hook
+    # ------------------------------------------------------------------
+
+    def __post_init__(self) -> None:
+        """
+        Enforce invariants after construction.
+
+        In particular, we always keep `experiments` in canonical form.
+        """
+        if not self.experiments.empty:
+            self.experiments = _canonicalize_experiment_frame(self.experiments)
 
     # ------------------------------------------------------------------
     # Constructors
@@ -372,6 +420,41 @@ class LabWorldModel:
 
         mask = self.experiments["workflow_id"] == workflow_id
         return self.experiments.loc[mask].copy()
+
+    def get_slice(
+        self,
+        *,
+        campaign_id: Optional[CampaignId] = None,
+        cell_line: Optional[str] = None,
+        compound: Optional[str] = None,
+        time_h: Optional[float] = None,
+    ) -> pd.DataFrame:
+        """
+        Filter experiments by a combination of keys.
+
+        All filters are optional. This is intended as the main entry point
+        for modeling and acquisition code that wants a single
+        (campaign, cell_line, compound, time_h) slice.
+        """
+        df = self.experiments
+        if df.empty:
+            return df.copy()
+
+        mask = pd.Series(True, index=df.index)
+
+        if campaign_id is not None and "campaign_id" in df.columns:
+            mask &= df["campaign_id"] == campaign_id
+
+        if cell_line is not None and "cell_line" in df.columns:
+            mask &= df["cell_line"] == cell_line
+
+        if compound is not None and "compound" in df.columns:
+            mask &= df["compound"] == compound
+
+        if time_h is not None and "time_h" in df.columns:
+            mask &= df["time_h"] == time_h
+
+        return df.loc[mask].copy()
 
     # ------------------------------------------------------------------
     # Static knowledge helpers
