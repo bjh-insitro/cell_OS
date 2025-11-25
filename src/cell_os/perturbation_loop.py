@@ -1,0 +1,182 @@
+# -*- coding: utf-8 -*-
+"""Perturbation acquisition loop for POSH screens.
+
+This loop operates at the gene/guide level, selecting which perturbations
+to include in a POSH screen. It sits above the imaging dose loop.
+
+Architecture:
+- ImagingDoseLoop chooses the optimal stressor dose (Phase -1)
+- PerturbationAcquisitionLoop chooses which genes/guides to screen (Phase 0)
+- Together they define a complete POSH campaign
+"""
+
+from __future__ import annotations
+from typing import Protocol, Optional, List
+import pandas as pd
+
+from cell_os.perturbation_goal import (
+    PerturbationGoal,
+    PerturbationPlan,
+    PerturbationBatch,
+    PerturbationPosterior,
+)
+
+
+class PerturbationExecutorLike(Protocol):
+    """Protocol for perturbation executors.
+    
+    An executor takes a batch of perturbation plans and returns results
+    (morphological features, viability, etc.).
+    
+    Future implementations:
+    - SimulatedPerturbationExecutor: For testing
+    - RealPerturbationExecutor: Integrates with lab automation
+    """
+    
+    def run_batch(self, batch: PerturbationBatch) -> pd.DataFrame:
+        """Execute a batch of perturbations and return results.
+        
+        Parameters
+        ----------
+        batch : PerturbationBatch
+            Batch of perturbations to execute
+        
+        Returns
+        -------
+        results : pd.DataFrame
+            Results with columns: gene, guide_id, replicate, morphology_features, viability
+        """
+        ...
+
+
+class PerturbationAcquisitionLoop:
+    """Autonomous loop for selecting perturbations in POSH screens.
+    
+    This loop proposes which genes and guides to include in a POSH screen,
+    based on a goal (e.g., maximize phenotypic diversity) and constraints
+    (e.g., plate capacity, budget).
+    
+    Workflow:
+    1. propose() -> PerturbationBatch (which genes/guides to screen)
+    2. executor.run_batch() -> results (morphological features)
+    3. posterior.update_with_results() -> updated beliefs
+    4. Repeat
+    
+    Parameters
+    ----------
+    posterior : PerturbationPosterior
+        Belief about gene -> phenotype relationships
+    executor : PerturbationExecutorLike
+        Executor for running perturbation experiments
+    goal : PerturbationGoal
+        Goal defining what to optimize for
+    
+    Examples
+    --------
+    >>> posterior = PerturbationPosterior()
+    >>> executor = SimulatedPerturbationExecutor()  # Future
+    >>> goal = PerturbationGoal(objective="maximize_diversity", max_perturbations=200)
+    >>> loop = PerturbationAcquisitionLoop(posterior, executor, goal)
+    >>> batch = loop.propose(candidate_genes=["TP53", "MDM2", "ATM"])
+    >>> results = loop.run_one_cycle(candidate_genes=["TP53", "MDM2", "ATM"])
+    
+    Notes
+    -----
+    This is a skeleton. Future implementation will:
+    - Use morphological embeddings to predict phenotypic diversity
+    - Integrate with guide design solver (existing gRNA code)
+    - Optimize for information gain per dollar
+    - Handle plate layout constraints (384-well)
+    """
+    
+    def __init__(
+        self,
+        posterior: PerturbationPosterior,
+        executor: PerturbationExecutorLike,
+        goal: PerturbationGoal,
+    ):
+        """Initialize the perturbation acquisition loop."""
+        self.posterior = posterior
+        self.executor = executor
+        self.goal = goal
+    
+    def propose(
+        self,
+        candidate_genes: List[str],
+        candidate_guides: Optional[pd.DataFrame] = None,
+    ) -> PerturbationBatch:
+        """Propose a batch of perturbations to execute.
+        
+        Parameters
+        ----------
+        candidate_genes : List[str]
+            List of candidate genes to consider
+        candidate_guides : Optional[pd.DataFrame]
+            Optional pre-designed guides (columns: gene, guide_seq, guide_id, score)
+            If None, guides will be designed on-the-fly (future integration with gRNA solver)
+        
+        Returns
+        -------
+        batch : PerturbationBatch
+            Proposed perturbations to execute
+        
+        Notes
+        -----
+        Future implementation will:
+        1. Score each gene by expected phenotypic informativeness
+        2. Select top N genes (respecting max_perturbations constraint)
+        3. For each gene, select guides (integrate with gRNA design solver)
+        4. Compute expected diversity and cost
+        5. Return optimized batch
+        
+        For now, this is a placeholder that returns empty batch.
+        """
+        # TODO: Implement acquisition logic
+        # - Use posterior.get_diversity_score() to rank genes
+        # - Integrate with gRNA design solver
+        # - Optimize for diversity subject to constraints
+        
+        return PerturbationBatch(
+            plans=[],
+            total_cost_usd=0.0,
+            expected_diversity=0.0,
+        )
+    
+    def run_one_cycle(
+        self,
+        candidate_genes: List[str],
+        candidate_guides: Optional[pd.DataFrame] = None,
+    ) -> PerturbationBatch:
+        """Run one cycle: propose -> execute -> update.
+        
+        Parameters
+        ----------
+        candidate_genes : List[str]
+            List of candidate genes to consider
+        candidate_guides : Optional[pd.DataFrame]
+            Optional pre-designed guides
+        
+        Returns
+        -------
+        batch : PerturbationBatch
+            The batch that was executed
+        
+        Notes
+        -----
+        This is the main entry point for closed-loop operation.
+        Future implementation will:
+        1. Call propose() to get batch
+        2. Call executor.run_batch() to execute
+        3. Call posterior.update_with_results() to learn
+        4. Return the executed batch
+        """
+        # Propose
+        batch = self.propose(candidate_genes, candidate_guides)
+        
+        # Execute (future)
+        # results = self.executor.run_batch(batch)
+        
+        # Update posterior (future)
+        # self.posterior.update_with_results(results)
+        
+        return batch
