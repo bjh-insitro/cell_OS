@@ -1,4 +1,4 @@
-from src.inventory import Inventory
+from cell_os.inventory import Inventory
 import sys
 
 print("Starting YAML Inventory Verification...", flush=True)

@@ -7,7 +7,7 @@ identify manual bottlenecks, and estimate labor vs automation cost tradeoffs.
 
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-from src.unit_ops import UnitOp, AssayRecipe
+from cell_os.unit_ops import UnitOp, AssayRecipe
 
 @dataclass
 class AutomationAnalysis:

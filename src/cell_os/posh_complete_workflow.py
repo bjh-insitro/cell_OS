@@ -5,9 +5,9 @@ Integrates screen designer calculations with parametric ops to create
 a complete end-to-end workflow from transduction to analysis.
 """
 
-from src.unit_ops import AssayRecipe, ParametricOps
-from src.posh_screen_designer import create_screen_design
-from src.workflows import workflow_from_assay_recipe, Workflow
+from cell_os.unit_ops import AssayRecipe, ParametricOps
+from cell_os.posh_screen_designer import create_screen_design
+from cell_os.workflows import workflow_from_assay_recipe, Workflow
 
 
 def get_complete_posh_screen_workflow(

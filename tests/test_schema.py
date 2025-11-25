@@ -1,12 +1,10 @@
 import sys
-import os
 import pandas as pd
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.schema import Phase0WorldModel, SliceKey
-from src.modeling import DoseResponseGP, DoseResponseGPConfig
+from cell_os.schema import Phase0WorldModel, SliceKey
+from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
 
 def test_schema():
     print("Testing SliceKey...")

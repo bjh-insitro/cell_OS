@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List
-from src.unit_ops import UnitOp, ParametricOps, AssayRecipe
+from cell_os.unit_ops import UnitOp, ParametricOps, AssayRecipe
 
 
 @dataclass

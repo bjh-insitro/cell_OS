@@ -1,6 +1,6 @@
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps
-from src.automation_analysis import (
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps
+from cell_os.automation_analysis import (
     analyze_unit_op_automation,
     compare_automation_methods,
     generate_automation_report
@@ -69,7 +69,7 @@ print()
 print("\nTest 5: Automation Feasibility by Cell Type")
 print("=" * 60)
 
-from src.cell_line_database import get_cell_line_profile
+from cell_os.cell_line_database import get_cell_line_profile
 
 cell_lines = ["HEK293", "iPSC", "Primary_Neurons"]
 

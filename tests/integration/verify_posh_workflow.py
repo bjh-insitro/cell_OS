@@ -8,8 +8,8 @@ Tests the new POSH-specific operations:
 - High-content imaging
 """
 
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps, get_posh_screening_recipe
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps, get_posh_screening_recipe
 import sys
 
 print("=" * 70)

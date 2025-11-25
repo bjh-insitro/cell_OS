@@ -5,8 +5,8 @@ Tests the complete Decross-linking → T7 IVT → Multimodal → SBS workflow
 and compares with Vanilla POSH.
 """
 
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps, get_zombie_posh_complete_recipe, get_vanilla_posh_complete_recipe
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps, get_zombie_posh_complete_recipe, get_vanilla_posh_complete_recipe
 import sys
 
 print("=" * 70)

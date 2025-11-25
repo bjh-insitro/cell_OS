@@ -1,4 +1,4 @@
-from src.unit_ops import AssayRecipe, UnitOp
+from cell_os.unit_ops import AssayRecipe, UnitOp
 
 print("Imported AssayRecipe:", AssayRecipe)
 print("AssayRecipe fields:", AssayRecipe.__dataclass_fields__.keys())

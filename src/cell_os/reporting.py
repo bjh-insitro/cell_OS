@@ -6,7 +6,7 @@ Generates a human-readable 'Mission Log' explaining the agent's decisions.
 
 import os
 import pandas as pd
-from src.schema import Phase0WorldModel
+from cell_os.schema import Phase0WorldModel
 
 class MissionLogger:
     def __init__(self, log_path: str = "results/mission_log.md"):

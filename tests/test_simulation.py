@@ -1,11 +1,9 @@
 import sys
-import os
 import pandas as pd
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.simulation import simulate_plate_data
+from cell_os.simulation import simulate_plate_data
 
 def test_simulation():
     print("Testing simulate_plate_data...")

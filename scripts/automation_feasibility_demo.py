@@ -10,23 +10,23 @@ import os
 import numpy as np
 import pandas as pd
 
-from src.simulation import simulate_plate_data, TRUE_IC50, HILL_SLOPES, logistic_viability
-from src.modeling import (
+from cell_os.simulation import simulate_plate_data, TRUE_IC50, HILL_SLOPES, logistic_viability
+from cell_os.modeling import (
     estimate_plate_drift_from_controls,
     apply_plate_drift_correction,
     estimate_replicate_noise,
     DoseResponseGP,
     DoseResponseGPConfig
 )
-from src.schema import Phase0WorldModel, SliceKey
-from src.acquisition import propose_next_experiments
-from src.reporting import MissionLogger
-from src.campaign import Campaign, PotencyGoal, SelectivityGoal
-from src.assay_selector import CostConstrainedSelector, get_assay_candidates
-from src.inventory import Inventory
-from src.unit_ops import UnitOpLibrary, ParametricOps, VesselLibrary
-from src.recipe_optimizer import RecipeOptimizer, RecipeConstraints
-from src.llm_scientist import LLMScientist
+from cell_os.schema import Phase0WorldModel, SliceKey
+from cell_os.acquisition import propose_next_experiments
+from cell_os.reporting import MissionLogger
+from cell_os.campaign import Campaign, PotencyGoal, SelectivityGoal
+from cell_os.assay_selector import CostConstrainedSelector, get_assay_candidates
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import UnitOpLibrary, ParametricOps, VesselLibrary
+from cell_os.recipe_optimizer import RecipeOptimizer, RecipeConstraints
+from cell_os.llm_scientist import LLMScientist
 
 
 def execute_experiments(experiment_df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:

@@ -5,12 +5,10 @@ Tests the adapter layer that connects cell_OS LibraryDesign with the
 external constraint-based solver.
 """
 
-import sys
 import os
 
-sys.path.append(os.getcwd())
 
-from src.upstream import LibraryDesign, GeneTarget
+from cell_os.upstream import LibraryDesign, GeneTarget
 
 
 def test_mock_design():
@@ -76,7 +74,7 @@ def test_adapter_import():
     print("\nTesting adapter module import...")
     
     try:
-        from src.guide_design_v2 import GuideLibraryAdapter, GuideDesignConfig
+        from cell_os.guide_design_v2 import GuideLibraryAdapter, GuideDesignConfig
         print("✓ Adapter module imported successfully")
         
         # Test config creation

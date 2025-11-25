@@ -10,12 +10,12 @@ import pandas as pd
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Union
 import math
-import src.cellpaint_panels as cp
-import src.upstream as up
+import cell_os.cellpaint_panels as cp
+import cell_os.upstream as up
 
 # Import cell line database for automatic method selection
 try:
-    from src.cell_line_database import get_cell_line_profile, get_optimal_methods
+    from cell_os.cell_line_database import get_cell_line_profile, get_optimal_methods
     CELL_LINE_DB_AVAILABLE = True
 except ImportError:
     CELL_LINE_DB_AVAILABLE = False

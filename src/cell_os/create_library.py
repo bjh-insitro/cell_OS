@@ -9,9 +9,9 @@ import pandas as pd
 from ortools.sat.python import cp_model
 from tqdm.auto import tqdm
 
-from src.config_utils import load_yaml
-from src.barcode_trie import Trie
-from src.guide_utils import format_library
+from cell_os.config_utils import load_yaml
+from cell_os.barcode_trie import Trie
+from cell_os.guide_utils import format_library
 
 
 logging.basicConfig(level=logging.INFO)

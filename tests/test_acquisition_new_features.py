@@ -3,8 +3,8 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
-from src.acquisition import AcquisitionFunction, propose_next_experiments
-from src.schema import Phase0WorldModel
+from cell_os.acquisition import AcquisitionFunction, propose_next_experiments
+from cell_os.schema import Phase0WorldModel
 
 # Mock GP class to simulate predict_on_grid
 class MockGP:

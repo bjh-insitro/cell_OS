@@ -1,6 +1,6 @@
 import pytest
 
-from src.llm_scientist import LLMScientist, ScientificInsight, CandidateHypothesis
+from cell_os.llm_scientist import LLMScientist, ScientificInsight, CandidateHypothesis
 
 
 def test_llm_scientist_basic_structure():

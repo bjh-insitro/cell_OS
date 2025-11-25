@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 import pandas as pd
 
-from src.posteriors import DoseResponsePosterior
+from cell_os.posteriors import DoseResponsePosterior
 
 
 # Simple aliases for readability

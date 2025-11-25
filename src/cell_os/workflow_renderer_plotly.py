@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 import networkx as nx
 from typing import List, Any, Union
-from src.workflows import Workflow, Process
+from cell_os.workflows import Workflow, Process
 
 def render_workflow_plotly(workflow: Workflow, detail_level: str = "process"):
     """

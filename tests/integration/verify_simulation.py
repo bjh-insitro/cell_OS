@@ -4,8 +4,7 @@ import os
 import pandas as pd
 import numpy as np
 
-sys.path.append(os.getcwd())
-from src.simulation import SimulationEngine
+from cell_os.simulation import SimulationEngine
 
 def test_simulation_realism():
     print("Testing simulation realism...")

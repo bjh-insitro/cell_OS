@@ -4,7 +4,7 @@ Verification script for Inventory Management.
 Tests stock tracking and OutOfStockError handling.
 """
 
-from src.inventory import Inventory, OutOfStockError
+from cell_os.inventory import Inventory, OutOfStockError
 
 def verify_inventory():
     print("=" * 70)

@@ -4,12 +4,10 @@ Integration tests for inventory depletion tracking.
 Tests resource consumption and availability checking.
 """
 
-import sys
 import os
-sys.path.append(os.getcwd())
 
 import pytest
-from src.inventory import Inventory, BOMItem, OutOfStockError
+from cell_os.inventory import Inventory, BOMItem, OutOfStockError
 
 
 def test_consume_success():

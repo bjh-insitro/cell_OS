@@ -11,8 +11,8 @@ from typing import List
 
 import pandas as pd
 
-from src.lab_world_model import LabWorldModel, Campaign
-from src.inventory import Inventory
+from cell_os.lab_world_model import LabWorldModel, Campaign
+from cell_os.inventory import Inventory
 
 
 def _default_cell_lines_table() -> pd.DataFrame:
@@ -63,7 +63,7 @@ def _default_workflows_table() -> pd.DataFrame:
     Minimal workflows catalog.
 
     Each row describes a workflow id and its rough cost. You can later
-    generate this from src.workflows / src.unit_ops instead of hardcoding.
+    generate this from cell_os.workflows / src.unit_ops instead of hardcoding.
     """
     rows = [
         {

@@ -2,11 +2,9 @@
 Test script for POSH Screen Designer
 """
 
-import sys
 import os
-sys.path.append(os.getcwd())
 
-from src.posh_screen_designer import create_screen_design
+from cell_os.posh_screen_designer import create_screen_design
 
 def test_screen_designer():
     print("=" * 80)

@@ -8,8 +8,8 @@ and the GP model's ability to handle it.
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
-from src.simulation import simulate_plate_data
-from src.modeling import DoseResponseGP
+from cell_os.simulation import simulate_plate_data
+from cell_os.modeling import DoseResponseGP
 
 def verify_robustness():
     print("=" * 70)

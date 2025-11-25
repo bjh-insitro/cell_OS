@@ -2,11 +2,9 @@
 Test script for POSH Decision Engine
 """
 
-import sys
 import os
-sys.path.append(os.getcwd())
 
-from src.posh_decision_engine import POSHDecisionEngine, UserRequirements
+from cell_os.posh_decision_engine import POSHDecisionEngine, UserRequirements
 
 def test_decision_engine():
     print("=" * 80)

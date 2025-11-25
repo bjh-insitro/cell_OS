@@ -3,8 +3,8 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
-from src.lab_world_model import LabWorldModel, Campaign
-from src.posteriors import DoseResponsePosterior
+from cell_os.lab_world_model import LabWorldModel, Campaign
+from cell_os.posteriors import DoseResponsePosterior
 
 def test_lab_world_model_initialization():
     """Test basic initialization and empty state."""
@@ -106,7 +106,7 @@ def test_build_dose_response_posterior():
     wm.add_experiments(df)
     
     # Mock DoseResponsePosterior.from_world
-    with patch("src.posteriors.DoseResponsePosterior.from_world") as mock_from_world:
+    with patch("cell_os.posteriors.DoseResponsePosterior.from_world") as mock_from_world:
         mock_posterior = MagicMock(spec=DoseResponsePosterior)
         mock_from_world.return_value = mock_posterior
         

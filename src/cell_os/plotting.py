@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.simulation import TRUE_IC50, HILL_SLOPES, logistic_viability
+from cell_os.simulation import TRUE_IC50, HILL_SLOPES, logistic_viability
 
 def plot_simulation_results(csv_path: str, output_dir: str = "results/figures"):
     """

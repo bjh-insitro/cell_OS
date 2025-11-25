@@ -57,7 +57,7 @@ class LibraryDesign:
         Generate guides using constraint-based solver.
         """
         try:
-            from src.guide_design_v2 import GuideLibraryAdapter, GuideDesignConfig
+            from cell_os.guide_design_v2 import GuideLibraryAdapter, GuideDesignConfig
             
             config = GuideDesignConfig(
                 min_guides_per_gene=1,

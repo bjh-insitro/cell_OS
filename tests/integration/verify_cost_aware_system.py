@@ -7,11 +7,11 @@ Tests:
 3. Cost-Constrained Selector - Budget-aware assay selection
 """
 
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps
-from src.recipe_optimizer import RecipeOptimizer, RecipeConstraints, generate_optimization_report
-from src.workflow_optimizer import WorkflowOptimizer
-from src.assay_selector import CostConstrainedSelector, AssayCandidate, AssayRecipe
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps
+from cell_os.recipe_optimizer import RecipeOptimizer, RecipeConstraints, generate_optimization_report
+from cell_os.workflow_optimizer import WorkflowOptimizer
+from cell_os.assay_selector import CostConstrainedSelector, AssayCandidate, AssayRecipe
 
 print("=" * 70)
 print("COST-AWARE DECISION SUPPORT SYSTEM VERIFICATION")

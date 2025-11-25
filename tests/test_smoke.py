@@ -1,9 +1,7 @@
 import unittest
-import sys
 import os
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 class TestSmoke(unittest.TestCase):
     """
@@ -27,7 +25,7 @@ class TestSmoke(unittest.TestCase):
     def test_unit_ops_definitions(self):
         """Test that unit_ops.py classes are defined and valid."""
         try:
-            from src.unit_ops import UnitOp, VesselLibrary, ParametricOps, AssayRecipe
+            from cell_os.unit_ops import UnitOp, VesselLibrary, ParametricOps, AssayRecipe
         except ImportError as e:
             self.fail(f"Failed to import unit_ops classes: {e}")
         except NameError as e:
@@ -36,14 +34,14 @@ class TestSmoke(unittest.TestCase):
     def test_workflow_renderer(self):
         """Test that workflow_renderer can be imported."""
         try:
-            from src.workflow_renderer import render_workflow_graph
+            from cell_os.workflow_renderer import render_workflow_graph
         except ImportError as e:
             self.fail(f"Failed to import workflow_renderer: {e}")
 
     def test_instantiate_parametric_ops(self):
         """Test that we can instantiate ParametricOps (catches logic errors in __init__)."""
-        from src.unit_ops import ParametricOps, VesselLibrary
-        from src.inventory import Inventory
+        from cell_os.unit_ops import ParametricOps, VesselLibrary
+        from cell_os.inventory import Inventory
         
         # We need valid paths for this to work, or we mock them.
         # Using the actual files is a good integration test.

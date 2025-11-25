@@ -9,8 +9,8 @@ This module creates optimized recipes based on constraints:
 
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from src.unit_ops import UnitOp, ParametricOps, AssayRecipe
-from src.cell_line_database import get_cell_line_profile, CellLineProfile
+from cell_os.unit_ops import UnitOp, ParametricOps, AssayRecipe
+from cell_os.cell_line_database import get_cell_line_profile, CellLineProfile
 
 @dataclass
 class RecipeConstraints:

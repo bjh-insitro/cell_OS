@@ -1,6 +1,6 @@
 from typing import List, Any, Union
 import graphviz
-from src.workflows import Workflow, Process
+from cell_os.workflows import Workflow, Process
 
 def render_workflow_graph(workflow_or_recipe: Union[Workflow, List[Any]], title: str = "Workflow Graph", detail_level: str = "process") -> graphviz.Digraph:
     """

@@ -4,15 +4,13 @@ Integration tests for multi-fidelity learning.
 Tests transfer learning from cheap to expensive assays.
 """
 
-import sys
 import os
-sys.path.append(os.getcwd())
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from src.modeling import DoseResponseGP
+from cell_os.modeling import DoseResponseGP
 
 
 def test_multifidelity_reduces_uncertainty():

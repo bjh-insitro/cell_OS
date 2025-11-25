@@ -1,4 +1,4 @@
-from src.cell_line_database import (
+from cell_os.cell_line_database import (
     get_cell_line_profile,
     get_optimal_methods,
     list_cell_lines,
@@ -6,8 +6,8 @@ from src.cell_line_database import (
     get_cell_lines_by_cost_tier,
     CELL_LINE_DATABASE
 )
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps
 
 print("=== CELL LINE DATABASE VERIFICATION ===\n")
 

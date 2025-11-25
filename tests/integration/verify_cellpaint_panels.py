@@ -1,10 +1,8 @@
-import sys
 import os
-sys.path.append(os.getcwd())
 
-from src.unit_ops import ParametricOps
-from src.inventory import Inventory
-import src.cellpaint_panels as cp
+from cell_os.unit_ops import ParametricOps
+from cell_os.inventory import Inventory
+import cell_os.cellpaint_panels as cp
 
 def verify_cellpaint_panels():
     print("=" * 80)
@@ -12,7 +10,7 @@ def verify_cellpaint_panels():
     print("=" * 80)
 
     # Initialize
-    from src.unit_ops import VesselLibrary
+    from cell_os.unit_ops import VesselLibrary
     vessels = VesselLibrary("data/raw/vessels.yaml") # Assuming this path exists, or we can mock it
     inv = Inventory("data/raw/pricing.yaml")
     ops = ParametricOps(vessels, inv)

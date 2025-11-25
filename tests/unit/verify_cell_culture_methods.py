@@ -1,5 +1,5 @@
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps
 
 print("=== DISSOCIATION METHODS COMPARISON ===\n")
 

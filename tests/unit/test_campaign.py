@@ -4,14 +4,11 @@ Unit tests for Campaign and goal logic.
 Tests campaign goal evaluation and completion criteria.
 """
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
-from src.campaign import Campaign, PotencyGoal, SelectivityGoal
-from src.posteriors import Phase0WorldModel
+from cell_os.campaign import Campaign, PotencyGoal, SelectivityGoal
+from cell_os.posteriors import Phase0WorldModel
 
 
 def test_potency_goal_creation():

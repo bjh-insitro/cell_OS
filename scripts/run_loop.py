@@ -19,15 +19,15 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary
-from src.modeling import DoseResponseGP
-from src.acquisition import AcquisitionFunction
-from src.simulation import SimulationEngine
-from src.assay_selector import AssaySelector
-from src.core.world_model import WorldModel
-from src.campaign import Campaign, PotencyGoal, SelectivityGoal
-from src.schema import Phase0WorldModel, SliceKey
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary
+from cell_os.modeling import DoseResponseGP
+from cell_os.acquisition import AcquisitionFunction
+from cell_os.simulation import SimulationEngine
+from cell_os.assay_selector import AssaySelector
+from cell_os.core.world_model import WorldModel
+from cell_os.campaign import Campaign, PotencyGoal, SelectivityGoal
+from cell_os.schema import Phase0WorldModel, SliceKey
 
 
 RESULTS_DIR = Path("results")

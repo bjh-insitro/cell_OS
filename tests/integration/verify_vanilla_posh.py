@@ -4,8 +4,8 @@ Verification script for Vanilla POSH (CellPaint-POSH) workflow.
 Tests the complete RT-RCA-CellPainting-SBS workflow with cost calculations.
 """
 
-from src.inventory import Inventory
-from src.unit_ops import VesselLibrary, ParametricOps, get_vanilla_posh_complete_recipe
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import VesselLibrary, ParametricOps, get_vanilla_posh_complete_recipe
 import sys
 
 print("=" * 70)

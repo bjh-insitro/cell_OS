@@ -1,10 +1,8 @@
-import sys
 import os
-sys.path.append(os.getcwd())
 
-from src.unit_ops import ParametricOps, VesselLibrary
-from src.inventory import Inventory
-import src.upstream as up
+from cell_os.unit_ops import ParametricOps, VesselLibrary
+from cell_os.inventory import Inventory
+import cell_os.upstream as up
 
 def verify_upstream_workflow():
     print("=" * 80)

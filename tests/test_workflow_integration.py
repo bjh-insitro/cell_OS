@@ -1,8 +1,6 @@
 import unittest
-import sys
 import os
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 class TestWorkflowIntegration(unittest.TestCase):
     """
@@ -11,9 +9,9 @@ class TestWorkflowIntegration(unittest.TestCase):
 
     def test_build_zombie_posh_workflow(self):
         """Test that we can build the Zombie POSH workflow without errors."""
-        from src.unit_ops import ParametricOps, VesselLibrary
-        from src.inventory import Inventory
-        from src.workflows import WorkflowBuilder
+        from cell_os.unit_ops import ParametricOps, VesselLibrary
+        from cell_os.inventory import Inventory
+        from cell_os.workflows import WorkflowBuilder
         
         vessel_path = "data/raw/vessels.yaml"
         pricing_path = "data/raw/pricing.yaml"

@@ -1,8 +1,6 @@
-import sys
 import os
 print(f"Python executable: {sys.executable}")
 print(f"Python path: {sys.path}")
-sys.path.append(os.getcwd())
 
 from run_loop import run_campaign
 

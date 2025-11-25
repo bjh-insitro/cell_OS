@@ -1,6 +1,6 @@
-from src.assay_selector import GreedyROISelector, get_assay_candidates
-from src.inventory import Inventory
-from src.unit_ops import UnitOpLibrary
+from cell_os.assay_selector import GreedyROISelector, get_assay_candidates
+from cell_os.inventory import Inventory
+from cell_os.unit_ops import UnitOpLibrary
 import sys
 
 print("Starting Assay Selector Verification...", flush=True)

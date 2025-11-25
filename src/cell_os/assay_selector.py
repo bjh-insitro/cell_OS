@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Protocol, Optional, Any
-from src.unit_ops import UnitOpLibrary, UnitOp, AssayRecipe, ParametricOps
-from src.inventory import Inventory
+from cell_os.unit_ops import UnitOpLibrary, UnitOp, AssayRecipe, ParametricOps
+from cell_os.inventory import Inventory
 
 @dataclass
 class AssayCandidate:
@@ -174,7 +174,7 @@ def get_assay_candidates(ops: ParametricOps, inventory: Inventory) -> List[Assay
     """
     Factory function to generate the standard list of available assays with their costs and info scores.
     """
-    from src.unit_ops import (
+    from cell_os.unit_ops import (
         get_imicroglia_differentiation_recipe, 
         get_ngn2_differentiation_recipe,
         get_imicroglia_phagocytosis_recipe

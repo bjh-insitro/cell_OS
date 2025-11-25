@@ -12,7 +12,7 @@ import tempfile
 import yaml
 import pandas as pd
 
-from src.upstream import GuideRNA, GeneTarget
+from cell_os.upstream import GuideRNA, GeneTarget
 
 
 @dataclass

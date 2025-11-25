@@ -8,8 +8,8 @@ improves the performance of a high-fidelity model (RNA-seq) when data is scarce.
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error
-from src.simulation import simulate_plate_data, simulate_low_fidelity_data
-from src.modeling import DoseResponseGP, DoseResponseGPConfig
+from cell_os.simulation import simulate_plate_data, simulate_low_fidelity_data
+from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
 
 def verify_transfer_learning():
     print("=" * 70)

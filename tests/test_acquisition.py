@@ -1,15 +1,13 @@
 import sys
-import os
 import numpy as np
 import pandas as pd
 from unittest.mock import MagicMock
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.schema import Phase0WorldModel, SliceKey
-from src.acquisition import propose_next_experiments
-from src.modeling import DoseResponseGP
+from cell_os.schema import Phase0WorldModel, SliceKey
+from cell_os.acquisition import propose_next_experiments
+from cell_os.modeling import DoseResponseGP
 
 
 def test_acquisition():

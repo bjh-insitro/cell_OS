@@ -11,9 +11,9 @@ This module analyzes workflows and suggests optimizations:
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 
-from src.unit_ops import UnitOp, ParametricOps
-from src.automation_analysis import analyze_unit_op_automation
-from src.workflows import Workflow as EngineWorkflow
+from cell_os.unit_ops import UnitOp, ParametricOps
+from cell_os.automation_analysis import analyze_unit_op_automation
+from cell_os.workflows import Workflow as EngineWorkflow
 
 
 @dataclass
@@ -47,7 +47,7 @@ class WorkflowOptimizer:
         """
         Accept either:
           - a List[UnitOp]
-          - a canonical Workflow (from src.workflows)
+          - a canonical Workflow (from cell_os.workflows)
         and always return a flat List[UnitOp].
         """
         if isinstance(operations, EngineWorkflow):
@@ -71,7 +71,7 @@ class WorkflowOptimizer:
             operations:
                 Either:
                   - List[UnitOp]
-                  - Workflow (from src.workflows)
+                  - Workflow (from cell_os.workflows)
             frequency_per_month:
                 How often this workflow is performed.
 

@@ -4,7 +4,7 @@ import numpy as np
 import yaml
 import os
 import altair as alt
-from src.modeling import DoseResponseGP, DoseResponseGPConfig
+from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
 
 st.set_page_config(page_title="cell_OS Dashboard", layout="wide")
 
@@ -184,11 +184,11 @@ with tab3:
 # -------------------------------------------------------------------
 # Tab 4: Workflow Visualizer
 # -------------------------------------------------------------------
-from src.workflow_renderer import render_workflow_graph
-from src.workflow_renderer_plotly import render_workflow_plotly
-from src.unit_ops import ParametricOps, VesselLibrary
-from src.inventory import Inventory
-from src.workflows import WorkflowBuilder, Workflow
+from cell_os.workflow_renderer import render_workflow_graph
+from cell_os.workflow_renderer_plotly import render_workflow_plotly
+from cell_os.unit_ops import ParametricOps, VesselLibrary
+from cell_os.inventory import Inventory
+from cell_os.workflows import WorkflowBuilder, Workflow
 
 with tab4:
     st.header("Workflow Visualization")
@@ -292,7 +292,7 @@ with tab4:
 # -------------------------------------------------------------------
 # Tab 5: POSH Decision Assistant
 # -------------------------------------------------------------------
-from src.posh_decision_engine import (
+from cell_os.posh_decision_engine import (
     POSHDecisionEngine, 
     UserRequirements, 
     POSHProtocol, 
@@ -445,7 +445,7 @@ with tab5:
 # -------------------------------------------------------------------
 # Tab 6: POSH Screen Designer
 # -------------------------------------------------------------------
-from src.posh_screen_designer import create_screen_design, CELL_TYPE_PARAMS
+from cell_os.posh_screen_designer import create_screen_design, CELL_TYPE_PARAMS
 
 with tab6:
     st.header("🧪 POSH Screen Designer")

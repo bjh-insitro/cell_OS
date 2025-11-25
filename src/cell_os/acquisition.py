@@ -12,7 +12,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from src.schema import Phase0WorldModel
+from cell_os.schema import Phase0WorldModel
 
 logger = logging.getLogger(__name__)
 
@@ -244,23 +244,30 @@ class AcquisitionFunction:
         assay_cell = getattr(assay, "cell_line", None)
         assay_cmpd = getattr(assay, "compound", None)
         assay_time = getattr(assay, "time_h", None)
+        assay_readout = getattr(assay, "readout", None)
 
         candidates = []
-
         for key, gp in world_model.gp_models.items():
-            # Optional filter: only slices matching the selected assay
+            # Filter by assay constraints if provided
             if assay_cell is not None and key.cell_line != assay_cell:
                 continue
             if assay_cmpd is not None and key.compound != assay_cmpd:
                 continue
+            
+            # Handle time comparison safely
             if assay_time is not None:
                 try:
                     if abs(float(key.time_h) - float(assay_time)) > 1e-6:
                         continue
                 except Exception:
-                    # If time_h cannot be compared as floats, fall back to equality
                     if key.time_h != assay_time:
                         continue
+            
+            # Handle readout comparison (new)
+            # Check if key has readout attribute (backward compat for old keys if any exist)
+            key_readout = getattr(key, "readout", "viability")
+            if assay_readout is not None and key_readout != assay_readout:
+                continue
 
             try:
                 grid_results = gp.predict_on_grid(
@@ -297,6 +304,7 @@ class AcquisitionFunction:
                         "cell_line": key.cell_line,
                         "compound": key.compound,
                         "time_h": key.time_h,
+                        "readout": key_readout,
                         "dose_uM": float(dose),
                         "priority_score": float(effective_score),
                         "expected_cost_usd": cost,
@@ -304,9 +312,8 @@ class AcquisitionFunction:
                         "unit_ops": [
                             "op_passage",
                             "op_feed",
-                            "op_transduce",
-                            "op_stain",
-                            "op_image",
+                            "op_dose",
+                            "op_readout",
                         ],
                     }
                 )

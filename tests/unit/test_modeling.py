@@ -4,15 +4,12 @@ Unit tests for DoseResponseGP modeling.
 Tests GP fitting, prediction, and grid generation.
 """
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from src.modeling import DoseResponseGP
+from cell_os.modeling import DoseResponseGP
 
 
 def test_empty_gp_creation():
