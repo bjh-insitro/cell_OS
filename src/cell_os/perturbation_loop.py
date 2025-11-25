@@ -21,6 +21,7 @@ from cell_os.perturbation_goal import (
     PerturbationBatch,
     PerturbationPosterior,
 )
+from cell_os.plate_constraints import PlateConstraints
 
 
 class PerturbationExecutorLike(Protocol):
@@ -95,11 +96,19 @@ class PerturbationAcquisitionLoop:
         posterior: PerturbationPosterior,
         executor: PerturbationExecutorLike,
         goal: PerturbationGoal,
+        plate_constraints: Optional[PlateConstraints] = None,
     ):
-        """Initialize the perturbation acquisition loop."""
+        """Initialize the perturbation acquisition loop.
+        
+        Parameters
+        ----------
+        plate_constraints : Optional[PlateConstraints]
+            Physical plate constraints (default: 384-well with 16 controls)
+        """
         self.posterior = posterior
         self.executor = executor
         self.goal = goal
+        self.plate_constraints = plate_constraints or PlateConstraints()
     
     def propose(
         self,
@@ -123,13 +132,16 @@ class PerturbationAcquisitionLoop:
         
         Notes
         -----
-        Phase 0.1 implementation:
-        1. Score each gene by diversity (simple hash-based heuristic)
-        2. Select top N genes (respecting max_perturbations constraint)
+        Phase 0.3: Enforces plate capacity constraints.
+        1. Score each gene by diversity
+        2. Select top N genes (respecting plate capacity)
         3. For each gene, create placeholder guides
-        4. Compute cost (simple: num_guides × num_replicates × $5)
+        4. Compute cost and total wells used
         5. Return batch
         """
+        # Compute max perturbations given plate constraints
+        max_perturbations = self.plate_constraints.max_perturbations(self.goal)
+        
         # Score each gene
         gene_scores = []
         for gene in candidate_genes:
@@ -139,8 +151,8 @@ class PerturbationAcquisitionLoop:
         # Sort by score descending
         gene_scores.sort(key=lambda x: x[1], reverse=True)
         
-        # Select top N genes
-        n_genes = min(len(gene_scores), self.goal.max_perturbations)
+        # Select top N genes (respecting plate capacity)
+        n_genes = min(len(gene_scores), max_perturbations)
         selected_genes = gene_scores[:n_genes]
         
         # Create plans
@@ -169,6 +181,9 @@ class PerturbationAcquisitionLoop:
         # Compute diversity for the full selected set (Phase 0.2)
         selected_gene_names = [gene for gene, _ in selected_genes]
         batch_diversity = self.posterior.get_diversity_score(selected_gene_names)
+        
+        # Calculate total wells used
+        total_wells = sum(self.goal.min_replicates for _ in plans)
         
         return PerturbationBatch(
             plans=plans,
