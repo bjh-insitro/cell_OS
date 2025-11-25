@@ -11,6 +11,8 @@ from typing import List, Dict, Optional
 import pandas as pd
 import numpy as np
 
+from cell_os.morphology_engine import MorphologyEngine, FakeMorphologyEngine
+
 
 class POSHPooledCapacity:
     """Capacity model for pooled POSH screens.
@@ -234,11 +236,18 @@ class PerturbationPosterior:
     >>> # Future: diversity = posterior.get_diversity_score(["TP53", "MDM2"])
     """
     
-    def __init__(self):
-        """Initialize empty posterior."""
-        self.history: List[Dict] = []  # Future: POSH results
-        self.embeddings: Dict[str, any] = {}  # Future: morphological embeddings
-        self.phenotype_scores: Dict[str, float] = {}  # Future: phenotype scores
+    def __init__(self, morphology_engine: Optional[MorphologyEngine] = None):
+        """Initialize empty posterior.
+        
+        Parameters
+        ----------
+        morphology_engine : Optional[MorphologyEngine]
+            Engine for extracting morphological features (default: FakeMorphologyEngine)
+        """
+        self.history: List[pd.DataFrame] = []  # POSH results
+        self.embeddings: Dict[str, np.ndarray] = {}  # Morphological embeddings
+        self.phenotype_scores: Dict[str, float] = {}  # Phenotype scores
+        self.morphology_engine = morphology_engine or FakeMorphologyEngine()
     
     def update_with_results(self, results: pd.DataFrame) -> None:
         """Update posterior with perturbation screen results.
@@ -263,7 +272,31 @@ class PerturbationPosterior:
             self.embeddings[gene] = embeddings.mean(axis=0)
             
             # Store average viability as phenotype score
-            self.phenotype_scores[gene] = gene_data['viability'].mean()
+    
+    def update_with_images(self, perturbation_id: str, image_paths: List[str]) -> None:
+        """Update stored embeddings for a given perturbation using image paths.
+        
+        Parameters
+        ----------
+        perturbation_id : str
+            Perturbation identifier (e.g., gene symbol)
+        image_paths : List[str]
+            Paths to images for this perturbation
+        
+        Notes
+        -----
+        Extracts morphological features from images and stores the mean embedding.
+        """
+        if not image_paths:
+            return
+        
+        # Extract features using morphology engine
+        feats = self.morphology_engine.extract_features(image_paths)
+        reduced = self.morphology_engine.reduce_dimensionality(feats)
+        
+        # Simple aggregate: mean per perturbation
+        emb = reduced.mean(axis=0)
+        self.embeddings[perturbation_id] = emb
     
     def compute_pairwise_distance_matrix(self, embeddings: Dict[str, np.ndarray]) -> np.ndarray:
         """Compute pairwise cosine distance matrix for gene embeddings.
@@ -361,3 +394,33 @@ class PerturbationPosterior:
         score = avg_distance / 2.0
         
         return float(np.clip(score, 0.0, 1.0))
+    
+    def diversity_score(self, perturbation_ids: List[str]) -> float:
+        """Compute diversity score, preferring real embeddings if available.
+        
+        Parameters
+        ----------
+        perturbation_ids : List[str]
+            List of perturbation IDs (e.g., gene symbols)
+        
+        Returns
+        -------
+        diversity : float
+            Diversity score (0-1, higher = more diverse)
+        
+        Notes
+        -----
+        If embeddings exist for all perturbations, compute pairwise distance.
+        Otherwise, fall back to legacy diversity score.
+        """
+        if perturbation_ids and all(pid in self.embeddings for pid in perturbation_ids):
+            embs = np.stack([self.embeddings[pid] for pid in perturbation_ids])
+            # Average pairwise distance
+            dists = np.linalg.norm(embs[:, None, :] - embs[None, :, :], axis=-1)
+            # Avoid double counting self-distances
+            n = len(perturbation_ids)
+            if n > 1:
+                return float(dists.sum() / (n * (n - 1)))
+            return 0.0
+        # Fallback to existing logic
+        return self.get_diversity_score(perturbation_ids)
