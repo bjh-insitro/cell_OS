@@ -272,6 +272,7 @@ class PerturbationPosterior:
             self.embeddings[gene] = embeddings.mean(axis=0)
             
             # Store average viability as phenotype score
+            self.phenotype_scores[gene] = gene_data['viability'].mean()
     
     def update_with_images(self, perturbation_id: str, image_paths: List[str]) -> None:
         """Update stored embeddings for a given perturbation using image paths.
