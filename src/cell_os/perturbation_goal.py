@@ -12,6 +12,72 @@ import pandas as pd
 import numpy as np
 
 
+class POSHPooledCapacity:
+    """Capacity model for pooled POSH screens.
+    
+    Parameters
+    ----------
+    cells_per_well : int
+        Total cells in a single POSH imaging well at analysis time.
+    iss_efficiency : float
+        Fraction of cells with a successfully decoded barcode
+        (e.g. 0.6 for A549 in our current model).
+    min_cells_per_gene : int
+        Minimum number of barcoded cells required per gene KO
+        (across all guides for that gene), e.g. 1000.
+    guides_per_gene : int
+        Number of guides per gene in the library, e.g. 4.
+    
+    Examples
+    --------
+    >>> # A549 defaults
+    >>> cap = POSHPooledCapacity(
+    ...     cells_per_well=500_000,
+    ...     iss_efficiency=0.60,
+    ...     min_cells_per_gene=1000,
+    ...     guides_per_gene=4,
+    ... )
+    >>> cap.effective_barcoded_cells
+    300000
+    >>> cap.max_genes
+    300
+    >>> cap.max_guides
+    1200
+    """
+    
+    def __init__(
+        self,
+        cells_per_well: int = 500_000,
+        iss_efficiency: float = 0.60,
+        min_cells_per_gene: int = 1000,
+        guides_per_gene: int = 4,
+    ):
+        self.cells_per_well = cells_per_well
+        self.iss_efficiency = iss_efficiency
+        self.min_cells_per_gene = min_cells_per_gene
+        self.guides_per_gene = guides_per_gene
+    
+    @property
+    def effective_barcoded_cells(self) -> int:
+        """Number of cells with a usable barcode."""
+        return int(self.cells_per_well * self.iss_efficiency)
+    
+    @property
+    def max_genes(self) -> int:
+        """Maximum number of genes that can be robustly profiled in one POSH pool.
+        
+        Given the min_cells_per_gene requirement.
+        """
+        if self.min_cells_per_gene <= 0:
+            return 0
+        return self.effective_barcoded_cells // self.min_cells_per_gene
+    
+    @property
+    def max_guides(self) -> int:
+        """Maximum number of guide perturbations in the pool."""
+        return self.max_genes * self.guides_per_gene
+
+
 @dataclass
 class PerturbationGoal:
     """Goal for perturbation selection in a POSH screen.
@@ -52,6 +118,36 @@ class PerturbationGoal:
     min_replicates: int = 2
     max_perturbations: int = 200
     budget_usd: Optional[float] = None
+    posh_capacity: Optional[POSHPooledCapacity] = None
+    
+    def effective_max_genes(self) -> int:
+        """Return the effective gene-level capacity for this goal.
+        
+        For POSH pooled screens, if posh_capacity is set, we use
+        posh_capacity.max_genes. Otherwise fall back to max_perturbations
+        as a simple gene-count limit.
+        
+        Returns
+        -------
+        max_genes : int
+            Maximum number of genes to include
+        
+        Examples
+        --------
+        >>> # Without POSH capacity
+        >>> goal = PerturbationGoal(max_perturbations=50)
+        >>> goal.effective_max_genes()
+        50
+        
+        >>> # With POSH capacity (A549 defaults)
+        >>> cap = POSHPooledCapacity()
+        >>> goal = PerturbationGoal(max_perturbations=50, posh_capacity=cap)
+        >>> goal.effective_max_genes()
+        300
+        """
+        if self.posh_capacity is not None:
+            return self.posh_capacity.max_genes
+        return self.max_perturbations
 
 
 @dataclass

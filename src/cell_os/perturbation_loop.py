@@ -132,15 +132,15 @@ class PerturbationAcquisitionLoop:
         
         Notes
         -----
-        Phase 0.3: Enforces plate capacity constraints.
+        Phase 0.3+: Uses POSH pooled capacity for gene-level constraints.
         1. Score each gene by diversity
-        2. Select top N genes (respecting plate capacity)
+        2. Select top N genes (respecting POSH pooled capacity)
         3. For each gene, create placeholder guides
-        4. Compute cost and total wells used
+        4. Compute cost
         5. Return batch
         """
-        # Compute max perturbations given plate constraints
-        max_perturbations = self.plate_constraints.max_perturbations(self.goal)
+        # Compute max genes given POSH pooled capacity or goal limit
+        max_genes = self.goal.effective_max_genes()
         
         # Score each gene
         gene_scores = []
@@ -151,8 +151,8 @@ class PerturbationAcquisitionLoop:
         # Sort by score descending
         gene_scores.sort(key=lambda x: x[1], reverse=True)
         
-        # Select top N genes (respecting plate capacity)
-        n_genes = min(len(gene_scores), max_perturbations)
+        # Select top N genes (respecting POSH pooled capacity)
+        n_genes = min(len(gene_scores), max_genes)
         selected_genes = gene_scores[:n_genes]
         
         # Create plans
@@ -181,9 +181,6 @@ class PerturbationAcquisitionLoop:
         # Compute diversity for the full selected set (Phase 0.2)
         selected_gene_names = [gene for gene, _ in selected_genes]
         batch_diversity = self.posterior.get_diversity_score(selected_gene_names)
-        
-        # Calculate total wells used
-        total_wells = sum(self.goal.min_replicates for _ in plans)
         
         return PerturbationBatch(
             plans=plans,

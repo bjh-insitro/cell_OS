@@ -47,6 +47,64 @@ Constraint-based solver for optimal guide library design:
 - Score optimization (VBC, CRISPick)
 - Integration with Path A workflow
 
+### ImagingDoseLoop: Closed-Loop Autonomous Imaging
+A working autonomous loop for stress-window optimization:
+```python
+from cell_os.imaging_loop import ImagingDoseLoop
+from cell_os.imaging_world_model import ImagingWorldModel
+from cell_os.imaging_goal import ImagingWindowGoal
+
+# Define goal: viability band + stress objective + QC thresholds
+goal = ImagingWindowGoal(
+    viability_min=0.8,
+    viability_max=1.0,
+    min_cells_per_field=280,
+    min_fields_per_well=100
+)
+
+# Initialize with empty GPs (or seed with prior data)
+wm = ImagingWorldModel.from_dicts(viability_gps, stress_gps, qc_gps)
+
+# Run closed loop: propose → execute → refit → repeat
+loop = ImagingDoseLoop(world_model=wm, executor=executor, goal=goal)
+batch = loop.run_one_cycle(dose_grid=np.logspace(-3, 2, 200))
+```
+
+**Key Features:**
+- **Viability Window**: Filters doses to maintain cell health (e.g., 80-100% viability)
+- **QC Constraints**: Ensures sufficient cells/field and good fields/well for reliable imaging
+- **Stress Maximization**: Ranks viable doses by stress metric (e.g., CellROX)
+- **Posterior Refitting**: Automatically updates GP models after each cycle using `DoseResponseGP`
+- **Smooth Adaptation**: QC thresholds act as continuous knobs, not binary gates
+
+**Verified Behavior:**
+- Increasing `min_cells_per_field` from 240 → 280 smoothly shifts optimal dose from 0.44 → 0.22 µM
+- Seeding with toxic doses (1.0, 10.0 µM) causes loop to avoid high-dose region and propose safer alternatives
+- Refitting enables closed-loop learning: Data → History → GP Update → New Proposal
+
+**Acquisition Personalities:**
+The loop's decision-making is controlled by `AcquisitionConfig`, which defines how it balances stress maximization against viability and QC constraints. For POSH pre-screens, use:
+
+```python
+from cell_os.acquisition_config import AcquisitionConfig
+config = AcquisitionConfig.posh_optimizer()
+```
+
+This stance maximizes morphological richness while keeping the assay operational. It is designed for single-shot POSH screens where you need maximum phenotypic information from an expensive, non-repeatable experiment. The loop lives at the boundary between order and collapse - where stress transcription is high, morphology is rich, but segmentation remains intact.
+
+**POSH Pooled Capacity:**
+For pooled POSH screens, the system uses a barcode-based capacity model instead of plate-based constraints. For A549 cells, we assume:
+- 500,000 cells per well
+- 60% ISS (in situ sequencing) efficiency
+- 1,000 cells required per gene KO for robust profiling
+
+This yields approximately **300 genes × 4 guides = 1,200 perturbations per pooled screen**.
+
+**Run the smoketest:**
+```bash
+python scripts/imaging_loop_smoketest.py
+```
+
 ## Quick Start
 
 ```bash
