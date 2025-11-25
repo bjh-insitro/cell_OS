@@ -82,6 +82,9 @@ class DoseResponseGP:
 
     # Optional prior model for transfer learning
     prior_model: Optional["DoseResponseGP"] = None
+    
+    # Flag indicating whether model was successfully fitted
+    is_fitted: bool = True
 
     @classmethod
     def empty(cls) -> "DoseResponseGP":
@@ -102,6 +105,7 @@ class DoseResponseGP:
             model=model,
             X_train=np.array([]).reshape(-1, 1),
             y_train=np.array([]),
+            is_fitted=False,
         )
 
     @classmethod
@@ -112,7 +116,7 @@ class DoseResponseGP:
         compound: str,
         time_h: float,
         config: DoseResponseGPConfig = None,
-        dose_col: str = "dose",
+        dose_col: str = "dose_uM",
         viability_col: str = "viability",
     ) -> "DoseResponseGP":
         """
@@ -150,12 +154,12 @@ class DoseResponseGP:
         # Build and fit model
         gp_model = _build_gp_model(config)
 
+        is_fitted = True
         try:
             gp_model.fit(X_train, y_train)
         except Exception as e:
             print(f"[DoseResponseGP] Failed to fit GP for {compound}/{cell_line}: {e}")
-            # Return with unfitted model - predict will just return mean
-            pass
+            is_fitted = False
 
         return cls(
             cell_line=cell_line,
@@ -165,6 +169,7 @@ class DoseResponseGP:
             model=gp_model,
             X_train=X_train,
             y_train=y_train,
+            is_fitted=is_fitted,
         )
 
     @classmethod
@@ -177,7 +182,7 @@ class DoseResponseGP:
         prior_model: Optional["DoseResponseGP"] = None,
         prior_weight: float = 0.3,
         config: DoseResponseGPConfig = None,
-        dose_col: str = "dose",
+        dose_col: str = "dose_uM",
         viability_col: str = "viability",
     ) -> "DoseResponseGP":
         """
@@ -233,10 +238,12 @@ class DoseResponseGP:
         # Build and fit model on combined data
         gp_model = _build_gp_model(config)
         
+        is_fitted = True
         try:
             gp_model.fit(X_new, y_combined)
         except Exception as e:
             print(f"[DoseResponseGP] Failed to fit GP with prior: {e}")
+            is_fitted = False
         
         return cls(
             cell_line=cell_line,
@@ -246,7 +253,8 @@ class DoseResponseGP:
             model=gp_model,
             X_train=X_new,
             y_train=y_combined,
-            prior_model=prior_model
+            prior_model=prior_model,
+            is_fitted=is_fitted,
         )
 
     def predict(
@@ -266,6 +274,15 @@ class DoseResponseGP:
             std: predictive standard deviation (or None)
         """
         dose_uM = np.asarray(dose_uM, dtype=float)
+        
+        # Defensive check: if model failed to fit, return NaN
+        if not self.is_fitted:
+            nan_array = np.full_like(dose_uM, fill_value=np.nan, dtype=float)
+            if return_std:
+                return nan_array, nan_array
+            else:
+                return nan_array, None
+        
         if (dose_uM <= 0).any():
             raise ValueError("All doses must be positive to use log10 dose space.")
 
@@ -274,25 +291,15 @@ class DoseResponseGP:
         if return_std:
             mean, std = self.model.predict(X, return_std=True)
 
-            # Add prior mean if exists
-            if self.prior_model is not None:
-                prior_mean, prior_std = self.prior_model.predict(
-                    dose_uM, return_std=True
-                )
-                mean = mean + prior_mean
-                # Combine uncertainties (assuming independence for simplicity)
-                std = np.sqrt(std ** 2 + prior_std ** 2)
-
+            # NOTE: Prior is already baked into training targets via shrinkage
+            # in from_dataframe_with_prior. Do NOT add it again here.
+            
             return mean, std
         else:
             mean = self.model.predict(X, return_std=False)
 
-            if self.prior_model is not None:
-                prior_mean, _ = self.prior_model.predict(
-                    dose_uM, return_std=False
-                )
-                mean = mean + prior_mean
-
+            # NOTE: Prior is already baked into training targets
+            
             return mean, None
 
     def predict_on_grid(
@@ -320,6 +327,13 @@ class DoseResponseGP:
         """
         # Backwards compat: allow callers to pass grid_size instead of num_points
         if grid_size is not None:
+            if num_points != 50 and grid_size != num_points:
+                import warnings
+                warnings.warn(
+                    f"Both num_points={num_points} and grid_size={grid_size} specified. "
+                    f"Using grid_size={grid_size}.",
+                    UserWarning
+                )
             num_points = int(grid_size)
 
         # If no training data, return empty arrays
@@ -344,6 +358,21 @@ class DoseResponseGP:
             "mean": mean,
             "std": std,
         }
+    
+    def dose_range(self) -> Tuple[float, float]:
+        """
+        Get the dose range (min, max) from training data in micromolar.
+        
+        Useful for acquisition functions and visualization.
+        
+        Returns:
+            (dose_min, dose_max) in micromolar units
+        """
+        if self.X_train.size == 0:
+            return (0.0, 0.0)
+        
+        train_dose = 10 ** (self.X_train.flatten())
+        return (float(train_dose.min()), float(train_dose.max()))
 
 
 def _build_gp_model(config: DoseResponseGPConfig) -> GaussianProcessRegressor:
