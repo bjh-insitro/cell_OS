@@ -61,17 +61,19 @@ def test_check_availability_partial():
     inventory = Inventory("data/raw/pricing.yaml")
     
     # Deplete one resource
-    resource_id = "DMEM_MEDIA"
-    inventory.resources[resource_id].stock_level = 10.0
-    
-    # BOM with one unavailable item
+    resource_id_1 = "DMEM_MEDIA"
+    resource_id_2 = "FBS"
+    inventory.resources[resource_id_1].stock_level = 100.0
+    inventory.resources[resource_id_2].stock_level = 0.0
+
+    # BOM with one available and one unavailable item
     bom = [
-        BOMItem("DMEM_MEDIA", 5.0),   # Available
-        BOMItem("DMEM_MEDIA", 50.0),  # Not available
+        BOMItem(resource_id_1, 5.0),   # Available
+        BOMItem(resource_id_2, 5.0),   # Not available
     ]
-    
+
     availability = inventory.check_availability(bom)
-    
+
     # First item available, second not
     results = list(availability.values())
     assert True in results and False in results

@@ -1,9 +1,10 @@
 """Stub tests for perturbation acquisition loop.
 
-These tests verify the API structure but don't test logic (which doesn't exist yet).
+These tests verify the API structure.
 """
 
 import pytest
+import pandas as pd
 
 from cell_os.perturbation_goal import (
     PerturbationGoal,
@@ -62,19 +63,15 @@ class TestPerturbationDataStructures:
 
 
 class TestPerturbationAcquisitionLoop:
-    """Test that loop can be instantiated (no logic tests yet)."""
+    """Test that loop can be instantiated."""
     
     def test_loop_creation(self):
         """Loop should instantiate with required components."""
         posterior = PerturbationPosterior()
         goal = PerturbationGoal()
         
-        # Mock executor (no real executor yet)
-        class MockExecutor:
-            def run_batch(self, batch):
-                return None
-        
-        executor = MockExecutor()
+        from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+        executor = SimulatedPerturbationExecutor()
         loop = PerturbationAcquisitionLoop(posterior, executor, goal)
         
         assert loop.posterior is posterior
@@ -82,47 +79,53 @@ class TestPerturbationAcquisitionLoop:
         assert loop.goal is goal
     
     def test_propose_returns_batch(self):
-        """propose() should return a PerturbationBatch."""
+        """propose() should return a PerturbationBatch with plans."""
         posterior = PerturbationPosterior()
-        goal = PerturbationGoal()
+        goal = PerturbationGoal(max_perturbations=2)
         
-        class MockExecutor:
-            def run_batch(self, batch):
-                return None
+        from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+        executor = SimulatedPerturbationExecutor()
         
-        loop = PerturbationAcquisitionLoop(posterior, MockExecutor(), goal)
-        batch = loop.propose(candidate_genes=["TP53", "MDM2"])
+        loop = PerturbationAcquisitionLoop(posterior, executor, goal)
+        batch = loop.propose(candidate_genes=["TP53", "MDM2", "ATM"])
         
         assert isinstance(batch, PerturbationBatch)
-        # Batch is empty for now (no logic implemented)
-        assert batch.plans == []
+        assert len(batch.plans) == 2  # max_perturbations
+        assert batch.total_cost_usd > 0.0
     
     def test_run_one_cycle_returns_batch(self):
-        """run_one_cycle() should return a PerturbationBatch."""
+        """run_one_cycle() should return a PerturbationBatch with plans."""
         posterior = PerturbationPosterior()
-        goal = PerturbationGoal()
+        goal = PerturbationGoal(max_perturbations=2)
         
-        class MockExecutor:
-            def run_batch(self, batch):
-                return None
+        from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+        executor = SimulatedPerturbationExecutor()
         
-        loop = PerturbationAcquisitionLoop(posterior, MockExecutor(), goal)
+        loop = PerturbationAcquisitionLoop(posterior, executor, goal)
         batch = loop.run_one_cycle(candidate_genes=["TP53", "MDM2"])
         
         assert isinstance(batch, PerturbationBatch)
+        assert len(batch.plans) == 2
 
 
 class TestPerturbationPosterior:
-    """Test posterior API (placeholder methods)."""
+    """Test posterior API."""
     
     def test_update_with_results(self):
-        """update_with_results() should accept results dict."""
+        """update_with_results() should accept results DataFrame."""
         posterior = PerturbationPosterior()
-        results = {"gene": "TP53", "phenotype": 0.8}
         
-        # Should not raise
+        results = pd.DataFrame({
+            'gene': ['TP53', 'TP53'],
+            'guide_id': ['TP53_g1', 'TP53_g2'],
+            'replicate': [1, 1],
+            'viability': [0.95, 0.94],
+            'morphology_embedding': [[0.1] * 10, [0.2] * 10],
+        })
+        
         posterior.update_with_results(results)
         assert len(posterior.history) == 1
+        assert 'TP53' in posterior.embeddings
     
     def test_get_diversity_score(self):
         """get_diversity_score() should return a float."""

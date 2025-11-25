@@ -140,7 +140,12 @@ class PerturbationAcquisitionLoop:
         5. Return batch
         """
         # Compute max genes given POSH pooled capacity or goal limit
-        max_genes = self.goal.effective_max_genes()
+        goal_max = self.goal.effective_max_genes()
+        
+        # Also respect physical plate constraints
+        plate_max = self.plate_constraints.max_perturbations(self.goal)
+        
+        max_genes = min(goal_max, plate_max)
         
         # Score each gene
         gene_scores = []

@@ -110,7 +110,7 @@ def test_stress_window_goal():
         std = None
         if return_std:
             return mean, std
-        return mean
+        return mean, None  # Must return tuple
 
     gp.predict.side_effect = ramp_predict
 
@@ -135,8 +135,15 @@ def test_stress_window_goal():
 def test_potency_goal_readout():
     """Test PotencyGoal with specific readout."""
     gp = MagicMock()
+    
     # Predict low values (potent) - return tuple (mean, std)
-    gp.predict.return_value = (np.array([0.1] * 10), None)
+    # Must handle arbitrary input size (n_grid=200 default)
+    def constant_predict(x, return_std=True):
+        x = np.asarray(x)
+        mean = np.array([0.1] * len(x))
+        return mean, None
+        
+    gp.predict.side_effect = constant_predict
 
     wm = MagicMock()
     wm.gp_models = {

@@ -56,6 +56,10 @@ def estimate_ic50_from_gp(
     above = preds >= viability_threshold
     below = preds < viability_threshold
 
+    # If already below threshold at lowest dose, IC50 < dose_min
+    if below[0]:
+        return float(doses[0])
+
     for i in range(1, len(doses)):
         if above[i - 1] and below[i]:
             x1, x2 = doses[i - 1], doses[i]

@@ -106,13 +106,15 @@ def _canonicalize_experiment_frame(df: pd.DataFrame) -> pd.DataFrame:
         df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
 
     elif "readout_value" in df.columns and "readout_name" in df.columns:
+        # Populate viability column where readout_name is "viability"
+        # But DO NOT drop other rows (we need them for multi-readout support)
+        df["viability"] = pd.NA
         mask_viab = df["readout_name"] == "viability"
         if mask_viab.any():
-            df = df.loc[mask_viab].copy()
-            df = df.rename(columns={"readout_value": "viability"})
-            df["viability"] = pd.to_numeric(df["viability"], errors="coerce")
-        else:
-            df["viability"] = pd.NA
+            # Use loc to set values safely
+            df.loc[mask_viab, "viability"] = pd.to_numeric(
+                df.loc[mask_viab, "readout_value"], errors="coerce"
+            )
     else:
         df["viability"] = pd.NA
 

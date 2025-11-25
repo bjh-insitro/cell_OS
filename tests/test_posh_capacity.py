@@ -88,7 +88,14 @@ class TestPerturbationLoopWithPOSHCapacity:
             posh_capacity=cap,
         )
         
-        loop = PerturbationAcquisitionLoop(posterior, executor, goal)
+        from cell_os.plate_constraints import PlateConstraints
+        
+        # Use 1536-well plate to ensure POSH capacity (300) is the bottleneck
+        plate_constraints = PlateConstraints(wells=1536, controls_per_plate=64)
+        
+        loop = PerturbationAcquisitionLoop(
+            posterior, executor, goal, plate_constraints
+        )
         
         # Try to propose 400 genes
         candidate_genes = [f"GENE{i}" for i in range(400)]
@@ -106,10 +113,13 @@ class TestPerturbationLoopWithPOSHCapacity:
         
         # POSH capacity allows 300 genes
         cap = POSHPooledCapacity()
-        goal = PerturbationGoal(posh_capacity=cap)
+        # Set max_perturbations high so it doesn't cap the plate constraints calculation
+        goal = PerturbationGoal(posh_capacity=cap, max_perturbations=1000)
         
-        # Plate constraints would allow only 184 (with 2 reps)
-        plate_constraints = PlateConstraints(wells=384, controls_per_plate=16)
+        # Plate constraints would allow only 184 (with 2 reps) for 384-well
+        # Use 1536-well plate to ensure POSH capacity (300) is the bottleneck
+        # (1536 - 64) / 2 = 736 > 300
+        plate_constraints = PlateConstraints(wells=1536, controls_per_plate=64)
         
         loop = PerturbationAcquisitionLoop(
             posterior, executor, goal, plate_constraints

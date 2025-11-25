@@ -25,7 +25,7 @@ from cell_os.modeling import DoseResponseGP
 from cell_os.acquisition import AcquisitionFunction
 from cell_os.simulation import SimulationEngine
 from cell_os.assay_selector import AssaySelector
-from cell_os.core.world_model import WorldModel
+from cell_os.lab_world_model import LabWorldModel as WorldModel
 from cell_os.campaign import Campaign, PotencyGoal, SelectivityGoal
 from cell_os.schema import Phase0WorldModel, SliceKey
 
