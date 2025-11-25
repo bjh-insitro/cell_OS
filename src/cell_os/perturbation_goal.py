@@ -8,6 +8,8 @@ in a POSH screen. This layer sits above the imaging dose loop.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
+import pandas as pd
+import numpy as np
 
 
 @dataclass
@@ -142,24 +144,30 @@ class PerturbationPosterior:
         self.embeddings: Dict[str, any] = {}  # Future: morphological embeddings
         self.phenotype_scores: Dict[str, float] = {}  # Future: phenotype scores
     
-    def update_with_results(self, results: Dict) -> None:
-        """Update posterior with POSH screen results.
+    def update_with_results(self, results: pd.DataFrame) -> None:
+        """Update posterior with perturbation screen results.
         
         Parameters
         ----------
-        results : Dict
-            POSH screen results (format TBD - will include morphology features)
+        results : pd.DataFrame
+            Results from executor with columns: gene, guide_id, replicate, viability, morphology_embedding
         
         Notes
         -----
-        This is a placeholder. Real implementation will:
-        - Extract morphological features from images
-        - Compute embeddings (PCA/UMAP)
-        - Update phenotype predictions
-        - Refit similarity models
+        For now, just stores results in history and updates embeddings dict.
+        Future: compute similarity matrices, refit models, etc.
         """
         self.history.append(results)
-        # TODO: Implement morphology extraction and embedding
+        
+        # Extract embeddings per gene
+        for gene in results['gene'].unique():
+            gene_data = results[results['gene'] == gene]
+            # Average embeddings across replicates
+            embeddings = np.array([e for e in gene_data['morphology_embedding'].values])
+            self.embeddings[gene] = embeddings.mean(axis=0)
+            
+            # Store average viability as phenotype score
+            self.phenotype_scores[gene] = gene_data['viability'].mean()
     
     def get_diversity_score(self, genes: List[str]) -> float:
         """Compute expected phenotypic diversity for a gene set.
@@ -176,8 +184,15 @@ class PerturbationPosterior:
         
         Notes
         -----
-        Placeholder. Real implementation will use morphological embeddings
-        to compute pairwise distances and return a diversity metric.
+        Simple heuristic: use gene name hash as diversity score.
+        Future: use morphological embeddings to compute real diversity.
         """
-        # Placeholder: return random score
-        return 0.5
+        if len(genes) == 0:
+            return 0.0
+        
+        # Simple heuristic: hash gene name to get stable score
+        # This gives different genes different scores deterministically
+        gene_hash = sum(ord(c) for c in genes[0])
+        score = (gene_hash % 100) / 100.0  # 0-1 range
+        
+        return score

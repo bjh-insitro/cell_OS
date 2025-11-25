@@ -13,6 +13,7 @@ Architecture:
 from __future__ import annotations
 from typing import Protocol, Optional, List
 import pandas as pd
+import numpy as np
 
 from cell_os.perturbation_goal import (
     PerturbationGoal,
@@ -122,24 +123,58 @@ class PerturbationAcquisitionLoop:
         
         Notes
         -----
-        Future implementation will:
-        1. Score each gene by expected phenotypic informativeness
+        Phase 0.1 implementation:
+        1. Score each gene by diversity (simple hash-based heuristic)
         2. Select top N genes (respecting max_perturbations constraint)
-        3. For each gene, select guides (integrate with gRNA design solver)
-        4. Compute expected diversity and cost
-        5. Return optimized batch
-        
-        For now, this is a placeholder that returns empty batch.
+        3. For each gene, create placeholder guides
+        4. Compute cost (simple: num_guides × num_replicates × $5)
+        5. Return batch
         """
-        # TODO: Implement acquisition logic
-        # - Use posterior.get_diversity_score() to rank genes
-        # - Integrate with gRNA design solver
-        # - Optimize for diversity subject to constraints
+        # Score each gene
+        gene_scores = []
+        for gene in candidate_genes:
+            score = self.posterior.get_diversity_score([gene])
+            gene_scores.append((gene, score))
+        
+        # Sort by score descending
+        gene_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Select top N genes
+        n_genes = min(len(gene_scores), self.goal.max_perturbations)
+        selected_genes = gene_scores[:n_genes]
+        
+        # Create plans
+        plans = []
+        total_cost = 0.0
+        total_diversity = 0.0
+        
+        for gene, score in selected_genes:
+            # Create placeholder guides
+            n_guides = self.goal.min_guides_per_gene
+            guides = [f"{gene}_guide_{i+1}" for i in range(n_guides)]
+            guide_ids = [f"{gene}_g{i+1}" for i in range(n_guides)]
+            
+            # Simple cost model: $5 per guide per replicate
+            cost_per_gene = n_guides * self.goal.min_replicates * 5.0
+            total_cost += cost_per_gene
+            total_diversity += score
+            
+            plan = PerturbationPlan(
+                gene=gene,
+                guides=guides,
+                guide_ids=guide_ids,
+                replicates=self.goal.min_replicates,
+                expected_phenotype_score=score,
+            )
+            plans.append(plan)
+        
+        # Average diversity
+        avg_diversity = total_diversity / len(plans) if plans else 0.0
         
         return PerturbationBatch(
-            plans=[],
-            total_cost_usd=0.0,
-            expected_diversity=0.0,
+            plans=plans,
+            total_cost_usd=total_cost,
+            expected_diversity=avg_diversity,
         )
     
     def run_one_cycle(
@@ -163,8 +198,7 @@ class PerturbationAcquisitionLoop:
         
         Notes
         -----
-        This is the main entry point for closed-loop operation.
-        Future implementation will:
+        Phase 0.1: Full closed loop implementation.
         1. Call propose() to get batch
         2. Call executor.run_batch() to execute
         3. Call posterior.update_with_results() to learn
@@ -173,10 +207,10 @@ class PerturbationAcquisitionLoop:
         # Propose
         batch = self.propose(candidate_genes, candidate_guides)
         
-        # Execute (future)
-        # results = self.executor.run_batch(batch)
+        # Execute
+        results = self.executor.run_batch(batch)
         
-        # Update posterior (future)
-        # self.posterior.update_with_results(results)
+        # Update posterior
+        self.posterior.update_with_results(results)
         
         return batch
