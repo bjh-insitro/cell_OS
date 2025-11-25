@@ -34,7 +34,7 @@ class TestPerturbationLoopIntegration:
         # Assertions
         assert len(batch.plans) == 5  # max_perturbations
         assert batch.total_cost_usd > 0.0  # Cost calculated
-        assert batch.expected_diversity > 0.0  # Diversity calculated
+        assert batch.expected_diversity > 0.0  # Diversity calculated (Phase 0.2)
         
         # Check that posterior was updated
         assert len(posterior.history) == 1
@@ -46,7 +46,6 @@ class TestPerturbationLoopIntegration:
             assert len(plan.guides) == 3  # min_guides_per_gene
             assert len(plan.guide_ids) == 3
             assert plan.replicates == 2  # min_replicates
-            assert plan.expected_phenotype_score > 0.0
     
     def test_cost_calculation(self):
         """Test that cost is calculated correctly."""

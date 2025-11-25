@@ -146,7 +146,6 @@ class PerturbationAcquisitionLoop:
         # Create plans
         plans = []
         total_cost = 0.0
-        total_diversity = 0.0
         
         for gene, score in selected_genes:
             # Create placeholder guides
@@ -157,7 +156,6 @@ class PerturbationAcquisitionLoop:
             # Simple cost model: $5 per guide per replicate
             cost_per_gene = n_guides * self.goal.min_replicates * 5.0
             total_cost += cost_per_gene
-            total_diversity += score
             
             plan = PerturbationPlan(
                 gene=gene,
@@ -168,13 +166,14 @@ class PerturbationAcquisitionLoop:
             )
             plans.append(plan)
         
-        # Average diversity
-        avg_diversity = total_diversity / len(plans) if plans else 0.0
+        # Compute diversity for the full selected set (Phase 0.2)
+        selected_gene_names = [gene for gene, _ in selected_genes]
+        batch_diversity = self.posterior.get_diversity_score(selected_gene_names)
         
         return PerturbationBatch(
             plans=plans,
             total_cost_usd=total_cost,
-            expected_diversity=avg_diversity,
+            expected_diversity=batch_diversity,
         )
     
     def run_one_cycle(
