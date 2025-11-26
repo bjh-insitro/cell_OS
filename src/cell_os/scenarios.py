@@ -177,7 +177,7 @@ def apply_scenario(scenario: Scenario):
     --------
     >>> scenario = get_scenario("cheap_pilot")
     >>> inv, engine, config = apply_scenario(scenario)
-    >>> inv.check_stock("PLATE_96_WELL")
+    >>> inv.check_stock("plate_6well")
     5.0
     """
     from cell_os.inventory import Inventory
