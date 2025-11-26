@@ -39,8 +39,13 @@ All notable changes to the cell_OS project will be documented in this file.
 - **Unit Operations**:
     - Refactored `UnitOp` to support `sub_steps` for composite operations.
     - Moved from static `unit_ops.yaml` to dynamic `ParametricOps` class.
+    - **Refactored `unit_ops.py` into a package** (`src/cell_os/unit_ops/`) with submodules for liquid handling, incubation, imaging, and analysis.
 - **Inventory**:
     - Updated to support YAML‑based pricing catalog (`data/raw/pricing.yaml`).
+- **Executors**:
+    - Consolidated simulated executors: `simulated_perturbation_executor.py` is now canonical; `simulated_executor.py` archived.
+- **Workflows**:
+    - Moved `zombie_posh_shopping_list.py` to `src/cell_os/workflows/`.
 
 ### Removed
 - `data/raw/unit_ops.yaml`: Replaced by dynamic parametric operations.

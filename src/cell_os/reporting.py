@@ -66,7 +66,7 @@ def summarize_campaign(
     lines.append("INVENTORY USAGE")
     lines.append("-" * 70)
     
-    tracked_resources = ["PLATE_6WELL", "DMEM_MEDIA", "FBS"]
+    tracked_resources = ["plate_6well", "dmem_high_glucose", "fbs"]
     for resource_id in tracked_resources:
         try:
             current = inventory.check_stock(resource_id)

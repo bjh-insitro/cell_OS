@@ -61,9 +61,9 @@ SCENARIOS = {
         description="Low-budget pilot study with limited resources",
         budget_usd=500.0,
         initial_inventory={
-            "PLATE_6WELL": 5.0,  # 5 plates
-            "DMEM_MEDIA": 100.0,  # 100 mL
-            "FBS": 10.0,  # 10 mL
+            "plate_6well": 5.0,  # 5 plates
+            "dmem_high_glucose": 100.0,  # 100 mL
+            "fbs": 10.0,  # 10 mL
         },
         morphology_engine="fake",
         acquisition_profile="cautious_operator",
@@ -77,9 +77,9 @@ SCENARIOS = {
         description="Standard POSH screen for stress window optimization",
         budget_usd=2000.0,
         initial_inventory={
-            "PLATE_6WELL": 20.0,  # 20 plates
-            "DMEM_MEDIA": 500.0,  # 500 mL
-            "FBS": 50.0,  # 50 mL
+            "plate_6well": 20.0,  # 20 plates
+            "dmem_high_glucose": 500.0,  # 500 mL
+            "fbs": 50.0,  # 50 mL
         },
         morphology_engine="fake",
         morphology_aggregation="mean",
@@ -94,9 +94,9 @@ SCENARIOS = {
         description="Aggressive morphology exploration with high stress tolerance",
         budget_usd=5000.0,
         initial_inventory={
-            "PLATE_6WELL": 50.0,  # 50 plates
-            "DMEM_MEDIA": 2000.0,  # 2 L
-            "FBS": 200.0,  # 200 mL
+            "plate_6well": 50.0,  # 50 plates
+            "dmem_high_glucose": 2000.0,  # 2 L
+            "fbs": 200.0,  # 200 mL
         },
         morphology_engine="real",
         morphology_csv_path="data/morphology/example_embeddings.csv",

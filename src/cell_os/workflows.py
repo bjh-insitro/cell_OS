@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List
 from cell_os.unit_ops import UnitOp, ParametricOps, AssayRecipe
+from cell_os.workflows.zombie_posh_shopping_list import ZombiePOSHShoppingList
 
 
 @dataclass

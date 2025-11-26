@@ -6,13 +6,19 @@ Runs the demo with all 4 profiles and generates comparison visualizations.
 
 import subprocess
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 
-# Set style
-sns.set_style("whitegrid")
-plt.rcParams['figure.figsize'] = (14, 10)
+# Try to import plotting libraries
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    HAS_PLOTTING = True
+    sns.set_style("whitegrid")
+    plt.rcParams['figure.figsize'] = (14, 10)
+except ImportError:
+    HAS_PLOTTING = False
+    print("Note: matplotlib/seaborn not installed. Skipping visualizations.")
+    print("Install with: pip install matplotlib seaborn")
 
 PROFILES = ["balanced", "ambitious_postdoc", "cautious_operator", "wise_pi"]
 RESULTS_DIR = Path("results")
@@ -43,6 +49,10 @@ def run_profile(profile_name: str) -> pd.DataFrame:
 
 def plot_comparisons(all_results: dict):
     """Generate comparison plots."""
+    if not HAS_PLOTTING:
+        print("Skipping plots (matplotlib not available)")
+        return None
+    
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     
     # 1. Distance to centroid comparison
