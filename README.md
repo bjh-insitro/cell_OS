@@ -158,6 +158,80 @@ This will generate `results/posh_demo_hits.csv` with ranked hits based on morpho
 python scripts/imaging_loop_smoketest.py
 ```
 
+## Scenario System
+
+Run complete experimental campaigns with predefined configurations:
+
+```bash
+# List available scenarios
+python -m src.run_scenario --list
+
+# Run a scenario
+python -m src.run_scenario --name cheap_pilot
+python -m src.run_scenario --name posh_window_finding
+python -m src.run_scenario --name high_risk_morphology
+```
+
+### Available Scenarios
+
+| Scenario | Budget | Inventory | Profile | Description |
+|----------|--------|-----------|---------|-------------|
+| **cheap_pilot** | $500 | Limited | cautious_operator | Low-budget pilot study |
+| **posh_window_finding** | $2,000 | Standard | balanced | Standard POSH screen |
+| **high_risk_morphology** | $5,000 | Abundant | ambitious_postdoc | Aggressive exploration |
+
+Each scenario bundles:
+- Campaign budget and failure mode
+- Initial inventory (plates, media, reagents)
+- Morphology engine configuration
+- Acquisition profile (stress/viability trade-offs)
+
+### Sample Report Card
+
+```
+======================================================================
+CAMPAIGN SUMMARY REPORT
+======================================================================
+
+BUDGET
+----------------------------------------------------------------------
+  Total Budget:      $500.00
+  Spent:             $127.45 (25.5%)
+  Remaining:         $372.55
+
+INVENTORY USAGE
+----------------------------------------------------------------------
+  6-Well Plate:
+    Starting:  5.0 plate
+    Consumed:  2.0 plate (40.0%)
+    Remaining: 3.0 plate
+  DMEM Media:
+    Starting:  100.0 mL
+    Consumed:  24.0 mL (24.0%)
+    Remaining: 76.0 mL
+
+EXPERIMENTAL COVERAGE
+----------------------------------------------------------------------
+  Perturbations:     20
+  Total Wells:       60
+  Unique Conditions: 60
+
+MORPHOLOGY
+----------------------------------------------------------------------
+  Embeddings:        60
+  Mean Pairwise Dist: 1.234 ± 0.456
+
+TERMINATION
+----------------------------------------------------------------------
+  Status:            completed
+  Cycles Completed:  1 / 3
+  Goal Met:          No
+
+======================================================================
+```
+
+See [src/cell_os/scenarios.py](src/cell_os/scenarios.py) to customize or create new scenarios.
+
 ## Quick Start
 
 ```bash
