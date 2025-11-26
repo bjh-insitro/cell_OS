@@ -8,6 +8,6 @@ in src.core.world_model (Artifact, UnitOp, etc).
 
 from __future__ import annotations
 
-from src.lab_world_model import LabWorldModel, CampaignId, PathLike
+from cell_os.lab_world_model import LabWorldModel, CampaignId, PathLike
 
 __all__ = ["LabWorldModel", "CampaignId", "PathLike"]

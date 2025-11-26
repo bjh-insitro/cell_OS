@@ -100,6 +100,26 @@ For pooled POSH screens, the system uses a barcode-based capacity model instead 
 
 This yields approximately **300 genes × 4 guides = 1,200 perturbations per pooled screen**.
 
+### Morphology Engine & Phenotypic Diversity
+The system now includes a `MorphologyEngine` protocol for extracting features from images to drive diversity-based acquisition:
+```python
+from cell_os.morphology_engine import FakeMorphologyEngine
+from cell_os.perturbation_goal import PerturbationPosterior
+
+# Initialize engine (plug in real models like CellProfiler/DeepProfiler later)
+engine = FakeMorphologyEngine(n_features=512)
+
+# Posterior tracks morphological embeddings
+posterior = PerturbationPosterior(morphology_engine=engine)
+
+# Update with image paths -> extracts features -> updates embeddings
+posterior.update_with_images("TP53", ["img1.tif", "img2.tif"])
+
+# Compute diversity score for a set of genes
+diversity = posterior.diversity_score(["TP53", "MDM2", "KRAS"])
+```
+This enables the `PerturbationAcquisitionLoop` to select genes that maximize phenotypic diversity, exploring the "morphological space" of the cell.
+
 **Run the smoketest:**
 ```bash
 python scripts/imaging_loop_smoketest.py

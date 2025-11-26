@@ -1,5 +1,25 @@
 # Post-Housekeeping Summary
 
+## 2025-11-25 – Repo hygiene pass
+
+- Packaging
+  - `cell_os` is the canonical package (src-layout).
+  - `cell_os.core.world_model` is a thin shim exposing:
+    - core unit-op primitives (`Artifact`, `UnitOp`, etc.)
+    - `LabWorldModel` as `WorldModel` for legacy imports.
+- Phase -1 (imaging dose loop)
+  - All imaging acquisition tests passing.
+  - `scripts/imaging_loop_smoketest.py` runs without errors.
+- Phase 0 (perturbation loop)
+  - POSH pooled barcode capacity model replaces plate-based constraints.
+  - MorphologyEngine scaffold integrated; posterior supports embeddings.
+  - Integration tests for perturbation loop all green.
+- Infrastructure
+  - `Inventory` depletion / restock tests green (`DMEM_MEDIA`, `FBS` defined in pricing.yaml).
+  - ActiveLearner / run_loop imports ok via `cell_os.core.world_model`.
+  - Full `venv/bin/pytest -q` passes as of this date.
+
+
 ## ✅ Completed Phase 1 Housekeeping
 
 All safe, non-breaking organizational improvements complete.
