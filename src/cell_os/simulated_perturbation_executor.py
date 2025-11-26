@@ -28,6 +28,8 @@ class SimulatedPerturbationExecutor:
         Noise added to viability (default: 0.05)
     seed : int
         Random seed for reproducibility (default: 42)
+    inventory : Inventory, optional
+        Inventory to track reagent consumption (default: None)
     
     Examples
     --------
@@ -44,12 +46,14 @@ class SimulatedPerturbationExecutor:
         base_viability: float = 0.95,
         viability_noise: float = 0.05,
         seed: int = 42,
+        inventory=None,  # Optional[Inventory]
     ):
         """Initialize simulated executor."""
         self.embedding_dim = embedding_dim
         self.base_viability = base_viability
         self.viability_noise = viability_noise
         self.seed = seed
+        self.inventory = inventory
     
     def _generate_gene_embedding(self, gene: str) -> np.ndarray:
         """Generate deterministic embedding for a gene.
@@ -95,7 +99,16 @@ class SimulatedPerturbationExecutor:
             - replicate: Replicate number (1-indexed)
             - viability: Cell viability (0-1)
             - morphology_embedding: Morphological features (list of floats)
+        
+        Raises
+        ------
+        OutOfStockError
+            If inventory tracking is enabled and reagents are depleted
         """
+        # Consume inventory if tracking is enabled
+        if self.inventory is not None:
+            self._consume_reagents(batch)
+        
         rows = []
         
         for plan in batch.plans:
@@ -122,3 +135,34 @@ class SimulatedPerturbationExecutor:
                     })
         
         return pd.DataFrame(rows)
+    
+    def _consume_reagents(self, batch: PerturbationBatch):
+        """Consume reagents from inventory for a batch.
+        
+        Parameters
+        ----------
+        batch : PerturbationBatch
+            Batch to consume reagents for
+        
+        Raises
+        ------
+        OutOfStockError
+            If insufficient reagents available
+        """
+        # Calculate total wells needed
+        total_wells = sum(
+            len(plan.guide_ids) * plan.replicates 
+            for plan in batch.plans
+        )
+        
+        # Consume plates (assume 96-well plates, 1 plate per 96 wells)
+        plates_needed = np.ceil(total_wells / 96.0)
+        self.inventory.consume("PLATE_96_WELL", plates_needed, "plate")
+        
+        # Consume media (assume 200 µL per well)
+        media_ml = total_wells * 0.2  # 200 µL = 0.2 mL
+        self.inventory.consume("DMEM_MEDIA", media_ml, "mL")
+        
+        # Consume library units (1 per perturbation)
+        total_perturbations = len(batch.plans)
+        self.inventory.consume("LIBRARY_UNIT", total_perturbations, "unit")

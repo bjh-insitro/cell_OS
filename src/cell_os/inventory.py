@@ -140,90 +140,158 @@ class Inventory:
             )
         res.stock_level -= quantity
     
-    def consume(self, resource_id: str, amount: float, unit: str = None) -> bool:
+    def get_resource(self, resource_id: str) -> Resource:
         """
-        Consume reagent from inventory.
+        Get a resource by ID.
+        """
+        if resource_id not in self.resources:
+            raise KeyError(f"Resource '{resource_id}' not found in inventory")
+        return self.resources[resource_id]
+
+    def get_unit_price(self, resource_id: str) -> float:
+        """
+        Return the unit price for a given resource.
+        """
+        return self.get_resource(resource_id).unit_price_usd
+
+    def compute_bom_cost(self, items: List[BOMItem]) -> float:
+        """
+        Compute total cost for a list of BOM items.
+        """
+        total = 0.0
+        for item in items:
+            unit_price = self.get_unit_price(item.resource_id)
+            total += unit_price * item.quantity
+        return total
+
+    def check_availability(self, items: List[BOMItem]) -> Dict[str, bool]:
+        """
+        Check if all items are available in sufficient quantity.
         
-        Args:
-            resource_id: ID of resource to consume
-            amount: Amount to consume
-            unit: Unit (currently ignored, assumed to match logical_unit)
-            
-        Returns:
-            True if consumed successfully, False if insufficient stock
-        """
-        try:
-            self.deplete_stock(resource_id, amount)
-            return True
-        except OutOfStockError:
-            return False
-    
-    def check_availability(self, bom: List[BOMItem]) -> Dict[str, bool]:
-        """
-        Check if all BOM items are in stock.
+        Parameters
+        ----------
+        items : List[BOMItem]
+            Items to check
         
-        Args:
-            bom: List of BOMItem objects
-            
-        Returns:
-            Dict mapping resource_id to availability (True/False)
+        Returns
+        -------
+        availability : Dict[str, bool]
+            Mapping of resource_id to availability status
         """
         availability = {}
-        for item in bom:
-            if item.resource_id not in self.resources:
-                availability[item.resource_id] = False
-                continue
-            
-            res = self.resources[item.resource_id]
-            availability[item.resource_id] = res.stock_level >= item.quantity
-        
+        for item in items:
+            resource = self.get_resource(item.resource_id)
+            availability[item.resource_id] = resource.stock_level >= item.quantity
         return availability
 
-    def restock(self, resource_id: str, quantity: float):
-        """Add stock."""
-        if resource_id in self.resources:
-            self.resources[resource_id].stock_level += quantity
+    def add_stock(self, resource_id: str, quantity: float, unit: str) -> None:
+        """Add stock to inventory.
+        
+        Parameters
+        ----------
+        resource_id : str
+            Resource identifier
+        quantity : float
+            Amount to add
+        unit : str
+            Unit of measurement (must match resource's logical_unit)
+        
+        Raises
+        ------
+        KeyError
+            If resource not found
+        ValueError
+            If unit doesn't match resource's logical_unit
+        """
+        resource = self.get_resource(resource_id)
+        
+        if unit != resource.logical_unit:
+            raise ValueError(
+                f"Unit mismatch: {unit} != {resource.logical_unit} for {resource_id}"
+            )
+        
+        resource.stock_level += quantity
 
-    # -----------------------------------------------------------------
-    # New: pricing export for LabWorldModel
-    # -----------------------------------------------------------------
+    def consume(self, resource_id: str, quantity: float, unit: str) -> None:
+        """Consume stock from inventory.
+        
+        Parameters
+        ----------
+        resource_id : str
+            Resource identifier
+        quantity : float
+            Amount to consume
+        unit : str
+            Unit of measurement (must match resource's logical_unit)
+        
+        Raises
+        ------
+        KeyError
+            If resource not found
+        ValueError
+            If unit doesn't match resource's logical_unit
+        OutOfStockError
+            If insufficient stock available
+        """
+        resource = self.get_resource(resource_id)
+        
+        if unit != resource.logical_unit:
+            raise ValueError(
+                f"Unit mismatch: {unit} != {resource.logical_unit} for {resource_id}"
+            )
+        
+        if resource.stock_level < quantity:
+            raise OutOfStockError(
+                f"Insufficient stock for {resource_id}: "
+                f"requested {quantity} {unit}, available {resource.stock_level} {unit}"
+            )
+        
+        resource.stock_level -= quantity
+
+    def check_stock(self, resource_id: str) -> float:
+        """Check current stock level for a resource.
+        
+        Parameters
+        ----------
+        resource_id : str
+            Resource identifier
+        
+        Returns
+        -------
+        stock_level : float
+            Current stock level in resource's logical_unit
+        
+        Raises
+        ------
+        KeyError
+            If resource not found
+        """
+        return self.get_resource(resource_id).stock_level
 
     def to_dataframe(self) -> pd.DataFrame:
         """
-        Export the resources table as a DataFrame.
-
-        Columns:
-          resource_id
-          name
-          category
-          vendor
-          catalog_number
-          pack_size
-          pack_unit
-          pack_price_usd
-          logical_unit
-          unit_price_usd
-          stock_level
-          extra
+        Convert inventory to a DataFrame for LabWorldModel integration.
+        
+        Returns
+        -------
+        df : pd.DataFrame
+            DataFrame with columns: resource_id, name, vendor, catalog_number,
+            pack_size, pack_unit, pack_price_usd, logical_unit, unit_price_usd,
+            category, stock_level
         """
-
         rows = []
-        for r in self.resources.values():
-            rows.append(
-                {
-                    "resource_id": r.resource_id,
-                    "name": r.name,
-                    "category": r.category,
-                    "vendor": r.vendor,
-                    "catalog_number": r.catalog_number,
-                    "pack_size": r.pack_size,
-                    "pack_unit": r.pack_unit,
-                    "pack_price_usd": r.pack_price_usd,
-                    "logical_unit": r.logical_unit,
-                    "unit_price_usd": r.unit_price_usd,
-                    "stock_level": r.stock_level,
-                    "extra": r.extra,
-                }
-            )
-
+        for rid, res in self.resources.items():
+            rows.append({
+                "resource_id": rid,
+                "name": res.name,
+                "vendor": res.vendor,
+                "catalog_number": res.catalog_number,
+                "pack_size": res.pack_size,
+                "pack_unit": res.pack_unit,
+                "pack_price_usd": res.pack_price_usd,
+                "logical_unit": res.logical_unit,
+                "unit_price_usd": res.unit_price_usd,
+                "category": res.category,
+                "stock_level": res.stock_level,
+            })
         return pd.DataFrame(rows)
