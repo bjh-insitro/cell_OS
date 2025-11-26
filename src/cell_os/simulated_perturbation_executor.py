@@ -155,14 +155,14 @@ class SimulatedPerturbationExecutor:
             for plan in batch.plans
         )
         
-        # Consume plates (assume 96-well plates, 1 plate per 96 wells)
-        plates_needed = np.ceil(total_wells / 96.0)
-        self.inventory.consume("PLATE_96_WELL", plates_needed, "plate")
+        # Consume plates (assume 6-well plates, 1 plate per 6 wells)
+        plates_needed = np.ceil(total_wells / 6.0)
+        self.inventory.consume("PLATE_6WELL", plates_needed, "plate")
         
-        # Consume media (assume 200 µL per well)
-        media_ml = total_wells * 0.2  # 200 µL = 0.2 mL
+        # Consume media (assume 2 mL per well for 6-well plates)
+        media_ml = total_wells * 2.0  # 2 mL per well
         self.inventory.consume("DMEM_MEDIA", media_ml, "mL")
         
-        # Consume library units (1 per perturbation)
-        total_perturbations = len(batch.plans)
-        self.inventory.consume("LIBRARY_UNIT", total_perturbations, "unit")
+        # Consume FBS (10% of media volume)
+        fbs_ml = media_ml * 0.1
+        self.inventory.consume("FBS", fbs_ml, "mL")

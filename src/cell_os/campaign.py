@@ -305,15 +305,70 @@ class StressWindowGoal:
 class Campaign:
     """
     Manages the execution of a scientific campaign.
+    
+    Attributes
+    ----------
+    goal : CampaignGoal
+        Campaign objective
+    max_cycles : int
+        Maximum number of cycles
+    budget_total_usd : float
+        Total budget in USD (default: unlimited)
+    budget_spent_usd : float
+        Amount spent so far
     """
 
-    def __init__(self, goal: CampaignGoal, max_cycles: int = 5):
+    def __init__(
+        self, 
+        goal: CampaignGoal, 
+        max_cycles: int = 5,
+        budget_total_usd: float = float('inf'),
+        failure_mode: str = "fail_fast",
+    ):
         self.goal = goal
         self.max_cycles = max_cycles
+        self.budget_total_usd = budget_total_usd
+        self.budget_spent_usd = 0.0
+        self.failure_mode = failure_mode  # "fail_fast" or "graceful"
         self.current_cycle = 0
         self.is_complete = False
         self.success = False
         self.history: List[Dict[str, Any]] = []
+    
+    @property
+    def budget_remaining_usd(self) -> float:
+        """Calculate remaining budget."""
+        return self.budget_total_usd - self.budget_spent_usd
+    
+    def spend(self, amount_usd: float) -> None:
+        """Spend from campaign budget.
+        
+        Parameters
+        ----------
+        amount_usd : float
+            Amount to spend in USD
+        
+        Raises
+        ------
+        ValueError
+            If amount exceeds remaining budget
+        """
+        if amount_usd > self.budget_remaining_usd:
+            raise ValueError(
+                f"Insufficient budget: requested ${amount_usd:.2f}, "
+                f"available ${self.budget_remaining_usd:.2f}"
+            )
+        
+        self.budget_spent_usd += amount_usd
+        
+        # Warn if budget is running low (< 10%)
+        if self.budget_remaining_usd < 0.1 * self.budget_total_usd:
+            import warnings
+            warnings.warn(
+                f"Low budget warning: ${self.budget_remaining_usd:.2f} remaining "
+                f"({100 * self.budget_remaining_usd / self.budget_total_usd:.1f}%)",
+                UserWarning
+            )
 
     def check_goal(self, world_model: Phase0WorldModel) -> bool:
         """Check if the goal is met and update status."""
