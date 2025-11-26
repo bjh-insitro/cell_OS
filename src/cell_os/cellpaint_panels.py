@@ -464,6 +464,39 @@ def get_secondary_antibody(species: str, fluorophore: str) -> Optional[Dict]:
     return SECONDARY_ANTIBODIES.get((species.lower(), fluorophore))
 
 
+def get_panel_cost(panel_name: str, volume_ml: float) -> float:
+    """
+    Estimate cost for a Cell Painting panel based on volume.
+    
+    Args:
+        panel_name: Name of the marker/panel (e.g., "mitotracker", "core", "posh")
+        volume_ml: Volume in mL
+        
+    Returns:
+        Estimated cost in USD
+    """
+    # Rough cost estimates per mL for different markers
+    # These are approximations based on typical working concentrations
+    cost_per_ml = {
+        "mitotracker": 0.50,  # MitoTracker Deep Red
+        "mitoprobe": 0.75,    # Custom FISH probes
+        "hoechst": 0.05,      # Hoechst 33342
+        "concanavalin": 0.25, # ConA-Alexa488
+        "phalloidin": 0.40,   # Phalloidin-568
+        "wga": 0.30,          # WGA-Alexa555
+        "bodipy": 0.20,       # BODIPY 493/503
+        "core": 1.50,         # Full core panel
+        "posh": 2.00,         # POSH panel with MitoProbe
+        "neuropaint": 2.50,   # NeuroPaint with antibodies
+        "hepatopaint": 1.70,  # HepatoPaint
+        "alspaint": 3.50,     # ALSPaint with multiple antibodies
+    }
+    
+    # Default to $1/mL if unknown
+    return cost_per_ml.get(panel_name.lower(), 1.0) * volume_ml
+
+
+
 # ===================================================================
 # PANEL BUILDER
 # ===================================================================

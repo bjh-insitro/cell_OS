@@ -15,13 +15,12 @@ def test_consume_success():
     inventory = Inventory("data/raw/pricing.yaml")
     
     # Check initial stock
-    initial_stock = inventory.resources["DMEM_MEDIA"].stock_level
+    initial_stock = inventory.resources["dmem_high_glucose"].stock_level
     
     # Consume some
-    success = inventory.consume("DMEM_MEDIA", 100.0)
+    inventory.consume("dmem_high_glucose", 100.0, "mL")
     
-    assert success == True
-    assert inventory.resources["DMEM_MEDIA"].stock_level == initial_stock - 100.0
+    assert inventory.resources["dmem_high_glucose"].stock_level == initial_stock - 100.0
     print("✓ Consumption successful")
 
 
@@ -33,9 +32,10 @@ def test_consume_out_of_stock():
     resource_id = list(inventory.resources.keys())[0]
     huge_amount = inventory.resources[resource_id].stock_level + 1000.0
     
-    success = inventory.consume(resource_id, huge_amount)
+    with pytest.raises(Exception):  # OutOfStockError
+        inventory.consume(resource_id, huge_amount, inventory.resources[resource_id].logical_unit)
     
-    assert success == False
+    # Exception raised, test passes
     print("✓ Out-of-stock handled correctly")
 
 
@@ -45,14 +45,14 @@ def test_check_availability_all_available():
     
     # Small BOM that should be available
     bom = [
-        BOMItem("DMEM_MEDIA", 50.0),
-        BOMItem("FBS", 10.0)
+        BOMItem("dmem_high_glucose", 50.0),
+        BOMItem("fbs", 10.0)
     ]
     
     availability = inventory.check_availability(bom)
     
-    assert availability["DMEM_MEDIA"] == True
-    assert availability["FBS"] == True
+    assert availability["dmem_high_glucose"] == True
+    assert availability["fbs"] == True
     print("✓ All items available")
 
 
@@ -61,8 +61,8 @@ def test_check_availability_partial():
     inventory = Inventory("data/raw/pricing.yaml")
     
     # Deplete one resource
-    resource_id_1 = "DMEM_MEDIA"
-    resource_id_2 = "FBS"
+    resource_id_1 = "dmem_high_glucose"
+    resource_id_2 = "fbs"
     inventory.resources[resource_id_1].stock_level = 100.0
     inventory.resources[resource_id_2].stock_level = 0.0
 
@@ -84,14 +84,14 @@ def test_restock():
     """Test restocking functionality."""
     inventory = Inventory("data/raw/pricing.yaml")
     
-    resource_id = "DMEM_MEDIA"
+    resource_id = "dmem_high_glucose"
     initial = inventory.resources[resource_id].stock_level
     
     # Consume
-    inventory.consume(resource_id, 100.0)
+    inventory.consume(resource_id, 100.0, "mL")
     
     # Restock
-    inventory.restock(resource_id, 200.0)
+    inventory.add_stock(resource_id, 200.0, "mL")
     
     final = inventory.resources[resource_id].stock_level
     assert final == initial - 100.0 + 200.0
@@ -102,7 +102,7 @@ def test_consume_and_restock_cycle():
     """Test multiple consume/restock cycles."""
     inventory = Inventory("data/raw/pricing.yaml")
     
-    resource_id = "FBS"
+    resource_id = "fbs"
     transactions = [
         ("consume", 50.0),
         ("restock", 100.0),
@@ -113,9 +113,9 @@ def test_consume_and_restock_cycle():
     
     for action, amount in transactions:
         if action == "consume":
-            inventory.consume(resource_id, amount)
+            inventory.consume(resource_id, amount, "mL")
         else:
-            inventory.restock(resource_id, amount)
+            inventory.add_stock(resource_id, amount, "mL")
     
     # Should still have stock
     assert inventory.resources[resource_id].stock_level > 0
