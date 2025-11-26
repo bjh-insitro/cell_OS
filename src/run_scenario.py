@@ -148,6 +148,47 @@ def run_scenario(scenario_name: str):
     
     print(summary)
 
+    # ------------------------------------------------------------------
+    # Cost Accounting (Tier 7)
+    # ------------------------------------------------------------------
+    try:
+        from cell_os.lab_world_model import LabWorldModel
+        
+        # Create a transient LabWorldModel to use its accounting capabilities
+        # We initialize it with the current inventory state (pricing)
+        lwm = LabWorldModel.from_static_tables(
+            pricing=inventory.to_dataframe()
+        )
+        
+        # Compute costs from the inventory usage log
+        if hasattr(inventory, 'usage_log'):
+            cost_report = lwm.compute_cost(inventory.usage_log)
+            
+            print("\n" + "=" * 70)
+            print("COST ACCOUNTING REPORT (Tier 7)")
+            print("=" * 70)
+            print(f"Total Cost: ${cost_report['total_cost_usd']:,.2f}")
+            print("-" * 70)
+            print("Breakdown:")
+            
+            # Sort breakdown by cost descending
+            sorted_breakdown = sorted(
+                cost_report['breakdown'].items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            )
+            
+            for rid, cost in sorted_breakdown:
+                try:
+                    rname = inventory.get_resource(rid).name
+                    print(f"  {rname:<40} ${cost:,.2f}")
+                except:
+                    print(f"  {rid:<40} ${cost:,.2f}")
+            print("=" * 70 + "\n")
+            
+    except Exception as e:
+        print(f"\n⚠️  Could not generate cost report: {e}")
+
 
 def main():
     """CLI entry point."""

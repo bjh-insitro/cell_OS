@@ -77,6 +77,7 @@ class Inventory:
 
     def __init__(self, pricing_path: str):
         self.resources: Dict[str, Resource] = {}
+        self.usage_log: List[Dict[str, Any]] = []  # Log of all consumed resources
         self._load_pricing(pricing_path)
 
         # initialize stock (e.g., 10 packs of everything)
@@ -247,6 +248,14 @@ class Inventory:
             )
         
         resource.stock_level -= quantity
+        
+        # Log usage
+        self.usage_log.append({
+            "resource_id": resource_id,
+            "quantity": quantity,
+            "unit": unit,
+            "timestamp": pd.Timestamp.now()
+        })
 
     def check_stock(self, resource_id: str) -> float:
         """Check current stock level for a resource.

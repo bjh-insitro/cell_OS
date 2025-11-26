@@ -157,7 +157,7 @@ class SimulatedPerturbationExecutor:
         
         # Consume plates (assume 6-well plates, 1 plate per 6 wells)
         plates_needed = np.ceil(total_wells / 6.0)
-        self.inventory.consume("plate_6well", plates_needed, "plate")
+        self.inventory.consume("plate_6well", plates_needed, "unit")
         
         # Consume media (assume 2 mL per well for 6-well plates)
         media_ml = total_wells * 2.0  # 2 mL per well
