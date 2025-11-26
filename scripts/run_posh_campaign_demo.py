@@ -101,9 +101,14 @@ def main(profile_name: str = "balanced"):
     output_dir = "results"
     os.makedirs(output_dir, exist_ok=True)
     
+    # Add profile metadata to results for comparison across runs
+    phenotype_table_with_meta = phenotype_table.copy()
+    phenotype_table_with_meta.insert(0, "profile", profile_name)
+    
     output_path = os.path.join(output_dir, "posh_demo_hits.csv")
-    phenotype_table.to_csv(output_path, index=False)
+    phenotype_table_with_meta.to_csv(output_path, index=False)
     print(f"   Results written to: {output_path}")
+    print(f"   Profile '{profile_name}' logged in CSV for run comparison")
     
     # Step 6: Cluster hits and write clustered results
     print("\nStep 6: Cluster hits by morphological similarity...")
