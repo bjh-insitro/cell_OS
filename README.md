@@ -120,6 +120,29 @@ diversity = posterior.diversity_score(["TP53", "MDM2", "KRAS"])
 ```
 This enables the `PerturbationAcquisitionLoop` to select genes that maximize phenotypic diversity, exploring the "morphological space" of the cell.
 
+### Acquisition Profiles: Loop Personalities
+
+Control how the autonomous loop trades off stress, viability, uncertainty, and diversity with 4 built-in profiles:
+
+| Profile | Viability | Diversity | Best For |
+|---------|-----------|-----------|----------|
+| **balanced** | 0.7-0.9 | 0.5 | General use, starting point |
+| **ambitious_postdoc** | 0.5-0.85 | 0.7 | Discovery, EC50 mapping |
+| **cautious_operator** | 0.85-1.0 | 0.2 | Production, reproducibility |
+| **wise_pi** | 0.75-0.9 | 0.6 | Iterative optimization |
+
+```bash
+# Run with different personalities
+python scripts/run_posh_campaign_demo.py --profile balanced
+python scripts/run_posh_campaign_demo.py --profile ambitious_postdoc
+python scripts/run_posh_campaign_demo.py --profile cautious_operator
+
+# Compare results
+python scripts/compare_profiles.py
+```
+
+See [docs/acquisition_profiles.md](docs/acquisition_profiles.md) for detailed guide.
+
 ## Quick Demo
 
 Run a complete simulated POSH campaign (gene selection → execution → hit calling):
