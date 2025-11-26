@@ -95,10 +95,31 @@ def main():
     phenotype_table.to_csv(output_path, index=False)
     print(f"   Results written to: {output_path}")
     
+    # Step 6: Cluster hits and write clustered results
+    print("\nStep 6: Cluster hits by morphological similarity...")
+    n_clusters = 3
+    clustered_table = posterior.cluster_hits(n_clusters=n_clusters)
+    cluster_summaries = posterior.cluster_summaries(n_clusters=n_clusters)
+    
+    # Write clustered table
+    clustered_output_path = os.path.join(output_dir, "posh_demo_hits_with_clusters.csv")
+    clustered_table.to_csv(clustered_output_path, index=False)
+    print(f"   Clustered results written to: {clustered_output_path}")
+    
+    # Display cluster summaries
+    if not cluster_summaries.empty:
+        print(f"\n   Cluster summaries ({n_clusters} clusters):")
+        for _, row in cluster_summaries.iterrows():
+            print(f"      Cluster {row['cluster_id']}: "
+                  f"{row['n_genes']:.0f} genes, "
+                  f"mean distance {row['mean_distance_to_centroid']:.3f}, "
+                  f"mean viability {row['mean_phenotype_score']:.3f}")
+    
     print("\n" + "=" * 60)
     print("Demo complete!")
     print("=" * 60)
     print(f"\nView results: cat {output_path}")
+    print(f"View clusters: cat {clustered_output_path}")
     print(f"Top {len(top_hits)} hits: {', '.join(top_hits[:10])}")
     
     return output_path

@@ -492,3 +492,104 @@ class PerturbationPosterior:
         # Table is already sorted by distance_to_centroid desc, gene asc
         # Just take the first top_n rows
         return df.head(top_n)["gene"].tolist()
+    
+    def cluster_hits(self, n_clusters: int = 5) -> pd.DataFrame:
+        """Return phenotype table with cluster assignments.
+        
+        Uses K-means clustering on morphological embeddings to group genes
+        by phenotypic similarity.
+        
+        Parameters
+        ----------
+        n_clusters : int
+            Number of clusters (default: 5)
+        
+        Returns
+        -------
+        df : pd.DataFrame
+            Phenotype table with additional "cluster_id" column.
+            If no embeddings exist, returns table without cluster_id column.
+            Genes with cluster_id == -1 were not clustered.
+        
+        Notes
+        -----
+        - Clustering is deterministic (uses random_state=0)
+        - If n_clusters > number of genes, n_clusters is reduced automatically
+        
+        Examples
+        --------
+        >>> posterior = PerturbationPosterior()
+        >>> # After running experiments...
+        >>> df = posterior.cluster_hits(n_clusters=3)
+        >>> print(df[["gene", "cluster_id", "distance_to_centroid"]])
+        """
+        # Get base phenotype table
+        phenotype_df = self.gene_phenotype_table()
+        
+        # If no embeddings, return table without clustering
+        if not self.embeddings:
+            return phenotype_df
+        
+        # Import here to avoid circular dependencies
+        from cell_os.phenotype_clustering import (
+            cluster_embeddings_kmeans,
+            add_cluster_labels,
+        )
+        
+        # Cluster embeddings
+        cluster_assignments = cluster_embeddings_kmeans(
+            self.embeddings,
+            n_clusters=n_clusters,
+        )
+        
+        # Add cluster labels to table
+        return add_cluster_labels(phenotype_df, cluster_assignments)
+    
+    def cluster_summaries(self, n_clusters: int = 5) -> pd.DataFrame:
+        """Return cluster-level summary statistics.
+        
+        Parameters
+        ----------
+        n_clusters : int
+            Number of clusters (default: 5)
+        
+        Returns
+        -------
+        summary : pd.DataFrame
+            Cluster summaries with columns:
+            - cluster_id
+            - n_genes
+            - mean_distance_to_centroid
+            - mean_phenotype_score
+            
+            Empty DataFrame if no embeddings exist.
+            Excludes cluster_id == -1 (unclustered genes).
+        
+        Notes
+        -----
+        - Useful for understanding cluster characteristics
+        - Clusters are sorted by cluster_id
+        
+        Examples
+        --------
+        >>> posterior = PerturbationPosterior()
+        >>> # After running experiments...
+        >>> summaries = posterior.cluster_summaries(n_clusters=3)
+        >>> print(summaries)
+        """
+        # Get clustered phenotype table
+        clustered_df = self.cluster_hits(n_clusters=n_clusters)
+        
+        # If no cluster_id column (no embeddings), return empty summary
+        if "cluster_id" not in clustered_df.columns:
+            return pd.DataFrame(columns=[
+                "cluster_id",
+                "n_genes",
+                "mean_distance_to_centroid",
+                "mean_phenotype_score",
+            ])
+        
+        # Import here to avoid circular dependencies
+        from cell_os.phenotype_clustering import summarize_clusters
+        
+        return summarize_clusters(clustered_df)
