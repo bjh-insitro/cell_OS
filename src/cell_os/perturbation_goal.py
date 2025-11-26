@@ -425,3 +425,70 @@ class PerturbationPosterior:
             return 0.0
         # Fallback to existing logic
         return self.get_diversity_score(perturbation_ids)
+    
+    def gene_phenotype_table(self) -> pd.DataFrame:
+        """Return a per-gene phenotype summary DataFrame.
+        
+        Uses current embeddings and phenotype_scores to build a table
+        with columns: gene, phenotype_score, distance_to_centroid,
+        embedding_norm, rank_by_distance.
+        
+        Returns
+        -------
+        df : pd.DataFrame
+            Phenotype summary table, sorted by distance_to_centroid (desc).
+            Empty DataFrame with correct columns if no embeddings exist.
+        
+        Notes
+        -----
+        Genes are ranked by distance from the global centroid (mean embedding).
+        Genes far from the centroid are considered phenotypically shifted.
+        
+        Examples
+        --------
+        >>> posterior = PerturbationPosterior()
+        >>> # After running experiments and updating embeddings...
+        >>> df = posterior.gene_phenotype_table()
+        >>> print(df.head())
+        """
+        # Import here to avoid circular dependencies
+        from cell_os.phenotype_aggregation import build_gene_phenotype_table
+        
+        return build_gene_phenotype_table(self.embeddings, self.phenotype_scores)
+    
+    def top_hits(self, top_n: int = 20) -> List[str]:
+        """Return top N genes ranked by phenotypic shift.
+        
+        Genes are ranked by distance_to_centroid (most distant = most shifted).
+        
+        Parameters
+        ----------
+        top_n : int
+            Number of top hits to return (default: 20)
+        
+        Returns
+        -------
+        hits : List[str]
+            List of gene names, sorted by phenotypic shift (most shifted first).
+            Returns empty list if no embeddings exist.
+            Returns fewer than top_n if fewer genes are available.
+        
+        Notes
+        -----
+        Sorting is deterministic: distance_to_centroid desc, then gene asc.
+        
+        Examples
+        --------
+        >>> posterior = PerturbationPosterior()
+        >>> # After running experiments...
+        >>> hits = posterior.top_hits(top_n=10)
+        >>> print(f"Top 10 hits: {hits}")
+        """
+        df = self.gene_phenotype_table()
+        
+        if df.empty:
+            return []
+        
+        # Table is already sorted by distance_to_centroid desc, gene asc
+        # Just take the first top_n rows
+        return df.head(top_n)["gene"].tolist()
