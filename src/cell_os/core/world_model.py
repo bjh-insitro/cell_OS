@@ -1,11 +1,11 @@
 """Forwarding module to keep `cell_os.core.world_model` imports working.
 
-This exposes the legacy unit-operation primitives from `core.world_model`
+This exposes the legacy unit-operation primitives from `src/core/world_model`
 and maps the modern `cell_os.lab_world_model.LabWorldModel` to the name
 `WorldModel` for backwards compatibility.
 """
 
-from core.world_model import (
+from src.core.world_model import (
     Artifact,
     ExecutionRecord,
     UnitOp,
