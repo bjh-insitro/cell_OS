@@ -46,9 +46,16 @@ All notable changes to the cell_OS project will be documented in this file.
     - Consolidated simulated executors: `simulated_perturbation_executor.py` is now canonical; `simulated_executor.py` archived.
 - **LabWorldModel**:
     - **Refactored `lab_world_model.py` into a package** (`src/cell_os/lab_world_model/`) with components: `cell_registry`, `experiment_history`, `resource_costs`, `workflow_index`.
+    - **Added `resource_accounting` module** for cost calculations from usage logs.
+    - Enhanced `ResourceCosts` with `get_unit_price()` method.
     - Preserved full backward compatibility.
+- **Inventory**:
+    - **Added automatic usage logging** to `consume()` method for cost tracking.
+- **Scenario Execution**:
+    - **Added cost reporting** to `run_scenario.py` with detailed breakdown by resource.
 - **Workflows**:
     - Moved `zombie_posh_shopping_list.py` to `src/cell_os/workflows/`.
+    - Fixed workflows package structure (converted `workflows.py` to `workflows/__init__.py`).
 
 ### Removed
 - `data/raw/unit_ops.yaml`: Replaced by dynamic parametric operations.
