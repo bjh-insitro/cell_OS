@@ -147,24 +147,36 @@ class PerturbationAcquisitionLoop:
         
         max_genes = min(goal_max, plate_max)
         
-        # Score each gene
-        gene_scores = []
+        # Score each gene using diversity and phenotype scores
+        # Use profile to weight diversity vs exploitation
+        diversity_weight = self.goal.profile.diversity_weight
+        
+        scores = {}
         for gene in candidate_genes:
-            score = self.posterior.get_diversity_score([gene])
-            gene_scores.append((gene, score))
+            # Diversity score (0-1, higher = more diverse from existing)
+            diversity = self.posterior.diversity_score([gene])
+            
+            # Phenotype score (0-1, higher = more phenotypically interesting)
+            # Use viability as proxy for phenotype (lower viability = more interesting)
+            phenotype_score = self.posterior.phenotype_scores.get(gene, 0.5)
+            # Invert so lower viability = higher score
+            phenotype_score = 1.0 - phenotype_score
+            
+            # Weighted combination
+            combined_score = (
+                diversity_weight * diversity +
+                (1.0 - diversity_weight) * phenotype_score
+            )
+            scores[gene] = combined_score
         
-        # Sort by score descending
-        gene_scores.sort(key=lambda x: x[1], reverse=True)
-        
-        # Select top N genes (respecting POSH pooled capacity)
-        n_genes = min(len(gene_scores), max_genes)
-        selected_genes = gene_scores[:n_genes]
+        # Select top N genes
+        selected_genes = sorted(scores.keys(), key=lambda g: scores[g], reverse=True)[:max_genes]
         
         # Create plans
         plans = []
         total_cost = 0.0
         
-        for gene, score in selected_genes:
+        for gene in selected_genes:
             # Create placeholder guides
             n_guides = self.goal.min_guides_per_gene
             guides = [f"{gene}_guide_{i+1}" for i in range(n_guides)]
@@ -179,18 +191,19 @@ class PerturbationAcquisitionLoop:
                 guides=guides,
                 guide_ids=guide_ids,
                 replicates=self.goal.min_replicates,
-                expected_phenotype_score=score,
             )
             plans.append(plan)
         
-        # Compute diversity for the full selected set (Phase 0.2)
-        selected_gene_names = [gene for gene, _ in selected_genes]
-        batch_diversity = self.posterior.get_diversity_score(selected_gene_names)
+        # Compute expected diversity for the selected set
+        if selected_genes:
+            expected_diversity = self.posterior.diversity_score(list(selected_genes))
+        else:
+            expected_diversity = 0.0
         
         return PerturbationBatch(
             plans=plans,
             total_cost_usd=total_cost,
-            expected_diversity=batch_diversity,
+            expected_diversity=expected_diversity,
         )
     
     def run_one_cycle(

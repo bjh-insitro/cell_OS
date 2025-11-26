@@ -9,6 +9,7 @@ The output is a ranked hit table showing which genes are most phenotypically shi
 """
 
 import os
+import argparse
 import pandas as pd
 
 from cell_os.lab_world_model import LabWorldModel
@@ -17,11 +18,18 @@ from cell_os.perturbation_loop import PerturbationAcquisitionLoop
 from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
 
 
-def main():
-    """Run a complete simulated POSH campaign."""
+def main(profile_name: str = "balanced"):
+    """Run a complete simulated POSH campaign.
+    
+    Parameters
+    ----------
+    profile_name : str
+        Acquisition profile to use (default: "balanced")
+    """
     print("=" * 60)
     print("POSH Campaign Demo - End-to-End Autonomous Workflow")
     print("=" * 60)
+    print(f"\nUsing acquisition profile: {profile_name}")
     
     # Step 1: Initialize world model and posterior
     print("\nStep 1: Initialize world model and posterior...")
@@ -36,7 +44,7 @@ def main():
     ]
     print(f"   Candidate genes: {len(candidate_genes)} genes")
     
-    # Step 2: Set up perturbation loop
+    # Step 2: Set up perturbation loop with profile
     print("\nStep 2: Set up perturbation acquisition loop...")
     executor = SimulatedPerturbationExecutor()
     
@@ -45,9 +53,11 @@ def main():
         max_perturbations=10,
         min_guides_per_gene=3,
         min_replicates=2,
+        profile_name=profile_name,
     )
     print(f"   Goal: {goal.objective}")
     print(f"   Max perturbations: {goal.max_perturbations}")
+    print(f"   Diversity weight: {goal.profile.diversity_weight}")
     
     loop = PerturbationAcquisitionLoop(
         posterior=posterior,
@@ -115,7 +125,7 @@ def main():
                   f"mean distance {row['mean_distance_to_centroid']:.3f}, "
                   f"mean viability {row['mean_phenotype_score']:.3f}")
     
-    print("\n" + "=" * 60)
+    print("\n" * 60)
     print("Demo complete!")
     print("=" * 60)
     print(f"\nView results: cat {output_path}")
@@ -126,4 +136,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run POSH campaign demo with configurable profile")
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default="balanced",
+        choices=["balanced", "ambitious_postdoc", "cautious_operator", "wise_pi"],
+        help="Acquisition profile (default: balanced)",
+    )
+    args = parser.parse_args()
+    
+    main(profile_name=args.profile)

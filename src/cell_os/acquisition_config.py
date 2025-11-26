@@ -10,6 +10,103 @@ from typing import Optional
 
 
 @dataclass
+class AcquisitionProfile:
+    """Unified acquisition profile defining loop personality.
+    
+    Controls behavior across both imaging dose selection and perturbation
+    selection by defining risk tolerance, viability bounds, and diversity
+    preferences.
+    
+    Attributes
+    ----------
+    name : str
+        Profile identifier
+    viability_min : float
+        Lower viability bound for imaging window
+    viability_max : float
+        Upper viability bound for imaging window
+    max_viability_std : float
+        Maximum allowed uncertainty in viability predictions
+    min_stress : float | None
+        Minimum stress threshold (None = no minimum)
+    diversity_weight : float
+        Weight for diversity in perturbation selection (0-1)
+        0 = pure exploitation, 1 = pure exploration
+    max_allowed_uncertainty : float
+        Maximum allowed GP uncertainty (for future use)
+    """
+    
+    name: str
+    
+    # Imaging window preferences
+    viability_min: float
+    viability_max: float
+    max_viability_std: float
+    min_stress: Optional[float]
+    
+    # Perturbation selection preferences
+    diversity_weight: float
+    max_allowed_uncertainty: float
+
+
+# Profile registry
+PROFILES: dict[str, AcquisitionProfile] = {
+    "balanced": AcquisitionProfile(
+        name="balanced",
+        viability_min=0.7,
+        viability_max=0.9,
+        max_viability_std=0.25,
+        min_stress=0.3,
+        diversity_weight=0.5,
+        max_allowed_uncertainty=0.3,
+    ),
+    "ambitious_postdoc": AcquisitionProfile(
+        name="ambitious_postdoc",
+        viability_min=0.5,
+        viability_max=0.85,
+        max_viability_std=0.4,
+        min_stress=0.5,
+        diversity_weight=0.7,
+        max_allowed_uncertainty=0.5,
+    ),
+    "cautious_operator": AcquisitionProfile(
+        name="cautious_operator",
+        viability_min=0.85,
+        viability_max=1.0,
+        max_viability_std=0.2,
+        min_stress=None,
+        diversity_weight=0.2,
+        max_allowed_uncertainty=0.2,
+    ),
+    "wise_pi": AcquisitionProfile(
+        name="wise_pi",
+        viability_min=0.75,
+        viability_max=0.9,
+        max_viability_std=0.25,
+        min_stress=0.4,
+        diversity_weight=0.6,
+        max_allowed_uncertainty=0.3,
+    ),
+}
+
+
+def get_profile(name: str = "balanced") -> AcquisitionProfile:
+    """Get an acquisition profile by name.
+    
+    Parameters
+    ----------
+    name : str
+        Profile name (default: "balanced")
+    
+    Returns
+    -------
+    profile : AcquisitionProfile
+        The requested profile, or "balanced" if name not found
+    """
+    return PROFILES.get(name, PROFILES["balanced"])
+
+
+@dataclass
 class AcquisitionConfig:
     """Configuration for multi-objective acquisition scoring.
     

@@ -103,6 +103,8 @@ class PerturbationGoal:
         Maximum number of perturbations (plate capacity constraint)
     budget_usd : Optional[float]
         Optional budget constraint
+    profile_name : str
+        Acquisition profile name (default: "balanced")
     
     Examples
     --------
@@ -121,6 +123,23 @@ class PerturbationGoal:
     max_perturbations: int = 200
     budget_usd: Optional[float] = None
     posh_capacity: Optional[POSHPooledCapacity] = None
+    profile_name: str = "balanced"
+    
+    _profile_cache: Optional["AcquisitionProfile"] = field(default=None, init=False, repr=False)  # type: ignore
+    
+    @property
+    def profile(self) -> "AcquisitionProfile":  # type: ignore
+        """Get the acquisition profile for this goal.
+        
+        Returns
+        -------
+        profile : AcquisitionProfile
+            The profile controlling diversity weighting and other preferences
+        """
+        if self._profile_cache is None:
+            from cell_os.acquisition_config import get_profile
+            self._profile_cache = get_profile(self.profile_name)
+        return self._profile_cache
     
     def effective_max_genes(self) -> int:
         """Return the effective gene-level capacity for this goal.

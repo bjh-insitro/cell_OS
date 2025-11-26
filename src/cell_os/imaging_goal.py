@@ -27,6 +27,9 @@ class ImagingWindowGoal:
 
     Scope:
       * max_slices – optional cap on number of slices to consider.
+    
+    Profile:
+      * profile – optional AcquisitionProfile to set defaults from
     """
 
     viability_metric: str = "viability_fraction"
@@ -42,8 +45,21 @@ class ImagingWindowGoal:
 
     max_std: Optional[float] = 0.15
     max_slices: Optional[int] = None
+    
+    profile: Optional["AcquisitionProfile"] = None  # type: ignore
 
     def __post_init__(self) -> None:
+        # If profile is provided, use it to override defaults
+        if self.profile is not None:
+            # Only override if still at default values
+            if self.viability_min == 0.8 and self.viability_max == 1.0:
+                self.viability_min = self.profile.viability_min
+                self.viability_max = self.profile.viability_max
+            if self.max_std == 0.15:
+                self.max_std = self.profile.max_viability_std
+            if self.stress_min is None and self.profile.min_stress is not None:
+                self.stress_min = self.profile.min_stress
+        
         if not (0.0 <= self.viability_min <= self.viability_max <= 1.0):
             raise ValueError("viability bounds must be within [0, 1] and min <= max")
 
