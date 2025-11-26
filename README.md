@@ -120,7 +120,17 @@ diversity = posterior.diversity_score(["TP53", "MDM2", "KRAS"])
 ```
 This enables the `PerturbationAcquisitionLoop` to select genes that maximize phenotypic diversity, exploring the "morphological space" of the cell.
 
-**Run the smoketest:**
+## Quick Demo
+
+Run a complete simulated POSH campaign (gene selection → execution → hit calling):
+
+```bash
+python scripts/run_posh_campaign_demo.py
+```
+
+This will generate `results/posh_demo_hits.csv` with ranked hits based on morphological shift.
+
+**Run the imaging loop smoketest:**
 ```bash
 python scripts/imaging_loop_smoketest.py
 ```
