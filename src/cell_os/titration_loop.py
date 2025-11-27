@@ -40,8 +40,10 @@ def _mock_lab_step(cell_line: str, volumes: List[float], true_params: Dict) -> p
     return pd.DataFrame(rows)
 
 
+from core.state_manager import StateManager
+
 class AutonomousTitrationAgent:
-    def __init__(self, config: ScreenConfig, prices: BudgetConfig):
+    def __init__(self, config: ScreenConfig, prices: BudgetConfig, experiment_id: str = None):
         self.prices = prices
         self.config = config
         self.dummy_batch = LVBatch("Batch", 500, 0, None)
@@ -49,6 +51,10 @@ class AutonomousTitrationAgent:
         self.logs = []
         self.max_rounds = config.max_titration_rounds
         self.max_budget = config.max_titration_budget_usd
+        
+        # Persistence
+        self.state_manager = StateManager(experiment_id)
+        self.agent_id = "TitrationAgent_v1"
         
     def _log(self, msg: str):
         print(msg)
@@ -69,13 +75,29 @@ class AutonomousTitrationAgent:
         
     def run_campaign(self, cell_lines: List[Dict]) -> List[TitrationReport]:
         reports = []
-        self._log("🚀 LAUNCHING AUTONOMOUS TITRATION CAMPAIGN")
+        self._log(f"🚀 LAUNCHING AUTONOMOUS TITRATION CAMPAIGN (Exp ID: {self.state_manager.experiment_id})")
         self._log("="*60)
         
+        # Load previous state if available
+        saved_state = self.state_manager.load_state(self.agent_id)
+        completed_lines = set(saved_state.get('completed_lines', [])) if saved_state else set()
+        
+        if completed_lines:
+            self._log(f"🔄 Resuming campaign. Skipping {len(completed_lines)} completed lines: {completed_lines}")
+
         for line in cell_lines:
-            self._log(f"\n🧪 Starting Campaign for {line['name']}...")
-            report = self._run_single_line_loop(line['name'], line['true_params'])
+            name = line['name']
+            if name in completed_lines:
+                continue
+                
+            self._log(f"\n🧪 Starting Campaign for {name}...")
+            report = self._run_single_line_loop(name, line['true_params'])
             reports.append(report)
+            
+            # Checkpoint
+            completed_lines.add(name)
+            self.state_manager.save_state(self.agent_id, {'completed_lines': list(completed_lines)})
+            
         return reports
 
 
@@ -95,8 +117,14 @@ class AutonomousTitrationAgent:
         df_cumulative = df_r1.copy()
         
         rounds_run = 1
+        cost_r1 = self._calculate_round_cost(df_r1)
+        total_cost_incurred += cost_r1
+        
         self._log(f"   Round 1: Testing {len(initial_vols)} standard points.")
-        total_cost_incurred += self._calculate_round_cost(df_r1)
+        
+        # Log data points to DB
+        for _, row in df_r1.iterrows():
+            self.state_manager.log_result(name, 1, row['volume_ul'], row['fraction_bfp'], cost_r1/len(df_r1))
         
         # --- DYNAMIC LOOP ---
         while pos < 0.90 and rounds_run <= self.max_rounds and total_cost_incurred < self.max_budget:
@@ -133,8 +161,12 @@ class AutonomousTitrationAgent:
             df_new = _mock_lab_step(name, suggestions, true_params)
             df_cumulative = pd.concat([df_cumulative, df_new], ignore_index=True)
             
-            # 4. Update Costs
-            total_cost_incurred += self._calculate_round_cost(df_new)
+            # 4. Update Costs & Log
+            cost_new = self._calculate_round_cost(df_new)
+            total_cost_incurred += cost_new
+            
+            for _, row in df_new.iterrows():
+                self.state_manager.log_result(name, rounds_run, row['volume_ul'], row['fraction_bfp'], cost_new/len(df_new))
         
         # --- FINAL ASSESSMENT ---
         status_final = "GO" if pos >= 0.90 else "NO GO"
