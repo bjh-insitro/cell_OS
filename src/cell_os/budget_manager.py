@@ -92,12 +92,13 @@ class BudgetConfig:
     optimizer: RecipeOptimizer = None
     inventory: YamlPricingInventory = None
     virus_price: float = 2.00
+    max_titration_budget_usd: float = 5000.0
     
     # Unit costs are needed by titration_loop
     reagent_cost_per_well: float = 0.0
     reagent_cost_per_flask: float = 0.0
     flow_rate_per_hour: float = 80.00
-    mins_per_sample_flow: float = 2.0     
+    mins_per_sample_flow: float = 2.0
     
     @classmethod
     def from_optimizer(cls):

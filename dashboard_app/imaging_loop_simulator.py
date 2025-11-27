@@ -7,6 +7,11 @@ All configuration is externalized to the SIM_CONFIG dictionary.
 """
 import numpy as np
 import pandas as pd
+import sys
+import os
+
+# Add src to path so we can import cell_os modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 # Assuming these are accessible via the project PYTHONPATH
 from cell_os.posteriors import SliceKey
@@ -74,6 +79,8 @@ def run_simulation(config: dict = SIM_CONFIG) -> pd.DataFrame:
     executor = SimulatedImagingExecutor(goal=goal)
     loop = ImagingDoseLoop(world_model=wm, executor=executor, goal=goal)
 
+    # 3. Seed the model with initial data
+    print("Seeding model...")
     # 3. Seed the model with initial data
     print("Seeding model...")
     from cell_os.imaging_acquisition import ExperimentPlan

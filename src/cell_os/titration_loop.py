@@ -19,7 +19,12 @@ from cell_os.posh_lv_moi import (
     LVDesignError,
     TitrationReport # <-- Imported from posh_lv_moi.py to break the cycle
 )
-from cell_os.budget_manager import BudgetConfig # <-- Imported for pricing data
+# In cell_os/titration_loop.py, near the top
+
+# Import only for type checking to avoid circular dependency at runtime
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cell_os.budget_manager import BudgetConfig # <-- Imported for pricing data
 
 # --- Agent Implementation ---
 
@@ -43,7 +48,7 @@ def _mock_lab_step(cell_line: str, volumes: List[float], true_params: Dict) -> p
 from core.state_manager import StateManager
 
 class AutonomousTitrationAgent:
-    def __init__(self, config: ScreenConfig, prices: BudgetConfig, experiment_id: str = None):
+    def __init__(self, config: ScreenConfig, prices: "BudgetConfig", experiment_id: str = None):
         self.prices = prices
         self.config = config
         self.dummy_batch = LVBatch("Batch", 500, 0, None)

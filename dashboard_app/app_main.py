@@ -7,6 +7,11 @@ To run: streamlit run dashboard_app/app_main.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import sys
+import os
+
+# Add src to path so we can import cell_os modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 # Import the simulator function from your new module
 from imaging_loop_simulator import run_simulation, SIM_CONFIG
@@ -84,8 +89,13 @@ if st.session_state['run_needed']:
     
     # 3. Dose Selection Chart
     st.subheader("Selected Dose Over Time")
+    
+    # Fill NaN scores with 0 for visualization purposes (size cannot be NaN)
+    plot_df = history_df.copy()
+    plot_df['score'] = plot_df['score'].fillna(0)
+    
     fig_dose = px.scatter(
-        history_df,
+        plot_df,
         x="cycle",
         y="dose_uM",
         log_y=True,  # Doses are often log-scaled

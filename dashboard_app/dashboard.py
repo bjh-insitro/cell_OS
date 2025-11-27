@@ -6,6 +6,38 @@ import os
 import altair as alt
 from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
 
+# Import necessary modules for all tabs. Note: Circular dependency fixes must be in the source files.
+from cell_os.workflow_renderer import render_workflow_graph
+from cell_os.workflow_renderer_plotly import render_workflow_plotly
+from cell_os.unit_ops import ParametricOps, VesselLibrary
+from cell_os.inventory import Inventory
+from cell_os.workflows import WorkflowBuilder, Workflow
+from cell_os.posh_decision_engine import (
+    POSHDecisionEngine, 
+    UserRequirements, 
+    POSHProtocol, 
+    AutomationLevel
+)
+from cell_os.posh_scenario import POSHScenario
+from cell_os.posh_screen_design import run_posh_screen_design
+from cell_os.posh_lv_moi import (
+    fit_lv_transduction_model,
+    LVTitrationResult,
+    ScreenSimulator,
+    ScreenConfig
+)
+from cell_os.posh_viz import (
+    plot_library_composition,
+    plot_titration_curve,
+    plot_titer_posterior,
+    plot_risk_assessment,
+    plot_cost_breakdown
+)
+from cell_os.lab_world_model import LabWorldModel
+from cell_os.budget_manager import BudgetConfig 
+from core.experiment_db import ExperimentDB
+from datetime import datetime # Required for Tab 9 (Phenotype Clustering)
+
 st.set_page_config(page_title="cell_OS Dashboard", layout="wide")
 
 st.title("🧬 cell_OS Mission Control")
@@ -32,26 +64,35 @@ def load_data():
         df = pd.DataFrame()
         
     pricing_path = "data/raw/pricing.yaml"
-    with open(pricing_path, 'r') as f:
-        pricing = yaml.safe_load(f)
+    if os.path.exists(pricing_path):
+        try:
+            with open(pricing_path, 'r') as f:
+                pricing = yaml.safe_load(f)
+        except Exception as e:
+            st.warning(f"Could not load pricing data: {e}")
+            pricing = {}
+    else:
+        pricing = {}
         
     return df, pricing
 
 df, pricing = load_data()
 
 # -------------------------------------------------------------------
-# Tabs
+# Tabs (UPDATED FOR NEW TAB)
 # -------------------------------------------------------------------
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+# NOTE: Tab variable names are re-assigned to accommodate the new tab_audit (Tab 5)
+tab1, tab2, tab3, tab4, tab_audit, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🚀 Mission Control", 
     "🔬 Science", 
     "💰 Economics", 
     "🕸️ Workflow Visualizer", 
-    "🧭 POSH Decision Assistant",
-    "🧪 POSH Screen Designer",
-    "📊 Campaign Reports",
-    "🧮 Budget Calculator",
-    "🧬 Phenotype Clustering"
+    "🛠️ Resource Audit", # <-- NEW TAB
+    "🧭 POSH Decision Assistant", # Now tab5
+    "🧪 POSH Screen Designer",    # Now tab6
+    "📊 Campaign Reports",        # Now tab7
+    "🧮 Budget Calculator",       # Now tab8
+    "🧬 Phenotype Clustering"     # Now tab9
 ])
 
 # -------------------------------------------------------------------
@@ -61,7 +102,6 @@ with tab1:
     col1, col2, col3 = st.columns(3)
     
     # Connect to database
-    from core.experiment_db import ExperimentDB
     
     try:
         db = ExperimentDB()
@@ -254,12 +294,6 @@ with tab3:
 # -------------------------------------------------------------------
 # Tab 4: Workflow Visualizer
 # -------------------------------------------------------------------
-from cell_os.workflow_renderer import render_workflow_graph
-from cell_os.workflow_renderer_plotly import render_workflow_plotly
-from cell_os.unit_ops import ParametricOps, VesselLibrary
-from cell_os.inventory import Inventory
-from cell_os.workflows import WorkflowBuilder, Workflow
-
 with tab4:
     st.header("Workflow Visualization")
     
@@ -270,6 +304,7 @@ with tab4:
         
         # Initialize Resources
         try:
+            # Re-initialize resources from the top level (tab_audit uses them too)
             vessel_lib = VesselLibrary("data/raw/vessels.yaml")
             inv = Inventory("data/raw/pricing.yaml")
             ops = ParametricOps(vessel_lib, inv)
@@ -360,15 +395,103 @@ with tab4:
             st.warning("Ensure 'data/raw/vessels.yaml' and 'data/raw/pricing.yaml' exist.")
 
 # -------------------------------------------------------------------
-# Tab 5: POSH Decision Assistant
+# Tab X: Resource Audit (NEW)
 # -------------------------------------------------------------------
-from cell_os.posh_decision_engine import (
-    POSHDecisionEngine, 
-    UserRequirements, 
-    POSHProtocol, 
-    AutomationLevel
-)
+with tab_audit:
+    st.header("🛠️ Unit Operations & Resource Audit")
+    st.markdown("Verify the loaded **resource definitions** (`VesselLibrary`, `Inventory`) and **unit operation mappings** (`ParametricOps`).")
 
+    # -----------------------------------
+    # A. Resource Setup 
+    # -----------------------------------
+    try:
+        # Re-initialize resources from the top level
+        vessel_lib = VesselLibrary("data/raw/vessels.yaml")
+        inv = Inventory("data/raw/pricing.yaml")
+        ops = ParametricOps(vessel_lib, inv)
+        
+        st.success("Core Resources Initialized Successfully.")
+        
+    except Exception as e:
+        st.error(f"Failed to initialize core resources: {e}")
+        st.warning("Check `data/raw/vessels.yaml` and `data/raw/pricing.yaml`.")
+        st.stop() # Stop execution of this tab if resources fail
+
+    st.subheader("1. Inventory/Pricing Audit")
+    st.markdown("Displays all priced items available for cost calculation (from `data/raw/pricing.yaml`).")
+    
+    if pricing:
+        items = []
+        for item_id, data in pricing.get("items", {}).items():
+            items.append({
+                "ID": item_id,
+                "Name": data.get("name"),
+                "Category": data.get("category", "N/A"), # Added Category
+                "Unit Price ($)": data.get("unit_price_usd"),
+                "Unit": data.get("logical_unit"),
+                "Vendor": data.get("vendor", "N/A"),         # Added Vendor
+                "Catalog Number": data.get("catalog_number", "N/A") # Added Catalog Number
+            })
+        
+        # Create the DataFrame and ensure columns are in a logical order
+        df_items = pd.DataFrame(items)
+        
+        # Reorder columns for presentation
+        column_order = [
+            "ID", 
+            "Name", 
+            "Category",
+            "Unit Price ($)", 
+            "Unit", 
+            "Vendor", 
+            "Catalog Number"
+        ]
+        df_items = df_items[column_order]
+        
+        st.dataframe(df_items, use_container_width=True)
+    else:
+        st.info("Pricing data failed to load or is empty.")
+
+    st.subheader("2. Vessel Library Audit")
+    st.markdown("Displays the properties of all defined lab vessels/plates (from `data/raw/vessels.yaml`).")
+    
+    try:
+        # NOTE: Assumes VesselLibrary has a .vessels attribute which is a dictionary
+        vessels = []
+        for name, vessel in vessel_lib.vessels.items(): 
+            vessels.append({
+                "Name": name,
+                "Type": getattr(vessel, 'vessel_type', 'N/A'),
+                "Max Vol (mL)": getattr(vessel, 'max_volume_ml', 'N/A'),
+                "Footprint": getattr(vessel, 'footprint', 'N/A'),
+                "Well Count": getattr(vessel, 'well_count', 'N/A')
+            })
+        st.dataframe(pd.DataFrame(vessels), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not introspect VesselLibrary structure. Error: {e}")
+
+    st.subheader("3. Parametric Unit Operations Audit")
+    st.markdown("Lists all core unit operation methods available within the system's `ParametricOps` class.")
+    
+    # Introspect ParametricOps for callable methods (the UnitOps)
+    op_names = [
+        attr for attr in dir(ops) 
+        if callable(getattr(ops, attr)) 
+        and not attr.startswith("_") 
+        and attr not in ['create', 'copy', 'index', 'count'] # Exclude standard object methods
+    ]
+    
+    op_names.sort()
+    
+    st.info(f"Detected **{len(op_names)}** distinct Parametric Unit Operations:")
+    st.code("\n".join(op_names))
+    
+    st.caption("To verify the cost inputs for a specific operation (e.g., `dispense_reagent`), you must check the source code for `ParametricOps`.")
+
+
+# -------------------------------------------------------------------
+# Tab 5: POSH Decision Assistant (Now tab5)
+# -------------------------------------------------------------------
 with tab5:
     st.header("🧭 POSH Decision Assistant")
     st.markdown("Answer a few questions to get a personalized POSH configuration recommendation.")
@@ -513,25 +636,8 @@ with tab5:
         st.dataframe(df_comparison, use_container_width=True, hide_index=True)
 
 # -------------------------------------------------------------------
-# Tab 6: POSH Screen Designer
+# Tab 6: POSH Screen Designer (Now tab6)
 # -------------------------------------------------------------------
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_screen_design import run_posh_screen_design
-from cell_os.posh_lv_moi import (
-    fit_lv_transduction_model,
-    LVTitrationResult,
-    ScreenSimulator,
-    ScreenConfig
-)
-from cell_os.posh_viz import (
-    plot_library_composition,
-    plot_titration_curve,
-    plot_titer_posterior,
-    plot_risk_assessment,
-    plot_cost_breakdown
-)
-from cell_os.lab_world_model import LabWorldModel
-
 with tab6:
     st.header("🧪 POSH Screen Designer")
     st.markdown("Design a complete POSH screen using the autonomous library design and LV modeling agents.")
@@ -618,7 +724,6 @@ with tab6:
                     st.session_state['posh_result'] = result
                     
                     # Save to database
-                    from core.experiment_db import ExperimentDB
                     db = ExperimentDB()
                     
                     design_data = {
@@ -794,6 +899,13 @@ with tab6:
                     st.error(f"Visualization error: {e}")
         
         # Cost Breakdown (Placeholder)
+        # Defining dummy values for safety
+        total_reagent_cost = 1500.0
+        total_virus_cost = 800.0
+        flow_cost = 500.0
+        total_cost = total_reagent_cost + total_virus_cost + flow_cost
+        reagent_cost = 2.5 # Placeholder for config export
+        virus_price = 0.15 # Placeholder for config export
         
         col1.metric("Reagents", f"${total_reagent_cost:,.2f}")
         col2.metric("Virus", f"${total_virus_cost:,.2f}")
@@ -840,8 +952,101 @@ flow_rate_per_hour: 120.0
             st.success("Config downloaded!")
 
 # -------------------------------------------------------------------
-# Tab 9: Phenotype Clustering
+# Tab 7: Campaign Reports (Now tab7)
 # -------------------------------------------------------------------
+with tab7:
+    st.header("📊 Campaign Reports")
+    
+    # Scan for reports
+    results_dir = "results/campaigns"
+    if os.path.exists(results_dir):
+        reports = [f for f in os.listdir(results_dir) if f.endswith("_report.html")]
+        reports.sort(reverse=True) # Newest first
+        
+        if reports:
+            selected_report = st.selectbox("Select Report", reports)
+            
+            if selected_report:
+                report_path = os.path.join(results_dir, selected_report)
+                
+                # Option to open in new tab
+                st.markdown(f"**[Open {selected_report} in new tab](file://{os.path.abspath(report_path)})** (Local only)")
+                
+                # Read and display (iframe)
+                with open(report_path, 'r') as f:
+                    html_content = f.read()
+                
+                st.components.v1.html(html_content, height=800, scrolling=True)
+        else:
+            st.info("No HTML reports found in results/campaigns/")
+    else:
+        st.warning(f"Results directory not found: {results_dir}")
+
+# -------------------------------------------------------------------
+# Tab 8: Budget Calculator (Now tab8)
+# -------------------------------------------------------------------
+with tab8:
+    st.header("🧮 Budget Calculator")
+    st.markdown("Estimate the cost of your next titration campaign.")
+    
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Parameters")
+        max_budget = st.number_input("Max Budget ($)", 1000.0, 50000.0, 5000.0, 500.0)
+        virus_price = st.number_input("Virus Price ($/µL)", 0.01, 10.0, 0.15, 0.01)
+        reagent_cost = st.number_input("Reagent Cost ($/well)", 0.1, 10.0, 2.50, 0.1)
+        
+    with col2:
+        st.subheader("Throughput")
+        flow_rate = st.number_input("Flow Rate (samples/hr)", 10, 500, 120)
+        mins_per_sample = st.number_input("Prep Time (min/sample)", 0.1, 10.0, 3.0)
+        
+    st.divider()
+    
+    # Interactive Estimation
+    st.subheader("Estimation")
+    n_cell_lines = st.slider("Number of Cell Lines", 1, 10, 3)
+    rounds = st.slider("Est. Rounds per Line", 1, 10, 5)
+    samples_per_round = st.slider("Samples per Round", 1, 96, 8)
+    
+    total_samples = n_cell_lines * rounds * samples_per_round
+    
+    # Calculations
+    reagent_total = total_samples * reagent_cost
+    
+    # Flow cost (assuming $100/hr instrument time + labor)
+    flow_hours = total_samples / flow_rate
+    flow_cost = flow_hours * 100.0 # Placeholder rate
+    
+    # Virus cost (assuming avg 5µL per sample)
+    virus_vol = total_samples * 5.0
+    virus_total = virus_vol * virus_price
+    
+    grand_total = reagent_total + flow_cost + virus_total
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Samples", total_samples)
+    c2.metric("Est. Cost", f"${grand_total:,.2f}")
+    c3.metric("Cost/Line", f"${grand_total/n_cell_lines:,.2f}")
+    c4.metric("Budget Usage", f"{grand_total/max_budget:.1%}")
+    
+    if grand_total > max_budget:
+        st.error(f"Over Budget by ${grand_total - max_budget:,.2f}!")
+    else:
+        st.success("Within Budget")
+    
+    # Export
+    if st.button("Generate Config YAML"):
+        config_yaml = f"""budget:
+  max_titration_budget_usd: {max_budget}
+  reagent_cost_per_well: {reagent_cost}
+  mins_per_sample_flow: {mins_per_sample}
+  flow_rate_per_hour: {flow_rate}
+  virus_price: {virus_price}
+"""
+        st.code(config_yaml, language="yaml")
 with tab9:
     st.header("🧬 Phenotype Clustering")
     st.markdown("Analyze DINO embeddings to identify morphological hits and visualize phenotypic space.")
@@ -859,6 +1064,8 @@ with tab9:
         try:
             # Save uploaded file temporarily
             import tempfile
+            from datetime import datetime # Ensure datetime is imported for this block
+            
             with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
@@ -901,7 +1108,7 @@ with tab9:
                         st.session_state['hits'] = hits
                         
                         # Save to database
-                        from core.experiment_db import ExperimentDB
+                        from datetime import datetime # Ensure datetime is imported for this block
                         
                         # Prompt for experiment ID
                         experiment_id = st.text_input(
@@ -983,7 +1190,7 @@ with tab9:
             if color_by == 'd_m' and 'd_m' in reduced_df.columns:
                 chart = alt.Chart(reduced_df).mark_circle(size=60).encode(
                     x=alt.X('dim1:Q', title='Dimension 1'),
-                    y=alt.X('dim2:Q', title='Dimension 2'),
+                    y=alt.Y('dim2:Q', title='Dimension 2'),
                     color=alt.Color('d_m:Q', scale=alt.Scale(scheme='viridis'), title='D_M (Morphological Distance)'),
                     tooltip=['gene:N', 'guide_id:N', alt.Tooltip('d_m:Q', format='.3f')]
                 ).interactive().properties(
@@ -994,7 +1201,7 @@ with tab9:
             else:
                 chart = alt.Chart(reduced_df).mark_circle(size=60).encode(
                     x=alt.X('dim1:Q', title='Dimension 1'),
-                    y=alt.X('dim2:Q', title='Dimension 2'),
+                    y=alt.Y('dim2:Q', title='Dimension 2'),
                     color='gene:N',
                     tooltip=['gene:N', 'guide_id:N']
                 ).interactive().properties(
@@ -1030,4 +1237,3 @@ with tab9:
         - Embedding dimension is auto-detected (typically 384 for DINOv2-S)
         - Include NTC (non-targeting control) genes for D_M calculation
         """)
-

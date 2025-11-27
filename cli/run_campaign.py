@@ -34,6 +34,15 @@ def run_campaign_from_config(config: dict, experiment_id_override: str = None):
     # 1. Extract Configuration
     experiment_id = experiment_id_override or config.get('experiment_id', 'DEFAULT_EXP')
     cell_lines = config['cell_lines']
+    # Convert cell line config to true_params for agent
+    for cl in cell_lines:
+        # Populate true_params from legacy fields if present
+        titer = cl.get('true_titer')
+        alpha = cl.get('true_alpha')
+        if titer is not None and alpha is not None:
+            cl['true_params'] = {'titer': titer, 'alpha': alpha}
+        else:
+            cl.setdefault('true_params', {})
     
     # 2. Build ScreenConfig
     sc = config['screen_config']
@@ -66,7 +75,7 @@ def run_campaign_from_config(config: dict, experiment_id_override: str = None):
     
     # 5. Run Campaign
     print(f"\n{'='*70}")
-    print(f"Starting Campaign: {config.get('experiment_name', 'Unnamed'")}")
+    print(f"Starting Campaign: {config.get('experiment_name', 'Unnamed')}")
     print(f"Experiment ID: {experiment_id}")
     print(f"Cell Lines: {[cl['name'] for cl in cell_lines]}")
     print(f"{'='*70}\n")
@@ -78,15 +87,19 @@ def run_campaign_from_config(config: dict, experiment_id_override: str = None):
     results_dir = Path(output_settings.get('results_dir', 'results/campaigns'))
     results_dir.mkdir(parents=True, exist_ok=True)
     
-    if output_settings.get('generate_html_report', True):
-        html_path = results_dir / f"{experiment_id}_report.html"
-        print(f"\n📊 Generating HTML Report: {html_path}")
-        generate_html_report(reports, str(html_path), budget_config)
-    
-    if output_settings.get('save_csv', True):
-        csv_path = results_dir / f"{experiment_id}_summary.csv"
-        print(f"💾 Saving CSV Summary: {csv_path}")
-        # TODO: Implement CSV export
+    if not reports:
+        print("⚠️ No new reports generated; skipping HTML and CSV output.")
+    else:
+        if output_settings.get('generate_html_report', True):
+            html_path = results_dir / f"{experiment_id}_report.html"
+            print(f"\n📊 Generating HTML Report: {html_path}")
+            # Pass screen_config as config, empty log_text for now, and no cost details
+            generate_html_report(reports, screen_config, log_text="", costs=None, filename=html_path)
+        
+        if output_settings.get('save_csv', True):
+            csv_path = results_dir / f"{experiment_id}_summary.csv"
+            print(f"💾 Saving CSV Summary: {csv_path}")
+            # TODO: Implement CSV export
     
     print(f"\n✅ Campaign Complete. Results saved to: {results_dir}")
     return reports

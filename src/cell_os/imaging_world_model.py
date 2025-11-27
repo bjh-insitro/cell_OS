@@ -56,8 +56,27 @@ class ImagingWorldModel(WorldModelLike):
 
     # Protocol methods used by ImagingDoseLoop -------------------------------
 
-    def update_with_results(self, df: pd.DataFrame) -> None:
+    def update_with_results(self, results: list | pd.DataFrame) -> None:
         """Append new experimental results to the history and refit GPs."""
+        if isinstance(results, list):
+            # Convert list of ExperimentResult objects to DataFrame
+            data = []
+            for r in results:
+                row = {
+                    "cell_line": r.slice_key.cell_line,
+                    "compound": r.slice_key.compound,
+                    "time_h": r.slice_key.time_h,
+                    "dose_uM": r.dose_uM,
+                    "viability": r.viability_value,
+                    "stress": r.stress_value,
+                    "cells_per_field": r.cells_per_field_observed,
+                    "good_fields_per_well": r.good_fields_per_well_observed
+                }
+                data.append(row)
+            df = pd.DataFrame(data)
+        else:
+            df = results
+
         if self.history.empty:
             self.history = df.copy()
         else:

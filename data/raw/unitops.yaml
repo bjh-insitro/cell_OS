@@ -1,0 +1,354 @@
+  # ===================================================================
+  # VANILLA POSH (CellPaint-POSH) REAGENTS
+  # ===================================================================
+  
+  # RT-RCA Enzymes
+  revertaid_rt:
+    name: "RevertAid Reverse Transcriptase"
+    category: enzyme
+    vendor: "Thermo"
+    catalog_number: "EP0452"
+    pack_size: 10000
+    pack_unit: unit
+    pack_price_usd: 180.0
+    logical_unit: unit
+    unit_price_usd: 0.018
+  
+  ampligase:
+    name: "Ampligase DNA Ligase"
+    category: enzyme
+    vendor: "Biosearch Technologies"
+    catalog_number: "A3210K"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 450.0
+    logical_unit: unit
+    unit_price_usd: 0.9
+  
+  phi29_polymerase:
+    name: "Phi29 DNA Polymerase"
+    category: enzyme
+    vendor: "Thermo"
+    catalog_number: "EP0094"
+    pack_size: 1000
+    pack_unit: unit
+    pack_price_usd: 250.0
+    logical_unit: unit
+    unit_price_usd: 0.25
+  
+  rnase_h:
+    name: "RNase H"
+    category: enzyme
+    vendor: "Enzymatics"
+    catalog_number: "Y9220L"
+    pack_size: 5000
+    pack_unit: unit
+    pack_price_usd: 200.0
+    logical_unit: unit
+    unit_price_usd: 0.04
+  
+  taqit:
+    name: "TaqIT DNA Polymerase"
+    category: enzyme
+    vendor: "Qiagen"
+    catalog_number: "P7620L"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 150.0
+    logical_unit: unit
+    unit_price_usd: 0.3
+  
+  ribolock:
+    name: "Ribolock RNase Inhibitor"
+    category: enzyme
+    vendor: "Thermo"
+    catalog_number: "EO0384"
+    pack_size: 2500
+    pack_unit: unit
+    pack_price_usd: 120.0
+    logical_unit: unit
+    unit_price_usd: 0.048
+  
+  # Oligos and Probes
+  rt_primer:
+    name: "RT Primer (custom oligo)"
+    category: oligo
+    vendor: "IDT"
+    catalog_number: "custom"
+    pack_size: 100
+    pack_unit: nmol
+    pack_price_usd: 25.0
+    logical_unit: nmol
+    unit_price_usd: 0.25
+  
+  padlock_probe:
+    name: "Padlock Probe (custom oligo)"
+    category: oligo
+    vendor: "IDT"
+    catalog_number: "custom"
+    pack_size: 100
+    pack_unit: nmol
+    pack_price_usd: 30.0
+    logical_unit: nmol
+    unit_price_usd: 0.3
+  
+  anchor_primer:
+    name: "Anchor Primer (custom oligo)"
+    category: oligo
+    vendor: "IDT"
+    catalog_number: "custom"
+    pack_size: 100
+    pack_unit: nmol
+    pack_price_usd: 25.0
+    logical_unit: nmol
+    unit_price_usd: 0.25
+  
+  mitoprobe_12s_cy5:
+    name: "Mitoprobe 12s-1 Cy5"
+    category: oligo
+    vendor: "IDT"
+    catalog_number: "custom"
+    pack_size: 10
+    pack_unit: nmol
+    pack_price_usd: 150.0
+    logical_unit: nmol
+    unit_price_usd: 15.0
+  
+  mitoprobe_16s_cy5:
+    name: "Mitoprobe 16s-1 Cy5"
+    category: oligo
+    vendor: "IDT"
+    catalog_number: "custom"
+    pack_size: 10
+    pack_unit: nmol
+    pack_price_usd: 150.0
+    logical_unit: nmol
+    unit_price_usd: 15.0
+  
+  # SBS Reagents
+  miseq_reagent_v2_cycle:
+    name: "MiSeq Reagent Kit v2 (per cycle)"
+    category: kit
+    vendor: "Illumina"
+    catalog_number: "MS-102-2003"
+    pack_size: 500
+    pack_unit: cycle
+    pack_price_usd: 2500.0
+    logical_unit: cycle
+    unit_price_usd: 5.0
+  
+  # Cell Painting Dyes (ISS-compatible)
+  concanavalin_a_488:
+    name: "Concanavalin A Alexa Fluor 488"
+    category: dye
+    vendor: "Thermo"
+    catalog_number: "C11252"
+    pack_size: 5
+    pack_unit: mg
+    pack_price_usd: 350.0
+    logical_unit: mg
+    unit_price_usd: 70.0
+  
+  wga_555:
+    name: "Wheat Germ Agglutinin Alexa Fluor 555"
+    category: dye
+    vendor: "Thermo"
+    catalog_number: "W32464"
+    pack_size: 1
+    pack_unit: mg
+    pack_price_usd: 250.0
+    logical_unit: mg
+    unit_price_usd: 250.0
+  
+  phalloidin_568:
+    name: "Phalloidin Alexa Fluor 568"
+    category: dye
+    vendor: "Thermo"
+    catalog_number: "A12380"
+    pack_size: 300
+    pack_unit: unit
+    pack_price_usd: 350.0
+    logical_unit: unit
+    unit_price_usd: 1.167
+  
+  # Antibodies (optional 6th channel)
+  ps6_primary:
+    name: "Phospho-S6 Ribosomal Protein (Ser235/236) Antibody"
+    category: antibody
+    vendor: "Cell Signaling"
+    catalog_number: "2215S"
+    pack_size: 100
+    pack_unit: uL
+    pack_price_usd: 350.0
+    logical_unit: uL
+    unit_price_usd: 3.5
+  
+  dylight_755_secondary:
+    name: "Donkey anti-Rabbit DyLight 755"
+    category: antibody
+    vendor: "Invitrogen"
+    catalog_number: "SA5-10043"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 450.0
+    logical_unit: uL
+    unit_price_usd: 0.9
+  
+  # Buffers and Solutions
+  ssc_2x:
+    name: "2x SSC Buffer (RNase-free)"
+    category: buffer
+    vendor: "Thermo"
+    catalog_number: "AM9765"
+    pack_size: 1000
+    pack_unit: mL
+    pack_price_usd: 80.0
+    logical_unit: mL
+    unit_price_usd: 0.08
+  
+  formamide:
+    name: "Formamide (molecular biology grade)"
+    category: reagent
+    vendor: "Fisher"
+    catalog_number: "AC327235000"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 150.0
+    logical_unit: mL
+    unit_price_usd: 0.3
+  
+  # Stressors (for perturbation experiments)
+  tbhp:
+    name: "tert-Butyl hydroperoxide (oxidative stress)"
+    category: compound
+    vendor: "Sigma"
+    catalog_number: "458139-25ML"
+    pack_size: 25
+    pack_unit: mL
+    pack_price_usd: 80.0
+    logical_unit: mL
+    unit_price_usd: 3.2
+  
+  tunicamycin:
+    name: "Tunicamycin (ER stress)"
+    category: compound
+    vendor: "Sigma"
+    catalog_number: "T7765-5MG"
+    pack_size: 5
+    pack_unit: mg
+    pack_price_usd: 250.0
+    logical_unit: mg
+    unit_price_usd: 50.0
+  
+  thapsigargin:
+    name: "Thapsigargin (ER stress)"
+    category: compound
+    vendor: "Sigma"
+    catalog_number: "T9033-1MG"
+    pack_size: 1
+    pack_unit: mg
+    pack_price_usd: 200.0
+    logical_unit: mg
+    unit_price_usd: 200.0
+
+  # ===================================================================
+  # AUTOMATION EQUIPMENT (Capital Equipment)
+  # ===================================================================
+  
+  # Imaging System
+  nikon_ti2_system:
+    name: "Nikon Ti2-E Automated Microscope System"
+    category: equipment
+    vendor: "Nikon"
+    catalog_number: "Ti2-E-Complete"
+    pack_size: 1
+    pack_unit: system
+    pack_price_usd: 250000.0
+    logical_unit: system
+    unit_price_usd: 250000.0
+    depreciation_years: 7
+    annual_maintenance_pct: 0.12
+  
+  # Liquid Handling
+  biotek_multiflo_fx:
+    name: "BioTek MultiFlo FX Automated Dispenser"
+    category: equipment
+    vendor: "BioTek"
+    catalog_number: "MFXP2-Complete"
+    pack_size: 1
+    pack_unit: system
+    pack_price_usd: 120000.0
+    logical_unit: system
+    unit_price_usd: 120000.0
+    depreciation_years: 7
+    annual_maintenance_pct: 0.15
+  
+  # Incubation
+  inheco_heater_shaker:
+    name: "Inheco Heater/Shaker for Automation"
+    category: equipment
+    vendor: "Inheco"
+    catalog_number: "7100146-A"
+    pack_size: 1
+    pack_unit: system
+    pack_price_usd: 15000.0
+    logical_unit: system
+    unit_price_usd: 15000.0
+    depreciation_years: 7
+    annual_maintenance_pct: 0.10
+  
+  # Robotics
+  paa_kx2_robot:
+    name: "PAA KX-2 Robot Arm"
+    category: equipment
+    vendor: "PAA"
+    catalog_number: "KX2-500"
+    pack_size: 1
+    pack_unit: system
+    pack_price_usd: 75000.0
+    logical_unit: system
+    unit_price_usd: 75000.0
+    depreciation_years: 7
+    annual_maintenance_pct: 0.10
+  
+  # Infrastructure
+  automation_infrastructure:
+    name: "Automation Infrastructure (air table, enclosure, integration)"
+    category: equipment
+    vendor: "Custom"
+    catalog_number: "NA"
+    pack_size: 1
+    pack_unit: system
+    pack_price_usd: 40000.0
+    logical_unit: system
+    unit_price_usd: 40000.0
+    depreciation_years: 10
+    annual_maintenance_pct: 0.05
+  
+  # ===================================================================
+  # COMPUTATIONAL RESOURCES
+  # ===================================================================
+  
+  # GPU Compute (for CP-DINO training)
+  gpu_v100_hour:
+    name: "NVIDIA V100 GPU Hour (cloud)"
+    category: compute
+    vendor: "AWS/GCP"
+    catalog_number: "p3.2xlarge"
+    pack_size: 1
+    pack_unit: hour
+    pack_price_usd: 3.06
+    logical_unit: hour
+    unit_price_usd: 3.06
+  
+  # Storage
+  storage_gb_month:
+    name: "Cloud Storage (per GB per month)"
+    category: compute
+    vendor: "AWS/GCP"
+    catalog_number: "S3/GCS"
+    pack_size: 1
+    pack_unit: gb_month
+    pack_price_usd: 0.023
+    logical_unit: gb_month
+    unit_price_usd: 0.023

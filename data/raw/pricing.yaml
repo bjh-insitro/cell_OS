@@ -1,1701 +1,1239 @@
-items:
-  # Media Components
-  mtesr_plus_kit:
-    name: "mTeSR Plus Kit"
-    category: media
-    vendor: "STEMCELL"
-    catalog_number: "100-0276" # Kit (Basal 100-0274 + Supp 100-0275)
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 407.0
-    logical_unit: mL
-    unit_price_usd: 0.814
-
-  adv_dmem_f12:
-    name: "Advanced DMEM/F-12"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "12634010"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 79.5
-    logical_unit: mL
-    unit_price_usd: 0.159
-
-  dmem_high_glucose:
-    name: "DMEM High Glucose (GlutaMAX, Pyruvate)"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "10569010"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 25.0
-    logical_unit: mL
-    unit_price_usd: 0.05
-
-  fbs:
-    name: "Fetal Bovine Serum"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "10082147"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 500.0
-    logical_unit: mL
-    unit_price_usd: 1.0
-
-  pen_strep:
-    name: "Penicillin-Streptomycin"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "15140122"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 30.0
-    logical_unit: mL
-    unit_price_usd: 0.3
-
-  neaa:
-    name: "MEM Non-Essential Amino Acids"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "11140050"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 25.0
-    logical_unit: mL
-    unit_price_usd: 0.25
-
-  sodium_pyruvate:
-    name: "Sodium Pyruvate 100mM"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "11360070"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 20.0
-    logical_unit: mL
-    unit_price_usd: 0.2
-
-  bme_2mercaptoethanol:
-    name: "2-Mercaptoethanol"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "21985023"
-    pack_size: 50
-    pack_unit: mL
-    pack_price_usd: 40.0
-    logical_unit: mL
-    unit_price_usd: 0.8
-
-  glutamax:
-    name: "GlutaMAX Supplement"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "35050061"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 49.65
-    logical_unit: mL
-    unit_price_usd: 0.4965
-
-  revitacell:
-    name: "RevitaCell Supplement"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "A2644501"
-    pack_size: 5
-    pack_unit: mL
-    pack_price_usd: 233.65
-    logical_unit: mL
-    unit_price_usd: 46.73
-
-  fluorobrite_dmem:
-    name: "FluoroBrite DMEM"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "A1896701"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 60.0
-    logical_unit: mL
-    unit_price_usd: 0.12
-
-  neurobasal:
-    name: "Neurobasal Plus Medium"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "A3582901"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 180.0
-    logical_unit: mL
-    unit_price_usd: 0.36
-
-  b27_supp:
-    name: "B27 Plus Supplement (50X)"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "A3582801"
-    pack_size: 10
-    pack_unit: mL
-    pack_price_usd: 160.0
-    logical_unit: mL
-    unit_price_usd: 16.0
-
-  n2_supp:
-    name: "N2 Supplement (100X)"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "17502048"
-    pack_size: 5
-    pack_unit: mL
-    pack_price_usd: 60.0
-    logical_unit: mL
-    unit_price_usd: 12.0
-
-  # Small Molecules
-  doxycycline:
-    name: "Doxycycline hyclate"
-    category: small_molecule
-    vendor: "Sigma"
-    catalog_number: "D9891"
-    pack_size: 1
-    pack_unit: g
-    pack_price_usd: 65.0
-    logical_unit: g
-    unit_price_usd: 65.0
-
-  y27632:
-    name: "Y-27632 10mM"
-    category: small_molecule
-    vendor: "MedChemExpress"
-    catalog_number: "HY-10071"
-    pack_size: 1
-    pack_unit: mL
-    pack_price_usd: 78.0
-    logical_unit: mL
-    unit_price_usd: 78.0
-
-  puromycin:
-    name: "Puromycin"
-    category: antibiotic
-    vendor: "Thermo"
-    catalog_number: "A1113803"
-    pack_size: 100
-    pack_unit: mg
-    pack_price_usd: 150.0
-    logical_unit: mg
-    unit_price_usd: 1.5
-
-  # Cytokines
-  il34:
-    name: "Recombinant Human IL-34"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "200-34"
-    pack_size: 100
-    pack_unit: ug
-    pack_price_usd: 1236.0
-    logical_unit: ug
-    unit_price_usd: 12.36
-
-  gmcsf:
-    name: "Recombinant Human GM-CSF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "300-03"
-    pack_size: 100
-    pack_unit: ug
-    pack_price_usd: 937.0
-    logical_unit: ug
-    unit_price_usd: 9.37
-
-  mcsf:
-    name: "Recombinant Human M-CSF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "300-25"
-    pack_size: 100
-    pack_unit: ug
-    pack_price_usd: 793.0
-    logical_unit: ug
-    unit_price_usd: 7.93
-
-  tgfb1:
-    name: "Recombinant Human TGF-beta1"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "100-21"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 269.0
-    logical_unit: ug
-    unit_price_usd: 26.9
-
-  cx3cl1:
-    name: "Recombinant Human CX3CL1"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "300-31"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 229.0
-    logical_unit: ug
-    unit_price_usd: 22.9
-
-  bdnf:
-    name: "Recombinant Human BDNF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "450-02"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 220.0
-    logical_unit: ug
-    unit_price_usd: 22.0
-
-  gdnf:
-    name: "Recombinant Human GDNF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "450-10"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 220.0
-    logical_unit: ug
-    unit_price_usd: 22.0
-
-  cntf:
-    name: "Recombinant Human CNTF"
-    category: cytokine
-    vendor: "PeproTech"
-    catalog_number: "450-13"
-    pack_size: 10
-    pack_unit: ug
-    pack_price_usd: 220.0
-    logical_unit: ug
-    unit_price_usd: 22.0
-
-  # Coating & Matrix
-  laminin_521:
-    name: "Biolaminin 521 LN"
-    category: coating
-    vendor: "BioLamina"
-    catalog_number: "LN521"
-    pack_size: 100
-    pack_unit: ug
-    pack_price_usd: 223.0
-    logical_unit: ug
-    unit_price_usd: 2.23
-
-  matrigel:
-    name: "Matrigel hESC-qualified"
-    category: coating
-    vendor: "Corning"
-    catalog_number: "354277"
-    pack_size: 5
-    pack_unit: mL
-    pack_price_usd: 250.0
-    logical_unit: mL
-    unit_price_usd: 50.0
-
-  pdl:
-    name: "Poly-D-lysine"
-    category: coating
-    vendor: "Sigma"
-    catalog_number: "P6407"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 146.65
-    logical_unit: mL
-    unit_price_usd: 1.4665
-
-  plo:
-    name: "Poly-L-Ornithine"
-    category: coating
-    vendor: "Sigma"
-    catalog_number: "P4957"
-    pack_size: 100
-    pack_unit: mg
-    pack_price_usd: 100.0
-    logical_unit: mg
-    unit_price_usd: 1.0
-
-  borate_buffer:
-    name: "Borate Buffer 20x"
-    category: buffer
-    vendor: "Thermo"
-    catalog_number: "28341"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 114.65
-    logical_unit: mL
-    unit_price_usd: 0.2293
-
-  # Reagents & Buffers
-  accutase:
-    name: "StemPro Accutase"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "A1110501"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 74.65
-    logical_unit: mL
-    unit_price_usd: 0.7465
-
-  tryple:
-    name: "TrypLE Express"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "12604013"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 35.0
-    logical_unit: mL
-    unit_price_usd: 0.35
-
-  tryple_express:
-    name: "TrypLE Express"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "12604013"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 35.0
-    logical_unit: mL
-    unit_price_usd: 0.35
-
-  trypsin_edta:
-    name: "Trypsin-EDTA 0.25%"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "25200056"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 22.0
-    logical_unit: mL
-    unit_price_usd: 0.22
-
-  versene_edta:
-    name: "Versene (EDTA) Solution"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "15040066"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 18.0
-    logical_unit: mL
-    unit_price_usd: 0.18
-
-  trypan_blue:
-    name: "Trypan Blue Stain"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "15250061"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 20.0
-    logical_unit: mL
-    unit_price_usd: 0.2
-
-  dpbs:
-    name: "DPBS no Ca/Mg"
-    category: buffer
-    vendor: "Thermo"
-    catalog_number: "14190144"
-    pack_size: 1000
-    pack_unit: mL
-    pack_price_usd: 36.4
-    logical_unit: mL
-    unit_price_usd: 0.0364
-
-  cryostor_cs10:
-    name: "CryoStor CS10"
-    category: reagent
-    vendor: "STEMCELL"
-    catalog_number: "100-1061"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 400.0
-    logical_unit: mL
-    unit_price_usd: 4.0
-
-  bambanker:
-    name: "Bambanker Freezing Medium"
-    category: reagent
-    vendor: "Wako/Fujifilm"
-    catalog_number: "302-14681"
-    pack_size: 20
-    pack_unit: mL
-    pack_price_usd: 120.0
-    logical_unit: mL
-    unit_price_usd: 6.0
-
-  mfresr:
-    name: "mFreSR Cryopreservation Medium"
-    category: reagent
-    vendor: "STEMCELL"
-    catalog_number: "100-0485"
-    pack_size: 50
-    pack_unit: mL
-    pack_price_usd: 300.0
-    logical_unit: mL
-    unit_price_usd: 6.0
-
-  dmso:
-    name: "Dimethyl Sulfoxide (DMSO)"
-    category: reagent
-    vendor: "Sigma"
-    catalog_number: "D2650"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 45.0
-    logical_unit: mL
-    unit_price_usd: 0.45
-
-  phrodo_ecoli:
-    name: "pHrodo Red E. coli BioParticles"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "P35361"
-    pack_size: 2
-    pack_unit: mg
-    pack_price_usd: 340.0
-    logical_unit: mg
-    unit_price_usd: 170.0
-
-  hoechst:
-    name: "Hoechst 33342"
-    category: stain
-    vendor: "Thermo"
-    catalog_number: "H3570"
-    pack_size: 10
-    pack_unit: mL
-    pack_price_usd: 100.0
-    logical_unit: mL
-    unit_price_usd: 10.0
-
-  # Consumables
-  micronic_tube:
-    name: "Micronic 0.75mL Tubes"
-    category: consumable
-    vendor: "Micronic"
-    catalog_number: "MP52704"
-    pack_size: 960
-    pack_unit: unit
-    pack_price_usd: 395.6
-    logical_unit: unit
-    unit_price_usd: 0.412
-
-  plate_12well:
-    name: "Falcon 12-well Plate"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "353043"
-    pack_size: 50
-    pack_unit: unit
-    pack_price_usd: 161.53
-    logical_unit: unit
-    unit_price_usd: 3.2306
-
-  plate_6well:
-    name: "Falcon 6-well Plate"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "353046"
-    pack_size: 50
-    pack_unit: unit
-    pack_price_usd: 150.0
-    logical_unit: unit
-    unit_price_usd: 3.0
-
-  plate_96well_imaging_black_clearbottom:
-    name: "96-well Black/Clear Imaging Plate"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "3603"
-    pack_size: 48
-    pack_unit: unit
-    pack_price_usd: 400.0
-    logical_unit: unit
-    unit_price_usd: 8.33
-
-  t75_flask:
-    name: "Falcon T75 Flask"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "353136"
-    pack_size: 100
-    pack_unit: unit
-    pack_price_usd: 132.0
-    logical_unit: unit
-    unit_price_usd: 1.32
-
-  t175_flask:
-    name: "Falcon T175 Flask"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "353112"
-    pack_size: 40
-    pack_unit: unit
-    pack_price_usd: 150.0
-    logical_unit: unit
-    unit_price_usd: 3.75
-
-  tube_15ml_conical:
-    name: "Falcon 15mL Conical Tube"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "352096"
-    pack_size: 500
-    pack_unit: unit
-    pack_price_usd: 150.0
-    logical_unit: unit
-    unit_price_usd: 0.3
-
-  tube_50ml_conical:
-    name: "Falcon 50mL Conical Tube"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "352070"
-    pack_size: 500
-    pack_unit: unit
-    pack_price_usd: 180.0
-    logical_unit: unit
-    unit_price_usd: 0.36
-
-  serological_pipette_10ml:
-    name: "Serological Pipette 10mL"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "357551"
-    pack_size: 200
-    pack_unit: unit
-    pack_price_usd: 60.0
-    logical_unit: unit
-    unit_price_usd: 0.3
-
-  serological_pipette_25ml:
-    name: "Serological Pipette 25mL"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "357525"
-    pack_size: 200
-    pack_unit: unit
-    pack_price_usd: 80.0
-    logical_unit: unit
-    unit_price_usd: 0.4
-
-  pipette_tip_20ul_filter:
-    name: "Filter Tips 20uL"
-    category: consumable
-    vendor: "Rainin"
-    catalog_number: "30389225"
-    pack_size: 960
-    pack_unit: unit
-    pack_price_usd: 120.0
-    logical_unit: unit
-    unit_price_usd: 0.125
-
-  pipette_tip_200ul_filter:
-    name: "Filter Tips 200uL"
-    category: consumable
-    vendor: "Rainin"
-    catalog_number: "30389239"
-    pack_size: 960
-    pack_unit: unit
-    pack_price_usd: 120.0
-    logical_unit: unit
-    unit_price_usd: 0.125
-
-  pipette_tip_1000ul_filter:
-    name: "Filter Tips 1000uL"
-    category: consumable
-    vendor: "Rainin"
-    catalog_number: "30389212"
-    pack_size: 768
-    pack_unit: unit
-    pack_price_usd: 110.0
-    logical_unit: unit
-    unit_price_usd: 0.143
-
-  cell_counter_cassette:
-    name: "Cell Counter Slides"
-    category: consumable
-    vendor: "Thermo"
-    catalog_number: "C10228"
-    pack_size: 50
-    pack_unit: unit
-    pack_price_usd: 150.0
-    logical_unit: unit
-    unit_price_usd: 3.0
-
-  # QC & Services
-  mycoplasma_kit:
-    name: "MycoAlert Mycoplasma Detection Kit"
-    category: QC
-    vendor: "Lonza"
-    catalog_number: "LT07-318"
-    pack_size: 100
-    pack_unit: test
-    pack_price_usd: 400.0
-    logical_unit: test
-    unit_price_usd: 4.0
-
-  bulk_rna_seq:
-    name: "Bulk RNA-seq Service"
-    category: service
-    vendor: "Core_Facility"
-    logical_unit: sample
-    unit_price_usd: 350.0
-
-  # Flow Cytometry Reagents
-  facs_buffer_bsa:
-    name: "BSA for FACS Buffer"
-    category: reagent
-    vendor: "Sigma"
-    catalog_number: "A9647"
-    pack_size: 100
-    pack_unit: g
-    pack_price_usd: 150.0
-    logical_unit: g
-    unit_price_usd: 1.5
-
-  pfa_4pct:
-    name: "Paraformaldehyde 4%"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "28908"
-    pack_size: 10
-    pack_unit: mL
-    pack_price_usd: 50.0
-    logical_unit: mL
-    unit_price_usd: 5.0
-
-  triton_x100:
-    name: "Triton X-100"
-    category: reagent
-    vendor: "Sigma"
-    catalog_number: "T8787"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 40.0
-    logical_unit: mL
-    unit_price_usd: 0.4
-
-  flow_antibody_generic:
-    name: "Flow Antibody (Generic)"
-    category: antibody
-    vendor: "BioLegend"
-    catalog_number: "BL-GENERIC"
-    pack_size: 100
-    pack_unit: ug
-    pack_price_usd: 300.0
-    logical_unit: ug
-    unit_price_usd: 3.0
-
-  viability_dye_zombie:
-    name: "Zombie NIR Fixable Viability Kit"
-    category: stain
-    vendor: "BioLegend"
-    catalog_number: "423105"
-    pack_size: 100
-    pack_unit: test
-    pack_price_usd: 250.0
-    logical_unit: test
-    unit_price_usd: 2.5
-
-  dapi:
-    name: "DAPI Stain"
-    category: stain
-    vendor: "Thermo"
-    catalog_number: "D1306"
-    pack_size: 10
-    pack_unit: mg
-    pack_price_usd: 100.0
-    logical_unit: mg
-    unit_price_usd: 10.0
-
-  flow_tubes_5ml:
-    name: "Falcon 5mL Round Bottom Tubes"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "352054"
-    pack_size: 1000
-    pack_unit: unit
-    pack_price_usd: 200.0
-    logical_unit: unit
-    unit_price_usd: 0.2
-
-  plate_96_v_bottom:
-    name: "96-well V-bottom Plate"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "3894"
-    pack_size: 50
-    pack_unit: unit
-    pack_price_usd: 200.0
-    logical_unit: unit
-    unit_price_usd: 4.0
-
-  # Cloning Reagents
-  bsmbi_enzyme:
-    name: "BsmBI-v2"
-    category: enzyme
-    vendor: "NEB"
-    catalog_number: "R0739S"
-    pack_size: 50
-    pack_unit: reaction
-    pack_price_usd: 80.0
-    logical_unit: reaction
-    unit_price_usd: 1.6
-
-  t4_ligase:
-    name: "T4 DNA Ligase"
-    category: enzyme
-    vendor: "NEB"
-    catalog_number: "M0202S"
-    pack_size: 100
-    pack_unit: reaction
-    pack_price_usd: 70.0
-    logical_unit: reaction
-    unit_price_usd: 0.7
-
-  dna_synthesis_fragment:
-    name: "gBlock Gene Fragment"
-    category: service
-    vendor: "IDT"
-    logical_unit: fragment
-    unit_price_usd: 89.0
-
-  miniprep_kit:
-    name: "Plasmid Miniprep Kit"
-    category: kit
-    vendor: "Qiagen"
-    catalog_number: "27104"
-    pack_size: 50
-    pack_unit: prep
-    pack_price_usd: 100.0
-    logical_unit: prep
-    unit_price_usd: 2.0
-
-  maxiprep_kit:
-    name: "Plasmid Maxiprep Kit"
-    category: kit
-    vendor: "Qiagen"
-    catalog_number: "12162"
-    pack_size: 10
-    pack_unit: prep
-    pack_price_usd: 150.0
-    logical_unit: prep
-    unit_price_usd: 15.0
-
-  sanger_sequencing:
-    name: "Sanger Sequencing"
-    category: service
-    vendor: "Genewiz"
-    logical_unit: read
-    unit_price_usd: 5.0
-
-  # Cloning Services (Outsourced)
-  service_oligo_synthesis:
-    name: "Oligo Synthesis Service"
-    category: service
-    vendor: "IDT"
-    logical_unit: reaction
-    unit_price_usd: 20.0 # Primers/Oligos
-
-  service_cloning:
-    name: "Custom Cloning Service"
-    category: service
-    vendor: "Genscript"
-    logical_unit: construct
-    unit_price_usd: 150.0
-
-  service_ngs_verification:
-    name: "Full Plasmid NGS"
-    category: service
-    vendor: "Plasmidsaurus"
-    logical_unit: sample
-    unit_price_usd: 15.0
-
-  service_plasmid_expansion:
-    name: "Plasmid Maxiprep Service"
-    category: service
-    vendor: "Genscript"
-    logical_unit: prep
-    unit_price_usd: 50.0
-
-  # LV Production Reagents
-  pei_transfection:
-    name: "PEI MAX Transfection Grade"
-    category: reagent
-    vendor: "Polysciences"
-    catalog_number: "24765"
-    pack_size: 100
-    pack_unit: mg
-    pack_price_usd: 200.0
-    logical_unit: mg
-    unit_price_usd: 2.0
-
-  lipofectamine_3000:
-    name: "Lipofectamine 3000 Reagent"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "L3000015"
-    pack_size: 1.5
-    pack_unit: mL
-    pack_price_usd: 450.0
-    logical_unit: mL
-    unit_price_usd: 300.0
-
-  fugene_hd:
-    name: "FuGENE HD Transfection Reagent"
-    category: reagent
-    vendor: "Promega"
-    catalog_number: "E2311"
-    pack_size: 1
-    pack_unit: mL
-    pack_price_usd: 250.0
-    logical_unit: mL
-    unit_price_usd: 250.0
-
-  nucleofection_buffer:
-    name: "Nucleofection Buffer (P3 Primary Cell Kit)"
-    category: reagent
-    vendor: "Lonza"
-    catalog_number: "V4XP-3024"
-    pack_size: 2
-    pack_unit: mL
-    pack_price_usd: 400.0
-    logical_unit: mL
-    unit_price_usd: 200.0
-
-  optimem:
-    name: "Opti-MEM Reduced Serum Medium"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "31985070"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 50.0
-    logical_unit: mL
-    unit_price_usd: 0.1
-
-  calcium_chloride:
-    name: "Calcium Chloride 2.5M Solution"
-    category: reagent
-    vendor: "Sigma"
-    catalog_number: "C7902"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 40.0
-    logical_unit: mL
-    unit_price_usd: 0.4
-
-  hepes_buffered_saline:
-    name: "HEPES Buffered Saline (HBS) 2x"
-    category: buffer
-    vendor: "Sigma"
-    catalog_number: "H0887"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 35.0
-    logical_unit: mL
-    unit_price_usd: 0.35
-
-  cell_scraper:
-    name: "Cell Scraper (Disposable)"
-    category: consumable
-    vendor: "Corning"
-    catalog_number: "3010"
-    pack_size: 100
-    pack_unit: each
-    pack_price_usd: 80.0
-    logical_unit: each
-    unit_price_usd: 0.8
-
-  lenti_x_concentrator:
-    name: "Lenti-X Concentrator"
-    category: reagent
-    vendor: "Takara"
-    catalog_number: "631231"
-    pack_size: 100
-    pack_unit: mL
-    pack_price_usd: 350.0
-    logical_unit: mL
-    unit_price_usd: 3.5
-
-  p24_elisa_kit:
-    name: "Lenti-X p24 Rapid Titer Kit"
-    category: kit
-    vendor: "Takara"
-    catalog_number: "632200"
-    pack_size: 96
-    pack_unit: test
-    pack_price_usd: 600.0
-    logical_unit: test
-    unit_price_usd: 6.25
-
-  # New ULS Inventory Items
-  geneticin:
-    name: "Geneticin (G418) 50mg/mL"
-    category: antibiotic
-    vendor: "Thermo"
-    catalog_number: "10131027"
-    pack_size: 20
-    pack_unit: mL
-    pack_price_usd: 150.0 # Estimate
-    logical_unit: mL
-    unit_price_usd: 7.5
-
-  rneasy_kit:
-    name: "RNeasy Mini Kit"
-    category: kit
-    vendor: "Qiagen"
-    catalog_number: "74182"
-    pack_size: 50
-    pack_unit: prep
-    pack_price_usd: 300.0 # Estimate
-    logical_unit: prep
-    unit_price_usd: 6.0
-
-  kapa_hifi:
-    name: "KAPA HiFi HotStart ReadyMix"
-    category: reagent
-    vendor: "Roche"
-    catalog_number: "501965299"
-    pack_size: 500
-    pack_unit: reaction
-    pack_price_usd: 500.0 # Estimate
-    logical_unit: reaction
-    unit_price_usd: 1.0
-
-  superscript_iv_vilo:
-    name: "SuperScript IV VILO Master Mix"
-    category: reagent
-    vendor: "Thermo"
-    catalog_number: "11756500"
-    pack_size: 500
-    pack_unit: reaction
-    pack_price_usd: 1500.0 # Estimate
-    logical_unit: reaction
-    unit_price_usd: 3.0
-
-  gemx_flex_chip:
-    name: "GEM-X Flex Gene Expression Chip"
-    category: kit
-    vendor: "10x Genomics"
-    catalog_number: "1000791"
-    pack_size: 4
-    pack_unit: chip
-    pack_price_usd: 2000.0 # Estimate
-    logical_unit: chip
-    unit_price_usd: 500.0
-  # ===================================================================
-  # VANILLA POSH (CellPaint-POSH) REAGENTS
-  # ===================================================================
-  
-  # RT-RCA Enzymes
-  revertaid_rt:
-    name: "RevertAid Reverse Transcriptase"
-    category: enzyme
-    vendor: "Thermo"
-    catalog_number: "EP0452"
-    pack_size: 10000
-    pack_unit: unit
-    pack_price_usd: 180.0
-    logical_unit: unit
-    unit_price_usd: 0.018
-  
-  ampligase:
-    name: "Ampligase DNA Ligase"
-    category: enzyme
-    vendor: "Biosearch Technologies"
-    catalog_number: "A3210K"
-    pack_size: 500
-    pack_unit: unit
-    pack_price_usd: 450.0
-    logical_unit: unit
-    unit_price_usd: 0.9
-  
-  phi29_polymerase:
-    name: "Phi29 DNA Polymerase"
-    category: enzyme
-    vendor: "Thermo"
-    catalog_number: "EP0094"
-    pack_size: 1000
-    pack_unit: unit
-    pack_price_usd: 250.0
-    logical_unit: unit
-    unit_price_usd: 0.25
-  
-  rnase_h:
-    name: "RNase H"
-    category: enzyme
-    vendor: "Enzymatics"
-    catalog_number: "Y9220L"
-    pack_size: 5000
-    pack_unit: unit
-    pack_price_usd: 200.0
-    logical_unit: unit
-    unit_price_usd: 0.04
-  
-  taqit:
-    name: "TaqIT DNA Polymerase"
-    category: enzyme
-    vendor: "Qiagen"
-    catalog_number: "P7620L"
-    pack_size: 500
-    pack_unit: unit
-    pack_price_usd: 150.0
-    logical_unit: unit
-    unit_price_usd: 0.3
-  
-  ribolock:
-    name: "Ribolock RNase Inhibitor"
-    category: enzyme
-    vendor: "Thermo"
-    catalog_number: "EO0384"
-    pack_size: 2500
-    pack_unit: unit
-    pack_price_usd: 120.0
-    logical_unit: unit
-    unit_price_usd: 0.048
-  
-  # Oligos and Probes
-  rt_primer:
-    name: "RT Primer (custom oligo)"
-    category: oligo
-    vendor: "IDT"
-    catalog_number: "custom"
-    pack_size: 100
-    pack_unit: nmol
-    pack_price_usd: 25.0
-    logical_unit: nmol
-    unit_price_usd: 0.25
-  
-  padlock_probe:
-    name: "Padlock Probe (custom oligo)"
-    category: oligo
-    vendor: "IDT"
-    catalog_number: "custom"
-    pack_size: 100
-    pack_unit: nmol
-    pack_price_usd: 30.0
-    logical_unit: nmol
-    unit_price_usd: 0.3
-  
-  anchor_primer:
-    name: "Anchor Primer (custom oligo)"
-    category: oligo
-    vendor: "IDT"
-    catalog_number: "custom"
-    pack_size: 100
-    pack_unit: nmol
-    pack_price_usd: 25.0
-    logical_unit: nmol
-    unit_price_usd: 0.25
-  
-  mitoprobe_12s_cy5:
-    name: "Mitoprobe 12s-1 Cy5"
-    category: oligo
-    vendor: "IDT"
-    catalog_number: "custom"
-    pack_size: 10
-    pack_unit: nmol
-    pack_price_usd: 150.0
-    logical_unit: nmol
-    unit_price_usd: 15.0
-  
-  mitoprobe_16s_cy5:
-    name: "Mitoprobe 16s-1 Cy5"
-    category: oligo
-    vendor: "IDT"
-    catalog_number: "custom"
-    pack_size: 10
-    pack_unit: nmol
-    pack_price_usd: 150.0
-    logical_unit: nmol
-    unit_price_usd: 15.0
-  
-  # SBS Reagents
-  miseq_reagent_v2_cycle:
-    name: "MiSeq Reagent Kit v2 (per cycle)"
-    category: kit
-    vendor: "Illumina"
-    catalog_number: "MS-102-2003"
-    pack_size: 500
-    pack_unit: cycle
-    pack_price_usd: 2500.0
-    logical_unit: cycle
-    unit_price_usd: 5.0
-  
-  # Cell Painting Dyes (ISS-compatible)
-  concanavalin_a_488:
-    name: "Concanavalin A Alexa Fluor 488"
-    category: dye
-    vendor: "Thermo"
-    catalog_number: "C11252"
-    pack_size: 5
-    pack_unit: mg
-    pack_price_usd: 350.0
-    logical_unit: mg
-    unit_price_usd: 70.0
-  
-  wga_555:
-    name: "Wheat Germ Agglutinin Alexa Fluor 555"
-    category: dye
-    vendor: "Thermo"
-    catalog_number: "W32464"
-    pack_size: 1
-    pack_unit: mg
-    pack_price_usd: 250.0
-    logical_unit: mg
-    unit_price_usd: 250.0
-  
-  phalloidin_568:
-    name: "Phalloidin Alexa Fluor 568"
-    category: dye
-    vendor: "Thermo"
-    catalog_number: "A12380"
-    pack_size: 300
-    pack_unit: unit
-    pack_price_usd: 350.0
-    logical_unit: unit
-    unit_price_usd: 1.167
-  
-  # Antibodies (optional 6th channel)
-  ps6_primary:
-    name: "Phospho-S6 Ribosomal Protein (Ser235/236) Antibody"
-    category: antibody
-    vendor: "Cell Signaling"
-    catalog_number: "2215S"
-    pack_size: 100
-    pack_unit: uL
-    pack_price_usd: 350.0
-    logical_unit: uL
-    unit_price_usd: 3.5
-  
-  dylight_755_secondary:
-    name: "Donkey anti-Rabbit DyLight 755"
-    category: antibody
-    vendor: "Invitrogen"
-    catalog_number: "SA5-10043"
-    pack_size: 500
-    pack_unit: uL
-    pack_price_usd: 450.0
-    logical_unit: uL
-    unit_price_usd: 0.9
-  
-  # Buffers and Solutions
-  ssc_2x:
-    name: "2x SSC Buffer (RNase-free)"
-    category: buffer
-    vendor: "Thermo"
-    catalog_number: "AM9765"
-    pack_size: 1000
-    pack_unit: mL
-    pack_price_usd: 80.0
-    logical_unit: mL
-    unit_price_usd: 0.08
-  
-  formamide:
-    name: "Formamide (molecular biology grade)"
-    category: reagent
-    vendor: "Fisher"
-    catalog_number: "AC327235000"
-    pack_size: 500
-    pack_unit: mL
-    pack_price_usd: 150.0
-    logical_unit: mL
-    unit_price_usd: 0.3
-  
-  # Stressors (for perturbation experiments)
-  tbhp:
-    name: "tert-Butyl hydroperoxide (oxidative stress)"
-    category: compound
-    vendor: "Sigma"
-    catalog_number: "458139-25ML"
-    pack_size: 25
-    pack_unit: mL
-    pack_price_usd: 80.0
-    logical_unit: mL
-    unit_price_usd: 3.2
-  
-  tunicamycin:
-    name: "Tunicamycin (ER stress)"
-    category: compound
-    vendor: "Sigma"
-    catalog_number: "T7765-5MG"
-    pack_size: 5
-    pack_unit: mg
-    pack_price_usd: 250.0
-    logical_unit: mg
-    unit_price_usd: 50.0
-  
-  thapsigargin:
-    name: "Thapsigargin (ER stress)"
-    category: compound
-    vendor: "Sigma"
-    catalog_number: "T9033-1MG"
-    pack_size: 1
-    pack_unit: mg
-    pack_price_usd: 200.0
-    logical_unit: mg
-    unit_price_usd: 200.0
-
-  # ===================================================================
-  # AUTOMATION EQUIPMENT (Capital Equipment)
-  # ===================================================================
-  
-  # Imaging System
-  nikon_ti2_system:
-    name: "Nikon Ti2-E Automated Microscope System"
-    category: equipment
-    vendor: "Nikon"
-    catalog_number: "Ti2-E-Complete"
-    pack_size: 1
-    pack_unit: system
-    pack_price_usd: 250000.0
-    logical_unit: system
-    unit_price_usd: 250000.0
-    depreciation_years: 7
-    annual_maintenance_pct: 0.12
-  
-  # Liquid Handling
-  biotek_multiflo_fx:
-    name: "BioTek MultiFlo FX Automated Dispenser"
-    category: equipment
-    vendor: "BioTek"
-    catalog_number: "MFXP2-Complete"
-    pack_size: 1
-    pack_unit: system
-    pack_price_usd: 120000.0
-    logical_unit: system
-    unit_price_usd: 120000.0
-    depreciation_years: 7
-    annual_maintenance_pct: 0.15
-  
-  # Incubation
-  inheco_heater_shaker:
-    name: "Inheco Heater/Shaker for Automation"
-    category: equipment
-    vendor: "Inheco"
-    catalog_number: "7100146-A"
-    pack_size: 1
-    pack_unit: system
-    pack_price_usd: 15000.0
-    logical_unit: system
-    unit_price_usd: 15000.0
-    depreciation_years: 7
-    annual_maintenance_pct: 0.10
-  
-  # Robotics
-  paa_kx2_robot:
-    name: "PAA KX-2 Robot Arm"
-    category: equipment
-    vendor: "PAA"
-    catalog_number: "KX2-500"
-    pack_size: 1
-    pack_unit: system
-    pack_price_usd: 75000.0
-    logical_unit: system
-    unit_price_usd: 75000.0
-    depreciation_years: 7
-    annual_maintenance_pct: 0.10
-  
-  # Infrastructure
-  automation_infrastructure:
-    name: "Automation Infrastructure (air table, enclosure, integration)"
-    category: equipment
-    vendor: "Custom"
-    catalog_number: "NA"
-    pack_size: 1
-    pack_unit: system
-    pack_price_usd: 40000.0
-    logical_unit: system
-    unit_price_usd: 40000.0
-    depreciation_years: 10
-    annual_maintenance_pct: 0.05
-  
-  # ===================================================================
-  # COMPUTATIONAL RESOURCES
-  # ===================================================================
-  
-  # GPU Compute (for CP-DINO training)
-  gpu_v100_hour:
-    name: "NVIDIA V100 GPU Hour (cloud)"
-    category: compute
-    vendor: "AWS/GCP"
-    catalog_number: "p3.2xlarge"
-    pack_size: 1
-    pack_unit: hour
-    pack_price_usd: 3.06
-    logical_unit: hour
-    unit_price_usd: 3.06
-  
-  # Storage
-  storage_gb_month:
-    name: "Cloud Storage (per GB per month)"
-    category: compute
-    vendor: "AWS/GCP"
-    catalog_number: "S3/GCS"
-    pack_size: 1
-    pack_unit: gb_month
-    pack_price_usd: 0.023
-    logical_unit: gb_month
-    unit_price_usd: 0.023
-  # ===================================================================
-  # ZOMBIE POSH (PerturbView) SPECIFIC REAGENTS
-  # ===================================================================
-  
-  # T7 IVT Kit
-  hiscribe_t7_kit:
-    name: "HiScribe T7 Quick High Yield RNA Synthesis Kit"
-    category: kit
-    vendor: "New England Biolabs"
-    catalog_number: "E2050S"
-    pack_size: 50
-    pack_unit: reaction
-    pack_price_usd: 450.0
-    logical_unit: reaction
-    unit_price_usd: 9.0
-  
-  # Decross-linking Reagents
-  sodium_bicarbonate:
-    name: "Sodium Bicarbonate (molecular biology grade)"
-    category: buffer
-    vendor: "Sigma"
-    catalog_number: "S5761-500G"
-    pack_size: 500
-    pack_unit: g
-    pack_price_usd: 50.0
-    logical_unit: g
-    unit_price_usd: 0.1
-  
-  sodium_chloride:
-    name: "Sodium Chloride (molecular biology grade)"
-    category: buffer
-    vendor: "Sigma"
-    catalog_number: "S9888-500G"
-    pack_size: 500
-    pack_unit: g
-    pack_price_usd: 40.0
-    logical_unit: g
-    unit_price_usd: 0.08
-  
-  # Signal Bleaching (IBEX)
-  lithium_borohydride:
-    name: "Lithium Borohydride"
-    category: reagent
-    vendor: "Strem"
-    catalog_number: "50-901-13696"
-    pack_size: 5
-    pack_unit: g
-    pack_price_usd: 150.0
-    logical_unit: g
-    unit_price_usd: 30.0
-  
-  # HCR FISH Reagents
-  hcr_probe_set:
-    name: "HCR FISH Probe Set (per gene)"
-    category: oligo
-    vendor: "Molecular Instruments"
-    catalog_number: "custom"
-    pack_size: 1
-    pack_unit: set
-    pack_price_usd: 200.0
-    logical_unit: set
-    unit_price_usd: 200.0
-  
-  hcr_amplifier_set:
-    name: "HCR FISH Amplifier Set (B1-B5)"
-    category: kit
-    vendor: "Molecular Instruments"
-    catalog_number: "custom"
-    pack_size: 5
-    pack_unit: set
-    pack_price_usd: 500.0
-    logical_unit: set
-    unit_price_usd: 100.0
-  
-  # Tissue Processing
-  oct_embedding_medium:
-    name: "OCT Embedding Medium"
-    category: reagent
-    vendor: "Sakura"
-    catalog_number: "4583"
-    pack_size: 125
-    pack_unit: mL
-    pack_price_usd: 50.0
-    logical_unit: mL
-    unit_price_usd: 0.4
-  
-  xylene:
-    name: "Xylene (histology grade)"
-    category: reagent
-    vendor: "Fisher"
-    catalog_number: "X3P-1GAL"
-    pack_size: 1000
-    pack_unit: mL
-    pack_price_usd: 80.0
-    logical_unit: mL
-    unit_price_usd: 0.08
-  
-  # Xenium Spatial Transcriptomics
-  xenium_panel:
-    name: "Xenium Multi-Tissue Cancer Panel"
-    category: kit
-    vendor: "10x Genomics"
-    catalog_number: "PN-1000566"
-    pack_size: 1
-    pack_unit: panel
-    pack_price_usd: 5000.0
-    logical_unit: panel
-    unit_price_usd: 5000.0
-  
-  xenium_cassette:
-    name: "Xenium Cassette"
-    category: consumable
-    vendor: "10x Genomics"
-    catalog_number: "PN-1000566"
-    pack_size: 10
-    pack_unit: cassette
-    pack_price_usd: 200.0
-    logical_unit: cassette
-    unit_price_usd: 20.0
-  
-  # Specialized Plates
-  cellvis_6well:
-    name: "Cellvis 6-well Glass Bottom Plate (high heat)"
-    category: consumable
-    vendor: "Cellvis"
-    catalog_number: "P06-1.5H-N"
-    pack_size: 10
-    pack_unit: plate
-    pack_price_usd: 250.0
-    logical_unit: plate
-    unit_price_usd: 25.0
-  
-  cellvis_12well:
-    name: "Cellvis 12-well Glass Bottom Plate (high heat)"
-    category: consumable
-    vendor: "Cellvis"
-    catalog_number: "P12-1.5H-N"
-    pack_size: 10
-    pack_unit: plate
-    pack_price_usd: 300.0
-    logical_unit: plate
-    unit_price_usd: 30.0
-  
-  cellvis_96well:
-    name: "Cellvis 96-well Glass Bottom Plate (high heat)"
-    category: consumable
-    vendor: "Cellvis"
-    catalog_number: "P96-1.5H-N"
-    pack_size: 10
-    pack_unit: plate
-    pack_price_usd: 400.0
-    logical_unit: plate
-    unit_price_usd: 40.0
-# New Cell Painting Reagents
-
-# Primary Antibodies
-  map2_chicken:
-    category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 350.00
-    vendor: Novus
-    catalog: NB300-213
-
-  tdp_43_rabbit:
-    category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 380.00
-    vendor: Proteintech
-    catalog: 10782-2-AP
-
-  stmn2_rabbit:
-    category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 360.00
-    vendor: Novus
-    catalog: NBP2-49461
-
-  ps6_primary:
-    category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 400.00
-    vendor: CST
-    catalog: custom
-
-# Dyes
-  bodipy_493_503:
-    category: dye
-    unit_size: 10 mg
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: D3922
-
-# Secondary Antibodies
-  secondary_chicken_alexa488:
-    category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A11039
-
-  secondary_rabbit_alexa594:
-    category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A11012
-
-  secondary_rabbit_alexa647:
-    category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A21244
-
-  secondary_rabbit_dylight755:
-    category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 200.00
-    vendor: Invitrogen
-    catalog: SA5-10043
-
-  secondary_mouse_alexa488:
-    category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A11001
-
-  secondary_mouse_alexa647:
-    category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A21235
-
-# Buffers
-  staining_buffer:
-    category: buffer
-    unit_size: 500 mL
-    cost_usd: 45.00
-    vendor: In-house
-    catalog: N/A
-# Upstream / Genetic Supply Chain Reagents
-
-# Oligo Synthesis
-  oligo_pool_twist_12k:
-    category: service
-    unit_size: 1 pool
-    cost_usd: 1500.00
-    vendor: Twist Bioscience
-    catalog: custom_pool_12k
-    notes: "Up to 12,000 oligos, uniform synthesis"
-
-  oligo_pool_genscript_12k:
-    category: service
-    unit_size: 1 pool
-    cost_usd: 1800.00
-    vendor: GenScript
-    catalog: custom_pool_12k
-
-# Cloning (Golden Gate)
-  bsmbi_v2:
-    category: enzyme
-    unit_size: 2500 units
-    cost_usd: 84.00
-    vendor: NEB
-    catalog: R0739L
-
-  t4_ligase_conc:
-    category: enzyme
-    unit_size: 100000 units
-    cost_usd: 88.00
-    vendor: NEB
-    catalog: M0202T
-
-  stbl3_competent_cells:
-    category: cells
-    unit_size: 20 rxn
-    cost_usd: 450.00
-    vendor: ThermoFisher
-    catalog: C737303
-
-# Plasmid Prep
-  endo_free_maxiprep_kit:
-    category: kit
-    unit_size: 10 preps
-    cost_usd: 280.00
-    vendor: Qiagen
-    catalog: 12362
-
-# Virus Production (HEK293T)
-  hek293t_cells:
-    category: cells
-    unit_size: 1 vial
-    cost_usd: 600.00
-    vendor: ATCC
-    catalog: CRL-3216
-
-  lipofectamine_3000:
-    category: reagent
-    unit_size: 1.5 mL
-    cost_usd: 680.00
-    vendor: ThermoFisher
-    catalog: L3000015
-
-  pei_max:
-    category: reagent
-    unit_size: 1 g
-    cost_usd: 150.00
-    vendor: Polysciences
-    catalog: 24765-1
-    notes: "Cheap alternative to Lipofectamine for large scale"
-
-  amicon_ultra_15_100k:
-    category: consumable
-    unit_size: 24 pack
-    cost_usd: 280.00
-    vendor: Millipore
-    catalog: UFC910024
-
-# NGS Verification
-  miseq_v2_kit_300:
-    category: kit
-    unit_size: 1 kit
-    cost_usd: 1300.00
-    vendor: Illumina
-    catalog: MS-102-2002
-  # New resources for inventory tests
-  DMEM_MEDIA:
-    name: "DMEM basal medium"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "DMEM001"
-    pack_size: 1000
-    pack_unit: "mL"
-    pack_price_usd: 0.5
-    logical_unit: "mL"
-    unit_price_usd: 0.5
-    # stock_level will be initialized to pack_size * 10 = 10000
-
-  FBS:
-    name: "Fetal bovine serum"
-    category: media
-    vendor: "Thermo"
-    catalog_number: "FBS001"
-    pack_size: 500
-    pack_unit: "mL"
-    pack_price_usd: 1.5
-    logical_unit: "mL"
-    unit_price_usd: 1.5
-    # stock_level will be initialized to pack_size * 10 = 5000
+import streamlit as st
+import pandas as pd
+import numpy as np
+import yaml
+import os
+import altair as alt
+from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
+
+# Import necessary modules for all tabs. Note: Circular dependency fixes must be in the source files.
+from cell_os.workflow_renderer import render_workflow_graph
+from cell_os.workflow_renderer_plotly import render_workflow_plotly
+from cell_os.unit_ops import ParametricOps, VesselLibrary
+from cell_os.inventory import Inventory
+from cell_os.workflows import WorkflowBuilder, Workflow
+from cell_os.posh_decision_engine import (
+    POSHDecisionEngine, 
+    UserRequirements, 
+    POSHProtocol, 
+    AutomationLevel
+)
+from cell_os.posh_scenario import POSHScenario
+from cell_os.posh_screen_design import run_posh_screen_design
+from cell_os.posh_lv_moi import (
+    fit_lv_transduction_model,
+    LVTitrationResult,
+    ScreenSimulator,
+    ScreenConfig
+)
+from cell_os.posh_viz import (
+    plot_library_composition,
+    plot_titration_curve,
+    plot_titer_posterior,
+    plot_risk_assessment,
+    plot_cost_breakdown
+)
+from cell_os.lab_world_model import LabWorldModel
+from cell_os.budget_manager import BudgetConfig 
+from core.experiment_db import ExperimentDB
+from datetime import datetime # Required for Tab 9 (Phenotype Clustering)
+
+st.set_page_config(page_title="cell_OS Dashboard", layout="wide")
+
+st.title("🧬 cell_OS Mission Control")
+
+# -------------------------------------------------------------------
+# Sidebar: Configuration & Status
+# -------------------------------------------------------------------
+st.sidebar.header("Status")
+if st.sidebar.button("Refresh Data"):
+    st.rerun()
+
+# Load Data
+@st.cache_data
+def load_data():
+    history_path = "results/experiment_history.csv"
+    if os.path.exists(history_path):
+        try:
+            # Try to read with error handling for malformed CSV
+            df = pd.read_csv(history_path, on_bad_lines='skip')
+        except Exception as e:
+            st.warning(f"Could not load experiment history: {e}")
+            df = pd.DataFrame()
+    else:
+        df = pd.DataFrame()
+        
+    pricing_path = "data/raw/pricing.yaml"
+    if os.path.exists(pricing_path):
+        try:
+            with open(pricing_path, 'r') as f:
+                pricing = yaml.safe_load(f)
+        except Exception as e:
+            st.warning(f"Could not load pricing data: {e}")
+            pricing = {}
+    else:
+        pricing = {}
+        
+    return df, pricing
+
+df, pricing = load_data()
+
+# -------------------------------------------------------------------
+# Tabs (UPDATED FOR NEW TAB)
+# -------------------------------------------------------------------
+# NOTE: Tab variable names are re-assigned to accommodate the new tab_audit (Tab 5)
+tab1, tab2, tab3, tab4, tab_audit, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "🚀 Mission Control", 
+    "🔬 Science", 
+    "💰 Economics", 
+    "🕸️ Workflow Visualizer", 
+    "🛠️ Resource Audit", # <-- NEW TAB
+    "🧭 POSH Decision Assistant", # Now tab5
+    "🧪 POSH Screen Designer",    # Now tab6
+    "📊 Campaign Reports",        # Now tab7
+    "🧮 Budget Calculator",       # Now tab8
+    "🧬 Phenotype Clustering"     # Now tab9
+])
+
+# -------------------------------------------------------------------
+# Tab 1: Mission Control
+# -------------------------------------------------------------------
+with tab1:
+    col1, col2, col3 = st.columns(3)
+    
+    # Connect to database
+    
+    try:
+        db = ExperimentDB()
+        
+        # Query experiment statistics
+        db.cursor.execute("""
+            SELECT 
+                COUNT(DISTINCT experiment_id) as n_experiments,
+                SUM(cost_usd) as total_cost
+            FROM titration_results
+        """)
+        row = db.cursor.fetchone()
+        
+        if row and row[0]:  # Has data
+            n_experiments = row[0]
+            total_cost = row[1] if row[1] else 0.0
+            
+            # Get most recent experiment
+            db.cursor.execute("""
+                SELECT experiment_id, MAX(timestamp) as last_update
+                FROM titration_results
+                GROUP BY experiment_id
+                ORDER BY last_update DESC
+                LIMIT 1
+            """)
+            recent_row = db.cursor.fetchone()
+            current_experiment = recent_row[0] if recent_row else "None"
+            
+        else:  # No data yet
+            n_experiments = 0
+            total_cost = 0.0
+            current_experiment = "No experiments yet"
+        
+        # Budget (from config or default)
+        initial_budget = 5000.0
+        remaining_budget = initial_budget - total_cost
+        
+        col1.metric("Budget Remaining", f"${remaining_budget:,.2f}", delta=f"-${total_cost:,.2f}")
+        col2.metric("Active Experiment", current_experiment)
+        col3.metric("Total Experiments", f"{n_experiments}")
+        
+        st.divider()
+        
+        # Recent Activity from Database
+        st.subheader("Recent Titration Results")
+        
+        db.cursor.execute("""
+            SELECT 
+                experiment_id,
+                cell_line,
+                round_number,
+                volume_ul,
+                fraction_bfp,
+                cost_usd,
+                timestamp
+            FROM titration_results
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """)
+        
+        results = db.cursor.fetchall()
+        
+        if results:
+            df_recent = pd.DataFrame(results, columns=[
+                'Experiment', 'Cell Line', 'Round', 'Volume (µL)', 
+                'BFP%', 'Cost ($)', 'Timestamp'
+            ])
+            df_recent['BFP%'] = (df_recent['BFP%'] * 100).round(1)
+            st.dataframe(df_recent, use_container_width=True)
+        else:
+            st.info("No experiments run yet. Launch a campaign to see results!")
+            st.code("python cli/run_campaign.py --config config/campaign_example.yaml")
+        
+        db.close()
+        
+    except Exception as e:
+        st.error(f"Database connection failed: {e}")
+        st.warning("Falling back to file-based data...")
+        
+        # Fallback to CSV if DB fails
+        if os.path.exists("results/experiment_history.csv"):
+            df = pd.read_csv("results/experiment_history.csv", on_bad_lines='skip')
+            st.dataframe(df.tail(10), use_container_width=True)
+    
+    st.subheader("Mission Log")
+    log_path = "results/mission_log.md"
+    if os.path.exists(log_path):
+        with open(log_path, "r") as f:
+            log_content = f.read()
+        st.markdown(log_content)
+    else:
+        st.info("No mission log found.")
+
+# -------------------------------------------------------------------
+# Tab 2: Science
+# -------------------------------------------------------------------
+with tab2:
+    st.header("Dose-Response Explorer")
+    
+    if not df.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            cell_line = st.selectbox("Cell Line", df["cell_line"].unique())
+        with col2:
+            compound = st.selectbox("Compound", df["compound"].unique())
+            
+        # Filter Data
+        mask = (df["cell_line"] == cell_line) & (df["compound"] == compound)
+        df_slice = df[mask].copy()
+        
+        if not df_slice.empty:
+            # Plot Data
+            chart = alt.Chart(df_slice).mark_circle(size=60).encode(
+                x=alt.X("dose_uM", scale=alt.Scale(type="log")),
+                y=alt.Y("viability", type="quantitative"),
+                color="cycle:O",
+                tooltip=[
+                    alt.Tooltip("dose_uM", type="quantitative"),
+                    alt.Tooltip("viability", type="quantitative"),
+                    alt.Tooltip("cycle", type="ordinal")
+                ]
+            ).interactive()
+            
+            # Fit GP (On the fly!)
+            try:
+                # Filter out zero doses for log scale
+                df_fit = df_slice[df_slice["dose_uM"] > 0].copy()
+                if len(df_fit) > 0:
+                    gp = DoseResponseGP.from_dataframe(
+                        df_fit, cell_line, compound, time_h=24, viability_col="viability"
+                    )
+                    grid = gp.predict_on_grid(num_points=100)
+                    
+                    df_grid = pd.DataFrame(grid)
+                    
+                    line = alt.Chart(df_grid).mark_line(color='red').encode(
+                        x=alt.X("dose_uM", scale=alt.Scale(type="log")),
+                        y=alt.Y("mean", type="quantitative")
+                    )
+                    
+                    # Pre-calc bounds
+                    df_grid["upper"] = df_grid["mean"] + df_grid["std"]
+                    df_grid["lower"] = df_grid["mean"] - df_grid["std"]
+                    
+                    band = alt.Chart(df_grid).mark_area(opacity=0.2, color='red').encode(
+                        x=alt.X("dose_uM", scale=alt.Scale(type="log")),
+                        y=alt.Y("lower", type="quantitative"),
+                        y2=alt.Y2("upper")
+                    )
+                    
+                    st.altair_chart(chart + line + band, use_container_width=True)
+                else:
+                    st.altair_chart(chart, use_container_width=True)
+                    st.warning("Not enough positive dose data to fit GP.")
+                    
+            except Exception as e:
+                st.error(f"GP Fit Failed: {e}")
+                st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No data for this selection.")
+    else:
+        st.info("No experimental data yet.")
+
+# -------------------------------------------------------------------
+# Tab 3: Economics
+# -------------------------------------------------------------------
+with tab3:
+    st.header("Financials")
+    
+    if not df.empty and "cost_usd" in df.columns:
+        # Cumulative Spend
+        df["cumulative_cost"] = df["cost_usd"].cumsum()
+        st.line_chart(df.reset_index(), x="index", y="cumulative_cost")
+    
+    st.header("Inventory Levels")
+    # We don't have a live inventory file that updates yet (inventory.py is in-memory).
+    # But we can show the catalog prices.
+    
+    items = []
+    for item_id, data in pricing.get("items", {}).items():
+        items.append({
+            "Name": data.get("name"),
+            "Price": data.get("unit_price_usd"),
+            "Unit": data.get("logical_unit")
+        })
+    
+    st.dataframe(pd.DataFrame(items), use_container_width=True)
+    st.info("Live inventory tracking requires persisting the Inventory state to a file (TODO).")
+
+# -------------------------------------------------------------------
+# Tab 4: Workflow Visualizer
+# -------------------------------------------------------------------
+with tab4:
+    st.header("Workflow Visualization")
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        st.subheader("Configuration")
+        
+        # Initialize Resources
+        try:
+            # Re-initialize resources from the top level (tab_audit uses them too)
+            vessel_lib = VesselLibrary("data/raw/vessels.yaml")
+            inv = Inventory("data/raw/pricing.yaml")
+            ops = ParametricOps(vessel_lib, inv)
+            builder = WorkflowBuilder(ops)
+            
+            # Define available workflows
+            workflow_options = {
+                "POSH": lambda: builder.build_zombie_posh(),
+            }
+            
+            all_options = workflow_options
+            
+            selected_option_name = st.selectbox("Select Workflow / Recipe", list(all_options.keys()))
+            
+            # Add visualization engine toggle
+            viz_engine = st.radio(
+                "Visualization",
+                ["Interactive (Plotly)", "Static (Graphviz)"],
+                index=0,
+                horizontal=True
+            )
+            
+            # Add detail level toggle (only for Graphviz)
+            if "Graphviz" in viz_engine:
+                detail_level = st.radio(
+                    "Detail Level",
+                    ["Process (High-level)", "Unit Operations (Detailed)"],
+                    index=0,
+                    horizontal=True
+                )
+                detail_mode = "process" if "Process" in detail_level else "unitop"
+            
+            if st.button("Render Graph"):
+                # Generate Object
+                obj_func = all_options[selected_option_name]
+                result_obj = obj_func()
+                
+                # Determine what to render
+                if isinstance(result_obj, Workflow):
+                    # Choose renderer based on selection
+                    if "Plotly" in viz_engine:
+                        # Interactive Plotly visualization
+                        fig = render_workflow_plotly(result_obj, detail_level="process")
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        # Static Graphviz visualization
+                        dot = render_workflow_graph(result_obj, title=selected_option_name, detail_level=detail_mode)
+                        st.graphviz_chart(dot)
+                    
+                    # Calculate Total Costs
+                    all_ops = result_obj.all_ops
+                    total_mat = sum(op.material_cost_usd for op in all_ops)
+                    total_inst = sum(op.instrument_cost_usd for op in all_ops)
+                    
+                    st.subheader("Workflow Cost Estimate")
+                    st.metric("Total Material Cost", f"${total_mat:.2f}")
+                    st.metric("Total Instrument Cost", f"${total_inst:.2f}")
+                    
+                    # Add expandable process details
+                    st.subheader("Process Details")
+                    for process in result_obj.processes:
+                        with st.expander(f"📋 {process.name} ({len(process.ops)} operations)"):
+                            for op in process.ops:
+                                op_name = getattr(op, 'name', 'Unknown')
+                                op_cost = op.material_cost_usd + op.instrument_cost_usd
+                                st.write(f"- **{op_name}** (${op_cost:.2f})")
+                                if hasattr(op, 'sub_steps') and op.sub_steps:
+                                    st.caption(f"  └─ {len(op.sub_steps)} sub-steps")
+                    
+                else:
+                    # It's a single UnitOp (Recipe)
+                    root_op = result_obj
+                    if root_op.sub_steps:
+                        recipe_to_render = root_op.sub_steps
+                        st.info(f"Showing {len(recipe_to_render)} granular steps for {root_op.name}")
+                    else:
+                        recipe_to_render = [root_op]
+                        
+                    dot = render_workflow_graph(recipe_to_render, title=selected_option_name)
+                    st.graphviz_chart(dot)
+                    
+                    st.subheader("Recipe Cost Estimate")
+                    st.metric("Material Cost", f"${root_op.material_cost_usd:.2f}")
+                    st.metric("Instrument Cost", f"${root_op.instrument_cost_usd:.2f}")
+                
+        except Exception as e:
+            st.error(f"Error initializing workflow engine: {e}")
+            st.warning("Ensure 'data/raw/vessels.yaml' and 'data/raw/pricing.yaml' exist.")
+
+# -------------------------------------------------------------------
+# Tab X: Resource Audit (NEW)
+# -------------------------------------------------------------------
+with tab_audit:
+    st.header("🛠️ Unit Operations & Resource Audit")
+    st.markdown("Verify the loaded **resource definitions** (`VesselLibrary`, `Inventory`) and **unit operation mappings** (`ParametricOps`).")
+
+    # -----------------------------------
+    # A. Resource Setup 
+    # -----------------------------------
+    try:
+        # Re-initialize resources from the top level
+        vessel_lib = VesselLibrary("data/raw/vessels.yaml")
+        inv = Inventory("data/raw/pricing.yaml")
+        ops = ParametricOps(vessel_lib, inv)
+        
+        st.success("Core Resources Initialized Successfully.")
+        
+    except Exception as e:
+        st.error(f"Failed to initialize core resources: {e}")
+        st.warning("Check `data/raw/vessels.yaml` and `data/raw/pricing.yaml`.")
+        st.stop() # Stop execution of this tab if resources fail
+
+    st.subheader("1. Inventory/Pricing Audit")
+    st.markdown("Displays all priced items available for cost calculation (from `data/raw/pricing.yaml`).")
+    
+    if pricing:
+        items = []
+        for item_id, data in pricing.get("items", {}).items():
+            items.append({
+                "ID": item_id,
+                "Name": data.get("name"),
+                "Category": data.get("category", "N/A"), # Added Category
+                "Unit Price ($)": data.get("unit_price_usd"),
+                "Unit": data.get("logical_unit"),
+                "Vendor": data.get("vendor", "N/A"),         # Added Vendor
+                "Catalog Number": data.get("catalog_number", "N/A") # Added Catalog Number
+            })
+        
+        # Create the DataFrame and ensure columns are in a logical order
+        df_items = pd.DataFrame(items)
+        
+        # Reorder columns for presentation
+        column_order = [
+            "ID", 
+            "Name", 
+            "Category",
+            "Unit Price ($)", 
+            "Unit", 
+            "Vendor", 
+            "Catalog Number"
+        ]
+        df_items = df_items[column_order]
+        
+        st.dataframe(df_items, use_container_width=True)
+    else:
+        st.info("Pricing data failed to load or is empty.")
+
+    st.subheader("2. Vessel Library Audit")
+    st.markdown("Displays the properties of all defined lab vessels/plates (from `data/raw/vessels.yaml`).")
+    
+    try:
+        # NOTE: Assumes VesselLibrary has a .vessels attribute which is a dictionary
+        vessels = []
+        for name, vessel in vessel_lib.vessels.items(): 
+            vessels.append({
+                "Name": name,
+                "Type": getattr(vessel, 'vessel_type', 'N/A'),
+                "Max Vol (mL)": getattr(vessel, 'max_volume_ml', 'N/A'),
+                "Footprint": getattr(vessel, 'footprint', 'N/A'),
+                "Well Count": getattr(vessel, 'well_count', 'N/A')
+            })
+        st.dataframe(pd.DataFrame(vessels), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not introspect VesselLibrary structure. Error: {e}")
+
+    st.subheader("3. Parametric Unit Operations Audit")
+    st.markdown("Lists all core unit operation methods available within the system's `ParametricOps` class.")
+    
+    # Introspect ParametricOps for callable methods (the UnitOps)
+    op_names = [
+        attr for attr in dir(ops) 
+        if callable(getattr(ops, attr)) 
+        and not attr.startswith("_") 
+        and attr not in ['create', 'copy', 'index', 'count'] # Exclude standard object methods
+    ]
+    
+    op_names.sort()
+    
+    st.info(f"Detected **{len(op_names)}** distinct Parametric Unit Operations:")
+    st.code("\n".join(op_names))
+    
+    st.caption("To verify the cost inputs for a specific operation (e.g., `dispense_reagent`), you must check the source code for `ParametricOps`.")
+
+
+# -------------------------------------------------------------------
+# Tab 5: POSH Decision Assistant (Now tab5)
+# -------------------------------------------------------------------
+with tab5:
+    st.header("🧭 POSH Decision Assistant")
+    st.markdown("Answer a few questions to get a personalized POSH configuration recommendation.")
+    
+    engine = POSHDecisionEngine()
+    
+    # User Input Form
+    with st.form("posh_requirements"):
+        st.subheader("Experimental Requirements")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            num_plates = st.number_input(
+                "Number of Plates",
+                min_value=1,
+                max_value=500,
+                value=10,
+                help="How many plates do you plan to run?"
+            )
+            
+            budget_usd = st.number_input(
+                "Budget (USD)",
+                min_value=100,
+                max_value=1000000,
+                value=10000,
+                step=1000,
+                help="Total budget for this experiment"
+            )
+            
+            timeline_weeks = st.number_input(
+                "Timeline (weeks)",
+                min_value=1,
+                max_value=52,
+                value=4,
+                help="How many weeks until you need results?"
+            )
+        
+        with col2:
+            has_automation = st.checkbox(
+                "Access to Automation Equipment",
+                value=False,
+                help="Do you have liquid handlers or automated systems?"
+            )
+            
+            needs_multimodal = st.checkbox(
+                "Need Multimodal Imaging",
+                value=False,
+                help="Require HCR FISH + IBEX immunofluorescence?"
+            )
+            
+            tissue_samples = st.checkbox(
+                "Working with Tissue Samples",
+                value=False,
+                help="Are you processing tissue sections (vs cultured cells)?"
+            )
+        
+        submitted = st.form_submit_button("Get Recommendation", type="primary")
+    
+    if submitted:
+        # Create requirements
+        req = UserRequirements(
+            num_plates=num_plates,
+            budget_usd=budget_usd,
+            timeline_weeks=timeline_weeks,
+            has_automation=has_automation,
+            needs_multimodal=needs_multimodal,
+            tissue_samples=tissue_samples
+        )
+        
+        # Get recommendation
+        rec = engine.recommend(req)
+        
+        st.divider()
+        st.subheader("📋 Recommended Configuration")
+        
+        # Display recommendation in columns
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Protocol", rec.protocol.value.title())
+        with col2:
+            st.metric("Multimodal", "Enabled" if rec.multimodal else "Disabled")
+        with col3:
+            st.metric("Automation", rec.automation.value.replace("_", " ").title())
+        
+        st.divider()
+        
+        # Cost and Time Estimates
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric(
+                "Estimated Total Cost",
+                f"${rec.estimated_cost_usd:,.0f}",
+                delta=f"${rec.estimated_cost_usd - budget_usd:,.0f}" if rec.estimated_cost_usd > budget_usd else None,
+                delta_color="inverse"
+            )
+        
+        with col2:
+            st.metric(
+                "Estimated Timeline",
+                f"{rec.estimated_time_weeks:.1f} weeks",
+                delta=f"{rec.estimated_time_weeks - timeline_weeks:.1f} weeks" if rec.estimated_time_weeks > timeline_weeks else None,
+                delta_color="inverse"
+            )
+        
+        # Justification
+        st.subheader("💡 Justification")
+        st.markdown(rec.justification)
+        
+        # Warnings
+        if rec.warnings:
+            st.subheader("⚠️ Warnings")
+            for warning in rec.warnings:
+                st.warning(warning)
+        
+        # Alternatives
+        if rec.alternatives:
+            st.subheader("🔄 Consider These Alternatives")
+            for alt in rec.alternatives:
+                st.info(f"• {alt}")
+        
+        # Comparison Table
+        st.divider()
+        st.subheader("📊 Configuration Comparison")
+        
+        configs = engine.compare_configurations(req)
+        
+        comparison_data = []
+        for config_name, config_rec in configs.items():
+            comparison_data.append({
+                "Configuration": config_name.title(),
+                "Protocol": config_rec.protocol.value.title(),
+                "Multimodal": "Yes" if config_rec.multimodal else "No",
+                "Automation": config_rec.automation.value.replace("_", " ").title(),
+                "Cost (USD)": f"${config_rec.estimated_cost_usd:,.0f}",
+                "Time (weeks)": f"{config_rec.estimated_time_weeks:.1f}"
+            })
+        
+        df_comparison = pd.DataFrame(comparison_data)
+        st.dataframe(df_comparison, use_container_width=True, hide_index=True)
+
+# -------------------------------------------------------------------
+# Tab 6: POSH Screen Designer (Now tab6)
+# -------------------------------------------------------------------
+with tab6:
+    st.header("🧪 POSH Screen Designer")
+    st.markdown("Design a complete POSH screen using the autonomous library design and LV modeling agents.")
+    
+    # Scenario Selection
+    st.subheader("1. Select or Create Scenario")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        scenario_mode = st.radio(
+            "Scenario Source",
+            ["Load from YAML", "Create Custom"],
+            horizontal=True
+        )
+    
+    scenario = None
+    
+    if scenario_mode == "Load from YAML":
+        # List available scenarios
+        import glob
+        scenario_files = glob.glob("data/scenarios/*.yaml")
+        
+        if scenario_files:
+            selected_file = st.selectbox(
+                "Select Scenario",
+                scenario_files,
+                format_func=lambda x: x.split("/")[-1]
+            )
+            
+            if st.button("Load Scenario"):
+                try:
+                    scenario = POSHScenario.from_yaml(selected_file)
+                    st.success(f"Loaded scenario: {scenario.name}")
+                except Exception as e:
+                    st.error(f"Failed to load scenario: {e}")
+        else:
+            st.warning("No scenario files found in data/scenarios/")
+    
+    else:  # Create Custom
+        with st.form("custom_scenario"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                name = st.text_input("Scenario Name", value="Custom_Screen")
+                genes = st.number_input("Number of Genes", min_value=10, max_value=25000, value=1000)
+                guides_per_gene = st.number_input("Guides per Gene", min_value=1, max_value=10, value=4)
+                cell_lines_input = st.text_input("Cell Lines (comma-separated)", value="U2OS,A549,HepG2")
+            
+            with col2:
+                moi_target = st.number_input("Target MOI", min_value=0.1, max_value=2.0, value=0.3, step=0.1)
+                coverage = st.number_input("Coverage (cells/gene/bank)", min_value=100, max_value=5000, value=1000)
+                budget = st.number_input("Budget (USD)", min_value=1000, max_value=1000000, value=50000, step=1000)
+            
+            if st.form_submit_button("Create Scenario"):
+                cell_lines = [cl.strip() for cl in cell_lines_input.split(",")]
+                scenario = POSHScenario(
+                    name=name,
+                    cell_lines=cell_lines,
+                    genes=genes,
+                    guides_per_gene=guides_per_gene,
+                    coverage_cells_per_gene_per_bank=coverage,
+                    banks_per_line=1,
+                    moi_target=moi_target,
+                    moi_tolerance=0.05,
+                    viability_min=0.7,
+                    segmentation_min=0.8,
+                    stress_signal_min=2.0,
+                    budget_max=budget
+                )
+                st.success(f"Created scenario: {scenario.name}")
+    
+    # Design Screen
+    if scenario is not None:
+        st.divider()
+        st.subheader("2. Design Library")
+        
+        if st.button("Run Library Design", type="primary"):
+            with st.spinner("Designing library..."):
+                try:
+                    world = LabWorldModel.empty()
+                    result = run_posh_screen_design(world, scenario)
+                    
+                    st.session_state['posh_result'] = result
+                    
+                    # Save to database
+                    db = ExperimentDB()
+                    
+                    design_data = {
+                        'design_id': result.scenario.name,
+                        'project_name': 'POSH_Screen',
+                        'library_name': f"{result.scenario.name}_Library",
+                        'cell_line': ','.join(result.scenario.cell_lines),
+                        'target_moi': result.scenario.moi_target,
+                        'gRNA_count': result.library.num_genes
+                    }
+                    
+                    db.insert_design(design_data)
+                    db.close()
+                    
+                    st.success(f"✅ Library design complete and saved to database!")
+                    st.info(f"Design ID: {result.scenario.name}")
+                    
+                except Exception as e:
+                    st.error(f"Design failed: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+    
+    # Display Results
+    if 'posh_result' in st.session_state:
+        result = st.session_state['posh_result']
+        
+        st.divider()
+        st.subheader("📊 Design Results")
+        
+        # Key Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Genes", f"{result.library.num_genes:,}")
+        col2.metric("Total Guides", f"{len(result.library.df):,}")
+        col3.metric("Guides/Gene", result.library.guides_per_gene_actual)
+        col4.metric("Cell Lines", len(result.scenario.cell_lines))
+        
+        # Library Composition
+        st.subheader("Library Composition")
+        try:
+            chart = plot_library_composition(result.library)
+            st.altair_chart(chart, use_container_width=True)
+        except Exception as e:
+            st.error(f"Visualization error: {e}")
+        
+        # LV Design
+        if result.lv_design:
+            st.divider()
+            st.subheader("🧬 LV Titration Design")
+            
+            for cell_line, plan in result.lv_design.titration_plans.items():
+                with st.expander(f"📋 {cell_line} Titration Plan"):
+                    col1, col2 = st.columns(2)
+                    col1.metric("Plate Format", plan.plate_format)
+                    col1.metric("Cells per Well", f"{plan.cells_per_well:,}")
+                    col2.metric("Replicates", plan.replicates_per_condition)
+                    col2.metric("Volumes to Test", len(plan.lv_volumes_ul))
+                    
+                    st.write("**Volumes (µL):**", ", ".join([f"{v:.1f}" for v in plan.lv_volumes_ul]))
+        
+        # Simulate Titration Data (Demo)
+        st.divider()
+        st.subheader("🔬 Simulate Titration \u0026 Model Fitting")
+        
+        selected_line = st.selectbox("Select Cell Line", result.scenario.cell_lines)
+        
+        if st.button("Simulate Titration Data"):
+            with st.spinner("Simulating titration..."):
+                try:
+                    # Simulate data
+                    plan = result.lv_design.titration_plans[selected_line]
+                    true_titer = 50000  # TU/µL
+                    
+                    rows = []
+                    for vol in plan.lv_volumes_ul:
+                        moi = (vol * true_titer) / plan.cells_per_well
+                        bfp = 0.98 * (1 - np.exp(-moi)) + np.random.normal(0, 0.01)
+                        bfp = max(0.001, min(0.999, bfp))
+                        rows.append({'volume_ul': vol, 'fraction_bfp': bfp})
+                    
+                    titration_data = pd.DataFrame(rows)
+                    titration_result = LVTitrationResult(cell_line=selected_line, data=titration_data)
+                    
+                    # Fit model
+                    model = fit_lv_transduction_model(
+                        result.scenario,
+                        result.lv_design.batch,
+                        titration_result,
+                        n_cells_override=plan.cells_per_well
+                    )
+                    
+                    st.session_state[f'model_{selected_line}'] = model
+                    st.session_state[f'data_{selected_line}'] = titration_data
+                    
+                    st.success(f"Model fitted! Inferred titer: {model.titer_tu_ul:,.0f} TU/µL")
+                except Exception as e:
+                    st.error(f"Simulation failed: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+        
+        # Display Model Results
+        if f'model_{selected_line}' in st.session_state:
+            model = st.session_state[f'model_{selected_line}']
+            data = st.session_state[f'data_{selected_line}']
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Inferred Titer", f"{model.titer_tu_ul:,.0f} TU/µL")
+            col2.metric("Max Infectivity", f"{model.max_infectivity:.1%}")
+            col3.metric("R²", f"{model.r_squared:.3f}")
+            
+            # Titration Curve
+            st.subheader("Titration Curve")
+            try:
+                chart = plot_titration_curve(model, data, target_moi=result.scenario.moi_target)
+                st.altair_chart(chart, use_container_width=True)
+            except Exception as e:
+                st.error(f"Visualization error: {e}")
+            
+            # Titer Posterior
+            if model.posterior:
+                st.subheader("Titer Posterior Distribution")
+                try:
+                    chart = plot_titer_posterior(model)
+                    if chart:
+                        st.altair_chart(chart, use_container_width=True)
+                        
+                        ci_low, ci_high = model.posterior.ci_95
+                        st.info(f"95% Credible Interval: [{ci_low:,.0f}, {ci_high:,.0f}] TU/µL")
+                except Exception as e:
+                    st.error(f"Visualization error: {e}")
+            
+            # Risk Assessment
+            st.divider()
+            st.subheader("⚠️ Scale-Up Risk Assessment")
+            
+            with st.form("risk_config"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    target_bfp = st.slider("Target BFP%", 0.1, 0.5, 0.3, 0.05)
+                    tolerance_low = st.slider("Tolerance Lower", 0.1, 0.5, 0.25, 0.05)
+                
+                with col2:
+                    tolerance_high = st.slider("Tolerance Upper", 0.1, 0.5, 0.35, 0.05)
+                    n_sims = st.number_input("Simulations", 1000, 10000, 5000, 1000)
+                
+                if st.form_submit_button("Run Risk Assessment"):
+                    try:
+                        config = ScreenConfig(
+                            num_guides=len(result.library.df),
+                            coverage_target=result.scenario.coverage_cells_per_gene_per_bank,
+                            target_bfp=target_bfp,
+                            bfp_tolerance=(tolerance_low, tolerance_high)
+                        )
+                        
+                        simulator = ScreenSimulator(model, config)
+                        
+                        st.session_state['simulator'] = simulator
+                        st.session_state['n_sims'] = n_sims
+                        
+                        pos = simulator.get_probability_of_success()
+                        st.success(f"Probability of Success: {pos:.1%}")
+                    except Exception as e:
+                        st.error(f"Risk assessment failed: {e}")
+            
+            if 'simulator' in st.session_state:
+                simulator = st.session_state['simulator']
+                n_sims = st.session_state.get('n_sims', 5000)
+                
+                try:
+                    chart = plot_risk_assessment(simulator, n_sims=n_sims)
+                    st.altair_chart(chart, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Visualization error: {e}")
+        
+        # Cost Breakdown (Placeholder)
+        # Defining dummy values for safety
+        total_reagent_cost = 1500.0
+        total_virus_cost = 800.0
+        flow_cost = 500.0
+        total_cost = total_reagent_cost + total_virus_cost + flow_cost
+        reagent_cost = 2.5 # Placeholder for config export
+        virus_price = 0.15 # Placeholder for config export
+        
+        col1.metric("Reagents", f"${total_reagent_cost:,.2f}")
+        col2.metric("Virus", f"${total_virus_cost:,.2f}")
+        col3.metric("Flow Cytometry", f"${flow_cost:,.2f}")
+        col4.metric("**TOTAL**", f"${total_cost:,.2f}", delta=None)
+        
+        st.divider()
+        st.subheader("📊 Cost Breakdown")
+        
+        # Pie chart of costs
+        cost_df = pd.DataFrame({
+            "Category": ["Reagents", "Virus", "Flow Cytometry"],
+            "Cost": [total_reagent_cost, total_virus_cost, flow_cost]
+        })
+        
+        chart = alt.Chart(cost_df).mark_arc().encode(
+            theta="Cost:Q",
+            color=alt.Color("Category:N", scale=alt.Scale(scheme='category10')),
+            tooltip=["Category", alt.Tooltip("Cost:Q", format="$,.2f")]
+        )
+        
+        st.altair_chart(chart, use_container_width=True)
+        
+        # Export budget config
+        st.divider()
+        st.subheader("💾 Save Configuration")
+        
+        budget_config_yaml = f"""# Budget Configuration
+max_titration_budget_usd: {total_cost:.2f}
+reagent_cost_per_well: {reagent_cost}
+virus_price: {virus_price}
+mins_per_sample_flow: 3.0
+flow_rate_per_hour: 120.0
+"""
+        
+        st.code(budget_config_yaml, language="yaml")
+        
+        if st.download_button(
+            label="Download Budget Config",
+            data=budget_config_yaml,
+            file_name="budget_config.yaml",
+            mime="text/yaml"
+        ):
+            st.success("Config downloaded!")
+
+# -------------------------------------------------------------------
+# Tab 7: Campaign Reports (Now tab7)
+# -------------------------------------------------------------------
+with tab7:
+    st.header("📊 Campaign Reports")
+    
+    # Scan for reports
+    results_dir = "results/campaigns"
+    if os.path.exists(results_dir):
+        reports = [f for f in os.listdir(results_dir) if f.endswith("_report.html")]
+        reports.sort(reverse=True) # Newest first
+        
+        if reports:
+            selected_report = st.selectbox("Select Report", reports)
+            
+            if selected_report:
+                report_path = os.path.join(results_dir, selected_report)
+                
+                # Option to open in new tab
+                st.markdown(f"**[Open {selected_report} in new tab](file://{os.path.abspath(report_path)})** (Local only)")
+                
+                # Read and display (iframe)
+                with open(report_path, 'r') as f:
+                    html_content = f.read()
+                
+                st.components.v1.html(html_content, height=800, scrolling=True)
+        else:
+            st.info("No HTML reports found in results/campaigns/")
+    else:
+        st.warning(f"Results directory not found: {results_dir}")
+
+# -------------------------------------------------------------------
+# Tab 8: Budget Calculator (Now tab8)
+# -------------------------------------------------------------------
+with tab8:
+    st.header("🧮 Budget Calculator")
+    st.markdown("Estimate the cost of your next titration campaign.")
+    
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Parameters")
+        max_budget = st.number_input("Max Budget ($)", 1000.0, 50000.0, 5000.0, 500.0)
+        virus_price = st.number_input("Virus Price ($/µL)", 0.01, 10.0, 0.15, 0.01)
+        reagent_cost = st.number_input("Reagent Cost ($/well)", 0.1, 10.0, 2.50, 0.1)
+        
+    with col2:
+        st.subheader("Throughput")
+        flow_rate = st.number_input("Flow Rate (samples/hr)", 10, 500, 120)
+        mins_per_sample = st.number_input("Prep Time (min/sample)", 0.1, 10.0, 3.0)
+        
+    st.divider()
+    
+    # Interactive Estimation
+    st.subheader("Estimation")
+    n_cell_lines = st.slider("Number of Cell Lines", 1, 10, 3)
+    rounds = st.slider("Est. Rounds per Line", 1, 10, 5)
+    samples_per_round = st.slider("Samples per Round", 1, 96, 8)
+    
+    total_samples = n_cell_lines * rounds * samples_per_round
+    
+    # Calculations
+    reagent_total = total_samples * reagent_cost
+    
+    # Flow cost (assuming $100/hr instrument time + labor)
+    flow_hours = total_samples / flow_rate
+    flow_cost = flow_hours * 100.0 # Placeholder rate
+    
+    # Virus cost (assuming avg 5µL per sample)
+    virus_vol = total_samples * 5.0
+    virus_total = virus_vol * virus_price
+    
+    grand_total = reagent_total + flow_cost + virus_total
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Samples", total_samples)
+    c2.metric("Est. Cost", f"${grand_total:,.2f}")
+    c3.metric("Cost/Line", f"${grand_total/n_cell_lines:,.2f}")
+    c4.metric("Budget Usage", f"{grand_total/max_budget:.1%}")
+    
+    if grand_total > max_budget:
+        st.error(f"Over Budget by ${grand_total - max_budget:,.2f}!")
+    else:
+        st.success("Within Budget")
+    
+    # Export
+    if st.button("Generate Config YAML"):
+        config_yaml = f"""budget:
+  max_titration_budget_usd: {max_budget}
+  reagent_cost_per_well: {reagent_cost}
+  mins_per_sample_flow: {mins_per_sample}
+  flow_rate_per_hour: {flow_rate}
+  virus_price: {virus_price}
+"""
+        st.code(config_yaml, language="yaml")
+with tab9:
+    st.header("🧬 Phenotype Clustering")
+    st.markdown("Analyze DINO embeddings to identify morphological hits and visualize phenotypic space.")
+    
+    # File upload
+    st.subheader("1. Load DINO Embeddings")
+    
+    uploaded_file = st.file_uploader(
+        "Upload CSV with DINO embeddings",
+        type=['csv'],
+        help="CSV should have columns: gene, guide_id, embedding (JSON array)"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # Save uploaded file temporarily
+            import tempfile
+            from datetime import datetime # Ensure datetime is imported for this block
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_path = tmp_file.name
+            
+            # Load via DINO analyzer
+            from cell_os.dino_analysis import load_dino_embeddings_from_csv
+            analyzer = load_dino_embeddings_from_csv(tmp_path)
+            
+            st.success(f"✅ Loaded {len(analyzer.embeddings)} embeddings ({analyzer.embedding_dim}D)")
+            
+            # Store in session state
+            st.session_state['dino_analyzer'] = analyzer
+            
+        except Exception as e:
+            st.error(f"Failed to load embeddings: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+    
+    # Analysis section
+    if 'dino_analyzer' in st.session_state:
+        analyzer = st.session_state['dino_analyzer']
+        
+        st.divider()
+        st.subheader("2. Hit Calling")
+        
+        with st.form("hit_calling_params"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                threshold = st.slider("Z-score Threshold", 0.5, 5.0, 2.0, 0.5)
+                min_guides = st.number_input("Min Guides per Gene", 1, 10, 2)
+            
+            with col2:
+                aggregate = st.selectbox("Aggregation Method", ['mean', 'median', 'max'])
+            
+            if st.form_submit_button("Call Hits", type="primary"):
+                with st.spinner("Computing D_M and calling hits..."):
+                    try:
+                        hits = analyzer.call_hits(threshold=threshold, min_guides=min_guides)
+                        st.session_state['hits'] = hits
+                        
+                        # Save to database
+                        from datetime import datetime # Ensure datetime is imported for this block
+                        
+                        # Prompt for experiment ID
+                        experiment_id = st.text_input(
+                            "Link to Experiment ID (optional)",
+                            value="DINO_ANALYSIS_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+                            key="dino_exp_id"
+                        )
+                        
+                        db = ExperimentDB()
+                        db.save_dino_results(experiment_id, hits)
+                        db.close()
+                        
+                        n_hits = hits['hit_status'].sum()
+                        st.success(f"✅ Found {n_hits} hits out of {len(hits)} genes")
+                        st.info(f"Results saved to database with ID: {experiment_id}")
+                        
+                    except Exception as e:
+                        st.error(f"Hit calling failed: {e}")
+        
+        # Display hits
+        if 'hits' in st.session_state:
+            hits = st.session_state['hits']
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Genes", len(hits))
+            col2.metric("Hits", hits['hit_status'].sum())
+            col3.metric("Hit Rate", f"{hits['hit_status'].mean():.1%}")
+            
+            st.subheader("Hit List")
+            st.dataframe(
+                hits.style.background_gradient(subset=['d_m', 'z_score'], cmap='Reds'),
+                use_container_width=True
+            )
+            
+            # Export hits
+            csv = hits.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Hit List (CSV)",
+                data=csv,
+                file_name="posh_hits.csv",
+                mime="text/csv"
+            )
+        
+        # Dimensionality reduction
+        st.divider()
+        st.subheader("3. Phenotypic Space Visualization")
+        
+        with st.form("dim_reduction"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                method = st.selectbox("Method", ['umap', 'tsne'])
+            
+            with col2:
+                n_neighbors = st.slider("Neighbors (UMAP)", 5, 50, 15) if method == 'umap' else 30
+            
+            if st.form_submit_button("Generate Visualization"):
+                with st.spinner(f"Running {method.upper()}..."):
+                    try:
+                        if method == 'umap':
+                            reduced_df = analyzer.reduce_dimensions(method='umap', n_neighbors=n_neighbors)
+                        else:
+                            reduced_df = analyzer.reduce_dimensions(method='tsne', perplexity=30)
+                        
+                        st.session_state['reduced_df'] = reduced_df
+                        st.success(f"✅ {method.upper()} complete")
+                        
+                    except Exception as e:
+                        st.error(f"Dimensionality reduction failed: {e}")
+                        st.info("Install dependencies: pip install umap-learn scikit-learn")
+        
+        # Plot reduced dimensions
+        if 'reduced_df' in st.session_state:
+            reduced_df = st.session_state['reduced_df']
+            
+            # Interactive scatter plot
+            color_by = st.selectbox("Color by", ['gene', 'd_m'])
+            
+            if color_by == 'd_m' and 'd_m' in reduced_df.columns:
+                chart = alt.Chart(reduced_df).mark_circle(size=60).encode(
+                    x=alt.X('dim1:Q', title='Dimension 1'),
+                    y=alt.Y('dim2:Q', title='Dimension 2'),
+                    color=alt.Color('d_m:Q', scale=alt.Scale(scheme='viridis'), title='D_M (Morphological Distance)'),
+                    tooltip=['gene:N', 'guide_id:N', alt.Tooltip('d_m:Q', format='.3f')]
+                ).interactive().properties(
+                    width=700,
+                    height=500,
+                    title='Phenotypic Space (DINO Embeddings)'
+                )
+            else:
+                chart = alt.Chart(reduced_df).mark_circle(size=60).encode(
+                    x=alt.X('dim1:Q', title='Dimension 1'),
+                    y=alt.Y('dim2:Q', title='Dimension 2'),
+                    color='gene:N',
+                    tooltip=['gene:N', 'guide_id:N']
+                ).interactive().properties(
+                    width=700,
+                    height=500,
+                    title='Phenotype Clustering'
+                )
+            
+            st.altair_chart(chart, use_container_width=True)
+            
+            # Export reduced data
+            csv = reduced_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Reduced Embeddings (CSV)",
+                data=csv,
+                file_name="phenotype_clustering.csv",
+                mime="text/csv"
+            )
+    
+    else:
+        st.info("👆 Upload a CSV file with DINO embeddings to get started.")
+        
+        st.markdown("""
+        ### Expected CSV Format
+        
+        | gene | guide_id | embedding |
+        |------|----------|-----------|
+        | TP53 | TP53_g1  | [0.12,-0.34,...] |
+        | KRAS | KRAS_g1  | [0.45,0.21,...] |
+        
+        **Notes:**
+        - `embedding` column should contain JSON array or comma-separated values
+        - Embedding dimension is auto-detected (typically 384 for DINOv2-S)
+        - Include NTC (non-targeting control) genes for D_M calculation
+        """)

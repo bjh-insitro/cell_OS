@@ -1,0 +1,29 @@
+name: "3lines_stress_screen"
+
+cell_lines:
+  - U2OS
+  - A549
+  - HepG2
+
+library:
+  genes: 300
+  guides_per_gene: 4
+  design_rules:
+    genome: "GRCh38"
+    max_off_target_score: 0.2
+
+coverage:
+  cells_per_gene_per_bank: 1000
+  banks_per_line: 4
+
+moi:
+  target: 0.3
+  tolerance: 0.05
+
+stress_window:
+  viability_min: 0.6
+  segmentation_min: 0.8
+  stress_signal_min: 0.4
+
+budget:
+  max_total_cost_usd: 50000

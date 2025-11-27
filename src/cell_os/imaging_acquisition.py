@@ -52,6 +52,35 @@ class ExperimentPlan:
     score: float = 0.0
 
 
+@dataclass
+class ExperimentResult:
+    """The result of a single experiment.
+
+    Attributes
+    ----------
+    slice_key: SliceKey
+        The slice (cell_line, compound, time_h, readout) for which the dose
+        was tested.
+    dose_uM: float
+        Dose in micromolar.
+    stress_value: float
+        Observed value of the stress metric.
+    viability_value: float
+        Observed viability.
+    cells_per_field_observed: float
+        Observed cells per field.
+    good_fields_per_well_observed: float
+        Observed good fields per well.
+    """
+    slice_key: SliceKey
+    dose_uM: float
+    stress_value: float
+    viability_value: float
+    cells_per_field_observed: float
+    good_fields_per_well_observed: float
+
+
+
 # ---------------------------------------------------------------------------
 # Core proposal function
 # ---------------------------------------------------------------------------
