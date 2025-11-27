@@ -60,30 +60,92 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
 with tab1:
     col1, col2, col3 = st.columns(3)
     
-    # Calculate Metrics
-    if not df.empty:
-        total_spent = df["cost_usd"].sum() if "cost_usd" in df.columns else 0.0
-        current_cycle = df["cycle"].max() if "cycle" in df.columns else 0
-        n_experiments = len(df)
-    else:
-        total_spent = 0.0
-        current_cycle = 0
-        n_experiments = 0
+    # Connect to database
+    from core.experiment_db import ExperimentDB
+    
+    try:
+        db = ExperimentDB()
         
-    # Budget (Hardcoded initial for now, or read from log?)
-    initial_budget = 5000.0
-    remaining_budget = initial_budget - total_spent
-    
-    col1.metric("Budget Remaining", f"${remaining_budget:,.2f}", delta=f"-${total_spent:,.2f}")
-    col2.metric("Current Cycle", f"{current_cycle}")
-    col3.metric("Total Experiments", f"{n_experiments}")
-    
-    st.divider()
-    
-    st.subheader("Recent Activity")
-    if not df.empty:
-        st.dataframe(df.tail(10), use_container_width=True)
+        # Query experiment statistics
+        db.cursor.execute("""
+            SELECT 
+                COUNT(DISTINCT experiment_id) as n_experiments,
+                SUM(cost_usd) as total_cost
+            FROM titration_results
+        """)
+        row = db.cursor.fetchone()
         
+        if row and row[0]:  # Has data
+            n_experiments = row[0]
+            total_cost = row[1] if row[1] else 0.0
+            
+            # Get most recent experiment
+            db.cursor.execute("""
+                SELECT experiment_id, MAX(timestamp) as last_update
+                FROM titration_results
+                GROUP BY experiment_id
+                ORDER BY last_update DESC
+                LIMIT 1
+            """)
+            recent_row = db.cursor.fetchone()
+            current_experiment = recent_row[0] if recent_row else "None"
+            
+        else:  # No data yet
+            n_experiments = 0
+            total_cost = 0.0
+            current_experiment = "No experiments yet"
+        
+        # Budget (from config or default)
+        initial_budget = 5000.0
+        remaining_budget = initial_budget - total_cost
+        
+        col1.metric("Budget Remaining", f"${remaining_budget:,.2f}", delta=f"-${total_cost:,.2f}")
+        col2.metric("Active Experiment", current_experiment)
+        col3.metric("Total Experiments", f"{n_experiments}")
+        
+        st.divider()
+        
+        # Recent Activity from Database
+        st.subheader("Recent Titration Results")
+        
+        db.cursor.execute("""
+            SELECT 
+                experiment_id,
+                cell_line,
+                round_number,
+                volume_ul,
+                fraction_bfp,
+                cost_usd,
+                timestamp
+            FROM titration_results
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """)
+        
+        results = db.cursor.fetchall()
+        
+        if results:
+            df_recent = pd.DataFrame(results, columns=[
+                'Experiment', 'Cell Line', 'Round', 'Volume (µL)', 
+                'BFP%', 'Cost ($)', 'Timestamp'
+            ])
+            df_recent['BFP%'] = (df_recent['BFP%'] * 100).round(1)
+            st.dataframe(df_recent, use_container_width=True)
+        else:
+            st.info("No experiments run yet. Launch a campaign to see results!")
+            st.code("python cli/run_campaign.py --config config/campaign_example.yaml")
+        
+        db.close()
+        
+    except Exception as e:
+        st.error(f"Database connection failed: {e}")
+        st.warning("Falling back to file-based data...")
+        
+        # Fallback to CSV if DB fails
+        if os.path.exists("results/experiment_history.csv"):
+            df = pd.read_csv("results/experiment_history.csv", on_bad_lines='skip')
+            st.dataframe(df.tail(10), use_container_width=True)
+    
     st.subheader("Mission Log")
     log_path = "results/mission_log.md"
     if os.path.exists(log_path):
@@ -554,7 +616,26 @@ with tab6:
                     result = run_posh_screen_design(world, scenario)
                     
                     st.session_state['posh_result'] = result
-                    st.success("Library design complete!")
+                    
+                    # Save to database
+                    from core.experiment_db import ExperimentDB
+                    db = ExperimentDB()
+                    
+                    design_data = {
+                        'design_id': result.scenario.name,
+                        'project_name': 'POSH_Screen',
+                        'library_name': f"{result.scenario.name}_Library",
+                        'cell_line': ','.join(result.scenario.cell_lines),
+                        'target_moi': result.scenario.moi_target,
+                        'gRNA_count': result.library.num_genes
+                    }
+                    
+                    db.insert_design(design_data)
+                    db.close()
+                    
+                    st.success(f"✅ Library design complete and saved to database!")
+                    st.info(f"Design ID: {result.scenario.name}")
+                    
                 except Exception as e:
                     st.error(f"Design failed: {e}")
                     import traceback
