@@ -445,128 +445,273 @@ with tab5:
 # -------------------------------------------------------------------
 # Tab 6: POSH Screen Designer
 # -------------------------------------------------------------------
-from cell_os.posh_screen_designer import create_screen_design, CELL_TYPE_PARAMS
+from cell_os.posh_scenario import POSHScenario
+from cell_os.posh_screen_design import run_posh_screen_design
+from cell_os.posh_lv_moi import (
+    fit_lv_transduction_model,
+    LVTitrationResult,
+    ScreenSimulator,
+    ScreenConfig
+)
+from cell_os.posh_viz import (
+    plot_library_composition,
+    plot_titration_curve,
+    plot_titer_posterior,
+    plot_risk_assessment,
+    plot_cost_breakdown
+)
+from cell_os.lab_world_model import LabWorldModel
 
 with tab6:
     st.header("🧪 POSH Screen Designer")
-    st.markdown("Calculate experimental parameters for your POSH screen based on library size and cell type.")
+    st.markdown("Design a complete POSH screen using the autonomous library design and LV modeling agents.")
     
-    with st.form("screen_design_form"):
-        st.subheader("Library Specification")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            library_name = st.text_input("Library Name", value="My_Library")
-            num_genes = st.number_input(
-                "Number of Genes",
-                min_value=10,
-                max_value=25000,
-                value=1000,
-                help="Total number of genes in your library"
-            )
-            grnas_per_gene = st.number_input(
-                "gRNAs per Gene",
-                min_value=1,
-                max_value=10,
-                value=4,
-                help="Typical: 4 for knockout, 3-5 for CRISPRi"
-            )
-        
-        with col2:
-            viral_titer = st.number_input(
-                "Viral Titer (TU/mL)",
-                min_value=1e5,
-                max_value=1e9,
-                value=1e7,
-                format="%.2e",
-                help="Functional titer of your viral stock"
-            )
-            
-            cell_type = st.selectbox(
-                "Cell Type",
-                options=list(CELL_TYPE_PARAMS.keys()),
-                help="Select your cell type (barcode efficiency varies)"
-            )
-            
-            target_cells = st.slider(
-                "Target Cells per gRNA",
-                min_value=250,
-                max_value=2000,
-                value=750,
-                step=50,
-                help="Recommended: 500-1000 cells per gRNA"
-            )
-        
-        calculate = st.form_submit_button("Calculate Design", type="primary")
+    # Scenario Selection
+    st.subheader("1. Select or Create Scenario")
     
-    if calculate:
-        # Create design
-        design = create_screen_design(
-            library_name=library_name,
-            num_genes=num_genes,
-            cell_type=cell_type,
-            viral_titer=viral_titer,
-            target_cells_per_grna=target_cells,
-            moi=0.3  # Fixed at 0.3 as per user spec
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        scenario_mode = st.radio(
+            "Scenario Source",
+            ["Load from YAML", "Create Custom"],
+            horizontal=True
         )
+    
+    scenario = None
+    
+    if scenario_mode == "Load from YAML":
+        # List available scenarios
+        import glob
+        scenario_files = glob.glob("data/scenarios/*.yaml")
         
-        # Override grnas_per_gene if user changed it
-        design.library.grnas_per_gene = grnas_per_gene
-        design._calculate()  # Recalculate with new value
+        if scenario_files:
+            selected_file = st.selectbox(
+                "Select Scenario",
+                scenario_files,
+                format_func=lambda x: x.split("/")[-1]
+            )
+            
+            if st.button("Load Scenario"):
+                try:
+                    scenario = POSHScenario.from_yaml(selected_file)
+                    st.success(f"Loaded scenario: {scenario.name}")
+                except Exception as e:
+                    st.error(f"Failed to load scenario: {e}")
+        else:
+            st.warning("No scenario files found in data/scenarios/")
+    
+    else:  # Create Custom
+        with st.form("custom_scenario"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                name = st.text_input("Scenario Name", value="Custom_Screen")
+                genes = st.number_input("Number of Genes", min_value=10, max_value=25000, value=1000)
+                guides_per_gene = st.number_input("Guides per Gene", min_value=1, max_value=10, value=4)
+                cell_lines_input = st.text_input("Cell Lines (comma-separated)", value="U2OS,A549,HepG2")
+            
+            with col2:
+                moi_target = st.number_input("Target MOI", min_value=0.1, max_value=2.0, value=0.3, step=0.1)
+                coverage = st.number_input("Coverage (cells/gene/bank)", min_value=100, max_value=5000, value=1000)
+                budget = st.number_input("Budget (USD)", min_value=1000, max_value=1000000, value=50000, step=1000)
+            
+            if st.form_submit_button("Create Scenario"):
+                cell_lines = [cl.strip() for cl in cell_lines_input.split(",")]
+                scenario = POSHScenario(
+                    name=name,
+                    cell_lines=cell_lines,
+                    genes=genes,
+                    guides_per_gene=guides_per_gene,
+                    coverage_cells_per_gene_per_bank=coverage,
+                    banks_per_line=1,
+                    moi_target=moi_target,
+                    moi_tolerance=0.05,
+                    viability_min=0.7,
+                    segmentation_min=0.8,
+                    stress_signal_min=2.0,
+                    budget_max=budget
+                )
+                st.success(f"Created scenario: {scenario.name}")
+    
+    # Design Screen
+    if scenario is not None:
+        st.divider()
+        st.subheader("2. Design Library")
+        
+        if st.button("Run Library Design", type="primary"):
+            with st.spinner("Designing library..."):
+                try:
+                    world = LabWorldModel.empty()
+                    result = run_posh_screen_design(world, scenario)
+                    
+                    st.session_state['posh_result'] = result
+                    st.success("Library design complete!")
+                except Exception as e:
+                    st.error(f"Design failed: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+    
+    # Display Results
+    if 'posh_result' in st.session_state:
+        result = st.session_state['posh_result']
         
         st.divider()
-        st.subheader("📊 Experimental Design")
+        st.subheader("📊 Design Results")
         
         # Key Metrics
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total gRNAs", f"{design.library.total_grnas:,}")
-        col2.metric("Transduction Cells", f"{design.transduction_cells_needed:,}")
-        col3.metric("Screening Plates", design.screening_plates)
-        col4.metric("Estimated Cost", f"${design.estimated_cost_usd:,.0f}")
+        col1.metric("Total Genes", f"{result.library.num_genes:,}")
+        col2.metric("Total Guides", f"{len(result.library.df):,}")
+        col3.metric("Guides/Gene", result.library.guides_per_gene_actual)
+        col4.metric("Cell Lines", len(result.scenario.cell_lines))
         
+        # Library Composition
+        st.subheader("Library Composition")
+        try:
+            chart = plot_library_composition(result.library)
+            st.altair_chart(chart, use_container_width=True)
+        except Exception as e:
+            st.error(f"Visualization error: {e}")
+        
+        # LV Design
+        if result.lv_design:
+            st.divider()
+            st.subheader("🧬 LV Titration Design")
+            
+            for cell_line, plan in result.lv_design.titration_plans.items():
+                with st.expander(f"📋 {cell_line} Titration Plan"):
+                    col1, col2 = st.columns(2)
+                    col1.metric("Plate Format", plan.plate_format)
+                    col1.metric("Cells per Well", f"{plan.cells_per_well:,}")
+                    col2.metric("Replicates", plan.replicates_per_condition)
+                    col2.metric("Volumes to Test", len(plan.lv_volumes_ul))
+                    
+                    st.write("**Volumes (µL):**", ", ".join([f"{v:.1f}" for v in plan.lv_volumes_ul]))
+        
+        # Simulate Titration Data (Demo)
         st.divider()
+        st.subheader("🔬 Simulate Titration \u0026 Model Fitting")
         
-        # Detailed Breakdown
-        col1, col2 = st.columns(2)
+        selected_line = st.selectbox("Select Cell Line", result.scenario.cell_lines)
         
-        with col1:
-            st.subheader("🧬 Transduction")
-            st.metric("Cells Needed", f"{design.transduction_cells_needed:,}")
-            st.metric("MOI", design.moi)
-            st.metric("Representation", f"{design.representation}×")
-            st.metric("Viral Volume", f"{design.viral_volume_ml:.2f} mL")
-            st.metric("Transduction Plates (6-well)", design.transduction_plates)
+        if st.button("Simulate Titration Data"):
+            with st.spinner("Simulating titration..."):
+                try:
+                    # Simulate data
+                    plan = result.lv_design.titration_plans[selected_line]
+                    true_titer = 50000  # TU/µL
+                    
+                    rows = []
+                    for vol in plan.lv_volumes_ul:
+                        moi = (vol * true_titer) / plan.cells_per_well
+                        bfp = 0.98 * (1 - np.exp(-moi)) + np.random.normal(0, 0.01)
+                        bfp = max(0.001, min(0.999, bfp))
+                        rows.append({'volume_ul': vol, 'fraction_bfp': bfp})
+                    
+                    titration_data = pd.DataFrame(rows)
+                    titration_result = LVTitrationResult(cell_line=selected_line, data=titration_data)
+                    
+                    # Fit model
+                    model = fit_lv_transduction_model(
+                        result.scenario,
+                        result.lv_design.batch,
+                        titration_result,
+                        n_cells_override=plan.cells_per_well
+                    )
+                    
+                    st.session_state[f'model_{selected_line}'] = model
+                    st.session_state[f'data_{selected_line}'] = titration_data
+                    
+                    st.success(f"Model fitted! Inferred titer: {model.titer_tu_ul:,.0f} TU/µL")
+                except Exception as e:
+                    st.error(f"Simulation failed: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
         
-        with col2:
-            st.subheader("🔬 Screening")
-            st.metric("Target Cells (Raw)", f"{design.total_target_cells:,}")
-            st.metric("Barcode Efficiency", f"{design.cell_type.barcode_efficiency * 100:.0f}%")
-            st.metric("Cells Needed (Adjusted)", f"{design.cells_needed_for_barcoding:,}")
-            st.metric("Screening Plates (6-well)", design.screening_plates)
-            st.metric("Cells per gRNA", design.target_cells_per_grna)
+        # Display Model Results
+        if f'model_{selected_line}' in st.session_state:
+            model = st.session_state[f'model_{selected_line}']
+            data = st.session_state[f'data_{selected_line}']
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Inferred Titer", f"{model.titer_tu_ul:,.0f} TU/µL")
+            col2.metric("Max Infectivity", f"{model.max_infectivity:.1%}")
+            col3.metric("R²", f"{model.r_squared:.3f}")
+            
+            # Titration Curve
+            st.subheader("Titration Curve")
+            try:
+                chart = plot_titration_curve(model, data, target_moi=result.scenario.moi_target)
+                st.altair_chart(chart, use_container_width=True)
+            except Exception as e:
+                st.error(f"Visualization error: {e}")
+            
+            # Titer Posterior
+            if model.posterior:
+                st.subheader("Titer Posterior Distribution")
+                try:
+                    chart = plot_titer_posterior(model)
+                    if chart:
+                        st.altair_chart(chart, use_container_width=True)
+                        
+                        ci_low, ci_high = model.posterior.ci_95
+                        st.info(f"95% Credible Interval: [{ci_low:,.0f}, {ci_high:,.0f}] TU/µL")
+                except Exception as e:
+                    st.error(f"Visualization error: {e}")
+            
+            # Risk Assessment
+            st.divider()
+            st.subheader("⚠️ Scale-Up Risk Assessment")
+            
+            with st.form("risk_config"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    target_bfp = st.slider("Target BFP%", 0.1, 0.5, 0.3, 0.05)
+                    tolerance_low = st.slider("Tolerance Lower", 0.1, 0.5, 0.25, 0.05)
+                
+                with col2:
+                    tolerance_high = st.slider("Tolerance Upper", 0.1, 0.5, 0.35, 0.05)
+                    n_sims = st.number_input("Simulations", 1000, 10000, 5000, 1000)
+                
+                if st.form_submit_button("Run Risk Assessment"):
+                    try:
+                        config = ScreenConfig(
+                            num_guides=len(result.library.df),
+                            coverage_target=result.scenario.coverage_cells_per_gene_per_bank,
+                            target_bfp=target_bfp,
+                            bfp_tolerance=(tolerance_low, tolerance_high)
+                        )
+                        
+                        simulator = ScreenSimulator(model, config)
+                        
+                        st.session_state['simulator'] = simulator
+                        st.session_state['n_sims'] = n_sims
+                        
+                        pos = simulator.get_probability_of_success()
+                        st.success(f"Probability of Success: {pos:.1%}")
+                    except Exception as e:
+                        st.error(f"Risk assessment failed: {e}")
+            
+            if 'simulator' in st.session_state:
+                simulator = st.session_state['simulator']
+                n_sims = st.session_state.get('n_sims', 5000)
+                
+                try:
+                    chart = plot_risk_assessment(simulator, n_sims=n_sims)
+                    st.altair_chart(chart, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Visualization error: {e}")
         
+        # Cost Breakdown (Placeholder)
         st.divider()
-        
-        # Post-Selection
-        st.subheader("🧊 Post-Selection & Banking")
-        col1, col2 = st.columns(2)
-        col1.metric("Expected Cells (50% survival)", f"{design.post_selection_cells:,}")
-        col2.metric("Cryo Vials (1M cells/vial)", design.cryo_vials_needed)
-        
-        # Protocol Summary
-        st.divider()
-        st.subheader("📋 Protocol Summary")
-        with st.expander("View Full Protocol", expanded=False):
-            st.markdown(design.get_protocol_summary())
-        
-        # Export button
-        if st.button("📄 Export Protocol to Markdown"):
-            protocol_text = design.get_protocol_summary()
-            st.download_button(
-                label="Download Protocol",
-                data=protocol_text,
-                file_name=f"{library_name}_POSH_protocol.md",
-                mime="text/markdown"
-            )
+        st.subheader("💰 Cost Breakdown")
+        try:
+            chart = plot_cost_breakdown(result)
+            st.altair_chart(chart, use_container_width=True)
+            st.caption("Note: Cost breakdown is currently a placeholder. Full integration with ResourceAccounting coming soon.")
+        except Exception as e:
+            st.error(f"Visualization error: {e}")
+
 
