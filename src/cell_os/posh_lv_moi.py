@@ -151,6 +151,11 @@ def fit_lv_transduction_model(scenario, batch, titration_result, n_cells_overrid
         outliers=[]
     )
 
+def design_lv_for_scenario(world, scenario, library):
+    batch = design_lv_batch(world, scenario, library)
+    plans = {cl: design_lv_titration_plan(world, scenario, batch, cl) for cl in scenario.cell_lines}
+    return LVDesignBundle(batch, plans, {})
+
 # --- Autonomous Explorer (Smart Diversity Logic) ---
 class LVAutoExplorer:
     def __init__(self, scenario: POSHScenario, batch: LVBatch):
