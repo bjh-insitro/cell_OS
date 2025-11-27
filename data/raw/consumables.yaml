@@ -1,0 +1,135 @@
+items:
+  # --- Pipette Tips (RAININ LTS - Low Retention, Filtered) ---
+  tip_20ul_lr:
+    name: "20uL Filter Tip, Low Retention (RAININ LTS)"
+    category: tips
+    vendor: "RAININ"
+    catalog_number: "30389226" # TIPS RAININ LTS 20µL
+    pack_size: 960
+    pack_unit: unit 
+    pack_price_usd: 135.00
+    logical_unit: unit 
+    unit_price_usd: 0.141
+
+  tip_200ul_lr:
+    name: "200uL Filter Tip, Low Retention (RAININ LTS)"
+    category: tips
+    vendor: "RAININ"
+    catalog_number: "30389240" # TIPS RAININ LTS 200µL
+    pack_size: 960
+    pack_unit: unit
+    pack_price_usd: 150.00
+    logical_unit: unit
+    unit_price_usd: 0.156
+
+  tip_1000ul_lr:
+    name: "1000uL Filter Tip, Low Retention (RAININ LTS)"
+    category: tips
+    vendor: "RAININ"
+    catalog_number: "30389213" # TIPS RAININ LTS 1000µL
+    pack_size: 768 
+    pack_unit: unit
+    pack_price_usd: 175.00
+    logical_unit: unit
+    unit_price_usd: 0.228
+
+  # --- General Labware (Example, adjust pricing as needed) ---
+  gloves_nitrile:
+    name: "Nitrile Gloves (Box of 100)"
+    category: protective
+    vendor: "Generic"
+    catalog_number: "N/A"
+    pack_size: 100
+    pack_unit: unit
+    pack_price_usd: 15.00
+    logical_unit: unit
+    unit_price_usd: 0.15
+
+    # --- Manual Serological Pipettes ---
+  pipette_1ml:
+    name: "Serological Pipette 1mL"
+    category: manual_pipette
+    vendor: "CORNING"
+    catalog_number: "HYPOTHETICAL_1ML"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 120.00
+    logical_unit: unit
+    unit_price_usd: 0.24 
+
+  pipette_2ml:
+    name: "Aspirating Pipette 2mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES DL"
+    catalog_number: "1367516"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 150.00
+    logical_unit: unit
+    unit_price_usd: 0.30 
+
+  pipette_5ml:
+    name: "Serological Pipette 5mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200573"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 100.00
+    logical_unit: unit
+    unit_price_usd: 0.50
+
+  pipette_10ml:
+    name: "Serological Pipette 10mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200574"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 110.00
+    logical_unit: unit
+    unit_price_usd: 0.55
+
+  pipette_20ml:
+    name: "Serological Pipette 20mL"
+    category: manual_pipette
+    vendor: "CORNING"
+    catalog_number: "HYPOTHETICAL_20ML"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 130.00
+    logical_unit: unit
+    unit_price_usd: 0.65 
+
+  pipette_25ml:
+    name: "Serological Pipette 25mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200575"
+    pack_size: 150
+    pack_unit: unit
+    pack_price_usd: 105.00
+    logical_unit: unit
+    unit_price_usd: 0.70
+
+  pipette_50ml:
+    name: "Serological Pipette 50mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200576"
+    pack_size: 100
+    pack_unit: unit
+    pack_price_usd: 80.00
+    logical_unit: unit
+    unit_price_usd: 0.80
+
+  pipette_100ml:
+    name: "Serological Pipette 100mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200620"
+    pack_size: 100
+    pack_unit: unit
+    pack_price_usd: 100.00
+    logical_unit: unit
+    unit_price_usd: 1.00

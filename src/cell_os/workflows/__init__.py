@@ -65,6 +65,54 @@ class WorkflowBuilder:
     def __init__(self, ops_engine: ParametricOps):
         self.ops = ops_engine
 
+    # --- NEW: PROCESS BLOCK METHODS (Tier 2) ---
+    def build_master_cell_bank(self, flask_size="flask_t75", cell_line="U2OS") -> Workflow:
+        """
+        Defines the Master Cell Bank (MCB) Production Process Block.
+        Thaw -> Expansion -> Cryopreservation.
+        """
+        process_ops: List[UnitOp] = []
+        
+        # 1. Thaw and Initial Expansion (op_thaw handles conditional coating logic)
+        process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line))
+        
+        # 2. Expansion (Passage twice to reach sufficient density/vials)
+        process_ops.append(self.ops.op_passage(flask_size, ratio=3))
+        process_ops.append(self.ops.op_passage(flask_size, ratio=3))
+
+        # 3. Final Harvest and Freeze
+        # Assuming 20 vials are needed for the master bank
+        process_ops.append(self.ops.op_harvest(flask_size, dissociation_method="trypsin"))
+        process_ops.append(self.ops.op_freeze(num_vials=20))
+        
+        return Workflow("Master Cell Bank (MCB) Production", [
+            Process("Cell Banking & Expansion", process_ops)
+        ])
+
+    def build_viral_titer(self, plate_size="plate_96well_tc") -> Workflow:
+        """
+        Defines the Viral Titer Measurement Process Block.
+        Plate cells -> Transduce with serial LV dilutions -> Readout.
+        """
+        process_ops: List[UnitOp] = []
+        
+        # 1. Seeding Cells (Assumes passage to 96-well format)
+        process_ops.append(self.ops.op_passage(plate_size, ratio=1))
+        
+        # 2. Transduction (Passive transduction with LV)
+        process_ops.append(self.ops.op_transduce(plate_size, virus_vol_ul=10.0, method="passive"))
+        
+        # 3. Readout (Flow cytometry or Imaging for BFP expression)
+        # Assumes a flow cytometry op exists for quantification
+        process_ops.append(self.ops.op_flow_cytometry(plate_size, num_samples=96)) 
+        
+        return Workflow("Viral Titer Measurement", [
+            Process("LV Titer Assay Protocol", process_ops)
+        ])
+    
+    # --- END NEW PROCESS BLOCK METHODS ---
+
+    # --- CAMPAIGN WORKFLOW METHODS (Tier 1) ---
     def build_zombie_posh(self) -> Workflow:
         """
         Defines the complete Zombie POSH Screening Workflow.
@@ -128,10 +176,10 @@ class WorkflowBuilder:
         # Plate → (Optional: Treat) → Fix → Stain → Image
         screening_ops: List[UnitOp] = []
         try:
-            screening_ops.append(self.ops.op_passage("plate_96well"))  # Seeding
-            screening_ops.append(self.ops.op_fix_cells("plate_96well"))
-            screening_ops.append(self.ops.op_cell_painting("plate_96well"))
-            screening_ops.append(self.ops.op_imaging("plate_96well"))
+            screening_ops.append(self.ops.op_passage("plate_96well_tc"))  # Seeding
+            screening_ops.append(self.ops.op_fix_cells("plate_96well_tc"))
+            screening_ops.append(self.ops.op_cell_painting("plate_96well_tc"))
+            screening_ops.append(self.ops.op_imaging("plate_96well_tc"))
         except Exception as e:
             raise Exception(f"Failed in Phenotypic Screening: {e}")
         processes.append(Process("Phenotypic Screening", screening_ops))
@@ -173,14 +221,14 @@ class WorkflowBuilder:
         screen_ops.append(
             self.ops.op_feed("flask_t75", supplements=["puromycin"])
         )
-        screen_ops.append(self.ops.op_passage("plate_96well"))
+        screen_ops.append(self.ops.op_passage("plate_96well_tc"))
         processes.append(Process("2. Screening Prep", screen_ops))
 
         # 3. Readout (Standard Cell Painting)
         readout_ops: List[UnitOp] = []
-        readout_ops.append(self.ops.op_fix_cells("plate_96well"))
-        readout_ops.append(self.ops.op_cell_painting("plate_96well"))
-        readout_ops.append(self.ops.op_imaging("plate_96well"))
+        readout_ops.append(self.ops.op_fix_cells("plate_96well_tc"))
+        readout_ops.append(self.ops.op_cell_painting("plate_96well_tc"))
+        readout_ops.append(self.ops.op_imaging("plate_96well_tc"))
         processes.append(Process("3. Vanilla Readout", readout_ops))
 
         return Workflow("Vanilla POSH Screening", processes)

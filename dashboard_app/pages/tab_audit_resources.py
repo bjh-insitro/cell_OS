@@ -15,13 +15,14 @@ def render_resource_audit(df, pricing):
     vessel_lib, inv, ops, builder = init_automation_resources()
     
     if ops is None:
-        st.error("Cannot load core automation resources. Check `data/raw/vessels.yaml` and `data/raw/pricing.yaml`.")
+        st.error("Cannot load core automation resources. Check configuration files.")
         return
 
     st.success("Core Resources Initialized Successfully.")
 
     st.subheader("1. Inventory/Pricing Audit")
-    st.markdown("Displays all priced items available for cost calculation (from `data/raw/pricing.yaml`).")
+    # --- CRITICAL TEXT CORRECTION HERE ---
+    st.markdown("Displays all priced items available for cost calculation (sourced from the **SQLite Inventory Database**). **Shows Pack Price (List Price) for purchasing audit.**")
     
     if pricing:
         items = []
@@ -30,14 +31,31 @@ def render_resource_audit(df, pricing):
                 "ID": item_id,
                 "Name": data.get("name"),
                 "Category": data.get("category", "N/A"),
-                "Unit Price ($)": data.get("unit_price_usd"),
-                "Unit": data.get("logical_unit"),
+                "Pack Price ($)": data.get("pack_price_usd"), 
+                "Pack Size": data.get("pack_size"),
+                "Pack Unit": data.get("pack_unit"),
+                "Unit Cost ($/mL)": data.get("unit_price_usd"),
                 "Vendor": data.get("vendor", "N/A"),         
                 "Catalog Number": data.get("catalog_number", "N/A")
             })
         
+        # Create the DataFrame
         df_items = pd.DataFrame(items)
-        column_order = ["ID", "Name", "Category", "Unit Price ($)", "Unit", "Vendor", "Catalog Number"]
+        
+        # --- COLUMN REORDERING IMPLEMENTATION ---
+        column_order = [
+            "Name",             
+            "Vendor",           
+            "Catalog Number",   
+            "Category",         
+            "Pack Price ($)",   
+            "Pack Size",        
+            "Pack Unit",        
+            "Unit Cost ($/mL)",
+            "ID"                
+        ]
+        
+        # Apply the new order
         df_items = df_items[column_order]
         
         st.dataframe(df_items, use_container_width=True)
@@ -45,26 +63,47 @@ def render_resource_audit(df, pricing):
         st.info("Pricing data failed to load or is empty.")
 
     st.subheader("2. Vessel Library Audit")
-    st.markdown("Displays the properties of all defined lab vessels/plates (from `data/raw/vessels.yaml`).")
+    # --- CRITICAL TEXT CORRECTION HERE ---
+    st.markdown("Displays the properties of all defined lab vessels/plates (sourced from `data/raw/vessels.yaml`).")
     
     try:
         vessels = []
-        # NOTE: Assumes VesselLibrary has a .vessels attribute which is a dictionary
-        for name, vessel in vessel_lib.vessels.items(): 
+        for item_id, vessel in vessel_lib.vessels.items(): 
             vessels.append({
-                "Name": name,
-                "Type": getattr(vessel, 'vessel_type', 'N/A'),
+                "Generic ID": item_id, 
+                "Actual Name": getattr(vessel, 'name', 'N/A'),  
+                "Vendor": getattr(vessel, 'vendor', 'N/A'),     
+                "Product ID": getattr(vessel, 'catalog_number', 'N/A'), 
+                "Type": getattr(vessel, 'type', 'N/A'),         
+                "Footprint": getattr(vessel, 'footprint', 'N/A'), 
+                "Well Count": getattr(vessel, 'well_count', 'N/A'), 
                 "Max Vol (mL)": getattr(vessel, 'max_volume_ml', 'N/A'),
-                "Footprint": getattr(vessel, 'footprint', 'N/A'),
-                "Well Count": getattr(vessel, 'well_count', 'N/A')
             })
-        st.dataframe(pd.DataFrame(vessels), use_container_width=True)
+            
+        df_vessels = pd.DataFrame(vessels)
+        
+        # Define the desired display order for the Vessel Audit
+        column_order = [
+            "Actual Name",
+            "Vendor",
+            "Product ID",
+            "Type",
+            "Well Count",
+            "Footprint",
+            "Max Vol (mL)",
+            "Generic ID"
+        ]
+        
+        df_vessels = df_vessels[column_order]
+        
+        st.dataframe(df_vessels, use_container_width=True)
     except Exception as e:
         st.warning(f"Could not introspect VesselLibrary structure. Error: {e}")
 
     st.subheader("3. Parametric Unit Operations Audit")
     st.markdown("Lists all core unit operation methods available within the system's `ParametricOps` class.")
     
+    # Introspect ParametricOps for callable methods (the UnitOps)
     op_names = [
         attr for attr in dir(ops) 
         if callable(getattr(ops, attr)) 

@@ -1,49 +1,211 @@
 vessels:
-  plate_96well:
-    name: "96-well Plate"
-    surface_area_cm2: 0.32
-    working_volume_ml: 0.2
-    coating_volume_ml: 0.1
-    max_volume_ml: 0.3
-    
-  plate_24well:
-    name: "24-well Plate"
-    surface_area_cm2: 1.9
-    working_volume_ml: 1.0
-    coating_volume_ml: 0.5
-    max_volume_ml: 3.4
-
-  plate_12well:
-    name: "12-well Plate"
-    surface_area_cm2: 3.8
-    working_volume_ml: 2.0
-    coating_volume_ml: 1.0
-    max_volume_ml: 6.9
-
+  # --- 6-WELL PLATES ---
   plate_6well:
-    name: "6-well Plate"
+    name: "6-well Plate (Corning TC)"
+    vendor: "CORNING LIFE SCIENCES DL"
+    catalog_number: "087721B"
     surface_area_cm2: 9.5
     working_volume_ml: 3.0
     coating_volume_ml: 1.5
     max_volume_ml: 16.8
+    type: Plate
+    well_count: 6
+    footprint: SBS_Standard
+    volume_unit: mL
 
+  plate_6well_glass:
+    name: "6-Well Glass Bottom Plate"
+    vendor: "FISHER SCIENTIFIC (Cellvis)"
+    catalog_number: "P06-1.5H-NEA"
+    surface_area_cm2: 9.5 
+    working_volume_ml: 2.0
+    coating_volume_ml: 1.0
+    max_volume_ml: 16.8
+    type: Plate
+    well_count: 6
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  # --- 12-WELL PLATES ---
+  plate_12well:
+    name: "12-well Plate (Corning TC)"
+    vendor: "CORNING LIFE SCIENCES DL"
+    catalog_number: "0877229"
+    surface_area_cm2: 3.8
+    working_volume_ml: 2.0
+    coating_volume_ml: 1.0
+    max_volume_ml: 6.9
+    type: Plate
+    well_count: 12
+    footprint: SBS_Standard
+    volume_unit: mL
+    
+  plate_12well_glass:
+    name: "12-Well Glass Bottom Plate"
+    vendor: "FISHER SCIENTIFIC (Cellvis)"
+    catalog_number: "P12-1.5H-N"
+    surface_area_cm2: 3.8
+    working_volume_ml: 1.5
+    coating_volume_ml: 0.8
+    max_volume_ml: 6.9
+    type: Plate
+    well_count: 12
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  # --- 24-WELL PLATES ---
+  plate_24well:
+    name: "24-well Plate (Corning TC)"
+    vendor: "CORNING LIFE SCIENCES DL"
+    catalog_number: "087721"
+    surface_area_cm2: 1.9
+    working_volume_ml: 1.0
+    coating_volume_ml: 0.5
+    max_volume_ml: 3.4
+    type: Plate
+    well_count: 24
+    footprint: SBS_Standard
+    volume_unit: mL
+    
+  plate_24well_glass:
+    name: "24-Well Glass Bottom Plate"
+    vendor: "FISHER SCIENTIFIC (Cellvis)"
+    catalog_number: "P24-1.5H-N"
+    surface_area_cm2: 1.9
+    working_volume_ml: 0.8
+    coating_volume_ml: 0.4
+    max_volume_ml: 3.4
+    type: Plate
+    well_count: 24
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  # --- 48-WELL PLATE (Placeholder - Not found in inventory) ---
+  plate_48well:
+    name: "48-well Plate (Standard)"
+    vendor: "HYPOTHETICAL"
+    catalog_number: "N/A_48WELL"
+    surface_area_cm2: 0.95
+    working_volume_ml: 0.5
+    coating_volume_ml: 0.25
+    max_volume_ml: 1.7
+    type: Plate
+    well_count: 48
+    footprint: SBS_Standard
+    volume_unit: mL
+  
+  # --- 96-WELL PLATES ---
+  plate_96well_tc:
+    type: Plate
+    name: "TC Plate w/Lid 96-Well (Corning)"
+    vendor: "CORNING LIFE SCIENCES DL"
+    catalog_number: "087722C"
+    surface_area_cm2: 0.32
+    working_volume_ml: 0.15
+    coating_volume_ml: 0.1
+    max_volume_ml: 0.36
+    well_count: 96
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  plate_96well_ubtm:
+    type: Plate
+    name: "96-Well U-Bottom Plate"
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "720095"
+    surface_area_cm2: 0.28 
+    working_volume_ml: 0.15
+    max_volume_ml: 0.29
+    well_count: 96
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  plate_96well_pheno:
+    type: Plate
+    name: "Pheno Plate 96-Well TC"
+    vendor: "FISHER SCIENTIFIC"
+    catalog_number: "502099831"
+    surface_area_cm2: 0.25 
+    working_volume_ml: 0.1
+    max_volume_ml: 0.3
+    well_count: 96
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  plate_96well_vbtm:
+    type: Plate
+    name: "PlateOne 96-Well V-Bottom"
+    vendor: "USA SCIENTIFIC INC"
+    catalog_number: "1833-9600"
+    surface_area_cm2: 0.1 
+    working_volume_ml: 0.1
+    max_volume_ml: 0.2
+    well_count: 96
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  plate_96well_glass:
+    type: Plate
+    name: "96-Well Glass Bottom Plate"
+    vendor: "Cellvis"
+    catalog_number: "P96-1.5H-N" 
+    surface_area_cm2: 0.32
+    working_volume_ml: 0.15
+    coating_volume_ml: 0.1
+    max_volume_ml: 0.36
+    well_count: 96
+    footprint: SBS_Standard
+    volume_unit: mL
+
+  # --- T-FLASKS ---
   flask_t25:
     name: "T25 Flask"
+    vendor: "THERMO SCI CELL CULT PLASTICS"
+    catalog_number: "12565351"
     surface_area_cm2: 25.0
     working_volume_ml: 5.0
     coating_volume_ml: 3.0
     max_volume_ml: 50.0
+    type: Flask
+    well_count: 1
+    footprint: T-Series_Flask
+    volume_unit: mL
 
   flask_t75:
     name: "T75 Flask"
+    vendor: "THERMO SCI CELL CULT PLASTICS"
+    catalog_number: "12565349"
     surface_area_cm2: 75.0
     working_volume_ml: 15.0
     coating_volume_ml: 8.0
     max_volume_ml: 250.0
+    type: Flask
+    well_count: 1
+    footprint: T-Series_Flask
+    volume_unit: mL
 
   flask_t175:
     name: "T175 Flask"
+    vendor: "THERMO SCI CELL CULT PLASTICS"
+    catalog_number: "12562000"
     surface_area_cm2: 175.0
     working_volume_ml: 30.0
     coating_volume_ml: 15.0
     max_volume_ml: 600.0
+    type: Flask
+    well_count: 1
+    footprint: T-Series_Flask
+    volume_unit: mL
+
+  flask_t225:
+    name: "T225 Flask"
+    vendor: "THERMO SCI CELL CULT PLASTICS"
+    catalog_number: "12565221"
+    surface_area_cm2: 225.0
+    working_volume_ml: 45.0
+    coating_volume_ml: 25.0
+    max_volume_ml: 750.0
+    type: Flask
+    well_count: 1
+    footprint: T-Series_Flask
+    volume_unit: mL

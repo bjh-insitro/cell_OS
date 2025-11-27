@@ -1,32 +1,26 @@
-# dashboard_app/app.py (The Final, Corrected Orchestrator)
+# dashboard_app/app.py (The Final Orchestrator with Workflow BOM Audit)
 
 import streamlit as st
 import pandas as pd
 import sys
 import os 
-from datetime import datetime # Needed for the path logic
+from datetime import datetime
 
 # ---------------------------------------------------------------------------------
 # FIX: Explicitly add package paths to sys.path to resolve absolute imports.
-# This bypasses the 'ImportError: attempted relative import' issue.
+# This ensures modules are found when running from the project root.
 # ---------------------------------------------------------------------------------
-# 1. Get the directory of the current script (e.g., /cell_OS/dashboard_app/)
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# 2. Get the project root directory (e.g., /cell_OS/)
 project_root = os.path.abspath(os.path.join(current_dir, '..'))
 
-# Ensure the project root is on the path (where the 'cell_os' package lives)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# Ensure the 'dashboard_app' directory is on the path (where 'utils' and 'pages' live)
-# This allows Python to resolve the imports using 'from dashboard_app.utils'
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 # ---------------------------------------------------------------------------------
 
 # --- IMPORT UTILITIES (FIXED: ABSOLUTE IMPORTS) ---
-# We must now use the full package name 'dashboard_app' for all internal imports.
 from dashboard_app.utils import load_data 
 
 # --- IMPORT PAGE RENDERERS (FIXED: ABSOLUTE IMPORTS) ---
@@ -35,8 +29,11 @@ from dashboard_app.pages.tab_1_mission_control import render_mission_control
 from dashboard_app.pages.tab_2_science import render_science_explorer
 from dashboard_app.pages.tab_3_economics import render_economics 
 from dashboard_app.pages.tab_4_workflow import render_workflow_visualizer
-# Tab 5 (New Audit Tab)
+
+# Tab 5 (New Audit Tabs)
 from dashboard_app.pages.tab_audit_resources import render_resource_audit
+from dashboard_app.pages.tab_audit_workflow_bom import render_workflow_bom_audit # <-- NEW IMPORT
+
 # Tab 6-10 (Shifted Tabs)
 from dashboard_app.pages.tab_5_posh_decisions import render_posh_decisions
 from dashboard_app.pages.tab_6_posh_designer import render_posh_designer
@@ -57,14 +54,15 @@ if st.sidebar.button("Refresh Data"):
 df, pricing = load_data()
 
 # -------------------------------------------------------------------
-# Tabs Definition (The Orchestration)
+# Tabs Definition (UPDATED FOR 11 TABS)
 # -------------------------------------------------------------------
-tab1, tab2, tab3, tab4, tab_audit, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🚀 Mission Control", 
     "🔬 Science", 
     "💰 Economics", 
     "🕸️ Workflow Visualizer", 
     "🛠️ Resource Audit", 
+    "🔍 Workflow BOM Audit", # <-- NEW TAB
     "🧭 POSH Decision Assistant", 
     "🧪 POSH Screen Designer", 
     "📊 Campaign Reports", 
@@ -82,7 +80,7 @@ with tab2:
     render_science_explorer(df, pricing)
 
 with tab3:
-    # Fallback/Inline logic for Tab 3 (Economics)
+    # Inline/Fallback logic for Tab 3 (Economics)
     try:
         render_economics(df, pricing)
     except NameError:
@@ -102,6 +100,9 @@ with tab4:
 
 with tab_audit:
     render_resource_audit(df, pricing)
+    
+with tab_bom: # <-- NEW TAB CONTENT
+    render_workflow_bom_audit(df, pricing) 
 
 with tab5:
     render_posh_decisions(df, pricing)
@@ -117,5 +118,3 @@ with tab8:
 
 with tab9:
     render_phenotype_clustering(df, pricing)
-    
-# Now run the app using: streamlit run dashboard_app/app.py
