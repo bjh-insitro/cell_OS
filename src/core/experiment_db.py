@@ -101,6 +101,24 @@ class ExperimentDB:
             )
         """)
         
+        # 7. DINO_EMBEDDINGS Table: Stores morphological embeddings and hit calls
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dino_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment_id TEXT,
+                batch_id INTEGER,
+                gene TEXT,
+                guide_id TEXT,
+                d_m REAL,
+                z_score REAL,
+                is_hit BOOLEAN,
+                embedding_dim INTEGER,
+                timestamp TEXT,
+                FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id),
+                FOREIGN KEY(batch_id) REFERENCES batches(batch_id)
+            )
+        """)
+        
         self.conn.commit()
 
     def insert_design(self, design_data: Dict[str, Any]) -> None:
@@ -202,6 +220,53 @@ class ExperimentDB:
             (experiment_id, cell_line, round_num, vol, bfp, cost, datetime.now().isoformat())
         )
         self.conn.commit()
+    
+    def save_dino_results(self, experiment_id: str, hits_df, batch_id: int = None):
+        """Save DINO embedding analysis results (D_M, z-scores, hits) to database."""
+        for _, row in hits_df.iterrows():
+            self.cursor.execute(
+                """
+                INSERT INTO dino_embeddings 
+                (experiment_id, batch_id, gene, guide_id, d_m, z_score, is_hit, embedding_dim, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    experiment_id,
+                    batch_id,
+                    row['gene'],
+                    row.get('guide_id', 'aggregate'),
+                    row['d_m'],
+                    row['z_score'],
+                    bool(row['hit_status']),
+                    None,  # embedding_dim can be added if needed
+                    datetime.now().isoformat()
+                )
+            )
+        self.conn.commit()
+        
+    def query_dino_hits(self, experiment_id: str = None, min_z_score: float = 2.0):
+        """Query DINO hits from database."""
+        if experiment_id:
+            self.cursor.execute(
+                """
+                SELECT gene, d_m, z_score, is_hit, timestamp
+                FROM dino_embeddings
+                WHERE experiment_id = ? AND z_score >= ?
+                ORDER BY z_score DESC
+                """,
+                (experiment_id, min_z_score)
+            )
+        else:
+            self.cursor.execute(
+                """
+                SELECT experiment_id, gene, d_m, z_score, is_hit, timestamp
+                FROM dino_embeddings
+                WHERE z_score >= ?
+                ORDER BY z_score DESC
+                """,
+                (min_z_score,)
+            )
+        return self.cursor.fetchall()
         
     def close(self):
         self.conn.close()

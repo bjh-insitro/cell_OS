@@ -900,8 +900,23 @@ with tab9:
                         hits = analyzer.call_hits(threshold=threshold, min_guides=min_guides)
                         st.session_state['hits'] = hits
                         
+                        # Save to database
+                        from core.experiment_db import ExperimentDB
+                        
+                        # Prompt for experiment ID
+                        experiment_id = st.text_input(
+                            "Link to Experiment ID (optional)",
+                            value="DINO_ANALYSIS_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+                            key="dino_exp_id"
+                        )
+                        
+                        db = ExperimentDB()
+                        db.save_dino_results(experiment_id, hits)
+                        db.close()
+                        
                         n_hits = hits['hit_status'].sum()
                         st.success(f"✅ Found {n_hits} hits out of {len(hits)} genes")
+                        st.info(f"Results saved to database with ID: {experiment_id}")
                         
                     except Exception as e:
                         st.error(f"Hit calling failed: {e}")
