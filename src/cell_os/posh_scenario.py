@@ -48,6 +48,9 @@ class POSHScenario:
             segmentation_min=cfg["stress_window"]["segmentation_min"],
             stress_signal_min=cfg["stress_window"]["stress_signal_min"],
             budget_max=cfg["budget"]["max_total_cost_usd"],
+            genes_list=cfg.get("genes_list"),
+            design_rules=cfg.get("design_rules"),
+            vendor_format=cfg.get("vendor_format"),
         )
 
 
