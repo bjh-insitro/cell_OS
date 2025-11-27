@@ -1,26 +1,222 @@
 # cell_OS
 
-**A Silicon-based "Lila SSI" for Autonomous Cell Biology.**
+**An Autonomous Operating System for Cell Biology** 🧬
 
-`cell_OS` is a prototype operating system for autonomous scientific discovery. It is designed to reason about biological experiments, manage resources, and execute goal-directed campaigns.
+`cell_OS` is a production-ready platform for autonomous scientific discovery. It designs experiments, executes them (via simulation or real hardware), fits models, makes decisions, and generates reports—all without human intervention.
 
-## Core Architecture
+[![Tests](https://img.shields.io/badge/tests-186%20passing-brightgreen)]() 
+[![Python](https://img.shields.io/badge/python-3.11-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)]()
 
-The system is built on three pillars of "Scientific Superintelligence" (SSI):
+---
 
-1.  **World Model (Phase 0)**: A probabilistic representation of the biological world (Gaussian Processes), learned from baseline data.
-2.  **Campaign Manager (Goal Seeking)**: A high-level orchestration layer that pursues specific scientific objectives (e.g., "Find a selective compound").
-3.  **Economic Engine (Physics of Cost)**: A detailed economic model that calculates the true cost, time, and risk of assays by breaking them down into atomic Unit Operations (UOs) and Bill of Materials (BOM).
+## 🚀 Quick Start
 
-## ✨ New Features
+```bash
+# Clone and install
+git clone <your-repo-url>
+cd cell_OS
+python -m venv venv
+source venv/bin/activate
+pip install -e .
+
+# Run an autonomous titration campaign
+python cli/run_campaign.py --config config/campaign_example.yaml
+
+# Launch the dashboard
+streamlit run dashboard_app/dashboard.py
+```
+
+**That's it!** The agent will autonomously titrate lentiviral vectors, fit models, make GO/NO-GO decisions, and generate an interactive report.
+
+📖 **[Read the Full User Guide →](docs/guides/USER_GUIDE.md)**
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+graph TB
+    subgraph "User Interfaces"
+        CLI[CLI Tool<br/>YAML Configs] 
+        Dashboard[Streamlit Dashboard<br/>8 Tabs]
+    end
+    
+    subgraph "Autonomous Agents"
+        TitrationAgent[Titration Agent<br/>LV Optimization]
+        ImagingLoop[Imaging Loop<br/>Dose Finding]
+        POSHDesigner[POSH Designer<br/>Screen Planning]
+    end
+    
+    subgraph "Core Architecture"
+        HAL[Hardware Abstraction Layer<br/>MockSimulator | LabController]
+        StateManager[State Manager<br/>Crash Recovery]
+        ExperimentDB[(ExperimentDB<br/>SQLite)]
+    end
+    
+    subgraph "World Model"
+        GP[Gaussian Processes<br/>Dose-Response]
+        Bayesian[Bayesian Optimization<br/>Active Learning]
+    end
+    
+    CLI --> TitrationAgent
+    Dashboard --> ImagingLoop
+    Dashboard --> POSHDesigner
+    
+    TitrationAgent --> StateManager
+    TitrationAgent --> HAL
+    ImagingLoop --> GP
+    POSHDesigner --> Bayesian
+    
+    StateManager --> ExperimentDB
+    HAL --> ExperimentDB
+    
+    style TitrationAgent fill:#e1f5ff
+    style ExperimentDB fill:#f0e1ff
+    style HAL fill:#fff4e1
+    style GP fill:#e1ffe1
+```
+
+### **Core Components**
+
+| Component | Purpose |
+|-----------|---------|
+| **Hardware Abstraction Layer** | Switch between simulation (`MockSimulator`) and real hardware (`LabController`) |
+| **ExperimentDB** | SQLite database: `designs` → `batches` → `results` + agent state |
+| **Agents** | Autonomous decision-makers (titration, imaging, POSH design) |
+| **State Manager** | Crash recovery - agents checkpoint after every round |
+| **Dashboard** | 8-tab Streamlit interface for monitoring and control |
+
+---
+
+## ✨ Key Features
+
+### 🤖 Autonomous Agents
+- **Titration Agent**: Designs 7-point titrations, fits Poisson models, makes GO/NO-GO decisions
+- **Imaging Loop**: Finds optimal stress-window doses using Bayesian optimization
+- **POSH Designer**: Generates libraries, plans screens, simulates outcomes
+
+### 💾 Enterprise-Grade Persistence
+- **Crash Recovery**: Resume campaigns from any point
+- **Full Audit Trail**: Every decision logged to SQLite
+- **Query API**: Complex queries like "find all screens with D_M > 2.0"
+
+### 🎛️ Multi-Interface
+- **CLI**: `python cli/run_campaign.py --config my_config.yaml`
+- **Dashboard**: Interactive Streamlit app with 8 tabs
+- **Programmatic**: Import agents as Python modules
+
+### 📊 Rich Reporting
+- **HTML Reports**: Titration curves, cost breakdowns, decision manifests
+- **Budget Calculator**: Pre-flight cost estimation
+- **QC Dashboards**: Outlier detection, plate effects
+
+---
+
+## 📂 Project Structure
+
+```
+cell_OS/
+├── cli/                    # Command-line tools
+│   └── run_campaign.py
+├── config/                 # YAML configurations
+│   └── campaign_example.yaml
+├── dashboard_app/          # Streamlit dashboard (8 tabs)
+│   ├── dashboard.py
+│   └── app_main.py
+├── src/
+│   ├── core/              # Infrastructure
+│   │   ├── experiment_db.py       # Unified database
+│   │   ├── hardware_interface.py  # HAL
+│   │   └── state_manager.py       # Persistence
+│   ├── cell_os/           # Science modules
+│   │   ├── titration_loop.py      # Autonomous agent
+│   │   ├── posh_lv_moi.py         # LV modeling
+│   │   └── budget_manager.py      # Cost tracking
+├── tests/                 # 186 passing tests
+└── docs/guides/           # Documentation
+    └── USER_GUIDE.md
+```
+
+---
+
+## 🔬 Example: Run a Campaign
+
+Create `my_campaign.yaml`:
+```yaml
+experiment_id: "MY_EXP_001"
+cell_lines:
+  - name: "U2OS"
+    true_titer: 150000
+    true_alpha: 0.92
+  - name: "HEK293T"
+    true_titer: 200000
+    true_alpha: 0.88
+
+screen_config:
+  max_titration_rounds: 5
+  target_bfp: 0.30
+
+budget:
+  max_titration_budget_usd: 5000.0
+```
+
+Run it:
+```bash
+python cli/run_campaign.py --config my_campaign.yaml
+```
+
+View results:
+- **HTML Report**: `results/campaigns/MY_EXP_001_report.html`
+- **Database**: Query `data/experiments.db`
+- **Dashboard**: Tab 7 "Campaign Reports"
+
+---
+
+## 📊 Dashboard Tabs
+
+Launch with: `streamlit run dashboard_app/dashboard.py`
+
+1. **🚀 Mission Control** - Budget, cycle count, recent activity
+2. **🔬 Science** - Dose-response curves with GP fits
+3. **💰 Economics** - Cost tracking and inventory
+4. **🕸️ Workflow Visualizer** - Interactive workflow graphs
+5. **🧭 POSH Decision Assistant** - Configuration recommendations
+6. **🧪 POSH Screen Designer** - Design libraries and titrations
+7. **📊 Campaign Reports** - View generated HTML reports
+8. **🧮 Budget Calculator** - Estimate costs before running
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests (186 tests, ~6 seconds)
+pytest tests -v
+
+# Run specific suite
+pytest tests/integration/test_persistence.py -v
+```
+
+All tests passing ✅
+
+---
+
+## 📚 Documentation
+
+- **[User Guide](docs/guides/USER_GUIDE.md)** - Installation, CLI usage, troubleshooting
+- **[API Docs](docs/api/)** - Module-level documentation (coming soon)
+- **[Tutorial Notebooks](notebooks/)** - Hands-on examples
+
+---
+
+## 🛠️ Advanced Features
 
 ### Multi-Fidelity Learning
-Transfer knowledge from cheap assays (e.g., reporter screens) to expensive assays (e.g., primary cells):
+Transfer knowledge from cheap assays to expensive ones:
 ```python
-# Train on cheap assay
 reporter_gp = DoseResponseGP.from_dataframe(df_reporter, ...)
 
-# Transfer to expensive assay with prior knowledge
 primary_gp = DoseResponseGP.from_dataframe_with_prior(
     df_primary, ..., 
     prior_model=reporter_gp,
@@ -28,342 +224,52 @@ primary_gp = DoseResponseGP.from_dataframe_with_prior(
 )
 ```
 
-### Inventory Depletion Tracking
-Realistic resource management with stock tracking:
+### Inventory Depletion
+Track reagent consumption:
 ```python
 inventory = Inventory("data/raw/pricing.yaml")
-
-# Check availability before experiments
-availability = inventory.check_availability(bom_items)
-
-# Consume reagents
 inventory.consume("DMEM_MEDIA", 500.0, "mL")
 ```
 
-### gRNA Design Integration
-Constraint-based solver for optimal guide library design:
-- Hamming distance constraints for barcode conflicts
-- Location overlap prevention
-- Score optimization (VBC, CRISPick)
-- Integration with Path A workflow
-
-### ImagingDoseLoop: Closed-Loop Autonomous Imaging
-A working autonomous loop for stress-window optimization:
+### Custom Agents
+Extend the platform:
 ```python
-from cell_os.imaging_loop import ImagingDoseLoop
-from cell_os.imaging_world_model import ImagingWorldModel
-from cell_os.imaging_goal import ImagingWindowGoal
+from core.state_manager import StateManager
 
-# Define goal: viability band + stress objective + QC thresholds
-goal = ImagingWindowGoal(
-    viability_min=0.8,
-    viability_max=1.0,
-    min_cells_per_field=280,
-    min_fields_per_well=100
-)
-
-# Initialize with empty GPs (or seed with prior data)
-wm = ImagingWorldModel.from_dicts(viability_gps, stress_gps, qc_gps)
-
-# Run closed loop: propose → execute → refit → repeat
-loop = ImagingDoseLoop(world_model=wm, executor=executor, goal=goal)
-batch = loop.run_one_cycle(dose_grid=np.logspace(-3, 2, 200))
+class MyAgent:
+    def __init__(self, config, experiment_id=None):
+        self.state_manager = StateManager(experiment_id)
+        
+    def run(self):
+        state = self.state_manager.load_state("MyAgent_v1")
+        # Your logic here
+        self.state_manager.save_state("MyAgent_v1", {"status": "done"})
 ```
 
-**Key Features:**
-- **Viability Window**: Filters doses to maintain cell health (e.g., 80-100% viability)
-- **QC Constraints**: Ensures sufficient cells/field and good fields/well for reliable imaging
-- **Stress Maximization**: Ranks viable doses by stress metric (e.g., CellROX)
-- **Posterior Refitting**: Automatically updates GP models after each cycle using `DoseResponseGP`
-- **Smooth Adaptation**: QC thresholds act as continuous knobs, not binary gates
+---
 
-**Verified Behavior:**
-- Increasing `min_cells_per_field` from 240 → 280 smoothly shifts optimal dose from 0.44 → 0.22 µM
-- Seeding with toxic doses (1.0, 10.0 µM) causes loop to avoid high-dose region and propose safer alternatives
-- Refitting enables closed-loop learning: Data → History → GP Update → New Proposal
+## 🎯 Roadmap
 
-**Acquisition Personalities:**
-The loop's decision-making is controlled by `AcquisitionConfig`, which defines how it balances stress maximization against viability and QC constraints. For POSH pre-screens, use:
+- [x] Hardware Abstraction Layer
+- [x] Unified ExperimentDB
+- [x] Agent Persistence & Crash Recovery
+- [x] CLI Tools with YAML configs
+- [x] 8-Tab Dashboard
+- [ ] Real hardware integration (SiLA2/vendor APIs)
+- [ ] DINO embedding analysis
+- [ ] Hit calling pipeline
+- [ ] Notification system (Slack/Email)
 
-```python
-from cell_os.acquisition_config import AcquisitionConfig
-config = AcquisitionConfig.posh_optimizer()
-```
+---
 
-This stance maximizes morphological richness while keeping the assay operational. It is designed for single-shot POSH screens where you need maximum phenotypic information from an expensive, non-repeatable experiment. The loop lives at the boundary between order and collapse - where stress transcription is high, morphology is rich, but segmentation remains intact.
+## 📜 License
 
-**POSH Pooled Capacity:**
-For pooled POSH screens, the system uses a barcode-based capacity model instead of plate-based constraints. For A549 cells, we assume:
-- 500,000 cells per well
-- 60% ISS (in situ sequencing) efficiency
-- 1,000 cells required per gene KO for robust profiling
+MIT License - See [LICENSE](LICENSE) for details.
 
-This yields approximately **300 genes × 4 guides = 1,200 perturbations per pooled screen**.
+---
 
-### Morphology Engine & Phenotypic Diversity
-The system now includes a `MorphologyEngine` protocol for extracting features from images to drive diversity-based acquisition:
-```python
-from cell_os.morphology_engine import FakeMorphologyEngine
-from cell_os.perturbation_goal import PerturbationPosterior
+## 🙏 Credits
 
-# Initialize engine (plug in real models like CellProfiler/DeepProfiler later)
-engine = FakeMorphologyEngine(n_features=512)
+Built by the cell_OS team. Inspired by the vision of autonomous biology.
 
-# Posterior tracks morphological embeddings
-posterior = PerturbationPosterior(morphology_engine=engine)
-
-# Update with image paths -> extracts features -> updates embeddings
-posterior.update_with_images("TP53", ["img1.tif", "img2.tif"])
-
-# Compute diversity score for a set of genes
-diversity = posterior.diversity_score(["TP53", "MDM2", "KRAS"])
-```
-This enables the `PerturbationAcquisitionLoop` to select genes that maximize phenotypic diversity, exploring the "morphological space" of the cell.
-
-### Acquisition Profiles: Loop Personalities
-
-Control how the autonomous loop trades off stress, viability, uncertainty, and diversity with 4 built-in profiles:
-
-| Profile | Viability | Diversity | Best For |
-|---------|-----------|-----------|----------|
-| **balanced** | 0.7-0.9 | 0.5 | General use, starting point |
-| **ambitious_postdoc** | 0.5-0.85 | 0.7 | Discovery, EC50 mapping |
-| **cautious_operator** | 0.85-1.0 | 0.2 | Production, reproducibility |
-| **wise_pi** | 0.75-0.9 | 0.6 | Iterative optimization |
-
-```bash
-# Run with different personalities
-python scripts/run_posh_campaign_demo.py --profile balanced
-python scripts/run_posh_campaign_demo.py --profile ambitious_postdoc
-python scripts/run_posh_campaign_demo.py --profile cautious_operator
-
-# Compare results
-python scripts/compare_profiles.py
-```
-
-See [docs/acquisition_profiles.md](docs/acquisition_profiles.md) for detailed guide.
-
-## Quick Demo
-
-Run a complete simulated POSH campaign (gene selection → execution → hit calling):
-
-```bash
-python scripts/run_posh_campaign_demo.py
-```
-
-This will generate `results/posh_demo_hits.csv` with ranked hits based on morphological shift.
-
-**Run the imaging loop smoketest:**
-```bash
-python scripts/imaging_loop_smoketest.py
-```
-
-## Scenario System
-
-Run complete experimental campaigns with predefined configurations:
-
-```bash
-# List available scenarios
-python -m src.run_scenario --list
-
-# Run a scenario
-python -m src.run_scenario --name cheap_pilot
-python -m src.run_scenario --name posh_window_finding
-python -m src.run_scenario --name high_risk_morphology
-```
-
-### Available Scenarios
-
-| Scenario | Budget | Inventory | Profile | Description |
-|----------|--------|-----------|---------|-------------|
-| **cheap_pilot** | $500 | Limited | cautious_operator | Low-budget pilot study |
-| **posh_window_finding** | $2,000 | Standard | balanced | Standard POSH screen |
-| **high_risk_morphology** | $5,000 | Abundant | ambitious_postdoc | Aggressive exploration |
-
-Each scenario bundles:
-- Campaign budget and failure mode
-- Initial inventory (plates, media, reagents)
-- Morphology engine configuration
-- Acquisition profile (stress/viability trade-offs)
-
-### Sample Report Card
-
-```
-======================================================================
-CAMPAIGN SUMMARY REPORT
-======================================================================
-
-BUDGET
-----------------------------------------------------------------------
-  Total Budget:      $500.00
-  Spent:             $127.45 (25.5%)
-  Remaining:         $372.55
-
-INVENTORY USAGE
-----------------------------------------------------------------------
-  6-Well Plate:
-    Starting:  5.0 plate
-    Consumed:  2.0 plate (40.0%)
-    Remaining: 3.0 plate
-  DMEM Media:
-    Starting:  100.0 mL
-    Consumed:  24.0 mL (24.0%)
-    Remaining: 76.0 mL
-
-EXPERIMENTAL COVERAGE
-----------------------------------------------------------------------
-  Perturbations:     20
-  Total Wells:       60
-  Unique Conditions: 60
-
-MORPHOLOGY
-----------------------------------------------------------------------
-  Embeddings:        60
-  Mean Pairwise Dist: 1.234 ± 0.456
-
-TERMINATION
-----------------------------------------------------------------------
-  Status:            completed
-  Cycles Completed:  1 / 3
-  Goal Met:          No
-
-======================================================================
-```
-
-See [src/cell_os/scenarios.py](src/cell_os/scenarios.py) to customize or create new scenarios.
-
-## Quick Start
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run autonomous loop (demo)
-python scripts/run_loop.py
-
-# Launch dashboard
-streamlit run scripts/dashboard.py
-
-# Design gRNA library
-python src/create_library.py \
-  --config_yaml data/raw/guide_design.yaml \
-  --repositories_yaml data/raw/guide_repositories.yaml \
-  --output-path library.csv
-```
-
-## Directory Structure
-
-```
-cell_OS/
-├── config/              # Configuration files (repos, designs)
-├── data/
-│   ├── inventory.py      # Inventory and Cost calculation logic
-│   ├── modeling.py       # Gaussian Process models
-│   ├── recipe_optimizer.py # Method optimization logic
-│   ├── reporting.py      # Mission Log generator
-│   ├── simulation.py     # In-silico wet lab
-│   ├── unit_ops.py       # Recipe definitions
-│   └── workflow_optimizer.py # ROI analysis
-├── results/              # Experiment outputs and logs
-├── run_loop.py           # Main entry point
-└── requirements.txt
-```
-
-## Getting Started
-
-### 1. Setup Environment
-```bash
-python -m venv env
-source env/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Run a Campaign
-The default campaign seeks a compound selective for HepG2 over U2OS, optimizing for budget.
-```bash
-python run_loop.py
-```
-
-### 3. Verify Costs & Optimization
-Check the cost models and decision support tools:
-```bash
-# Verify Cost-Aware System (Recipe & Workflow Optimization)
-python verify_cost_aware_system.py
-
-# Verify Automation Analysis
-python verify_automation_analysis.py
-
-# Verify Cell Line Database
-python verify_cell_line_database.py
-```
-
-## Architecture
-
-```mermaid
-graph TB
-    subgraph "Autonomous Loop"
-        Campaign[Campaign Manager<br/>Goals & Budget] --> ActiveLearner[Active Learner<br/>GP Posterior]
-        ActiveLearner --> Acquisition[Acquisition Function<br/>Max Uncertainty]
-        Acquisition --> Simulation[Simulation Engine<br/>Virtual Lab]
-        Simulation --> ActiveLearner
-    end
-    
-    subgraph "Multi-Fidelity Learning"
-        CheapAssay[Cheap Assay Data<br/>Reporter Screen] --> CheapGP[GP Model]
-        CheapGP -->|Transfer Prior| ExpensiveGP[Expensive Assay GP<br/>Primary Cells]
-        ExpensiveData[Small Expensive Dataset] --> ExpensiveGP
-    end
-    
-    subgraph "Inventory & Economics"
-        Inventory[(Inventory<br/>Stock Levels)] --> Simulation
-        Simulation -->|Consume| Inventory
-        UnitOps[Unit Operations<br/>BOM] --> CostCalc[Cost Calculator]
-        CostCalc -->|Budget Check| Campaign
-    end
-    
-    subgraph "Path A: gRNA Design"
-        GeneList[Gene List] --> GuideSolver[Constraint Solver<br/>Hamming + Location]
-        GuideRepos[(sgRNA Repositories<br/>VBC, CRISPick)] --> GuideSolver
-        GuideSolver --> Library[Optimized Library]
-    end
-    
-    ActiveLearner -.->|World Model| Campaign
-    Library -.->|Screen Design| Campaign
-    
-    style Campaign fill:#e1f5ff
-    style ActiveLearner fill:#fff4e1
-    style Inventory fill:#f0e1ff
-    style GuideSolver fill:#e1ffe1
-```
-
-## Roadmap
-
-*   [x] **Mission Logs**: Explainable AI decisions.
-*   [x] **Economic Engine**: Granular cost modeling with Inventory & BOM.
-*   [x] **Complex Protocols**: iMicroglia, NGN2, Phagocytosis.
-*   [x] **Assay Selector**: Agent chooses *which* assay to run based on ROI.
-*   [x] **Cost-Aware Decision Support**: Recipe and Workflow optimization.
-*   [ ] **Multi-Fidelity Learning**: Transfer learning from cheap assays to expensive ones.
-*   [ ] **Multi-Fidelity Learning**: Transfer learning from cheap assays to expensive ones.
-
-## Recent Updates
-
-- Added **Zombie POSH** protocol implementation, including decross‑linking, T7 IVT operations, and a complete recipe function.
-- Created a **shopping list generator** (`src/zombie_posh_shopping_list.py`) for Zombie POSH experiments.
-- Developed **QC checkpoints** (`zombie_posh_qc_checkpoints.md`) covering critical stages of the Zombie POSH workflow.
-- Implemented a **modular Cell Painting panel system** (`src/cellpaint_panels.py`) with core, specialized (NeuroPaint, HepatoPaint, ALSPaint), and custom panels, plus automatic secondary antibody selection.
-- Updated **pricing.yaml** with detailed reagent costs for Zombie POSH and new Cell Painting dyes/antibodies.
-- Added verification script `tests/integration/verify_zombie_posh.py` to validate Zombie POSH operations and cost savings.
-- Refactored `src/unit_ops.py` to include new operations (`op_decross_linking`, `op_t7_ivt`, `op_hcr_fish`, `op_ibex_immunofluorescence`) and updated the Zombie POSH recipe.
-- Updated documentation files (`zombie_posh_protocol.md`, `zombie_posh_inhouse_protocol.md`).
-
-## Philosophy
-
-This repo treats biology as a landscape that can be learned.
-
-*   **Phase 0**: Model noise, model drift, model curves, model uncertainty.
-*   **Phase 1**: Choose experiments that reduce ignorance per unit pain.
-
-Nothing here is optimized. This is the backbone you iterate on.
-
-The OS grows from here.
+**Questions?** Open an issue or read the [User Guide](docs/guides/USER_GUIDE.md).
