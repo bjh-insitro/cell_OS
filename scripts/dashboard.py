@@ -22,7 +22,12 @@ if st.sidebar.button("Refresh Data"):
 def load_data():
     history_path = "results/experiment_history.csv"
     if os.path.exists(history_path):
-        df = pd.read_csv(history_path)
+        try:
+            # Try to read with error handling for malformed CSV
+            df = pd.read_csv(history_path, on_bad_lines='skip')
+        except Exception as e:
+            st.warning(f"Could not load experiment history: {e}")
+            df = pd.DataFrame()
     else:
         df = pd.DataFrame()
         
