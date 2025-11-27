@@ -16,6 +16,7 @@ class Vessel:
     working_volume_ml: float
     coating_volume_ml: float
     max_volume_ml: float
+    consumable_id: Optional[str] = None  # Links to pricing in master_pricing.yaml
 
 class VesselLibrary:
     def __init__(self, yaml_path: str = "data/raw/vessels.yaml"):
@@ -33,7 +34,8 @@ class VesselLibrary:
                 surface_area_cm2=float(v_data.get('surface_area_cm2', 0.0)),
                 working_volume_ml=float(v_data.get('working_volume_ml', 0.0)),
                 coating_volume_ml=float(v_data.get('coating_volume_ml', 0.0)),
-                max_volume_ml=float(v_data.get('max_volume_ml', 0.0))
+                max_volume_ml=float(v_data.get('max_volume_ml', 0.0)),
+                consumable_id=v_data.get('consumable_id')  # Optional link to pricing
             )
 
     def get(self, v_id: str) -> Vessel:

@@ -422,6 +422,18 @@ items:
     logical_unit: mL
     unit_price_usd: 4.0
 
+  # Alias for backward compatibility
+  cryostor:
+    name: "CryoStor CS10"
+    category: reagent
+    vendor: "STEMCELL"
+    catalog_number: "100-1061"
+    pack_size: 100
+    pack_unit: mL
+    pack_price_usd: 400.0
+    logical_unit: mL
+    unit_price_usd: 4.0
+
   bambanker:
     name: "Bambanker Freezing Medium"
     category: reagent
@@ -648,6 +660,10 @@ items:
     name: "Bulk RNA-seq Service"
     category: service
     vendor: "Core_Facility"
+    catalog_number: "N/A"
+    pack_size: 1
+    pack_unit: service
+    pack_price_usd: 350.0
     logical_unit: sample
     unit_price_usd: 350.0
 
@@ -767,6 +783,10 @@ items:
     name: "gBlock Gene Fragment"
     category: service
     vendor: "IDT"
+    catalog_number: "gBlock-Frag"
+    pack_size: 1
+    pack_unit: fragment
+    pack_price_usd: 89.0
     logical_unit: fragment
     unit_price_usd: 89.0
 
@@ -796,6 +816,10 @@ items:
     name: "Sanger Sequencing"
     category: service
     vendor: "Genewiz"
+    catalog_number: "N/A"
+    pack_size: 1
+    pack_unit: read
+    pack_price_usd: 5.0
     logical_unit: read
     unit_price_usd: 5.0
 
@@ -804,13 +828,21 @@ items:
     name: "Oligo Synthesis Service"
     category: service
     vendor: "IDT"
+    catalog_number: "Custom"
+    pack_size: 1
+    pack_unit: reaction
+    pack_price_usd: 20.0 # Primers/Oligos
     logical_unit: reaction
-    unit_price_usd: 20.0 # Primers/Oligos
+    unit_price_usd: 20.0
 
   service_cloning:
     name: "Custom Cloning Service"
     category: service
     vendor: "Genscript"
+    catalog_number: "Custom"
+    pack_size: 1
+    pack_unit: construct
+    pack_price_usd: 150.0
     logical_unit: construct
     unit_price_usd: 150.0
 
@@ -818,6 +850,10 @@ items:
     name: "Full Plasmid NGS"
     category: service
     vendor: "Plasmidsaurus"
+    catalog_number: "NGS-Verify"
+    pack_size: 1
+    pack_unit: sample
+    pack_price_usd: 15.0
     logical_unit: sample
     unit_price_usd: 15.0
 
@@ -825,6 +861,10 @@ items:
     name: "Plasmid Maxiprep Service"
     category: service
     vendor: "Genscript"
+    catalog_number: "Maxi-Prep"
+    pack_size: 1
+    pack_unit: prep
+    pack_price_usd: 50.0
     logical_unit: prep
     unit_price_usd: 50.0
 
@@ -847,9 +887,9 @@ items:
     catalog_number: "L3000015"
     pack_size: 1.5
     pack_unit: mL
-    pack_price_usd: 450.0
+    pack_price_usd: 680.00
     logical_unit: mL
-    unit_price_usd: 300.0
+    unit_price_usd: 453.333
 
   fugene_hd:
     name: "FuGENE HD Transfection Reagent"
@@ -1175,10 +1215,10 @@ items:
     catalog_number: "2215S"
     pack_size: 100
     pack_unit: uL
-    pack_price_usd: 350.0
+    pack_price_usd: 400.00
     logical_unit: uL
-    unit_price_usd: 3.5
-  
+    unit_price_usd: 4.0
+
   dylight_755_secondary:
     name: "Donkey anti-Rabbit DyLight 755"
     category: antibody
@@ -1505,176 +1545,248 @@ items:
 
 # Primary Antibodies
   map2_chicken:
+    name: "MAP2 Antibody"
     category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 350.00
-    vendor: Novus
-    catalog: NB300-213
+    vendor: "Novus"
+    catalog_number: "NB300-213"
+    pack_size: 100
+    pack_unit: uL
+    pack_price_usd: 350.00
+    logical_unit: uL
+    unit_price_usd: 3.5
 
   tdp_43_rabbit:
+    name: "TDP-43 Rabbit Polyclonal Antibody"
     category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 380.00
-    vendor: Proteintech
-    catalog: 10782-2-AP
+    vendor: "Proteintech"
+    catalog_number: "10782-2-AP"
+    pack_size: 100
+    pack_unit: uL
+    pack_price_usd: 380.00
+    logical_unit: uL
+    unit_price_usd: 3.8
 
   stmn2_rabbit:
+    name: "STMN2 Antibody"
     category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 360.00
-    vendor: Novus
-    catalog: NBP2-49461
+    vendor: "Novus"
+    catalog_number: "NBP2-49461"
+    pack_size: 100
+    pack_unit: uL
+    pack_price_usd: 360.00
+    logical_unit: uL
+    unit_price_usd: 3.6
 
-  ps6_primary:
-    category: antibody_primary
-    unit_size: 100 uL
-    cost_usd: 400.00
-    vendor: CST
-    catalog: custom
-
+  # ps6_primary (moved up to overwrite existing entry for consistency)
+  
 # Dyes
   bodipy_493_503:
+    name: "BODIPY 493/503"
     category: dye
-    unit_size: 10 mg
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: D3922
+    vendor: "Invitrogen"
+    catalog_number: "D3922"
+    pack_size: 10
+    pack_unit: mg
+    pack_price_usd: 180.00
+    logical_unit: mg
+    unit_price_usd: 18.0
 
 # Secondary Antibodies
   secondary_chicken_alexa488:
+    name: "Goat anti-Chicken IgY Alexa Fluor 488"
     category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A11039
+    vendor: "Invitrogen"
+    catalog_number: "A11039"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 180.00
+    logical_unit: uL
+    unit_price_usd: 0.36
 
   secondary_rabbit_alexa594:
+    name: "Goat anti-Rabbit IgG Alexa Fluor 594"
     category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A11012
+    vendor: "Invitrogen"
+    catalog_number: "A11012"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 180.00
+    logical_unit: uL
+    unit_price_usd: 0.36
 
   secondary_rabbit_alexa647:
+    name: "Goat anti-Rabbit IgG Alexa Fluor 647"
     category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A21244
+    vendor: "Invitrogen"
+    catalog_number: "A21244"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 180.00
+    logical_unit: uL
+    unit_price_usd: 0.36
 
   secondary_rabbit_dylight755:
+    name: "Donkey anti-Rabbit DyLight 755"
     category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 200.00
-    vendor: Invitrogen
-    catalog: SA5-10043
+    vendor: "Invitrogen"
+    catalog_number: "SA5-10043"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 200.00
+    logical_unit: uL
+    unit_price_usd: 0.4
 
   secondary_mouse_alexa488:
+    name: "Goat anti-Mouse IgG Alexa Fluor 488"
     category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A11001
+    vendor: "Invitrogen"
+    catalog_number: "A11001"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 180.00
+    logical_unit: uL
+    unit_price_usd: 0.36
 
   secondary_mouse_alexa647:
+    name: "Goat anti-Mouse IgG Alexa Fluor 647"
     category: antibody_secondary
-    unit_size: 500 uL
-    cost_usd: 180.00
-    vendor: Invitrogen
-    catalog: A21235
+    vendor: "Invitrogen"
+    catalog_number: "A21235"
+    pack_size: 500
+    pack_unit: uL
+    pack_price_usd: 180.00
+    logical_unit: uL
+    unit_price_usd: 0.36
 
 # Buffers
   staining_buffer:
+    name: "Staining Buffer"
     category: buffer
-    unit_size: 500 mL
-    cost_usd: 45.00
-    vendor: In-house
-    catalog: N/A
+    vendor: "In-house"
+    catalog_number: "N/A"
+    pack_size: 500
+    pack_unit: mL
+    pack_price_usd: 45.00
+    logical_unit: mL
+    unit_price_usd: 0.09
 # Upstream / Genetic Supply Chain Reagents
 
 # Oligo Synthesis
   oligo_pool_twist_12k:
+    name: "Twist Custom Oligo Pool (up to 12K)"
     category: service
-    unit_size: 1 pool
-    cost_usd: 1500.00
-    vendor: Twist Bioscience
-    catalog: custom_pool_12k
-    notes: "Up to 12,000 oligos, uniform synthesis"
+    vendor: "Twist Bioscience"
+    catalog_number: "custom_pool_12k"
+    pack_size: 1
+    pack_unit: pool
+    pack_price_usd: 1500.00
+    logical_unit: pool
+    unit_price_usd: 1500.00
 
   oligo_pool_genscript_12k:
+    name: "GenScript Custom Oligo Pool (up to 12K)"
     category: service
-    unit_size: 1 pool
-    cost_usd: 1800.00
-    vendor: GenScript
-    catalog: custom_pool_12k
+    vendor: "GenScript"
+    catalog_number: "custom_pool_12k"
+    pack_size: 1
+    pack_unit: pool
+    pack_price_usd: 1800.00
+    logical_unit: pool
+    unit_price_usd: 1800.00
 
 # Cloning (Golden Gate)
   bsmbi_v2:
+    name: "BsmBI-v2 High Concentration"
     category: enzyme
-    unit_size: 2500 units
-    cost_usd: 84.00
-    vendor: NEB
-    catalog: R0739L
+    vendor: "NEB"
+    catalog_number: "R0739L"
+    pack_size: 2500
+    pack_unit: units
+    pack_price_usd: 84.00
+    logical_unit: unit
+    unit_price_usd: 0.0336
 
   t4_ligase_conc:
+    name: "T4 DNA Ligase High Concentration"
     category: enzyme
-    unit_size: 100000 units
-    cost_usd: 88.00
-    vendor: NEB
-    catalog: M0202T
+    vendor: "NEB"
+    catalog_number: "M0202T"
+    pack_size: 100000
+    pack_unit: units
+    pack_price_usd: 88.00
+    logical_unit: unit
+    unit_price_usd: 0.00088
 
   stbl3_competent_cells:
+    name: "One Shot Stbl3 Chemically Competent E. coli"
     category: cells
-    unit_size: 20 rxn
-    cost_usd: 450.00
-    vendor: ThermoFisher
-    catalog: C737303
+    vendor: "ThermoFisher"
+    catalog_number: "C737303"
+    pack_size: 20
+    pack_unit: rxn
+    pack_price_usd: 450.00
+    logical_unit: rxn
+    unit_price_usd: 22.5
 
 # Plasmid Prep
   endo_free_maxiprep_kit:
+    name: "EndoFree Plasmid Maxi Kit"
     category: kit
-    unit_size: 10 preps
-    cost_usd: 280.00
-    vendor: Qiagen
-    catalog: 12362
+    vendor: "Qiagen"
+    catalog_number: "12362"
+    pack_size: 10
+    pack_unit: preps
+    pack_price_usd: 459.00
+    logical_unit: prep
+    unit_price_usd: 45.9
 
 # Virus Production (HEK293T)
   hek293t_cells:
+    name: "HEK293T Cells"
     category: cells
-    unit_size: 1 vial
-    cost_usd: 600.00
-    vendor: ATCC
-    catalog: CRL-3216
+    vendor: "ATCC"
+    catalog_number: "CRL-3216"
+    pack_size: 1
+    pack_unit: vial
+    pack_price_usd: 555.00
+    logical_unit: vial
+    unit_price_usd: 555.00
 
-  lipofectamine_3000:
-    category: reagent
-    unit_size: 1.5 mL
-    cost_usd: 680.00
-    vendor: ThermoFisher
-    catalog: L3000015
+  # lipofectamine_3000 (moved up to overwrite existing entry for consistency)
 
   pei_max:
+    name: "PEI MAX Transfection Reagent"
     category: reagent
-    unit_size: 1 g
-    cost_usd: 150.00
-    vendor: Polysciences
-    catalog: 24765-1
-    notes: "Cheap alternative to Lipofectamine for large scale"
+    vendor: "Polysciences"
+    catalog_number: "24765-1"
+    pack_size: 1
+    pack_unit: g
+    pack_price_usd: 150.00
+    logical_unit: mg
+    unit_price_usd: 0.15
 
   amicon_ultra_15_100k:
+    name: "Amicon Ultra-15 100K Centrifugal Filter"
     category: consumable
-    unit_size: 24 pack
-    cost_usd: 280.00
-    vendor: Millipore
-    catalog: UFC910024
+    vendor: "Millipore"
+    catalog_number: "UFC910024"
+    pack_size: 24
+    pack_unit: unit
+    pack_price_usd: 404.00
+    logical_unit: unit
+    unit_price_usd: 16.833
 
 # NGS Verification
   miseq_v2_kit_300:
+    name: "MiSeq Reagent Kit v2 (300 cycles)"
     category: kit
-    unit_size: 1 kit
-    cost_usd: 1300.00
-    vendor: Illumina
-    catalog: MS-102-2002
+    vendor: "Illumina"
+    catalog_number: "MS-102-2002"
+    pack_size: 1
+    pack_unit: kit
+    pack_price_usd: 1300.00
+    logical_unit: kit
+    unit_price_usd: 1300.00
   # New resources for inventory tests
   DMEM_MEDIA:
     name: "DMEM basal medium"
@@ -1699,3 +1811,137 @@ items:
     logical_unit: "mL"
     unit_price_usd: 1.5
     # stock_level will be initialized to pack_size * 10 = 5000
+  # --- Pipette Tips (RAININ LTS - Low Retention, Filtered) ---
+  tip_20ul_lr:
+    name: "20uL Filter Tip, Low Retention (RAININ LTS)"
+    category: tips
+    vendor: "RAININ"
+    catalog_number: "30389226" 
+    pack_size: 960
+    pack_unit: unit 
+    pack_price_usd: 135.00
+    logical_unit: unit 
+    unit_price_usd: 0.141
+
+  tip_200ul_lr:
+    name: "200uL Filter Tip, Low Retention (RAININ LTS)"
+    category: tips
+    vendor: "RAININ"
+    catalog_number: "30389240" 
+    pack_size: 960
+    pack_unit: unit
+    pack_price_usd: 150.00
+    logical_unit: unit
+    unit_price_usd: 0.156
+
+  tip_1000ul_lr:
+    name: "1000uL Filter Tip, Low Retention (RAININ LTS)"
+    category: tips
+    vendor: "RAININ"
+    catalog_number: "30389213" 
+    pack_size: 768 
+    pack_unit: unit
+    pack_price_usd: 175.00
+    logical_unit: unit
+    unit_price_usd: 0.228
+
+  # --- Manual Serological Pipettes ---
+  pipette_1ml:
+    name: "Serological Pipette 1mL"
+    category: manual_pipette
+    vendor: "CORNING"
+    catalog_number: "HYPOTHETICAL_1ML"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 120.00
+    logical_unit: unit
+    unit_price_usd: 0.24 
+
+  pipette_2ml:
+    name: "Aspirating Pipette 2mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES DL"
+    catalog_number: "1367516"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 150.00
+    logical_unit: unit
+    unit_price_usd: 0.30 
+
+  pipette_5ml:
+    name: "Serological Pipette 5mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200573"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 100.00
+    logical_unit: unit
+    unit_price_usd: 0.50
+
+  pipette_10ml:
+    name: "Serological Pipette 10mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200574"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 110.00
+    logical_unit: unit
+    unit_price_usd: 0.55
+
+  pipette_20ml:
+    name: "Serological Pipette 20mL"
+    category: manual_pipette
+    vendor: "CORNING"
+    catalog_number: "HYPOTHETICAL_20ML"
+    pack_size: 200
+    pack_unit: unit
+    pack_price_usd: 130.00
+    logical_unit: unit
+    unit_price_usd: 0.65 
+
+  pipette_25ml:
+    name: "Serological Pipette 25mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200575"
+    pack_size: 150
+    pack_unit: unit
+    pack_price_usd: 105.00
+    logical_unit: unit
+    unit_price_usd: 0.70
+
+  pipette_50ml:
+    name: "Serological Pipette 50mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200576"
+    pack_size: 100
+    pack_unit: unit
+    pack_price_usd: 80.00
+    logical_unit: unit
+    unit_price_usd: 0.80
+
+  pipette_100ml:
+    name: "Serological Pipette 100mL"
+    category: manual_pipette
+    vendor: "CORNING LIFE SCIENCES PLASTIC"
+    catalog_number: "7200620"
+    pack_size: 100
+    pack_unit: unit
+    pack_price_usd: 100.00
+    logical_unit: unit
+    unit_price_usd: 1.00
+
+  # --- Viral Vectors ---
+  lentivirus:
+    name: "Lentivirus Suspension"
+    category: reagent
+    vendor: "Internal/CMO"
+    catalog_number: "LV-GENERIC"
+    pack_size: 1
+    pack_unit: mL
+    pack_price_usd: 0.0 # Internal production
+    logical_unit: mL
+    unit_price_usd: 0.0

@@ -1,17 +1,14 @@
-"""
-Parametric Operations.
-Unifies all operation types (Liquid Handling, Protocols, Imaging, Analysis) 
-into a single access interface.
-"""
+# src/cell_os/unit_ops/protocols.py
 
 from typing import List, Optional
-from .base import VesselLibrary
-from .liquid_handling import LiquidHandlingOps
-from .incubation import IncubationOps
-from .imaging import ImagingOps
-from .analysis import AnalysisOps
+from .base import UnitOp, VesselLibrary
+from .liquid_handling import LiquidHandlingOps # Needed for init
+from .incubation import IncubationOps         # Needed for init
+from .imaging import ImagingOps               # Needed for init
+from .analysis import AnalysisOps             # Needed for init
+from .parametric import ParametricOps         # Needed for calling self.ops.op_count, etc.
 
-# Import cell line database for automatic method selection
+# Import cell line database for conditional logic (copied from parametric.py)
 try:
     from cell_os.cell_line_database import get_cell_line_profile, get_optimal_methods
     CELL_LINE_DB_AVAILABLE = True
@@ -19,29 +16,29 @@ except ImportError:
     CELL_LINE_DB_AVAILABLE = False
 
 
-class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
+class ProtocolsOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
     """
-    Unified interface for all parametric operations.
-    Inherits from all specialized operation classes.
+    A collection of complex, composite Unit Operations that define standard
+    laboratory protocols (e.g., Thaw, Passage, Freeze).
+
+    Inherits from low-level functional classes (LiquidHandling, Incubation, etc.)
+    and holds the complex step logic.
     """
+    
     def __init__(self, vessel_lib: VesselLibrary, pricing_inv):
         self.vessels = vessel_lib
         self.inv = pricing_inv
-        
-        # Initialize parent classes
+        # Note: self.ops is needed here to call op_count, op_dispense inside self
+        # but the actual ops engine (ParametricOps) will handle the inheritance chain.
+
+        # Initialize parent classes (Crucial for inheriting granular methods like op_incubate)
         LiquidHandlingOps.__init__(self, vessel_lib, pricing_inv)
         IncubationOps.__init__(self, vessel_lib, pricing_inv)
         ImagingOps.__init__(self, vessel_lib, pricing_inv)
         AnalysisOps.__init__(self, vessel_lib, pricing_inv)
-        # NOTE: ProtocolsOps is not initialized here yet, as per previous discussion,
-        # but the methods are implemented here for the time being.
 
-    def get_cell_line_defaults(self, cell_line: str):
-        if not CELL_LINE_DB_AVAILABLE:
-            raise ValueError("Cell line database not available.")
-        return get_optimal_methods(cell_line)
 
-    # --- NEW COMPOSITE UO: DETAILED THAW PROTOCOL (MCB) ---
+    # --- COMPOSITE UO: DETAILED THAW PROTOCOL (MCB) ---
     def op_thaw(self, vessel_id: str, cell_line: str = None):
         v = self.vessels.get(vessel_id)
         steps = []
@@ -63,33 +60,31 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
                 coating_needed = True
         
         if coating_needed:
+            # Coating steps should be done 24h in advance, but we model the cost here.
             steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, "laminin_521"))
             steps.append(self.op_incubate(vessel_id, 60))
             steps.append(self.op_aspirate(vessel_id, v.coating_volume_ml))
         
         # 1. Aliquot Required Media into 50mL Tube (using 25mL pipette)
-        media_vol = 40.0
+        media_vol = 40.0 
         tube_50ml_cost = get_single_cost("tube_50ml_conical")
         pipette_25ml_cost = get_single_cost("pipette_25ml")
         
-        # FIX: Replaced self.ops.op_dispense with self.op_dispense
         steps.append(UnitOp(
             uo_id="Aliquot_Media_50mL", 
             name="Aliquot 40mL Media to 50mL Tube",
             material_cost_usd=tube_50ml_cost + pipette_25ml_cost + self.op_dispense(None, media_vol, "mtesr_plus_kit").material_cost_usd,
             instrument="Manual", sub_steps=[]))
             
-        # 2. Put Media into Flask (Pre-warm)
+        # 2. Put Media into Flask (Pre-warm) (using 10mL pipette)
         pipette_10ml_cost = get_single_cost("pipette_10ml")
         steps.append(self.op_dispense(vessel_id, v.max_volume_ml, "mtesr_plus_kit", 
                                       material_cost_usd=pipette_10ml_cost,
                                       name="Pre-warm Media in Flask")) 
         
-        # 3. Aliquot Wash/Dilution Media into 15mL Tube
+        # 3. Aliquot Wash/Dilution Media into 15mL Tube (using 5mL pipette)
         tube_15ml_cost = get_single_cost("tube_15ml_conical")
         pipette_5ml_cost = get_single_cost("pipette_5ml")
-        
-        # FIX: Replaced self.ops.op_dispense with self.op_dispense
         steps.append(UnitOp(
             uo_id="Aliquot_Wash_15mL", 
             name="Aliquot 5mL Wash Media to 15mL Tube",
@@ -102,12 +97,14 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         # 5. Transfer Vial Contents (using 1mL tip) and Wash
         tip_1ml_cost = get_single_cost("tip_1000ul_lr")
         
+        # Transfer
         steps.append(UnitOp(
             uo_id="Transfer_Vial_Contents", 
             name="Transfer Vial Contents to 15mL Tube",
             material_cost_usd=tip_1ml_cost, # Consumes 1mL tip
             instrument="Manual", sub_steps=[]))
         
+        # Wash Vial (using 2mL pipette)
         pipette_2ml_cost = get_single_cost("pipette_2ml")
         steps.append(self.op_dispense(None, 1.0, "mtesr_plus_kit", 
                                       material_cost_usd=pipette_2ml_cost, 
@@ -116,36 +113,32 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         # 6. Centrifuge
         steps.append(self.op_centrifuge("tube_15ml_conical", 5))
 
-        # 7. Aspirate Supernatant
+        # 7. Aspirate Supernatant (using 2mL pipette + 200uL filter tip)
         tip_200ul_cost = get_single_cost("tip_200ul_lr")
         steps.append(self.op_aspirate(None, 5.0, 
                                       material_cost_usd=pipette_2ml_cost + tip_200ul_cost, 
                                       name="Aspirate Supernatant (2mL Pipette + Tip)"))
         
-        # 8. Re-suspend & Sample for Count
+        # 8. Re-suspend & Sample for Count (using 2mL pipette)
         steps.append(self.op_dispense(None, 1.0, "mtesr_plus_kit", 
                                       material_cost_usd=pipette_2ml_cost, 
                                       name="Resuspend in 1mL Media"))
         
-        # FIX: op_count is part of AnalysisOps (which ParametricOps inherits)
-        # Replaced self.ops.op_count with self.op_count
+        # Sample 100uL for Count (Assuming 200uL tip for accuracy)
         steps.append(self.op_count("tube_15ml_conical", method="nc-202",
-                                   material_cost_usd=get_single_cost("tip_200ul_lr"))) # Consumes 1 tip for sampling
+                                       material_cost_usd=get_single_cost("tip_200ul_lr"))) # Consumes 1 tip for sampling
         
         # 9. Transfer the required amount of cells into the required vessel
         steps.append(self.op_dispense(vessel_id, 1.0, "cell_suspension", name="Transfer Cells to Flask (2mL Pipette)"))
         
-        # 10. Final Incubate
+        # 10. Put in the incubator (Final Incubate)
         steps.append(self.op_incubate(vessel_id, 960))
         
         # --- FINAL COST CALCULATION ---
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
-        # Use vessel's consumable_id to look up price, fallback to vessel_id for backwards compatibility
-        pricing_key = v.consumable_id if v.consumable_id else vessel_id
-        vessel_cost = self.inv.get_price(pricing_key) 
+        vessel_cost = self.inv.get_price(vessel_id) 
         
-        from .base import UnitOp # This is redundant but kept for robustness 
         return UnitOp(
             uo_id=f"Thaw_{vessel_id}",
             name=f"Thaw into {v.name} (Coating: {'Yes' if coating_needed else 'No'})", 
@@ -167,7 +160,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         v = self.vessels.get(vessel_id)
         steps = []
         
-        from .base import UnitOp # Added for consistency
+        from .base import UnitOp
         
         # NOTE: Using 10mL pipette cost for these manual steps
         pipette_10ml_cost = self.inv.get_price("pipette_10ml")
@@ -213,8 +206,6 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
             
         steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "mtesr_plus_kit", material_cost_usd=pipette_10ml_cost))
-        
-        # FIX: Replaced self.ops.op_count with self.op_count
         steps.append(self.op_count(vessel_id)) # Note: Assumes op_count handles its own consumables (e.g. hemocytometer/tip)
         steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "mtesr_plus_kit", material_cost_usd=pipette_10ml_cost))
         
@@ -236,7 +227,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             instrument_cost_usd=total_inst + 2.8,
             sub_steps=steps
         )
-
+    
     # --- op_feed (Cell Feeding) ---
     def op_feed(self, vessel_id: str, media: str = "mtesr_plus_kit", supplements: List[str] = None):
         v = self.vessels.get(vessel_id)
@@ -246,14 +237,14 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         
         # NOTE: Using 10mL pipette cost for these manual steps
         pipette_10ml_cost = self.inv.get_price("pipette_10ml")
+        tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
         
         steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
         steps.append(self.op_dispense(vessel_id, v.working_volume_ml, media, material_cost_usd=pipette_10ml_cost))
         
         if supplements:
             for supp in supplements:
-                # Assuming tips are used for small supplement volumes
-                tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
+                # Supplement addition uses tips
                 steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.001, supp, material_cost_usd=tip_200ul_cost))
                 
         total_mat = sum(s.material_cost_usd for s in steps)
@@ -316,6 +307,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             sub_steps=steps
         )
 
+    # --- op_coat (Coating) ---
     def op_coat(self, vessel_id: str, agents: List[str] = None):
         if agents is None: agents = ["laminin_521"]
         v = self.vessels.get(vessel_id)
@@ -353,6 +345,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             sub_steps=steps
         )
 
+    # --- op_transfect (Transfection) ---
     def op_transfect(self, vessel_id: str, method: str = "pei"):
         v = self.vessels.get(vessel_id)
         steps = []
@@ -394,6 +387,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             sub_steps=steps
         )
 
+    # --- op_harvest (Harvesting) ---
     def op_harvest(self, vessel_id: str, dissociation_method: str = "accutase"):
         v = self.vessels.get(vessel_id)
         steps = []
@@ -436,6 +430,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             sub_steps=steps
         )
 
+    # --- op_freeze (Cryopreservation) ---
     def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor"):
         steps = []
         

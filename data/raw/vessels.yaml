@@ -170,6 +170,7 @@ vessels:
     well_count: 1
     footprint: T-Series_Flask
     volume_unit: mL
+    # consumable_id: t25_flask  # TODO: Add pricing entry to master_pricing.yaml
 
   flask_t75:
     name: "T75 Flask"
@@ -183,6 +184,7 @@ vessels:
     well_count: 1
     footprint: T-Series_Flask
     volume_unit: mL
+    consumable_id: t75_flask  # Link to pricing in master_pricing.yaml
 
   flask_t175:
     name: "T175 Flask"
@@ -196,6 +198,7 @@ vessels:
     well_count: 1
     footprint: T-Series_Flask
     volume_unit: mL
+    consumable_id: t175_flask  # Link to pricing in master_pricing.yaml
 
   flask_t225:
     name: "T225 Flask"
@@ -209,3 +212,4 @@ vessels:
     well_count: 1
     footprint: T-Series_Flask
     volume_unit: mL
+    # consumable_id: t225_flask  # TODO: Add pricing entry to master_pricing.yaml
