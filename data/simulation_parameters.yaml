@@ -65,6 +65,19 @@ cell_lines:
     viability_cv: 0.02
     biological_cv: 0.05
 
+  iPSC:
+    doubling_time_h: 40.0
+    max_confluence: 0.80
+    max_passage: 50
+    senescence_rate: 0.02
+    seeding_efficiency: 0.50
+    passage_stress: 0.10
+    coating_required: true
+    
+    cell_count_cv: 0.15
+    viability_cv: 0.05
+    biological_cv: 0.10
+
 # Compound sensitivity database (IC50 values in μM)
 compound_sensitivity:
   staurosporine:

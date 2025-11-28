@@ -1,0 +1,23 @@
+{
+  "total_runs": 50,
+  "successful_runs": 48,
+  "success_rate": 0.96,
+  "contaminated_runs": 2,
+  "failed_runs": 2,
+  "vials_p5": 30.0,
+  "vials_p50": 30.0,
+  "vials_p95": 30.0,
+  "waste_p50": 5.0,
+  "waste_total": 252.0,
+  "waste_cells_p50": 5000000.0,
+  "waste_vials_eq_p50": 5.0,
+  "waste_fraction_p50": 0.14285714285714285,
+  "duration_p50": 4.0,
+  "failures": [
+    "TERMINAL: fungal contamination detected in Flask_P1_1",
+    "All flasks lost",
+    "TERMINAL: bacterial contamination detected in Flask_P1_2",
+    "All flasks lost"
+  ],
+  "violations": []
+}
