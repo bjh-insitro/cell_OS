@@ -66,25 +66,41 @@ class WorkflowBuilder:
         self.ops = ops_engine
 
     # --- NEW: PROCESS BLOCK METHODS (Tier 2) ---
-    def build_master_cell_bank(self, flask_size="flask_t75", cell_line="U2OS") -> Workflow:
+    def build_master_cell_bank(
+        self,
+        flask_size: str = "flask_t75",
+        cell_line: str = "U2OS",
+        target_vials: int = 10,
+        cells_per_vial: int = 1_000_000,
+    ) -> Workflow:
         """
-        Defines the Master Cell Bank (MCB) Production Process Block.
-        Thaw -> Expansion -> Cryopreservation.
+        Master Cell Bank (MCB) Production.
+
+        Biology intent:
+          - Thaw one vendor MCB vial
+          - Seed 1e6 cells into a T75
+          - Grow to confluence
+          - Harvest and freeze `target_vials` vials at `cells_per_vial` each
+          - Discard remaining cells
         """
         process_ops: List[UnitOp] = []
-        
-        # 1. Thaw and Initial Expansion (op_thaw handles conditional coating logic)
+
+        # 1. Thaw and seed from vendor vial (handles coating logic internally)
         process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line))
-        
-        # 2. Expansion (Passage twice to reach sufficient density/vials)
-        process_ops.append(self.ops.op_passage(flask_size, ratio=3))
-        process_ops.append(self.ops.op_passage(flask_size, ratio=3))
+
+        # 2. Count cells after thaw for QC / bookkeeping
+        process_ops.append(self.ops.op_count(flask_size, method="nc202"))
 
         # 3. Final Harvest and Freeze
-        # Assuming 20 vials are needed for the master bank
-        process_ops.append(self.ops.op_harvest(flask_size, dissociation_method="trypsin"))
-        process_ops.append(self.ops.op_freeze(num_vials=20))
-        
+        # Use dissociation method appropriate for the cell line
+        dissociation = "accutase" if cell_line.lower() == "ipsc" else "trypsin"
+        process_ops.append(
+            self.ops.op_harvest(flask_size, dissociation_method=dissociation)
+        )
+
+        # Freeze the master bank vials
+        process_ops.append(self.ops.op_freeze(num_vials=target_vials))
+
         return Workflow("Master Cell Bank (MCB) Production", [
             Process("Cell Banking & Expansion", process_ops)
         ])
