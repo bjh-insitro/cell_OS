@@ -9,10 +9,14 @@ class IncubationOps:
         self.vessels = vessel_lib
         self.inv = pricing_inv
 
-    def op_incubate(self, vessel_id: str, duration_min: int, temp_c: float = 37.0, co2_pct: float = 5.0) -> UnitOp:
+    def op_incubate(self, vessel_id: str, duration_min: int, temp_c: float = 37.0, co2_pct: float = 5.0, material_cost_usd: float = 0.0, instrument_cost_usd: float = None) -> UnitOp:
         # Cost of incubator space per minute
         cost_per_min = 0.001  # Very cheap
-        inst_cost = duration_min * cost_per_min
+        
+        if instrument_cost_usd is None:
+            inst_cost = duration_min * cost_per_min
+        else:
+            inst_cost = instrument_cost_usd
         
         return UnitOp(
             uo_id=f"Incubate_{duration_min}min",
@@ -25,7 +29,7 @@ class IncubationOps:
             failure_risk=0,
             staff_attention=0,
             instrument="Incubator",
-            material_cost_usd=0.0,
+            material_cost_usd=material_cost_usd,
             instrument_cost_usd=inst_cost,
             sub_steps=[]
         )

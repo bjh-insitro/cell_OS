@@ -1,0 +1,11 @@
+{
+  "total_runs": 100,
+  "successful_runs": 92,
+  "success_rate": 0.92,
+  "contaminated_runs": 8,
+  "failed_runs": 8,
+  "vials_p50": 200.0,
+  "waste_fraction_p50": 0.17355371900826447,
+  "duration_p50": 10.0,
+  "max_passage_p95": 4.0
+}

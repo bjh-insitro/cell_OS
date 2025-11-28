@@ -6,7 +6,7 @@ from .liquid_handling import LiquidHandlingOps # Needed for init
 from .incubation import IncubationOps         # Needed for init
 from .imaging import ImagingOps               # Needed for init
 from .analysis import AnalysisOps             # Needed for init
-from .parametric import ParametricOps         # Needed for calling self.ops.op_count, etc.
+# from .parametric import ParametricOps  # Removed to avoid circular import
 
 # Import cell line database for conditional logic (copied from parametric.py)
 try:
@@ -16,7 +16,7 @@ except ImportError:
     CELL_LINE_DB_AVAILABLE = False
 
 
-class ProtocolsOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
+class ProtocolOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
     """
     A collection of complex, composite Unit Operations that define standard
     laboratory protocols (e.g., Thaw, Passage, Freeze).

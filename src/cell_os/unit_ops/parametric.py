@@ -19,7 +19,7 @@ except ImportError:
     CELL_LINE_DB_AVAILABLE = False
 
 
-class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
+class ParametricOps(ProtocolOps):
     """Unified interface for all parametric operations.
     Inherits from all specialized operation classes.
     """
@@ -94,7 +94,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=1.0,
-            reagent=media,
+            liquid_name=media,
             material_cost_usd=pipette_cost
         ))
         
@@ -102,7 +102,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=media_vol_ml,
-            reagent=media,
+            liquid_name=media,
             material_cost_usd=get_single_cost("pipette_10ml")
         ))
         
@@ -111,7 +111,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
             vessel_id=vessel_id,
             duration_min=960.0,  # 16 hours
             temp_c=37.0,
-            co2_percent=5.0,
+            co2_pct=5.0,
             material_cost_usd=0.0,
             instrument_cost_usd=2.0
         ))
@@ -125,7 +125,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=media_vol_ml,
-            reagent=media,
+            liquid_name=media,
             material_cost_usd=get_single_cost("pipette_10ml")
         ))
         
@@ -186,7 +186,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=pbs_vol,
-            reagent="pbs",
+            liquid_name="pbs",
             material_cost_usd=get_single_cost("pipette_10ml")
         ))
         steps.append(self.op_aspirate(
@@ -200,7 +200,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=dissociation_vol,
-            reagent=dissociation_method,
+            liquid_name=dissociation_method,
             material_cost_usd=get_single_cost("pipette_5ml")
         ))
         
@@ -219,7 +219,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=8.0,
-            reagent=media,
+            liquid_name=media,
             material_cost_usd=get_single_cost("pipette_10ml")
         ))
         
@@ -238,7 +238,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
             steps.append(self.op_dispense(
                 vessel_id=new_vessel_id,
                 volume_ml=vol_per_vessel,
-                reagent=media,
+                liquid_name=media,
                 material_cost_usd=get_single_cost("pipette_10ml")
             ))
         
@@ -248,7 +248,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
             steps.append(self.op_dispense(
                 vessel_id=new_vessel_id,
                 volume_ml=media_vol - vol_per_vessel,
-                reagent=media,
+                liquid_name=media,
                 material_cost_usd=get_single_cost("pipette_10ml")
             ))
         
@@ -309,7 +309,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=media_vol,
-            reagent=media,
+            liquid_name=media,
             material_cost_usd=self.inv.get_price("pipette_10ml")
         ))
         
@@ -319,7 +319,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
                 steps.append(self.op_dispense(
                     vessel_id=vessel_id,
                     volume_ml=0.1,  # Small volume for supplements
-                    reagent=supp,
+                    liquid_name=supp,
                     material_cost_usd=self.inv.get_price("pipette_200ul")
                 ))
         
@@ -359,7 +359,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=virus_vol_ul / 1000.0,
-            reagent="lentivirus",
+            liquid_name="lentivirus",
             material_cost_usd=self.inv.get_price("pipette_200ul")
         ))
         
@@ -380,7 +380,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
             vessel_id=vessel_id,
             duration_min=incubation_time,
             temp_c=37.0,
-            co2_percent=5.0,
+            co2_pct=5.0,
             material_cost_usd=0.0,
             instrument_cost_usd=2.0
         ))
@@ -423,7 +423,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
             steps.append(self.op_dispense(
                 vessel_id=vessel_id,
                 volume_ml=coating_vol,
-                reagent=agent,
+                liquid_name=agent,
                 material_cost_usd=self.inv.get_price("pipette_5ml")
             ))
         
@@ -476,7 +476,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id="tube_15ml",
             volume_ml=1.0,
-            reagent="opti_mem",
+            liquid_name="opti_mem",
             material_cost_usd=self.inv.get_price("tube_15ml_conical")
         ))
         
@@ -484,7 +484,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id="tube_15ml",
             volume_ml=0.01,
-            reagent="plasmid_dna",
+            liquid_name="plasmid_dna",
             material_cost_usd=self.inv.get_price("pipette_200ul")
         ))
         
@@ -493,7 +493,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id="tube_15ml",
             volume_ml=0.05,
-            reagent=reagent,
+            liquid_name=reagent,
             material_cost_usd=self.inv.get_price("pipette_200ul")
         ))
         
@@ -510,7 +510,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=1.0,
-            reagent="transfection_complex",
+            liquid_name="transfection_complex",
             material_cost_usd=self.inv.get_price("pipette_2ml")
         ))
         
@@ -556,7 +556,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=5.0,
-            reagent="pbs",
+            liquid_name="pbs",
             material_cost_usd=self.inv.get_price("pipette_10ml")
         ))
         steps.append(self.op_aspirate(
@@ -569,7 +569,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=2.0,
-            reagent=dissociation_method,
+            liquid_name=dissociation_method,
             material_cost_usd=self.inv.get_price("pipette_5ml")
         ))
         
@@ -743,7 +743,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id="culture_bottle",
             volume_ml=5.0,
-            reagent="tryptic_soy_broth",
+            liquid_name="tryptic_soy_broth",
             material_cost_usd=5.0
         ))
         
@@ -795,7 +795,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id=sample_id,
             volume_ml=0.1,
-            reagent="colcemid",
+            liquid_name="colcemid",
             material_cost_usd=5.0
         ))
         
@@ -874,7 +874,7 @@ class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
         steps.append(self.op_dispense(
             vessel_id="assay_plate",
             volume_ml=0.1,
-            reagent="lal_reagent",
+            liquid_name="lal_reagent",
             material_cost_usd=25.0  # LAL reagent is expensive
         ))
         

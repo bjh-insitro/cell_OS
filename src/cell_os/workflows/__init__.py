@@ -136,6 +136,51 @@ class WorkflowBuilder:
             Process("Cell Banking & Expansion", process_ops)
         ])
 
+    def build_working_cell_bank(
+        self,
+        flask_size: str = "flask_t75",
+        cell_line: str = "U2OS",
+        target_vials: int = 200,
+        cells_per_vial: int = 1_000_000,
+        starting_passage: int = 3,
+        include_qc: bool = True,
+    ) -> Workflow:
+        """
+        Working Cell Bank (WCB) Production.
+
+        Biology intent:
+          - Thaw one MCB vial (Passage P)
+          - Expand significantly (P -> P+3 or P+4)
+          - Harvest and freeze `target_vials`
+          - Perform QC
+        """
+        process_ops: List[UnitOp] = []
+
+        # 1. Thaw MCB vial
+        process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line))
+        
+        # 2. Expansion (simplified as a sequence of passages)
+        # In a real workflow, this would be a loop or graph, but here we list steps
+        # Assuming 3 passages needed for 200x expansion
+        for i in range(3):
+            process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
+            process_ops.append(self.ops.op_passage(flask_size, ratio=5, cell_line=cell_line))
+
+        # 3. Harvest
+        process_ops.append(self.ops.op_harvest(flask_size))
+
+        # 4. Freeze
+        process_ops.append(self.ops.op_freeze(num_vials=target_vials))
+        
+        # 5. QC
+        if include_qc:
+            process_ops.append(self.ops.op_mycoplasma_test(f"{flask_size}_sample"))
+            process_ops.append(self.ops.op_sterility_test(f"{flask_size}_sample"))
+
+        return Workflow("Working Cell Bank (WCB) Production", [
+            Process("WCB Expansion", process_ops)
+        ])
+
     def build_viral_titer(self, plate_size="plate_96well_tc") -> Workflow:
         """
         Defines the Viral Titer Measurement Process Block.
