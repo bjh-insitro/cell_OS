@@ -1,0 +1,130 @@
+# Simulation Parameters for BiologicalVirtualMachine
+#
+# This file defines biological parameters for cell lines and compounds
+# used in synthetic data generation.
+
+cell_lines:
+  HEK293T:
+    doubling_time_h: 24.0
+    max_confluence: 0.9
+    max_passage: 30
+    senescence_rate: 0.01  # Viability loss per passage
+    seeding_efficiency: 0.85
+    passage_stress: 0.02  # Viability loss during passage
+    
+    # Assay noise profiles
+    cell_count_cv: 0.10
+    viability_cv: 0.02
+    biological_cv: 0.05
+    
+  HeLa:
+    doubling_time_h: 20.0
+    max_confluence: 0.85
+    max_passage: 25
+    senescence_rate: 0.015
+    seeding_efficiency: 0.90
+    passage_stress: 0.015
+    
+    cell_count_cv: 0.10
+    viability_cv: 0.02
+    biological_cv: 0.05
+    
+  Jurkat:
+    doubling_time_h: 18.0
+    max_confluence: 1.0  # Suspension cells
+    max_passage: 40
+    senescence_rate: 0.005
+    seeding_efficiency: 0.95
+    passage_stress: 0.01
+    
+    cell_count_cv: 0.08
+    viability_cv: 0.02
+    biological_cv: 0.04
+    
+  U2OS:
+    doubling_time_h: 26.0
+    max_confluence: 0.88
+    max_passage: 28
+    senescence_rate: 0.012
+    seeding_efficiency: 0.82
+    passage_stress: 0.025
+    
+    cell_count_cv: 0.12
+    viability_cv: 0.02
+    biological_cv: 0.06
+    
+  CHO:
+    doubling_time_h: 22.0
+    max_confluence: 0.92
+    max_passage: 35
+    senescence_rate: 0.008
+    seeding_efficiency: 0.88
+    passage_stress: 0.018
+    
+    cell_count_cv: 0.10
+    viability_cv: 0.02
+    biological_cv: 0.05
+
+# Compound sensitivity database (IC50 values in μM)
+compound_sensitivity:
+  staurosporine:
+    HEK293T: 0.05
+    HeLa: 0.08
+    Jurkat: 0.03
+    U2OS: 0.20
+    CHO: 0.12
+    hill_slope: 1.2
+    
+  tunicamycin:
+    HEK293T: 0.80
+    HeLa: 0.60
+    Jurkat: 0.40
+    U2OS: 0.30
+    CHO: 0.70
+    hill_slope: 1.0
+    
+  doxorubicin:
+    HEK293T: 0.25
+    HeLa: 0.15
+    Jurkat: 0.10
+    U2OS: 0.35
+    CHO: 0.30
+    hill_slope: 1.3
+    
+  cisplatin:
+    HEK293T: 5.0
+    HeLa: 3.0
+    Jurkat: 2.0
+    U2OS: 8.0
+    CHO: 6.0
+    hill_slope: 1.1
+    
+  paclitaxel:
+    HEK293T: 0.01
+    HeLa: 0.008
+    Jurkat: 0.005
+    U2OS: 0.015
+    CHO: 0.012
+    hill_slope: 1.4
+    
+  H2O2:
+    HEK293T: 150.0
+    HeLa: 120.0
+    Jurkat: 80.0
+    U2OS: 250.0
+    CHO: 180.0
+    hill_slope: 1.5
+
+# Default parameters for unknown cell lines/compounds
+defaults:
+  doubling_time_h: 24.0
+  max_confluence: 0.9
+  max_passage: 30
+  senescence_rate: 0.01
+  seeding_efficiency: 0.85
+  passage_stress: 0.02
+  cell_count_cv: 0.10
+  viability_cv: 0.02
+  biological_cv: 0.05
+  default_ic50: 1.0
+  default_hill_slope: 1.0

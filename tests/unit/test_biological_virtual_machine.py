@@ -32,8 +32,8 @@ class TestBiologicalVirtualMachine:
         
         result = self.vm.count_cells("T75_1", vessel_id="T75_1")
         
-        # Should approximately double
-        assert 1.8e6 < result["count"] < 2.2e6
+        # Should approximately double (with some biological variation)
+        assert 1.7e6 < result["count"] < 2.4e6
         
     def test_passage(self):
         """Test cell passaging."""

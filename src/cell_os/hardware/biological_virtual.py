@@ -7,6 +7,8 @@ Enhanced VirtualMachine with biological state tracking and realistic synthetic d
 import time
 import logging
 import numpy as np
+import yaml
+from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 from .virtual import VirtualMachine
@@ -40,28 +42,56 @@ class BiologicalVirtualMachine(VirtualMachine):
     - Passage tracking
     - Compound treatment effects
     - Realistic noise injection
+    - Data-driven parameters from YAML
     """
     
-    def __init__(self, simulation_speed: float = 1.0, cell_line_params: Optional[Dict] = None):
+    def __init__(self, simulation_speed: float = 1.0, 
+                 params_file: Optional[str] = None):
         super().__init__(simulation_speed)
         self.vessel_states: Dict[str, VesselState] = {}
         self.simulated_time = 0.0  # Hours since start
         
-        # Default cell line parameters (can be overridden)
-        self.cell_line_params = cell_line_params or {
+        # Load parameters from YAML
+        self._load_parameters(params_file)
+        
+    def _load_parameters(self, params_file: Optional[str] = None):
+        """Load simulation parameters from YAML file."""
+        if params_file is None:
+            # Default to data/simulation_parameters.yaml
+            params_file = Path(__file__).parent.parent.parent.parent / "data" / "simulation_parameters.yaml"
+        
+        try:
+            with open(params_file, 'r') as f:
+                params = yaml.safe_load(f)
+                
+            self.cell_line_params = params.get('cell_lines', {})
+            self.compound_sensitivity = params.get('compound_sensitivity', {})
+            self.defaults = params.get('defaults', {})
+            
+            logger.info(f"Loaded simulation parameters from {params_file}")
+            logger.info(f"  Cell lines: {len(self.cell_line_params)}")
+            logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
+            
+        except FileNotFoundError:
+            logger.warning(f"Parameters file not found: {params_file}, using defaults")
+            self._use_default_parameters()
+            
+    def _use_default_parameters(self):
+        """Fallback to hardcoded parameters if YAML not found."""
+        self.cell_line_params = {
             "HEK293T": {"doubling_time_h": 24.0, "max_confluence": 0.9},
             "HeLa": {"doubling_time_h": 20.0, "max_confluence": 0.85},
-            "Jurkat": {"doubling_time_h": 18.0, "max_confluence": 1.0},  # Suspension
-            "default": {"doubling_time_h": 24.0, "max_confluence": 0.9}
+            "Jurkat": {"doubling_time_h": 18.0, "max_confluence": 1.0},
         }
-        
-        # Compound IC50 database (μM)
-        self.ic50_database = {
-            ("HEK293T", "staurosporine"): 0.05,
-            ("HEK293T", "tunicamycin"): 0.80,
-            ("HeLa", "staurosporine"): 0.08,
-            ("HeLa", "doxorubicin"): 0.15,
-            # Add more as needed
+        self.compound_sensitivity = {
+            "staurosporine": {"HEK293T": 0.05, "HeLa": 0.08, "hill_slope": 1.2},
+            "tunicamycin": {"HEK293T": 0.80, "HeLa": 0.60, "hill_slope": 1.0},
+        }
+        self.defaults = {
+            "doubling_time_h": 24.0,
+            "max_confluence": 0.9,
+            "default_ic50": 1.0,
+            "default_hill_slope": 1.0
         }
         
     def advance_time(self, hours: float):
@@ -76,15 +106,17 @@ class BiologicalVirtualMachine(VirtualMachine):
         if vessel.cell_count == 0:
             return
             
-        params = self.cell_line_params.get(vessel.cell_line, self.cell_line_params["default"])
-        doubling_time = params["doubling_time_h"]
+        # Get cell line parameters with fallback to defaults
+        params = self.cell_line_params.get(vessel.cell_line, self.defaults)
+        doubling_time = params.get("doubling_time_h", self.defaults.get("doubling_time_h", 24.0))
+        max_confluence = params.get("max_confluence", self.defaults.get("max_confluence", 0.9))
         
         # Exponential growth with confluence-dependent saturation
         growth_rate = np.log(2) / doubling_time
         
         # Reduce growth as confluence increases
         confluence = vessel.cell_count / vessel.vessel_capacity
-        growth_factor = 1.0 - (confluence / params["max_confluence"]) ** 2
+        growth_factor = 1.0 - (confluence / max_confluence) ** 2
         growth_factor = max(0, growth_factor)
         
         # Update count
@@ -92,8 +124,8 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel.confluence = vessel.cell_count / vessel.vessel_capacity
         
         # Viability decreases with over-confluence
-        if vessel.confluence > params["max_confluence"]:
-            viability_loss = (vessel.confluence - params["max_confluence"]) * 0.1
+        if vessel.confluence > max_confluence:
+            viability_loss = (vessel.confluence - max_confluence) * 0.1
             vessel.viability = max(0.5, vessel.viability - viability_loss)
             
     def seed_vessel(self, vessel_id: str, cell_line: str, initial_count: float, capacity: float = 1e7):
@@ -114,13 +146,16 @@ class BiologicalVirtualMachine(VirtualMachine):
             
         vessel = self.vessel_states[vessel_id]
         
-        # Add measurement noise (10% CV for cell counting)
-        count_cv = 0.10
+        # Get cell line-specific noise parameters
+        params = self.cell_line_params.get(vessel.cell_line, self.defaults)
+        count_cv = params.get("cell_count_cv", self.defaults.get("cell_count_cv", 0.10))
+        viability_cv = params.get("viability_cv", self.defaults.get("viability_cv", 0.02))
+        
+        # Add measurement noise
         measured_count = vessel.cell_count * np.random.normal(1.0, count_cv)
         measured_count = max(0, measured_count)
         
-        # Viability measurement noise (2% CV)
-        viability_cv = 0.02
+        # Viability measurement noise
         measured_viability = vessel.viability * np.random.normal(1.0, viability_cv)
         measured_viability = np.clip(measured_viability, 0.0, 1.0)
         
@@ -149,8 +184,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Calculate cells transferred
         cells_transferred = source.cell_count / split_ratio
         
+        # Get cell line-specific passage stress
+        params = self.cell_line_params.get(source.cell_line, self.defaults)
+        passage_stress = params.get("passage_stress", self.defaults.get("passage_stress", 0.02))
+        
         # Passage stress reduces viability slightly
-        passage_stress = 0.02
         new_viability = source.viability * (1.0 - passage_stress)
         
         # Create new vessel state
@@ -189,15 +227,18 @@ class BiologicalVirtualMachine(VirtualMachine):
             
         vessel = self.vessel_states[vessel_id]
         
-        # Get IC50 for this cell line/compound pair
-        ic50 = self.ic50_database.get((vessel.cell_line, compound), 1.0)
+        # Get IC50 and hill slope from YAML database
+        compound_data = self.compound_sensitivity.get(compound, {})
+        ic50 = compound_data.get(vessel.cell_line, self.defaults.get("default_ic50", 1.0))
+        hill_slope = compound_data.get("hill_slope", self.defaults.get("default_hill_slope", 1.0))
         
         # Apply dose-response model (4-parameter logistic)
-        hill_slope = 1.0
         viability_effect = 1.0 / (1.0 + (dose_uM / ic50) ** hill_slope)
         
-        # Add biological variability (5% CV)
-        viability_effect *= np.random.normal(1.0, 0.05)
+        # Add biological variability
+        params = self.cell_line_params.get(vessel.cell_line, self.defaults)
+        biological_cv = params.get("biological_cv", self.defaults.get("biological_cv", 0.05))
+        viability_effect *= np.random.normal(1.0, biological_cv)
         viability_effect = np.clip(viability_effect, 0.0, 1.0)
         
         # Update vessel state
@@ -216,7 +257,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             "dose_uM": dose_uM,
             "viability_effect": viability_effect,
             "current_viability": vessel.viability,
-            "ic50": ic50
+            "ic50": ic50,
+            "hill_slope": hill_slope
         }
         
     def incubate(self, duration_seconds: float, temperature_c: float, **kwargs) -> Dict[str, Any]:
