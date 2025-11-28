@@ -1,0 +1,256 @@
+"""
+Biological Virtual Machine
+
+Enhanced VirtualMachine with biological state tracking and realistic synthetic data generation.
+"""
+
+import time
+import logging
+import numpy as np
+from typing import Dict, Any, Optional
+from datetime import datetime
+from .virtual import VirtualMachine
+
+logger = logging.getLogger(__name__)
+
+
+class VesselState:
+    """Tracks the biological state of a vessel."""
+    
+    def __init__(self, vessel_id: str, cell_line: str, initial_count: float = 0):
+        self.vessel_id = vessel_id
+        self.cell_line = cell_line
+        self.cell_count = initial_count
+        self.viability = 0.98
+        self.passage_number = 0
+        self.last_passage_time = 0.0
+        self.last_feed_time = 0.0
+        self.confluence = 0.0
+        self.vessel_capacity = 1e7  # Default capacity
+        self.compounds = {}  # compound_id -> concentration
+
+
+class BiologicalVirtualMachine(VirtualMachine):
+    """
+    Enhanced VirtualMachine with biological simulation capabilities.
+    
+    Features:
+    - Cell growth modeling (exponential with saturation)
+    - Viability dynamics (confluence-dependent)
+    - Passage tracking
+    - Compound treatment effects
+    - Realistic noise injection
+    """
+    
+    def __init__(self, simulation_speed: float = 1.0, cell_line_params: Optional[Dict] = None):
+        super().__init__(simulation_speed)
+        self.vessel_states: Dict[str, VesselState] = {}
+        self.simulated_time = 0.0  # Hours since start
+        
+        # Default cell line parameters (can be overridden)
+        self.cell_line_params = cell_line_params or {
+            "HEK293T": {"doubling_time_h": 24.0, "max_confluence": 0.9},
+            "HeLa": {"doubling_time_h": 20.0, "max_confluence": 0.85},
+            "Jurkat": {"doubling_time_h": 18.0, "max_confluence": 1.0},  # Suspension
+            "default": {"doubling_time_h": 24.0, "max_confluence": 0.9}
+        }
+        
+        # Compound IC50 database (μM)
+        self.ic50_database = {
+            ("HEK293T", "staurosporine"): 0.05,
+            ("HEK293T", "tunicamycin"): 0.80,
+            ("HeLa", "staurosporine"): 0.08,
+            ("HeLa", "doxorubicin"): 0.15,
+            # Add more as needed
+        }
+        
+    def advance_time(self, hours: float):
+        """Advance simulated time and update all vessel states."""
+        self.simulated_time += hours
+        
+        for vessel in self.vessel_states.values():
+            self._update_vessel_growth(vessel, hours)
+            
+    def _update_vessel_growth(self, vessel: VesselState, hours: float):
+        """Update cell count based on growth model."""
+        if vessel.cell_count == 0:
+            return
+            
+        params = self.cell_line_params.get(vessel.cell_line, self.cell_line_params["default"])
+        doubling_time = params["doubling_time_h"]
+        
+        # Exponential growth with confluence-dependent saturation
+        growth_rate = np.log(2) / doubling_time
+        
+        # Reduce growth as confluence increases
+        confluence = vessel.cell_count / vessel.vessel_capacity
+        growth_factor = 1.0 - (confluence / params["max_confluence"]) ** 2
+        growth_factor = max(0, growth_factor)
+        
+        # Update count
+        vessel.cell_count *= np.exp(growth_rate * hours * growth_factor)
+        vessel.confluence = vessel.cell_count / vessel.vessel_capacity
+        
+        # Viability decreases with over-confluence
+        if vessel.confluence > params["max_confluence"]:
+            viability_loss = (vessel.confluence - params["max_confluence"]) * 0.1
+            vessel.viability = max(0.5, vessel.viability - viability_loss)
+            
+    def seed_vessel(self, vessel_id: str, cell_line: str, initial_count: float, capacity: float = 1e7):
+        """Initialize a vessel with cells."""
+        state = VesselState(vessel_id, cell_line, initial_count)
+        state.vessel_capacity = capacity
+        state.last_passage_time = self.simulated_time
+        self.vessel_states[vessel_id] = state
+        logger.info(f"Seeded {vessel_id} with {initial_count:.2e} {cell_line} cells")
+        
+    def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:
+        """Count cells with realistic biological variation."""
+        vessel_id = kwargs.get("vessel_id", sample_loc)
+        
+        if vessel_id not in self.vessel_states:
+            # Return default if vessel not tracked
+            return super().count_cells(sample_loc, **kwargs)
+            
+        vessel = self.vessel_states[vessel_id]
+        
+        # Add measurement noise (10% CV for cell counting)
+        count_cv = 0.10
+        measured_count = vessel.cell_count * np.random.normal(1.0, count_cv)
+        measured_count = max(0, measured_count)
+        
+        # Viability measurement noise (2% CV)
+        viability_cv = 0.02
+        measured_viability = vessel.viability * np.random.normal(1.0, viability_cv)
+        measured_viability = np.clip(measured_viability, 0.0, 1.0)
+        
+        self._simulate_delay(0.5)
+        
+        return {
+            "status": "success",
+            "action": "count_cells",
+            "count": measured_count,
+            "viability": measured_viability,
+            "concentration": measured_count / 1.0,  # Assume 1mL sample
+            "confluence": vessel.confluence,
+            "passage_number": vessel.passage_number,
+            "vessel_id": vessel_id,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    def passage_cells(self, source_vessel: str, target_vessel: str, split_ratio: float = 4.0, **kwargs) -> Dict[str, Any]:
+        """Simulate cell passaging."""
+        if source_vessel not in self.vessel_states:
+            logger.warning(f"Source vessel {source_vessel} not found in state tracker")
+            return {"status": "error", "message": "Vessel not found"}
+            
+        source = self.vessel_states[source_vessel]
+        
+        # Calculate cells transferred
+        cells_transferred = source.cell_count / split_ratio
+        
+        # Passage stress reduces viability slightly
+        passage_stress = 0.02
+        new_viability = source.viability * (1.0 - passage_stress)
+        
+        # Create new vessel state
+        target_capacity = kwargs.get("target_capacity", source.vessel_capacity)
+        target = VesselState(target_vessel, source.cell_line, cells_transferred)
+        target.viability = new_viability
+        target.passage_number = source.passage_number + 1
+        target.last_passage_time = self.simulated_time
+        target.vessel_capacity = target_capacity
+        
+        self.vessel_states[target_vessel] = target
+        
+        # Update source (or remove if fully passaged)
+        if split_ratio >= 1.0:
+            del self.vessel_states[source_vessel]
+        else:
+            source.cell_count = cells_transferred
+            
+        self._simulate_delay(2.0)
+        
+        logger.info(f"Passaged {source_vessel} -> {target_vessel} (1:{split_ratio})")
+        
+        return {
+            "status": "success",
+            "action": "passage",
+            "cells_transferred": cells_transferred,
+            "target_viability": new_viability,
+            "passage_number": target.passage_number
+        }
+        
+    def treat_with_compound(self, vessel_id: str, compound: str, dose_uM: float, **kwargs) -> Dict[str, Any]:
+        """Simulate compound treatment and dose-response."""
+        if vessel_id not in self.vessel_states:
+            logger.warning(f"Vessel {vessel_id} not found")
+            return {"status": "error", "message": "Vessel not found"}
+            
+        vessel = self.vessel_states[vessel_id]
+        
+        # Get IC50 for this cell line/compound pair
+        ic50 = self.ic50_database.get((vessel.cell_line, compound), 1.0)
+        
+        # Apply dose-response model (4-parameter logistic)
+        hill_slope = 1.0
+        viability_effect = 1.0 / (1.0 + (dose_uM / ic50) ** hill_slope)
+        
+        # Add biological variability (5% CV)
+        viability_effect *= np.random.normal(1.0, 0.05)
+        viability_effect = np.clip(viability_effect, 0.0, 1.0)
+        
+        # Update vessel state
+        vessel.viability *= viability_effect
+        vessel.cell_count *= viability_effect
+        vessel.compounds[compound] = dose_uM
+        
+        self._simulate_delay(0.5)
+        
+        logger.info(f"Treated {vessel_id} with {dose_uM}μM {compound} (viability: {vessel.viability:.2f})")
+        
+        return {
+            "status": "success",
+            "action": "treat",
+            "compound": compound,
+            "dose_uM": dose_uM,
+            "viability_effect": viability_effect,
+            "current_viability": vessel.viability,
+            "ic50": ic50
+        }
+        
+    def incubate(self, duration_seconds: float, temperature_c: float, **kwargs) -> Dict[str, Any]:
+        """Simulate incubation with cell growth."""
+        hours = duration_seconds / 3600.0
+        
+        # Advance time for all vessels
+        self.advance_time(hours)
+        
+        # Fast-forward simulation time
+        self._simulate_delay(0.5)
+        
+        logger.info(f"Incubated for {hours:.1f}h at {temperature_c}°C (simulated time: {self.simulated_time:.1f}h)")
+        
+        return {
+            "status": "success",
+            "action": "incubate",
+            "duration_h": hours,
+            "simulated_time_h": self.simulated_time,
+            "vessels_updated": len(self.vessel_states)
+        }
+        
+    def get_vessel_state(self, vessel_id: str) -> Optional[Dict[str, Any]]:
+        """Get current state of a vessel."""
+        if vessel_id not in self.vessel_states:
+            return None
+            
+        vessel = self.vessel_states[vessel_id]
+        return {
+            "vessel_id": vessel.vessel_id,
+            "cell_line": vessel.cell_line,
+            "cell_count": vessel.cell_count,
+            "viability": vessel.viability,
+            "confluence": vessel.confluence,
+            "passage_number": vessel.passage_number,
+            "compounds": vessel.compounds
+        }
