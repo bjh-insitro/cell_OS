@@ -1,0 +1,81 @@
+cell_lines:
+  iPSC:
+    display_name: "Induced Pluripotent Stem Cells"
+    growth_media: mtesr_plus_kit
+    wash_buffer: dpbs
+    detach_reagent: accutase
+    coating:
+      reagent: vitronectin
+    
+    passage:
+      reference_vessel: T75
+      T75:
+        volumes_mL_reference:
+          wash_1: 10.0        # pre-detach wash
+          detach: 5.0         # volume of detach reagent (Accutase)
+          quench: 5.0         # quench media volume
+          collect_1: 10.0     # first cell harvest (cells + quench)
+          wash_2: 5.0         # rinse to scavenge stragglers
+          collect_2: 5.0      # second cell harvest
+        volumes_mL_absolute:
+          resuspend: 5.0      # final suspension volume after spin
+          count_sample: 0.1   # 100 uL withdrawn for NC-202
+        incubation:
+          detach:
+            temp_C: 37
+            minutes: 10
+      T25:
+        volumes_mL_reference:
+          wash_1: 3.0
+          detach: 1.5
+          quench: 1.5
+          collect_1: 3.0
+          wash_2: 1.5
+          collect_2: 1.5
+        volumes_mL_absolute:
+          resuspend: 2.0
+          count_sample: 0.1
+        incubation:
+          detach:
+            temp_C: 37
+            minutes: 10
+  
+  HEK293:
+    display_name: "HEK293 (Human Embryonic Kidney)"
+    growth_media: dmem_high_glucose
+    wash_buffer: dpbs
+    detach_reagent: trypsin_edta
+    coating: null
+    
+    passage:
+      reference_vessel: T75
+      T75:
+        volumes_mL_reference:
+          wash_1: 10.0
+          detach: 5.0
+          quench: 5.0
+          collect_1: 10.0
+          wash_2: 5.0
+          collect_2: 5.0
+        volumes_mL_absolute:
+          resuspend: 5.0
+          count_sample: 0.1
+        incubation:
+          detach:
+            temp_C: 37
+            minutes: 5
+      T25:
+        volumes_mL_reference:
+          wash_1: 3.0
+          detach: 1.5
+          quench: 1.5
+          collect_1: 3.0
+          wash_2: 1.5
+          collect_2: 1.5
+        volumes_mL_absolute:
+          resuspend: 2.0
+          count_sample: 0.1
+        incubation:
+          detach:
+            temp_C: 37
+            minutes: 5

@@ -47,10 +47,31 @@ class LabWorldModel:
     
     # Beliefs (modeling products) - kept here as it's the "mind" part
     posteriors: Dict[CampaignId, DoseResponsePosterior] = field(default_factory=dict)
+    
+    # Protocol resolver (lazy init)
+    _protocol_resolver: Optional[Any] = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         """Initialize components that depend on others."""
         self.resource_accounting = ResourceAccounting(resource_costs=self.resource_costs)
+    
+    @property
+    def protocol_resolver(self):
+        """Lazy-load protocol resolver."""
+        if self._protocol_resolver is None:
+            try:
+                from cell_os.protocol_resolver import ProtocolResolver
+                from cell_os.unit_ops.base import VesselLibrary
+                from cell_os.inventory import Inventory
+                
+                self._protocol_resolver = ProtocolResolver(
+                    vessels=VesselLibrary(),
+                    inventory=Inventory(pricing_path="data/raw/pricing.yaml")
+                )
+            except Exception:
+                # Graceful fallback if protocol resolver not available
+                self._protocol_resolver = None
+        return self._protocol_resolver
 
     # ------------------------------------------------------------------
     # Cost Accounting (Delegate to ResourceAccounting)
@@ -331,3 +352,72 @@ class LabWorldModel:
         )
         self.attach_posterior(campaign_id, posterior)
         return posterior
+
+    # ------------------------------------------------------------------
+    # Protocol Resolution (Delegate to ProtocolResolver)
+    # ------------------------------------------------------------------
+
+    def get_passage_protocol_t75(self, cell_line: str) -> List[Any]:
+        """
+        Get concrete T75 passaging protocol for a cell line.
+        
+        Args:
+            cell_line: Cell line identifier (e.g., "iPSC", "HEK293")
+        
+        Returns:
+            List of UnitOp instances with resolved parameters
+        
+        Raises:
+            ValueError: If cell line not found or protocol resolver unavailable
+        """
+        if self.protocol_resolver is None:
+            raise ValueError("Protocol resolver not available")
+        
+        return self.protocol_resolver.resolve_passage_protocol_t75(cell_line)
+
+    def get_passage_protocol_t25(self, cell_line: str) -> List[Any]:
+        """
+        Get concrete T25 passaging protocol for a cell line.
+        
+        Args:
+            cell_line: Cell line identifier (e.g., "iPSC", "HEK293")
+        
+        Returns:
+            List of UnitOp instances with resolved parameters
+        
+        Raises:
+            ValueError: If cell line not found or protocol resolver unavailable
+        """
+        if self.protocol_resolver is None:
+            raise ValueError("Protocol resolver not available")
+        
+        return self.protocol_resolver.resolve_passage_protocol_t25(cell_line)
+
+    def get_passage_protocol(self, cell_line: Optional[str], vessel_type: str) -> List[Any]:
+        """
+        Get passaging protocol for a cell line and vessel type.
+        
+        Unified wrapper that uses the resolver if cell_line is provided,
+        or falls back to legacy op_passage behavior if cell_line is None.
+        
+        Args:
+            cell_line: Cell line identifier or None
+            vessel_type: Vessel type (e.g., "T75", "T25")
+            
+        Returns:
+            List of UnitOp instances
+        """
+        if self.protocol_resolver is None:
+            raise ValueError("Protocol resolver not available")
+            
+        if cell_line:
+            return self.protocol_resolver.resolve_passage_protocol(cell_line, vessel_type)
+        else:
+            # Legacy fallback
+            # Construct a vessel_id from vessel_type (heuristic)
+            vessel_id = f"flask_{vessel_type.lower()}"
+            
+            # Use the ParametricOps instance attached to the resolver
+            # Note: op_passage returns a single composite UnitOp
+            op = self.protocol_resolver.ops.op_passage(vessel_id=vessel_id)
+            return [op]
