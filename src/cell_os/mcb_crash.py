@@ -265,26 +265,56 @@ class MCBSimulation:
 
     def _record_daily_metrics(self):
         total_cells = self._get_total_cells()
-        avg_confluence = 0
-        avg_viability = 0
-        if self.active_flasks:
-            confluences = []
-            viabilities = []
-            for f in self.active_flasks:
-                s = self.vm.get_vessel_state(f)
-                confluences.append(s["confluence"])
-                viabilities.append(s["viability"])
-            avg_confluence = np.mean(confluences)
-            avg_viability = np.mean(viabilities)
-            
+        
+        # Estimate Labor/BSC hours for this day
+        # Base load
+        bsc_hours = 0.0
+        staff_hours = 0.1 # Daily check
+        
+        # We need to know what operations happened TODAY.
+        # This is tricky because _manage_culture runs AFTER this record call in the loop.
+        # Let's move _record_daily_metrics to END of loop or track ops during the day.
+        
+        # Better: Track ops in a list for the current day
+        current_ops_load = self._calculate_daily_load()
+        bsc_hours += current_ops_load['bsc']
+        staff_hours += current_ops_load['staff']
+        
         self.daily_metrics.append({
             "day": self.day,
             "total_cells": total_cells,
             "flask_count": len(self.active_flasks),
-            "avg_confluence": avg_confluence,
-            "avg_viability": avg_viability,
-            "media_consumed": self.media_consumed_ml
+            "media_consumed": self.media_consumed_ml,
+            "bsc_hours": bsc_hours,
+            "staff_hours": staff_hours
         })
+        
+        # Reset daily counters if any (we don't have them yet, so we rely on state)
+
+    def _calculate_daily_load(self):
+        """Estimate load based on current state and likely actions."""
+        load = {'bsc': 0.0, 'staff': 0.0}
+        
+        # If day 0 (Thaw) - handled outside loop usually, but let's approximate
+        if self.day == 1: # First day of expansion
+             load['bsc'] += 1.0 # Thaw cleanup / first check
+             load['staff'] += 1.0
+             
+        # For each flask, check if it needs feeding or passage
+        for f in self.active_flasks:
+            state = self.vm.get_vessel_state(f)
+            if not state: continue
+            
+            if state['confluence'] > 0.8:
+                # Passage
+                load['bsc'] += 0.5
+                load['staff'] += 0.75
+            else:
+                # Feed
+                load['bsc'] += 0.1
+                load['staff'] += 0.15
+                
+        return load
 
     def _track_resources(self, op):
         """Extract cost and media usage from UnitOp."""

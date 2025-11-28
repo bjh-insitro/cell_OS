@@ -267,18 +267,39 @@ class WCBSimulation:
 
     def _record_daily_metrics(self):
         total_cells = self._get_total_cells()
-        avg_confluence = 0
-        if self.active_flasks:
-            confluences = [self.vm.get_vessel_state(f)["confluence"] for f in self.active_flasks]
-            avg_confluence = np.mean(confluences)
-            
+        
+        # Estimate Labor/BSC hours
+        current_ops_load = self._calculate_daily_load()
+        
         self.daily_metrics.append({
             "day": self.day,
             "total_cells": total_cells,
             "flask_count": len(self.active_flasks),
-            "avg_confluence": avg_confluence,
-            "media_consumed": self.media_consumed_ml
+            "media_consumed": self.media_consumed_ml,
+            "bsc_hours": current_ops_load['bsc'],
+            "staff_hours": current_ops_load['staff']
         })
+
+    def _calculate_daily_load(self):
+        """Estimate load based on current state."""
+        load = {'bsc': 0.0, 'staff': 0.0}
+        
+        if self.day == 1:
+             load['bsc'] += 1.0
+             load['staff'] += 1.0
+             
+        for f in self.active_flasks:
+            state = self.vm.get_vessel_state(f)
+            if not state: continue
+            
+            if state['confluence'] > 0.8:
+                load['bsc'] += 0.5
+                load['staff'] += 0.75
+            else:
+                load['bsc'] += 0.1
+                load['staff'] += 0.15
+                
+        return load
 
     def _track_resources(self, op):
         if "Feed" in op.name or "Passage" in op.name:
