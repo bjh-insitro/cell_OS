@@ -456,12 +456,321 @@ manager.list_compounds()
 **Status**: Production ready - 5 cell lines, 6 compounds configured
 
 ### **Phase 4: Advanced Features** 📋 **PLANNED**
-- [ ] Spatial simulation (plate edge effects)
-- [ ] Multi-assay support (flow cytometry, imaging)
-- [ ] Failure mode injection
-- [ ] Experiment design validation tools
+- [ ] Spatial simulation (plate edge effects, temperature gradients)
+- [ ] Multi-assay support (flow cytometry, imaging, qPCR)
+- [ ] Failure mode injection (contamination, equipment failures)
+- [ ] Experiment design validation tools (power analysis, batch detection)
 
 **Target**: Production-grade simulation for ML training
+
+**Detailed Scope**:
+
+**4.1 Spatial Effects**
+- Plate edge effects (evaporation, temperature)
+- Well-to-well cross-contamination
+- Liquid handler positional accuracy
+- Incubator temperature gradients
+
+**4.2 Multi-Assay Readouts**
+- Flow cytometry: multi-parameter cell populations
+- High-content imaging: morphology, organelle features
+- qPCR: gene expression with Ct values
+- Western blot: protein quantification
+- ELISA: secreted factors
+
+**4.3 Failure Modes**
+- Random contamination events (bacteria, fungi, mycoplasma)
+- Equipment failures (pipette drift, incubator malfunction)
+- Reagent quality issues (expired media, degraded compounds)
+- Human errors (mislabeling, protocol deviations)
+
+**4.4 Experimental Design Tools**
+- Power analysis: minimum sample size for effect detection
+- Batch confounding detection: identify experimental design flaws
+- Replication adequacy: assess statistical power
+- Optimization: suggest better experimental layouts
+
+---
+
+## **Future Phases: Beyond Phase 4**
+
+### **Phase 5: Digital Twin Integration** 🔮
+**Goal**: Create a complete digital replica of the physical lab
+
+**Features**:
+- **Lab State Tracking**: Real-time synchronization with physical lab
+  - Inventory levels (reagents, consumables)
+  - Equipment status (available, in-use, maintenance)
+  - Personnel schedules and expertise
+  - Environmental conditions (temperature, humidity)
+
+- **Predictive Scheduling**:
+  - Optimize workflow scheduling based on resource availability
+  - Predict bottlenecks before they occur
+  - Suggest alternative protocols when resources are limited
+  - Estimate completion times with confidence intervals
+
+- **What-If Analysis**:
+  - "What if this equipment breaks?" → alternative workflows
+  - "What if we run 2x more experiments?" → resource needs
+  - "What if we change this parameter?" → outcome predictions
+
+**Use Cases**:
+- Lab managers: optimize resource allocation
+- Scientists: plan experiments with realistic constraints
+- Automation engineers: test new protocols before deployment
+
+---
+
+### **Phase 6: Active Learning & Adaptive Experiments** 🧠
+**Goal**: Close the loop between simulation and real experiments
+
+**Features**:
+- **Bayesian Optimization**:
+  - Use simulation to pre-screen parameter space
+  - Identify most informative experiments
+  - Adaptively refine simulation parameters based on real data
+
+- **Model Calibration**:
+  - Automatically tune simulation parameters from real lab data
+  - Detect systematic biases (e.g., "our pipettes are 5% off")
+  - Update IC50 values, growth rates from actual measurements
+
+- **Hybrid Workflows**:
+  - Run 90% experiments in simulation
+  - Run 10% validation experiments in real lab
+  - Use real data to improve simulation fidelity
+
+- **Uncertainty Quantification**:
+  - Confidence intervals on all predictions
+  - Identify when simulation is unreliable
+  - Flag experiments that need real validation
+
+**Example Workflow**:
+```python
+# 1. Simulate 1000 dose-response curves
+sim_results = simulator.screen_compounds(compounds=1000, doses=8)
+
+# 2. Identify top 10 candidates
+top_candidates = bayesian_optimizer.select_top_n(sim_results, n=10)
+
+# 3. Run real experiments on top 10
+real_results = lab.execute(top_candidates)
+
+# 4. Update simulation parameters
+simulator.calibrate(real_results)
+
+# 5. Iterate
+```
+
+---
+
+### **Phase 7: Multi-Scale Modeling** 🔬
+**Goal**: Simulate from molecules to organisms
+
+**Features**:
+- **Molecular Level**:
+  - Protein-drug binding (docking simulations)
+  - Signaling pathway dynamics (ODE models)
+  - Gene regulatory networks (Boolean/stochastic models)
+
+- **Cellular Level** (current):
+  - Cell growth, death, passage
+  - Dose-response curves
+  - Population heterogeneity
+
+- **Tissue Level**:
+  - 3D organoid growth
+  - Cell-cell interactions
+  - Spatial organization (agent-based models)
+
+- **Organism Level**:
+  - Pharmacokinetics (PK)
+  - Pharmacodynamics (PD)
+  - Toxicity predictions
+
+**Integration**:
+- Molecular simulations inform cellular IC50 values
+- Cellular responses aggregate to tissue behavior
+- Tissue models predict organism-level outcomes
+
+**Use Case**: Drug discovery pipeline
+1. Screen 10M compounds in silico (molecular docking)
+2. Simulate top 1000 in cell culture (current system)
+3. Model top 10 in organoids (tissue level)
+4. Predict PK/PD for top 3 (organism level)
+
+---
+
+### **Phase 8: Collaborative & Cloud-Native** ☁️
+**Goal**: Enable team science and massive-scale simulation
+
+**Features**:
+- **Cloud Deployment**:
+  - Run simulations on AWS/GCP/Azure
+  - Parallelize across 1000s of cores
+  - Generate TB-scale synthetic datasets
+
+- **Team Collaboration**:
+  - Shared parameter databases
+  - Version control for simulation configs
+  - Experiment result sharing
+  - Reproducibility guarantees (Docker containers)
+
+- **API & Integration**:
+  - REST API for simulation requests
+  - Integration with ELN (electronic lab notebooks)
+  - LIMS connectivity
+  - Slack/email notifications
+
+- **Benchmarking Platform**:
+  - Public leaderboards for ML models
+  - Standard datasets for algorithm comparison
+  - Community-contributed parameters
+
+**Example**:
+```bash
+# Submit 10,000 simulations to cloud
+cell-os-cloud submit --workflow passage --cell-lines all --replicates 100
+
+# Results available in S3
+aws s3 sync s3://cell-os-results/job-12345 ./results/
+```
+
+---
+
+### **Phase 9: AI-Driven Simulation** 🤖
+**Goal**: Learn simulation models from data, not physics
+
+**Features**:
+- **Neural Simulators**:
+  - Train neural networks to predict experimental outcomes
+  - Learn from millions of real + simulated experiments
+  - Faster than physics-based models (ms vs seconds)
+
+- **Generative Models**:
+  - VAEs/GANs for synthetic microscopy images
+  - Generate realistic flow cytometry data
+  - Create synthetic RNA-seq profiles
+
+- **Surrogate Models**:
+  - Replace expensive simulations with ML approximations
+  - Active learning to improve surrogate accuracy
+  - Uncertainty-aware predictions
+
+- **Automated Parameter Discovery**:
+  - Learn IC50 values from structure (QSAR)
+  - Predict doubling times from cell line metadata
+  - Infer passage stress from cell type
+
+**Impact**: 1000x faster simulations, enabling real-time optimization
+
+---
+
+### **Phase 10: Autonomous Laboratory** 🏭
+**Goal**: Fully automated, self-optimizing lab
+
+**Features**:
+- **Closed-Loop Automation**:
+  - AI designs experiments
+  - Simulation pre-validates
+  - Robots execute
+  - AI analyzes results
+  - Loop repeats
+
+- **Self-Optimization**:
+  - Lab learns optimal protocols over time
+  - Automatically discovers better media formulations
+  - Evolves workflows for efficiency
+
+- **Anomaly Detection**:
+  - Detect when real results deviate from simulation
+  - Flag contamination, equipment issues automatically
+  - Self-diagnose and suggest fixes
+
+- **Goal-Oriented Operation**:
+  - "Find a compound with IC50 < 10nM for HEK293T"
+  - System designs, simulates, executes, iterates
+  - Delivers result with minimal human intervention
+
+**Vision**: The lab becomes a "compiler" - you specify what you want, it figures out how to get it.
+
+---
+
+## **Roadmap Timeline**
+
+| Phase | Status | Complexity | Impact | Timeline |
+|-------|--------|------------|--------|----------|
+| 1: Enhanced VM | ✅ Complete | Low | High | Done |
+| 2: Integration | ✅ Complete | Medium | High | Done |
+| 3: Data-Driven | ✅ Complete | Low | High | Done |
+| 4: Advanced Features | 📋 Planned | Medium | Medium | 2-3 months |
+| 5: Digital Twin | 🔮 Future | High | High | 6-12 months |
+| 6: Active Learning | 🔮 Future | High | Very High | 12-18 months |
+| 7: Multi-Scale | 🔮 Future | Very High | Medium | 18-24 months |
+| 8: Cloud-Native | 🔮 Future | Medium | High | 12-18 months |
+| 9: AI-Driven | 🔮 Future | Very High | Very High | 24+ months |
+| 10: Autonomous Lab | 🔮 Future | Extreme | Revolutionary | 36+ months |
+
+---
+
+## **Prioritization Framework**
+
+**Immediate (Next 3 months)**:
+- Phase 4: Advanced Features (spatial effects, multi-assay)
+- Reason: Increases simulation realism, enables more use cases
+
+**Short-term (3-12 months)**:
+- Phase 5: Digital Twin (lab state tracking, predictive scheduling)
+- Phase 6: Active Learning (model calibration, hybrid workflows)
+- Reason: Bridges simulation and reality, creates feedback loop
+
+**Medium-term (12-24 months)**:
+- Phase 8: Cloud-Native (scale to massive datasets)
+- Phase 7: Multi-Scale (integrate molecular and tissue models)
+- Reason: Enables industrial-scale applications
+
+**Long-term (24+ months)**:
+- Phase 9: AI-Driven (neural simulators, generative models)
+- Phase 10: Autonomous Lab (closed-loop automation)
+- Reason: Transformative capabilities, requires mature infrastructure
+
+---
+
+## **Success Metrics by Phase**
+
+**Phase 4**: 
+- Support 5+ assay types
+- Inject 10+ failure modes
+- Power analysis tool used in 50% of experiments
+
+**Phase 5**:
+- Digital twin accuracy >95% vs real lab
+- Predict bottlenecks 24h in advance
+- Reduce resource waste by 30%
+
+**Phase 6**:
+- Simulation parameters auto-calibrate from real data
+- 90% reduction in validation experiments needed
+- Uncertainty estimates within 10% of reality
+
+**Phase 7**:
+- Predict in vivo outcomes from in vitro data (R² > 0.7)
+- Reduce animal studies by 50%
+
+**Phase 8**:
+- Generate 1M+ synthetic experiments/day
+- Support 100+ concurrent users
+- Public dataset with 10M+ experiments
+
+**Phase 9**:
+- Neural simulators 1000x faster than physics-based
+- Generative models pass Turing test (experts can't distinguish real/fake)
+
+**Phase 10**:
+- Fully autonomous experiment design-to-result in <24h
+- Lab operates 24/7 with minimal human intervention
+- Discovery rate 10x higher than manual operation
 
 ---
 
