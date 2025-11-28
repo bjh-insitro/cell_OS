@@ -50,8 +50,11 @@ class FailureModeSimulator:
     Failures occur stochastically based on configurable probabilities.
     """
     
-    def __init__(self, random_seed: Optional[int] = None):
-        self.rng = np.random.default_rng(random_seed)
+    def __init__(self, random_seed: Optional[int] = None, rng: Optional[np.random.Generator] = None):
+        if rng is not None:
+            self.rng = rng
+        else:
+            self.rng = np.random.default_rng(random_seed)
         self.failure_history: List[FailureEvent] = []
         
         # Failure probabilities (per day)
