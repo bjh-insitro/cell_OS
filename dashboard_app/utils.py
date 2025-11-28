@@ -97,12 +97,17 @@ def init_automation_resources(vessel_path="data/raw/vessels.yaml", pricing_path=
              
         vessel_lib = VesselLibrary(vessel_path)
         inv = Inventory(pricing_path) 
+        
+        # Initialize InventoryManager for persistence
+        from cell_os.inventory_manager import InventoryManager
+        inv_manager = InventoryManager(inv)
+        
         ops = ParametricOps(vessel_lib, inv)
         builder = WorkflowBuilder(ops)
-        return vessel_lib, inv, ops, builder
+        return vessel_lib, inv, ops, builder, inv_manager
     except Exception as e:
         # Display the specific error on the dashboard
         st.error(f"FATAL RESOURCE ERROR: Could not initialize automation engine. Details: {e}")
         # Display the full Python traceback in a code block for debugging
         st.code(traceback.format_exc())
-        return None, None, None, None
+        return None, None, None, None, None

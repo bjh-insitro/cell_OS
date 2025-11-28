@@ -12,7 +12,7 @@ def render_resource_audit(df, pricing):
     # A. Resource Setup 
     # -----------------------------------
     # Use the cached utility function
-    vessel_lib, inv, ops, builder = init_automation_resources()
+    vessel_lib, inv, ops, builder, inv_manager = init_automation_resources()
     
     if ops is None:
         st.error("Cannot load core automation resources. Check configuration files.")

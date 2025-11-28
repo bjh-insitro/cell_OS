@@ -92,11 +92,28 @@ class WorkflowBuilder:
         process_ops.append(self.ops.op_count(flask_size, method="nc202"))
 
         # 3. Final Harvest and Freeze
-        # Use dissociation method appropriate for the cell line
-        dissociation = "accutase" if cell_line.lower() == "ipsc" else "trypsin"
-        process_ops.append(
-            self.ops.op_harvest(flask_size, dissociation_method=dissociation)
-        )
+        use_resolver = False
+        if hasattr(self.ops, 'resolver') and self.ops.resolver:
+            try:
+                # Infer vessel type
+                parts = flask_size.split('_')
+                if len(parts) > 1 and parts[0] == "flask":
+                     vessel_type = parts[1].upper()
+                else:
+                     vessel_type = parts[-1].upper()
+                
+                ops = self.ops.resolver.resolve_passage_protocol(cell_line, vessel_type)
+                process_ops.extend(ops)
+                use_resolver = True
+            except Exception:
+                pass
+        
+        if not use_resolver:
+            # Legacy fallback
+            dissociation = "accutase" if cell_line.lower() == "ipsc" else "trypsin"
+            process_ops.append(
+                self.ops.op_harvest(flask_size, dissociation_method=dissociation)
+            )
 
         # Freeze the master bank vials
         process_ops.append(self.ops.op_freeze(num_vials=target_vials))

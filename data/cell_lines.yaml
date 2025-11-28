@@ -1,3 +1,45 @@
+# Cell Lines Configuration
+#
+# This is the single source of truth for all cell line-specific parameters in cell_OS.
+# It defines how different cell lines should be cultured, passaged, thawed, and fed.
+#
+# Structure:
+# - growth_media: Default media for this cell line
+# - wash_buffer: Buffer for washing steps
+# - detach_reagent: Default dissociation reagent
+# - coating: Coating requirements (null if none, or {reagent: name})
+#
+# - profile: Cell line metadata and optimal methods
+#   - cell_type: Classification (iPSC, immortalized, primary, differentiated)
+#   - coating_required: Boolean, whether coating is needed
+#   - coating_reagent: Specific coating to use
+#   - dissociation_method, transfection_method, transduction_method, freezing_media, etc.
+#
+# - passage: Passaging protocol parameters
+#   - reference_vessel: Default vessel type (e.g., T75)
+#   - T75/T25/etc: Vessel-specific parameters
+#     - volumes_mL_reference: Volumes that scale with vessel size
+#     - volumes_mL_absolute: Volumes that don't scale
+#     - incubation: Temperature and time parameters
+#
+# - thaw: Thawing protocol parameters
+#   - reference_vessel: Default vessel type
+#   - T75/etc: Vessel-specific parameters
+#     - volumes_mL: All volumes for thaw steps
+#       - media_aliquot, pre_warm, wash_aliquot, wash_vial, resuspend, transfer
+#
+# - feed: Feeding protocol parameters
+#   - reference_vessel: Default vessel type
+#   - T75/etc: Vessel-specific parameters
+#     - volume_ml: Volume of media to use
+#     - schedule: {interval_days: N}
+#
+# To add a new cell line:
+# 1. Add an entry under cell_lines with the cell line name as key
+# 2. Define at minimum: growth_media, profile (with coating_required)
+# 3. Optionally add passage, thaw, and feed blocks for specific vessels
+# 4. If not specified, reasonable defaults will be used based on vessel properties
+#
 cell_lines:
   iPSC:
     display_name: "Induced Pluripotent Stem Cells"
@@ -6,6 +48,21 @@ cell_lines:
     detach_reagent: accutase
     coating:
       reagent: vitronectin
+    profile:
+      cell_type: "iPSC"
+      coating_required: true
+      coating_reagent: "laminin_521"
+      dissociation_method: "versene"
+      dissociation_notes: "Ultra-gentle EDTA-only dissociation preserves pluripotency and reduces differentiation"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "medium"
+      transfection_notes: "Nucleofection is most reliable for iPSCs, though efficiency varies by line"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation improves efficiency without harming cells"
+      freezing_media: "mfresr"
+      freezing_notes: "mFreSR optimized for stem cell viability and recovery"
+      media: "mtesr_plus_kit"
+      cost_tier: "premium"
     
     passage:
       reference_vessel: T75
@@ -39,6 +96,24 @@ cell_lines:
           detach:
             temp_C: 37
             minutes: 10
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 1
   
   HEK293:
     display_name: "HEK293 (Human Embryonic Kidney)"
@@ -46,6 +121,21 @@ cell_lines:
     wash_buffer: dpbs
     detach_reagent: trypsin_edta
     coating: null
+    profile:
+      cell_type: "immortalized"
+      coating_required: false
+      coating_reagent: "none"
+      dissociation_method: "trypsin"
+      dissociation_notes: "Hardy cells, trypsin is sufficient and cost-effective"
+      transfection_method: "pei"
+      transfection_efficiency: "high"
+      transfection_notes: "PEI works excellently for HEK293, very cost-effective"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation improves efficiency and reduces time"
+      freezing_media: "fbs_dmso"
+      freezing_notes: "Classic 90% FBS + 10% DMSO works well, very economical"
+      media: "dmem_high_glucose"
+      cost_tier: "budget"
     
     passage:
       reference_vessel: T75
@@ -79,3 +169,445 @@ cell_lines:
           detach:
             temp_C: 37
             minutes: 5
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  HEK293T:
+    display_name: "HEK293T (with SV40 T antigen)"
+    growth_media: dmem_high_glucose
+    coating: null
+    profile:
+      cell_type: "immortalized"
+      coating_required: false
+      coating_reagent: "none"
+      dissociation_method: "trypsin"
+      dissociation_notes: "Same as HEK293, very hardy"
+      transfection_method: "pei"
+      transfection_efficiency: "high"
+      transfection_notes: "Optimized for high transfection efficiency, ideal for LV production"
+      transduction_method: "spinoculation"
+      transduction_notes: "Fast and efficient"
+      freezing_media: "fbs_dmso"
+      freezing_notes: "Standard freezing protocol"
+      media: "dmem_high_glucose"
+      cost_tier: "budget"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  HeLa:
+    display_name: "HeLa (Human Cervical Cancer)"
+    growth_media: dmem_high_glucose
+    coating: null
+    profile:
+      cell_type: "immortalized"
+      coating_required: false
+      coating_reagent: "none"
+      dissociation_method: "trypsin"
+      dissociation_notes: "Very hardy, trypsin is fine"
+      transfection_method: "lipofectamine"
+      transfection_efficiency: "high"
+      transfection_notes: "Lipofectamine gives better results than PEI for HeLa"
+      transduction_method: "passive"
+      transduction_notes: "High transduction efficiency even without spinoculation"
+      freezing_media: "fbs_dmso"
+      freezing_notes: "Standard protocol"
+      media: "dmem_high_glucose"
+      cost_tier: "budget"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  Jurkat:
+    display_name: "Jurkat (Human T Lymphocyte)"
+    growth_media: rpmi_1640
+    coating: null
+    profile:
+      cell_type: "immortalized"
+      coating_required: false
+      coating_reagent: "none"
+      dissociation_method: "scraping"
+      dissociation_notes: "Suspension cells, gentle collection only"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "medium"
+      transfection_notes: "Difficult to transfect, nucleofection is most reliable"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation significantly improves transduction"
+      freezing_media: "fbs_dmso"
+      freezing_notes: "Standard protocol for suspension cells"
+      media: "rpmi_1640"
+      cost_tier: "standard"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  A549:
+    display_name: "A549 (Human Lung Carcinoma)"
+    growth_media: f12k
+    coating: null
+    profile:
+      cell_type: "immortalized"
+      coating_required: false
+      coating_reagent: "none"
+      dissociation_method: "trypsin"
+      dissociation_notes: "Hardy adherent cells, trypsin works well"
+      transfection_method: "lipofectamine"
+      transfection_efficiency: "medium"
+      transfection_notes: "Standard lipofectamine protocol"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation at MOI 0.3 for POSH screens. Barcode efficiency: 55-65%"
+      freezing_media: "fbs_dmso"
+      freezing_notes: "Standard protocol"
+      media: "f12k"
+      cost_tier: "budget"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  hESC:
+    display_name: "Human Embryonic Stem Cells"
+    growth_media: mtesr_plus_kit
+    coating:
+      reagent: laminin_521
+    profile:
+      cell_type: "hESC"
+      coating_required: true
+      coating_reagent: "laminin_521"
+      dissociation_method: "versene"
+      dissociation_notes: "Same as iPSC, very sensitive to enzymatic dissociation"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "low"
+      transfection_notes: "Challenging to transfect, nucleofection is best option"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation recommended"
+      freezing_media: "mfresr"
+      freezing_notes: "Optimized for hESC recovery"
+      media: "mtesr_plus_kit"
+      cost_tier: "premium"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 1
+
+  Primary_Neurons:
+    display_name: "Primary Neurons"
+    growth_media: neurobasal
+    coating:
+      reagent: plo_laminin
+    profile:
+      cell_type: "primary"
+      coating_required: true
+      coating_reagent: "plo_laminin"
+      dissociation_method: "scraping"
+      dissociation_notes: "Neurons are extremely sensitive, avoid enzymatic dissociation"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "low"
+      transfection_notes: "Very difficult to transfect, nucleofection before plating is best"
+      transduction_method: "passive"
+      transduction_notes: "Gentle passive transduction to avoid stress"
+      freezing_media: "bambanker"
+      freezing_notes: "Serum-free, gentle freezing for sensitive neurons"
+      media: "neurobasal"
+      cost_tier: "premium"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 3
+
+  Primary_Astrocytes:
+    display_name: "Primary Astrocytes"
+    growth_media: dmem_high_glucose
+    coating:
+      reagent: plo
+    profile:
+      cell_type: "primary"
+      coating_required: true
+      coating_reagent: "plo"
+      dissociation_method: "tryple"
+      dissociation_notes: "More robust than neurons, TrypLE is gentle enough"
+      transfection_method: "lipofectamine"
+      transfection_efficiency: "medium"
+      transfection_notes: "Lipofectamine works reasonably well"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation improves efficiency"
+      freezing_media: "bambanker"
+      freezing_notes: "Serum-free freezing recommended"
+      media: "dmem_high_glucose"
+      cost_tier: "standard"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  Primary_Fibroblasts:
+    display_name: "Primary Fibroblasts"
+    growth_media: dmem_high_glucose
+    coating: null
+    profile:
+      cell_type: "primary"
+      coating_required: false
+      coating_reagent: "none"
+      dissociation_method: "trypsin"
+      dissociation_notes: "Hardy primary cells, trypsin is fine"
+      transfection_method: "lipofectamine"
+      transfection_efficiency: "medium"
+      transfection_notes: "Standard lipofectamine protocol"
+      transduction_method: "passive"
+      transduction_notes: "Good transduction efficiency"
+      freezing_media: "fbs_dmso"
+      freezing_notes: "Standard protocol works well"
+      media: "dmem_high_glucose"
+      cost_tier: "budget"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  iMicroglia:
+    display_name: "iPSC-derived Microglia"
+    growth_media: rpmi_1640
+    coating:
+      reagent: plo
+    profile:
+      cell_type: "differentiated"
+      coating_required: true
+      coating_reagent: "plo"
+      dissociation_method: "accutase"
+      dissociation_notes: "Gentle dissociation preserves surface markers and function"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "low"
+      transfection_notes: "Challenging to transfect post-differentiation"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation recommended for immune cells"
+      freezing_media: "bambanker"
+      freezing_notes: "Serum-free, maintains viability"
+      media: "rpmi_1640"
+      cost_tier: "standard"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  iNeurons:
+    display_name: "iPSC-derived Neurons (NGN2, etc.)"
+    growth_media: neurobasal
+    coating:
+      reagent: plo_laminin
+    profile:
+      cell_type: "differentiated"
+      coating_required: true
+      coating_reagent: "plo_laminin"
+      dissociation_method: "accutase"
+      dissociation_notes: "Gentle dissociation if needed, but avoid passaging mature neurons"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "low"
+      transfection_notes: "Transfect as progenitors before differentiation"
+      transduction_method: "passive"
+      transduction_notes: "Gentle passive transduction"
+      freezing_media: "bambanker"
+      freezing_notes: "Freeze as progenitors, not mature neurons"
+      media: "neurobasal"
+      cost_tier: "premium"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+
+  Cardiomyocytes:
+    display_name: "iPSC-derived Cardiomyocytes"
+    growth_media: rpmi_1640
+    coating:
+      reagent: matrigel
+    profile:
+      cell_type: "differentiated"
+      coating_required: true
+      coating_reagent: "matrigel"
+      dissociation_method: "tryple"
+      dissociation_notes: "TrypLE is gentle enough for single-cell dissociation"
+      transfection_method: "nucleofection"
+      transfection_efficiency: "low"
+      transfection_notes: "Transfect before differentiation"
+      transduction_method: "spinoculation"
+      transduction_notes: "Spinoculation improves efficiency"
+      freezing_media: "cryostor"
+      freezing_notes: "CryoStor (DMSO-free) better for cardiomyocyte recovery"
+      media: "rpmi_1640"
+      cost_tier: "premium"
+    
+    thaw:
+      reference_vessel: T75
+      T75:
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    
+    feed:
+      reference_vessel: T75
+      T75:
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2

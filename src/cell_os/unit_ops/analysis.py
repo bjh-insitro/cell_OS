@@ -157,3 +157,20 @@ class AnalysisOps:
             instrument_cost_usd=2.0,
             sub_steps=[]
         )
+
+    def op_flow_cytometry(self, vessel_id: str, num_samples: int = 96) -> UnitOp:
+        return UnitOp(
+            uo_id=f"FlowCytometry_{vessel_id}",
+            name=f"Flow Cytometry ({num_samples} samples)",
+            layer="analysis",
+            category="readout",
+            time_score=60,
+            cost_score=2,
+            automation_fit=1,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Flow Cytometer",
+            material_cost_usd=0.5 * num_samples, # Sheath fluid, tubes/plates
+            instrument_cost_usd=20.0,
+            sub_steps=[]
+        )

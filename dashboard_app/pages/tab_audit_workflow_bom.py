@@ -66,7 +66,7 @@ def render_workflow_bom_audit(df, pricing):
     )
 
     # 1. Initialize Resources 
-    vessel_lib, inv, ops, builder = init_automation_resources()
+    vessel_lib, inv, ops, builder, inv_manager = init_automation_resources()
     
     if builder is None:
         return 

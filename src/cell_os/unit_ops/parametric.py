@@ -27,6 +27,7 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
     def __init__(self, vessel_lib: VesselLibrary, pricing_inv):
         self.vessels = vessel_lib
         self.inv = pricing_inv
+        self.resolver = None
         
         # Initialize parent classes
         LiquidHandlingOps.__init__(self, vessel_lib, pricing_inv)
@@ -55,45 +56,84 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
 
         # --- LOGIC START ---
         
-        # 0. Conditional Coating Check
-        coating_needed = False
-        if cell_line and CELL_LINE_DB_AVAILABLE:
-            profile = get_cell_line_profile(cell_line)
-            if profile and profile.get('coating_required', False):
-                coating_needed = True
+        # Try to get config from resolver
+        config = None
+        if self.resolver and cell_line:
+            try:
+                config = self.resolver.get_thaw_config(cell_line, vessel_id)
+            except (ValueError, KeyError):
+                pass  # Fall back to legacy
         
+        # Determine parameters from config or legacy
+        if config:
+            coating_needed = config["coating_required"]
+            coating_reagent = config["coating_reagent"]
+            media = config["media"]
+            volumes = config["volumes_mL"]
+        else:
+            # Legacy path
+            coating_needed = False
+            coating_reagent = "laminin_521"
+            media = "mtesr_plus_kit"
+            volumes = {
+                "media_aliquot": 40.0,
+                "pre_warm": v.max_volume_ml,  # Legacy used max_volume_ml
+                "wash_aliquot": 5.0,
+                "wash_vial": 1.0,
+                "resuspend": 1.0,
+                "transfer": 1.0
+            }
+            
+            # Legacy coating check
+            if cell_line:
+                if self.resolver:
+                    profile = self.resolver.get_cell_line_profile(cell_line)
+                    if profile and getattr(profile, 'coating_required', False):
+                        coating_needed = True
+                        reagent_attr = getattr(profile, "coating_reagent", getattr(profile, "coating", coating_reagent))
+                        if reagent_attr and reagent_attr != "none":
+                            coating_reagent = reagent_attr
+                elif CELL_LINE_DB_AVAILABLE:
+                    profile = get_cell_line_profile(cell_line)
+                    if profile and getattr(profile, 'coating_required', False):
+                        coating_needed = True
+                        reagent_attr = getattr(profile, "coating_reagent", getattr(profile, "coating", coating_reagent))
+                        if reagent_attr and reagent_attr != "none":
+                            coating_reagent = reagent_attr
+        
+        # 0. Conditional Coating
         if coating_needed:
-            steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, "laminin_521"))
+            steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, coating_reagent))
             steps.append(self.op_incubate(vessel_id, 60))
             steps.append(self.op_aspirate(vessel_id, v.coating_volume_ml))
         
         # 1. Aliquot Required Media into 50mL Tube (using 25mL pipette)
-        media_vol = 40.0
+        media_vol = volumes["media_aliquot"]
         tube_50ml_cost = get_single_cost("tube_50ml_conical")
         pipette_25ml_cost = get_single_cost("pipette_25ml")
         
-        # FIX: Replaced self.ops.op_dispense with self.op_dispense
         steps.append(UnitOp(
             uo_id="Aliquot_Media_50mL", 
-            name="Aliquot 40mL Media to 50mL Tube",
-            material_cost_usd=tube_50ml_cost + pipette_25ml_cost + self.op_dispense(None, media_vol, "mtesr_plus_kit").material_cost_usd,
+            name=f"Aliquot {media_vol}mL Media to 50mL Tube",
+            material_cost_usd=tube_50ml_cost + pipette_25ml_cost + self.op_dispense(None, media_vol, media).material_cost_usd,
             instrument="Manual", sub_steps=[]))
             
         # 2. Put Media into Flask (Pre-warm)
+        pre_warm_vol = volumes["pre_warm"]
         pipette_10ml_cost = get_single_cost("pipette_10ml")
-        steps.append(self.op_dispense(vessel_id, v.max_volume_ml, "mtesr_plus_kit", 
+        steps.append(self.op_dispense(vessel_id, pre_warm_vol, media, 
                                       material_cost_usd=pipette_10ml_cost,
                                       name="Pre-warm Media in Flask")) 
         
         # 3. Aliquot Wash/Dilution Media into 15mL Tube
+        wash_vol = volumes["wash_aliquot"]
         tube_15ml_cost = get_single_cost("tube_15ml_conical")
         pipette_5ml_cost = get_single_cost("pipette_5ml")
         
-        # FIX: Replaced self.ops.op_dispense with self.op_dispense
         steps.append(UnitOp(
             uo_id="Aliquot_Wash_15mL", 
-            name="Aliquot 5mL Wash Media to 15mL Tube",
-            material_cost_usd=tube_15ml_cost + pipette_5ml_cost + self.op_dispense(None, 5.0, "mtesr_plus_kit").material_cost_usd,
+            name=f"Aliquot {wash_vol}mL Wash Media to 15mL Tube",
+            material_cost_usd=tube_15ml_cost + pipette_5ml_cost + self.op_dispense(None, wash_vol, media).material_cost_usd,
             instrument="Manual", sub_steps=[]))
         
         # 4. Thaw Vial (Incubate)
@@ -105,35 +145,37 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         steps.append(UnitOp(
             uo_id="Transfer_Vial_Contents", 
             name="Transfer Vial Contents to 15mL Tube",
-            material_cost_usd=tip_1ml_cost, # Consumes 1mL tip
+            material_cost_usd=tip_1ml_cost,
             instrument="Manual", sub_steps=[]))
         
+        wash_vial_vol = volumes["wash_vial"]
         pipette_2ml_cost = get_single_cost("pipette_2ml")
-        steps.append(self.op_dispense(None, 1.0, "mtesr_plus_kit", 
+        steps.append(self.op_dispense(None, wash_vial_vol, media, 
                                       material_cost_usd=pipette_2ml_cost, 
-                                      name="Wash Vial with 1mL Media (2mL Pipette)"))
+                                      name=f"Wash Vial with {wash_vial_vol}mL Media (2mL Pipette)"))
         
         # 6. Centrifuge
         steps.append(self.op_centrifuge("tube_15ml_conical", 5))
 
         # 7. Aspirate Supernatant
         tip_200ul_cost = get_single_cost("tip_200ul_lr")
-        steps.append(self.op_aspirate(None, 5.0, 
+        steps.append(self.op_aspirate(None, wash_vol, 
                                       material_cost_usd=pipette_2ml_cost + tip_200ul_cost, 
                                       name="Aspirate Supernatant (2mL Pipette + Tip)"))
         
         # 8. Re-suspend & Sample for Count
-        steps.append(self.op_dispense(None, 1.0, "mtesr_plus_kit", 
+        resuspend_vol = volumes["resuspend"]
+        steps.append(self.op_dispense(None, resuspend_vol, media, 
                                       material_cost_usd=pipette_2ml_cost, 
-                                      name="Resuspend in 1mL Media"))
+                                      name=f"Resuspend in {resuspend_vol}mL Media"))
         
-        # FIX: op_count is part of AnalysisOps (which ParametricOps inherits)
-        # Replaced self.ops.op_count with self.op_count
         steps.append(self.op_count("tube_15ml_conical", method="nc-202",
-                                   material_cost_usd=get_single_cost("tip_200ul_lr"))) # Consumes 1 tip for sampling
+                                   material_cost_usd=get_single_cost("tip_200ul_lr")))
         
         # 9. Transfer the required amount of cells into the required vessel
-        steps.append(self.op_dispense(vessel_id, 1.0, "cell_suspension", name="Transfer Cells to Flask (2mL Pipette)"))
+        transfer_vol = volumes["transfer"]
+        steps.append(self.op_dispense(vessel_id, transfer_vol, "cell_suspension", 
+                                      name=f"Transfer {transfer_vol}mL Cells to Flask (2mL Pipette)"))
         
         # 10. Final Incubate
         steps.append(self.op_incubate(vessel_id, 960))
@@ -163,7 +205,60 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         )
 
     # --- op_passage (Cell Expansion) ---
-    def op_passage(self, vessel_id: str, ratio: int = 1, dissociation_method: str = "accutase"):
+    def op_passage(self, vessel_id: str, ratio: int = 1, dissociation_method: str = "accutase", cell_line: str = None):
+        # 1. Try to resolve using ProtocolResolver if available
+        if self.resolver:
+            target_cell_line = cell_line
+            if not target_cell_line:
+                # Heuristic inference
+                if dissociation_method == "trypsin":
+                    target_cell_line = "HEK293"
+                elif dissociation_method == "accutase":
+                    target_cell_line = "iPSC"
+            
+            if target_cell_line:
+                # Infer vessel type
+                parts = vessel_id.split('_')
+                if len(parts) > 1 and parts[0] == "flask":
+                     vessel_type = parts[1].upper()
+                else:
+                     vessel_type = parts[-1].upper()
+                
+                try:
+                    ops = self.resolver.resolve_passage_protocol(target_cell_line, vessel_type)
+                    
+                    # Append Seeding Step (Legacy op_passage includes seeding)
+                    growth_media = self.resolver.cell_lines[target_cell_line]["growth_media"]
+                    v = self.vessels.get(vessel_id)
+                    pipette_10ml_cost = self.inv.get_price("pipette_10ml")
+                    
+                    sub_steps = ops[:]
+                    sub_steps.append(self.op_dispense(vessel_id, v.working_volume_ml, growth_media, material_cost_usd=pipette_10ml_cost))
+                    
+                    total_mat = sum(s.material_cost_usd for s in sub_steps)
+                    total_inst = sum(s.instrument_cost_usd for s in sub_steps)
+                    
+                    from .base import UnitOp
+                    return UnitOp(
+                        uo_id=f"Passage_{target_cell_line}_{vessel_id}",
+                        name=f"Passage {target_cell_line} in {vessel_id} (Resolved)",
+                        layer="cell_prep",
+                        category="culture",
+                        time_score=1,
+                        cost_score=1,
+                        automation_fit=1,
+                        failure_risk=1,
+                        staff_attention=1,
+                        instrument="Biosafety Cabinet",
+                        material_cost_usd=total_mat,
+                        instrument_cost_usd=total_inst + 2.8,
+                        sub_steps=sub_steps
+                    )
+                except Exception:
+                    # Fallback to legacy if resolution fails (e.g. unknown cell line)
+                    pass
+
+        # Legacy implementation
         v = self.vessels.get(vessel_id)
         steps = []
         
@@ -238,30 +333,47 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         )
 
     # --- op_feed (Cell Feeding) ---
-    def op_feed(self, vessel_id: str, media: str = "mtesr_plus_kit", supplements: List[str] = None):
+    def op_feed(self, vessel_id: str, media: str = None, cell_line: str = None, supplements: List[str] = None):
         v = self.vessels.get(vessel_id)
         steps = []
         
         from .base import UnitOp # Added for consistency
         
+        # Try to get config from resolver
+        config = None
+        if self.resolver and cell_line:
+            try:
+                config = self.resolver.get_feed_config(cell_line, vessel_id)
+            except (ValueError, KeyError):
+                pass  # Fall back to legacy
+        
+        # Determine parameters from config or arguments/legacy
+        if config:
+            feed_media = media if media else config["media"]
+            feed_volume = config["volume_ml"]
+        else:
+            # Legacy path
+            feed_media = media if media else "mtesr_plus_kit"
+            feed_volume = v.working_volume_ml
+        
         # NOTE: Using 10mL pipette cost for these manual steps
         pipette_10ml_cost = self.inv.get_price("pipette_10ml")
         
-        steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-        steps.append(self.op_dispense(vessel_id, v.working_volume_ml, media, material_cost_usd=pipette_10ml_cost))
+        steps.append(self.op_aspirate(vessel_id, feed_volume, material_cost_usd=pipette_10ml_cost))
+        steps.append(self.op_dispense(vessel_id, feed_media, feed_volume, material_cost_usd=pipette_10ml_cost))
         
         if supplements:
             for supp in supplements:
                 # Assuming tips are used for small supplement volumes
                 tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
-                steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.001, supp, material_cost_usd=tip_200ul_cost))
+                steps.append(self.op_dispense(vessel_id, feed_volume * 0.001, supp, material_cost_usd=tip_200ul_cost))
                 
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
         return UnitOp(
-            uo_id=f"Feed_{vessel_id}_{media}",
-            name=f"Feed {v.name} ({media}) (Granular)",
+            uo_id=f"Feed_{vessel_id}_{feed_media}",
+            name=f"Feed {v.name} ({feed_media}) (Granular)",
             layer="cell_prep",
             category="culture",
             time_score=0,

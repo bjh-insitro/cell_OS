@@ -18,7 +18,7 @@ def render_workflow_visualizer(df, pricing):
         st.subheader("Configuration")
         
         # Initialize Resources (using the utility function)
-        vessel_lib, inv, ops, builder = init_automation_resources()
+        vessel_lib, inv, ops, builder, inv_manager = init_automation_resources()
         
         if builder is None:
             st.error("Cannot load workflow engine. Check configuration files.")

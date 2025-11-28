@@ -33,6 +33,11 @@ from dashboard_app.pages.tab_4_workflow import render_workflow_visualizer
 # Tab 5 (New Audit Tabs)
 from dashboard_app.pages.tab_audit_resources import render_resource_audit
 from dashboard_app.pages.tab_audit_workflow_bom import render_workflow_bom_audit # <-- NEW IMPORT
+from dashboard_app.pages.tab_cell_line_inspector import render_cell_line_inspector # <-- CELL LINE INSPECTOR
+from dashboard_app.pages.tab_execution_monitor import render_execution_monitor # <-- EXECUTION MONITOR
+from dashboard_app.pages.tab_analytics import render_analytics # <-- ANALYTICS
+from dashboard_app.pages.tab_inventory import render_inventory_manager # <-- INVENTORY MANAGER
+from dashboard_app.pages.tab_campaign_manager import render_campaign_manager # <-- CAMPAIGN MANAGER
 
 # Tab 6-10 (Shifted Tabs)
 from dashboard_app.pages.tab_5_posh_decisions import render_posh_decisions
@@ -54,15 +59,20 @@ if st.sidebar.button("Refresh Data"):
 df, pricing = load_data()
 
 # -------------------------------------------------------------------
-# Tabs Definition (UPDATED FOR 11 TABS)
+# Tabs Definition (UPDATED FOR 16 TABS)
 # -------------------------------------------------------------------
-tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_analytics, tab_inventory, tab_campaign, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🚀 Mission Control", 
     "🔬 Science", 
     "💰 Economics", 
     "🕸️ Workflow Visualizer", 
     "🛠️ Resource Audit", 
-    "🔍 Workflow BOM Audit", # <-- NEW TAB
+    "🔍 Workflow BOM Audit",
+    "🧬 Cell Line Inspector",
+    "⚙️ Execution Monitor",
+    "📈 Analytics",
+    "📦 Inventory",
+    "🗓️ Campaign Manager", # <-- CAMPAIGN MANAGER
     "🧭 POSH Decision Assistant", 
     "🧪 POSH Screen Designer", 
     "📊 Campaign Reports", 
@@ -103,6 +113,21 @@ with tab_audit:
     
 with tab_bom: # <-- NEW TAB CONTENT
     render_workflow_bom_audit(df, pricing) 
+
+with tab_inspector: # <-- CELL LINE INSPECTOR CONTENT
+    render_cell_line_inspector(df, pricing) 
+
+with tab_executor: # <-- EXECUTION MONITOR CONTENT
+    render_execution_monitor(df, pricing) 
+
+with tab_analytics: # <-- ANALYTICS CONTENT
+    render_analytics(df, pricing)
+
+with tab_inventory: # <-- INVENTORY CONTENT
+    render_inventory_manager(df, pricing)
+
+with tab_campaign: # <-- CAMPAIGN MANAGER CONTENT
+    render_campaign_manager(df, pricing)
 
 with tab5:
     render_posh_decisions(df, pricing)

@@ -184,3 +184,76 @@ class TestProtocolResolver:
         # Check sub-steps for accutase
         sub_names = [sub.name.lower() for sub in op.sub_steps]
         assert any("accutase" in name for name in sub_names)
+
+    def test_resolve_ipsc_t175_autoscale(self):
+        """Test iPSC T175 protocol resolution with auto-scaling."""
+        resolver = ProtocolResolver()
+        # T175 is not in cell_lines.yaml, so it should fallback to T75 reference and scale.
+        # T75 wash_1 = 10.0 mL.
+        # T175 working_vol = 30.0 mL. T75 working_vol = 15.0 mL. Scale = 2.0.
+        # Expected wash_1 = 20.0 mL.
+        
+        ops = resolver.resolve_passage_protocol("iPSC", "T175")
+        
+        assert isinstance(ops, list)
+        assert len(ops) > 0
+        
+        dispense_ops = [op for op in ops if "dispense" in op.name.lower()]
+        
+        # Check for 20.0mL wash
+        assert any("20.0ml" in op.name.lower() for op in dispense_ops), \
+            "Should have 20.0mL dispense step for T175 wash (scaled from T75)"
+
+    def test_get_cell_line_profile(self):
+        """Test retrieving cell line profile from YAML."""
+        resolver = ProtocolResolver()
+        profile = resolver.get_cell_line_profile("iPSC")
+        
+        assert profile is not None
+        assert profile.cell_type == "iPSC"
+        assert profile.coating_required is True
+        assert profile.coating_reagent == "laminin_521"
+        
+        profile_hek = resolver.get_cell_line_profile("HEK293")
+        assert profile_hek is not None
+        assert profile_hek.coating_required is False
+
+    def test_get_thaw_config_ipsc_t75(self):
+        """Test thaw config for iPSC T75."""
+        resolver = ProtocolResolver()
+        config = resolver.get_thaw_config("iPSC", "flask_t75")
+        
+        assert config["coating_required"] is True
+        assert config["coating_reagent"] == "laminin_521"
+        assert config["media"] == "mtesr_plus_kit"
+        assert config["volumes_mL"]["media_aliquot"] == 40.0
+        assert config["volumes_mL"]["pre_warm"] == 15.0
+        assert config["volumes_mL"]["wash_aliquot"] == 5.0
+    
+    def test_get_thaw_config_hek293_t75(self):
+        """Test thaw config for HEK293 T75."""
+        resolver = ProtocolResolver()
+        config = resolver.get_thaw_config("HEK293", "flask_t75")
+        
+        assert config["coating_required"] is False
+        assert config["media"] == "dmem_high_glucose"
+        assert config["volumes_mL"]["media_aliquot"] == 40.0
+        assert config["volumes_mL"]["pre_warm"] == 15.0
+    
+    def test_get_feed_config_ipsc_t75(self):
+        """Test feed config for iPSC T75."""
+        resolver = ProtocolResolver()
+        config = resolver.get_feed_config("iPSC", "flask_t75")
+        
+        assert config["media"] == "mtesr_plus_kit"
+        assert config["volume_ml"] == 15.0
+        assert config["schedule"]["interval_days"] == 1
+    
+    def test_get_feed_config_hek293_t75(self):
+        """Test feed config for HEK293 T75."""
+        resolver = ProtocolResolver()
+        config = resolver.get_feed_config("HEK293", "flask_t75")
+        
+        assert config["media"] == "dmem_high_glucose"
+        assert config["volume_ml"] == 15.0
+        assert config["schedule"]["interval_days"] == 2
