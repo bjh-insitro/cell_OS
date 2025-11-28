@@ -4,7 +4,20 @@
   "vials_p5": 30.0,
   "vials_p50": 30.0,
   "vials_p95": 30.0,
+  "waste_p50": 5.0,
+  "waste_total": 2646.0,
   "duration_p50": 4.0,
-  "failures": [],
+  "failures": [
+    "fungal contamination detected in Flask_P1_1",
+    "bacterial contamination detected in Flask_P1_2",
+    "bacterial contamination detected in Flask_P1_2",
+    "bacterial contamination detected in Flask_P1_2",
+    "bacterial contamination detected in Flask_P1_2",
+    "bacterial contamination detected in Flask_P1_2",
+    "yeast contamination detected in Flask_P1_3",
+    "mycoplasma contamination detected in Flask_P1_1",
+    "bacterial contamination detected in Flask_P1_2",
+    "fungal contamination detected in Flask_P1_1"
+  ],
   "violations": []
 }

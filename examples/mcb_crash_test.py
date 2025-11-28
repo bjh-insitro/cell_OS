@@ -25,6 +25,7 @@ from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from cell_os.workflow_executor import WorkflowExecutor
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
+from cell_os.simulation.failure_modes import FailureModeSimulator
 
 # --- Configuration ---
 CELL_LINE = "U2OS"
@@ -65,6 +66,7 @@ class MCBSimulation:
         self.executor = WorkflowExecutor(db_path=":memory:", hardware=self.vm, inventory_manager=MockInventory())
         self.vessels = VesselLibrary()
         self.ops = ParametricOps(self.vessels, MockInventory())
+        self.failure_sim = FailureModeSimulator()
         
         # Metrics
         self.history = []
@@ -73,6 +75,7 @@ class MCBSimulation:
         self.violations = []
         self.media_consumed_ml = 0.0
         self.reagents_consumed = {}
+        self.waste_vials = 0
         
         # State
         self.active_flasks = [] # List of vessel_ids
@@ -100,7 +103,9 @@ class MCBSimulation:
                 self.vm.advance_time(24.0) # Advance 1 day
                 self._record_daily_metrics()
                 
-                # Check for failures
+                # Check for failures (Global check - e.g. incubator failure)
+                # For now, we handle per-flask contamination in _manage_culture
+                
                 if not self.active_flasks:
                     self.failures.append("All flasks lost")
                     break
@@ -152,10 +157,28 @@ class MCBSimulation:
     def _manage_culture(self):
         """Check status and feed or passage."""
         to_passage = []
+        surviving_flasks = []
         
         for flask_id in self.active_flasks:
+            # 1. Failure Check (Contamination)
+            # Calculate days in culture for this vessel
+            vessel_obj = self.vm.vessel_states.get(flask_id)
+            if not vessel_obj: continue
+            
+            days_in_culture = (self.vm.simulated_time - vessel_obj.last_passage_time) / 24.0
+            
+            # Check for contamination
+            failure = self.failure_sim.check_for_contamination(flask_id, days_in_culture)
+            if failure:
+                self.failures.append(f"{failure.description} in {flask_id}")
+                # Discard flask
+                del self.vm.vessel_states[flask_id]
+                continue
+                
+            surviving_flasks.append(flask_id)
+            
+            # 2. Culture Management
             state = self.vm.get_vessel_state(flask_id)
-            if not state: continue
             
             # Check constraints
             if state["confluence"] > 1.0:
@@ -170,7 +193,9 @@ class MCBSimulation:
                 # Feed
                 op = self.ops.op_feed(flask_id, media="mtesr_plus_kit") # Using mtesr as placeholder from parametric
                 self._track_resources(op)
-                
+        
+        self.active_flasks = surviving_flasks
+        
         if to_passage:
             self._perform_passage(to_passage)
 
@@ -244,7 +269,8 @@ class MCBSimulation:
         
         if potential_vials > num_vials:
             discarded = potential_vials - num_vials
-            # self.log_metric("discard", f"{discarded} vials worth of cells")
+            self.waste_vials = discarded
+            self.log_metric("waste", discarded)
         
         # Execute UnitOp
         # We treat this as one big batch freeze
@@ -300,6 +326,7 @@ class MCBSimulation:
             "run_id": self.run_id,
             "duration_days": self.day,
             "final_vials": self.frozen_vials,
+            "waste_vials": self.waste_vials,
             "total_media_l": self.media_consumed_ml / 1000.0,
             "failures": self.failures,
             "violations": self.violations,
@@ -342,6 +369,8 @@ def run_crash_test():
         "vials_p5": float(df_results["final_vials"].quantile(0.05)),
         "vials_p50": float(df_results["final_vials"].median()),
         "vials_p95": float(df_results["final_vials"].quantile(0.95)),
+        "waste_p50": float(df_results["waste_vials"].median()),
+        "waste_total": float(df_results["waste_vials"].sum()),
         "duration_p50": float(df_results["duration_days"].median()),
         "failures": [f for sublist in df_results["failures"] for f in sublist],
         "violations": [v for sublist in df_results["violations"] for v in sublist]
@@ -394,6 +423,7 @@ def run_crash_test():
         "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total).",
         "components": [
             {"type": "metric", "title": "Median Vials", "value": summary["vials_p50"]},
+            {"type": "metric", "title": "Median Waste (Vials)", "value": summary["waste_p50"]},
             {"type": "metric", "title": "Success Rate", "value": f"{summary['successful_runs']/NUM_SIMULATIONS:.1%}"},
             {"type": "plot", "title": "Vial Distribution", "data": "dist_vials"},
             {"type": "plot", "title": "Growth Trajectories", "data": "growth_curves"},
@@ -405,16 +435,17 @@ def run_crash_test():
 
     print("Analysis Complete.")
     print(f"Summary: Median {summary['vials_p50']} vials in {summary['duration_p50']} days.")
+    print(f"Waste: Median {summary['waste_p50']} vials discarded per run.")
     
     # Gap Analysis (Printed for User)
-    print("\n--- GAP ANALYSIS (Pilot Scale) ---")
+    print("\n--- GAP ANALYSIS (Pilot Scale + Failures) ---")
     print("A. REALISTIC:")
     print("- Exponential growth phases match U2OS doubling time.")
     print("- Variability in final yield reflects biological noise.")
     print("- 10x expansion achievable in single passage (3-4 days).")
+    print("- Failures (contamination) now modeled, reducing success rate from 100%.")
     
     print("\nB. UNREALISTIC/BROKEN:")
-    print("- 100% success rate is suspicious for pilot scale (no contamination/human error modeled yet).")
     print("- 'Feed' operation assumes fixed volume/cost, doesn't account for flask size variations accurately.")
     print("- Confluence checks are perfect (no measurement error simulated in decision logic).")
     

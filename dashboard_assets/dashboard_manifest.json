@@ -9,6 +9,11 @@
     },
     {
       "type": "metric",
+      "title": "Median Waste (Vials)",
+      "value": 5.0
+    },
+    {
+      "type": "metric",
       "title": "Success Rate",
       "value": "100.0%"
     },
