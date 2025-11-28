@@ -1,26 +1,41 @@
 {
-  "title": "MCB Crash Test (U2OS) - Pilot Scale",
-  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total).",
+  "title": "MCB Crash Test (U2OS) - Pilot Scale with Failures",
+  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total). Success rate: 99.0%",
   "components": [
     {
       "type": "metric",
-      "title": "Median Vials",
+      "title": "Success Rate",
+      "value": "99.0%"
+    },
+    {
+      "type": "metric",
+      "title": "Contaminated Runs",
+      "value": 5
+    },
+    {
+      "type": "metric",
+      "title": "Failed Runs",
+      "value": 5
+    },
+    {
+      "type": "metric",
+      "title": "Median Vials (Success)",
       "value": 30.0
     },
     {
       "type": "metric",
-      "title": "Median Waste (Vials)",
-      "value": 5.0
-    },
-    {
-      "type": "metric",
-      "title": "Success Rate",
-      "value": "100.0%"
+      "title": "Median Waste Fraction",
+      "value": "14.3%"
     },
     {
       "type": "plot",
       "title": "Vial Distribution",
       "data": "dist_vials"
+    },
+    {
+      "type": "plot",
+      "title": "Waste Distribution",
+      "data": "dist_waste"
     },
     {
       "type": "plot",

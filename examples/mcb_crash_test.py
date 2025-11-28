@@ -76,6 +76,12 @@ class MCBSimulation:
         self.media_consumed_ml = 0.0
         self.reagents_consumed = {}
         self.waste_vials = 0
+        self.waste_cells = 0.0
+        
+        # Failure tracking
+        self.had_contamination = False
+        self.terminal_failure = False
+        self.failed_reason = None
         
         # State
         self.active_flasks = [] # List of vessel_ids
@@ -170,10 +176,17 @@ class MCBSimulation:
             # Check for contamination
             failure = self.failure_sim.check_for_contamination(flask_id, days_in_culture)
             if failure:
-                self.failures.append(f"{failure.description} in {flask_id}")
-                # Discard flask
-                del self.vm.vessel_states[flask_id]
-                continue
+                self.had_contamination = True
+                self.terminal_failure = True
+                self.failed_reason = failure.description
+                self.failures.append(f"TERMINAL: {failure.description} in {flask_id}")
+                # Contamination is terminal - entire batch must be discarded
+                # Clear all flasks
+                for fid in self.active_flasks:
+                    if fid in self.vm.vessel_states:
+                        del self.vm.vessel_states[fid]
+                self.active_flasks = []
+                return  # Exit immediately
                 
             surviving_flasks.append(flask_id)
             
@@ -191,7 +204,7 @@ class MCBSimulation:
                 self.violations.append(f"Stagnation in {flask_id}")
             else:
                 # Feed
-                op = self.ops.op_feed(flask_id, media="mtesr_plus_kit") # Using mtesr as placeholder from parametric
+                op = self.ops.op_feed(flask_id, media="mtesr_plus_kit")
                 self._track_resources(op)
         
         self.active_flasks = surviving_flasks
@@ -268,12 +281,13 @@ class MCBSimulation:
         num_vials = min(potential_vials, TARGET_MCB_VIALS)
         
         if potential_vials > num_vials:
-            discarded = potential_vials - num_vials
-            self.waste_vials = discarded
-            self.log_metric("waste", discarded)
+            discarded_vials = potential_vials - num_vials
+            discarded_cells = discarded_vials * CELLS_PER_MCB_VIAL
+            self.waste_vials = discarded_vials
+            self.waste_cells = discarded_cells
+            self.log_metric("waste", discarded_vials)
         
         # Execute UnitOp
-        # We treat this as one big batch freeze
         op = self.ops.op_freeze(num_vials=num_vials)
         self._track_resources(op)
         
@@ -322,11 +336,22 @@ class MCBSimulation:
             self.media_consumed_ml += 50.0 # Thaw uses more
 
     def _compile_results(self):
+        # Calculate waste fraction
+        final_cells_banked = self.frozen_vials * CELLS_PER_MCB_VIAL
+        total_cells_produced = final_cells_banked + self.waste_cells
+        waste_fraction = self.waste_cells / total_cells_produced if total_cells_produced > 0 else 0.0
+        
         return {
             "run_id": self.run_id,
             "duration_days": self.day,
             "final_vials": self.frozen_vials,
             "waste_vials": self.waste_vials,
+            "waste_cells": self.waste_cells,
+            "waste_vials_equivalent": self.waste_cells / CELLS_PER_MCB_VIAL,
+            "waste_fraction": waste_fraction,
+            "had_contamination": self.had_contamination,
+            "terminal_failure": self.terminal_failure,
+            "failed_reason": self.failed_reason if self.failed_reason else "",
             "total_media_l": self.media_consumed_ml / 1000.0,
             "failures": self.failures,
             "violations": self.violations,
@@ -363,14 +388,24 @@ def run_crash_test():
         df_daily = pd.DataFrame(columns=["run_id", "day", "total_cells"])
     
     # 1. JSON Summary
+    contaminated_runs = len(df_results[df_results["had_contamination"] == True])
+    failed_runs = len(df_results[df_results["terminal_failure"] == True])
+    success_runs = len(df_results[df_results["final_vials"] > 0])
+    
     summary = {
         "total_runs": NUM_SIMULATIONS,
-        "successful_runs": len(df_results[df_results["final_vials"] > 0]),
+        "successful_runs": success_runs,
+        "success_rate": success_runs / NUM_SIMULATIONS,
+        "contaminated_runs": contaminated_runs,
+        "failed_runs": failed_runs,
         "vials_p5": float(df_results["final_vials"].quantile(0.05)),
         "vials_p50": float(df_results["final_vials"].median()),
         "vials_p95": float(df_results["final_vials"].quantile(0.95)),
         "waste_p50": float(df_results["waste_vials"].median()),
         "waste_total": float(df_results["waste_vials"].sum()),
+        "waste_cells_p50": float(df_results["waste_cells"].median()),
+        "waste_vials_eq_p50": float(df_results["waste_vials_equivalent"].median()),
+        "waste_fraction_p50": float(df_results["waste_fraction"].median()),
         "duration_p50": float(df_results["duration_days"].median()),
         "failures": [f for sublist in df_results["failures"] for f in sublist],
         "violations": [v for sublist in df_results["violations"] for v in sublist]
@@ -413,19 +448,33 @@ def run_crash_test():
     plots["growth_curves"] = base64.b64encode(buf.getvalue()).decode('utf-8')
     plt.close()
     
+    # Waste Distribution
+    plt.figure(figsize=(10, 6))
+    plt.hist(df_results["waste_fraction"], bins=30, color='coral', edgecolor='black')
+    plt.title("Distribution of Waste Fraction")
+    plt.xlabel("Waste Fraction (waste_cells / total_cells_produced)")
+    plt.ylabel("Frequency")
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    plots["dist_waste"] = base64.b64encode(buf.getvalue()).decode('utf-8')
+    plt.close()
+    
     # Save plots manifest
     with open(OUTPUT_DIR / "plots_manifest.json", "w") as f:
         json.dump(plots, f)
         
     # 4. Dashboard Manifest
     manifest = {
-        "title": "MCB Crash Test (U2OS) - Pilot Scale",
-        "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total).",
+        "title": "MCB Crash Test (U2OS) - Pilot Scale with Failures",
+        "description": f"Simulation of {NUM_SIMULATIONS} MCB generation runs starting from 3 vendor vials (Target: 30 vials total). Success rate: {summary['success_rate']:.1%}",
         "components": [
-            {"type": "metric", "title": "Median Vials", "value": summary["vials_p50"]},
-            {"type": "metric", "title": "Median Waste (Vials)", "value": summary["waste_p50"]},
-            {"type": "metric", "title": "Success Rate", "value": f"{summary['successful_runs']/NUM_SIMULATIONS:.1%}"},
+            {"type": "metric", "title": "Success Rate", "value": f"{summary['success_rate']:.1%}"},
+            {"type": "metric", "title": "Contaminated Runs", "value": summary["contaminated_runs"]},
+            {"type": "metric", "title": "Failed Runs", "value": summary["failed_runs"]},
+            {"type": "metric", "title": "Median Vials (Success)", "value": summary["vials_p50"]},
+            {"type": "metric", "title": "Median Waste Fraction", "value": f"{summary['waste_fraction_p50']:.1%}"},
             {"type": "plot", "title": "Vial Distribution", "data": "dist_vials"},
+            {"type": "plot", "title": "Waste Distribution", "data": "dist_waste"},
             {"type": "plot", "title": "Growth Trajectories", "data": "growth_curves"},
             {"type": "table", "title": "Run Results", "data": "mcb_run_results.csv"}
         ]
@@ -434,31 +483,39 @@ def run_crash_test():
         json.dump(manifest, f, indent=2)
 
     print("Analysis Complete.")
-    print(f"Summary: Median {summary['vials_p50']} vials in {summary['duration_p50']} days.")
-    print(f"Waste: Median {summary['waste_p50']} vials discarded per run.")
+    print(f"Summary: {success_runs}/{NUM_SIMULATIONS} successful ({summary['success_rate']:.1%})")
+    print(f"  Median: {summary['vials_p50']} vials in {summary['duration_p50']} days")
+    print(f"  Contaminated: {contaminated_runs} runs")
+    print(f"  Failed: {failed_runs} runs")
+    print(f"  Waste: Median {summary['waste_p50']} vials ({summary['waste_fraction_p50']:.1%} of production)")
     
     # Gap Analysis (Printed for User)
-    print("\n--- GAP ANALYSIS (Pilot Scale + Failures) ---")
+    print("\n--- GAP ANALYSIS (Pilot Scale + Real Failures) ---")
     print("A. REALISTIC:")
     print("- Exponential growth phases match U2OS doubling time.")
     print("- Variability in final yield reflects biological noise.")
     print("- 10x expansion achievable in single passage (3-4 days).")
-    print("- Failures (contamination) now modeled, reducing success rate from 100%.")
+    print(f"- Contamination now causes terminal failures: {failed_runs}/{NUM_SIMULATIONS} runs failed.")
+    print(f"- Success rate ({summary['success_rate']:.1%}) reflects real-world MCB production challenges.")
+    print(f"- Waste tracking shows {summary['waste_fraction_p50']:.1%} of cells discarded (realistic for fixed-size banks).")
     
     print("\nB. UNREALISTIC/BROKEN:")
     print("- 'Feed' operation assumes fixed volume/cost, doesn't account for flask size variations accurately.")
     print("- Confluence checks are perfect (no measurement error simulated in decision logic).")
+    print("- Contamination rate may be too high or too low (needs calibration to real data).")
     
     print("\nC. MISSING:")
     print("- QC steps (Mycoplasma, Sterility, Karyotype) before freeze.")
     print("- Inventory stock-outs (MockInventory is infinite).")
     print("- Incubator space constraints (infinite capacity).")
+    print("- Recovery protocols (re-thaw from backup if contamination detected early).")
     
     print("\nD. NEXT STEPS:")
-    print("1. Add QC steps to the workflow definition.")
-    print("2. Implement finite inventory tracking.")
-    print("3. Add variability to seeding efficiency and thaw viability.")
-    print("4. Refine UnitOps to be explicitly vessel-aware (T75 vs T175 costs).")
+    print("1. Calibrate contamination rates against real MCB production data.")
+    print("2. Add QC steps to the workflow definition.")
+    print("3. Implement finite inventory tracking.")
+    print("4. Add variability to seeding efficiency and thaw viability.")
+    print("5. Model recovery protocols (e.g., restart from backup vials).")
 
 if __name__ == "__main__":
     run_crash_test()
