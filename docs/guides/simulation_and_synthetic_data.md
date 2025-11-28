@@ -1,15 +1,24 @@
 # Simulation and Synthetic Data Generation in cell_OS
 
-**Status**: Phase 1 Complete ✅ | Last Updated: 2025-11-28
+**Status**: Phase 1 & 2 Complete ✅ | Last Updated: 2025-11-28
 
 ## Executive Summary
 
-cell_OS now has a **production-ready biological simulation system** via `BiologicalVirtualMachine`. This enables:
+cell_OS now has a **production-ready biological simulation system** fully integrated with the workflow execution engine:
+- ✅ **Phase 1**: `BiologicalVirtualMachine` with realistic cell growth, passage tracking, and dose-response
+- ✅ **Phase 2**: Full integration with `WorkflowExecutor` - drop-in replacement for any hardware
 - Realistic synthetic data generation for ML training and benchmarking
-- Stateful biological modeling (cell growth, passage tracking, dose-response)
+- Stateful biological modeling across complete workflows
 - Multi-vessel experiment simulation with realistic noise profiles
 
-**Quick Start**: See `examples/generate_synthetic_data.py` for ready-to-use data generation scripts.
+**Quick Start**: 
+```python
+from cell_os.workflow_executor import WorkflowExecutor
+from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+
+executor = WorkflowExecutor(hardware=BiologicalVirtualMachine())
+# Now all workflows use biological simulation!
+```
 
 ---
 
@@ -190,67 +199,117 @@ See `examples/generate_synthetic_data.py` for:
 - Passage series tracking
 - Growth curve generation
 
-### **Phase 2: Unified Simulation Framework**
+### **Phase 2: Framework Integration** ✅ **COMPLETE**
 
-Create `src/cell_os/simulation_framework.py`:
+**Status**: Fully integrated with `WorkflowExecutor`
+
+`BiologicalVirtualMachine` is now a **drop-in replacement** for the standard `VirtualMachine`:
+
+**Integration Points**:
+- ✅ Implements complete `HardwareInterface` contract
+- ✅ Works with existing `WorkflowExecutor` via `hardware` parameter
+- ✅ Compatible with all existing UnitOps from `parametric.py`
+- ✅ Automatic state tracking across workflow execution
+- ✅ Realistic biological simulation for all operations
+
+**Usage with WorkflowExecutor**:
+```python
+from cell_os.workflow_executor import WorkflowExecutor
+from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+from cell_os.protocol_resolver import ProtocolResolver
+
+# Initialize with biological simulation
+hardware = BiologicalVirtualMachine(simulation_speed=0.0)
+executor = WorkflowExecutor(hardware=hardware)
+resolver = ProtocolResolver()
+
+# Resolve and execute a real protocol
+unit_ops = resolver.resolve_thaw("HEK293T", "T75")
+execution = executor.create_execution_from_protocol(
+    protocol_name="Thaw HEK293T",
+    cell_line="HEK293T",
+    vessel_id="T75_1",
+    operation_type="thaw",
+    unit_ops=unit_ops
+)
+
+# Execute with biological simulation
+result = executor.execute(execution.execution_id)
+
+# Access simulated biological state
+vessel_state = hardware.get_vessel_state("T75_1")
+print(f"Cell count: {vessel_state['cell_count']:.2e}")
+print(f"Viability: {vessel_state['viability']:.2%}")
+print(f"Passage: P{vessel_state['passage_number']}")
+```
+
+**Data Collection**:
+
+For advanced data collection, use `SimulationExecutor`:
 
 ```python
-class BiologicalSimulator:
-    """
-    Central simulation engine that models:
-    - Cell growth and death
-    - Reagent consumption
-    - Assay readouts (viability, imaging, flow cytometry)
-    - Batch effects and noise
-    """
-    
-    def __init__(self, cell_line_db, inventory):
-        self.cell_line_db = cell_line_db
-        self.inventory = inventory
-        self.vessels = {}  # VesselID -> VesselState
-        self.time = 0.0
-        
-    def execute_unitop(self, unitop: UnitOp) -> Dict[str, Any]:
-        """
-        Simulate a single UnitOp and update world state.
-        Returns synthetic measurement data.
-        """
-        if unitop.operation == "seed":
-            return self._simulate_seed(unitop)
-        elif unitop.operation == "passage":
-            return self._simulate_passage(unitop)
-        elif unitop.operation == "treat":
-            return self._simulate_treatment(unitop)
-        # ... etc
-        
-    def _simulate_treatment(self, unitop: UnitOp) -> Dict[str, Any]:
-        """Simulate compound treatment and generate dose-response data."""
-        vessel = self.vessels[unitop.vessel_id]
-        compound = unitop.parameters["compound"]
-        dose = unitop.parameters["dose_uM"]
-        
-        # Get cell line-specific IC50
-        cell_line = vessel.cell_line
-        ic50 = self._get_ic50(cell_line, compound)
-        
-        # Apply dose-response model
-        viability = self._logistic_model(dose, ic50)
-        viability += np.random.normal(0, 0.05)  # Measurement noise
-        
-        # Update vessel state
-        vessel.viability *= viability
-        
-        return {
-            "viability": viability,
-            "cell_count": vessel.cell_count * viability,
-            "dose_actual": dose * np.random.normal(1.0, 0.02)  # Pipetting error
-        }
+from cell_os.simulation_executor import SimulationExecutor
+
+# Initialize with automatic data collection
+executor = SimulationExecutor(
+    collect_data=True,
+    simulation_speed=0.0
+)
+
+# Execute workflows
+execution = executor.create_execution_from_protocol(...)
+result = executor.execute(execution.execution_id)
+
+# Export collected data
+executor.export_data("results/simulation_data.json")
+executor.export_data("results/simulation_data.csv", format='csv')
+
+# Access vessel states
+states = executor.get_vessel_states()
 ```
 
 **Benefits**:
-- ✅ Single source of truth for simulation
-- ✅ Integrates with WorkflowExecutor
-- ✅ Tracks state across entire workflow
+- ✅ Zero code changes to existing workflows
+- ✅ Instant execution (configurable speed)
+- ✅ Realistic biological outcomes
+- ✅ State persistence across operations
+- ✅ Data export for ML training
+
+**Simulation Mode Flag**:
+
+Control simulation behavior via `WorkflowExecutor` initialization:
+
+```python
+# Real hardware (when available)
+from cell_os.hardware.opentrons import OpentronsInterface
+executor = WorkflowExecutor(hardware=OpentronsInterface())
+
+# Virtual simulation (basic)
+from cell_os.hardware.virtual import VirtualMachine
+executor = WorkflowExecutor(hardware=VirtualMachine())
+
+# Biological simulation (realistic)
+from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+executor = WorkflowExecutor(hardware=BiologicalVirtualMachine())
+```
+
+**UnitOp-Level Simulation**:
+
+The system automatically simulates all UnitOp types:
+- **Liquid handling**: `aspirate`, `dispense`, `mix` - with volume tracking
+- **Incubation**: `incubate` - cells grow based on doubling time
+- **Cell operations**: `count_cells` - realistic counts with noise
+- **Passage**: Custom handler via `passage_cells()` method
+- **Treatment**: Custom handler via `treat_with_compound()` method
+
+To add custom simulation for new UnitOp types, extend the hardware interface:
+
+```python
+class CustomBiologicalVM(BiologicalVirtualMachine):
+    def custom_operation(self, **kwargs):
+        # Implement custom biological simulation
+        pass
+```
 
 ### **Phase 3: Data-Driven Biological Parameters**
 
@@ -325,13 +384,19 @@ HEK293T:
 - `tests/unit/test_biological_virtual_machine.py` (8 tests)
 - `examples/generate_synthetic_data.py`
 
-### **Phase 2: Framework Integration** 🚧 **IN PROGRESS**
-- [ ] Integrate `BiologicalVirtualMachine` with `WorkflowExecutor`
-- [ ] Add simulation mode flag to execution
-- [ ] Create synthetic data collection pipeline
-- [ ] Implement UnitOp-level simulation hooks
+### **Phase 2: Framework Integration** ✅ **COMPLETE**
+- [x] Integrate `BiologicalVirtualMachine` with `WorkflowExecutor`
+- [x] Add simulation mode flag to execution
+- [x] Create synthetic data collection pipeline (`SimulationExecutor`)
+- [x] Implement UnitOp-level simulation hooks
 
-**Target**: Enable full workflow simulation with data collection
+**Deliverables**:
+- `BiologicalVirtualMachine` fully compatible with `WorkflowExecutor`
+- `SimulationExecutor` for automatic data collection
+- Drop-in replacement via `hardware` parameter
+- Examples in `examples/simulate_workflows.py`
+
+**Status**: Production ready - use `BiologicalVirtualMachine` in any workflow
 
 ### **Phase 3: Data-Driven Parameters** 📋 **PLANNED**
 - [ ] Extend `cell_lines.yaml` with simulation parameters
