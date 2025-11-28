@@ -1,0 +1,31 @@
+{
+  "title": "MCB Crash Test (U2OS)",
+  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials.",
+  "components": [
+    {
+      "type": "metric",
+      "title": "Median Vials",
+      "value": 228.0
+    },
+    {
+      "type": "metric",
+      "title": "Success Rate",
+      "value": "100.0%"
+    },
+    {
+      "type": "plot",
+      "title": "Vial Distribution",
+      "data": "dist_vials"
+    },
+    {
+      "type": "plot",
+      "title": "Growth Trajectories",
+      "data": "growth_curves"
+    },
+    {
+      "type": "table",
+      "title": "Run Results",
+      "data": "mcb_run_results.csv"
+    }
+  ]
+}
