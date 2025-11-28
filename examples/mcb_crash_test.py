@@ -235,9 +235,16 @@ class MCBSimulation:
         self.log_metric("passage", len(new_flasks))
 
     def _phase_freeze(self):
-        """Harvest all and freeze."""
+        """Harvest all and freeze target number of vials, discarding excess."""
         total_cells = self._get_total_cells()
-        num_vials = int(total_cells / CELLS_PER_MCB_VIAL)
+        potential_vials = int(total_cells / CELLS_PER_MCB_VIAL)
+        
+        # Cap at target (discard excess)
+        num_vials = min(potential_vials, TARGET_MCB_VIALS)
+        
+        if potential_vials > num_vials:
+            discarded = potential_vials - num_vials
+            # self.log_metric("discard", f"{discarded} vials worth of cells")
         
         # Execute UnitOp
         # We treat this as one big batch freeze

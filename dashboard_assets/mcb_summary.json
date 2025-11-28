@@ -1,9 +1,9 @@
 {
   "total_runs": 500,
   "successful_runs": 500,
-  "vials_p5": 32.0,
-  "vials_p50": 35.0,
-  "vials_p95": 38.0,
+  "vials_p5": 30.0,
+  "vials_p50": 30.0,
+  "vials_p95": 30.0,
   "duration_p50": 4.0,
   "failures": [],
   "violations": []
