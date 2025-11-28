@@ -140,7 +140,7 @@ class WorkflowBuilder:
         self,
         flask_size: str = "flask_t75",
         cell_line: str = "U2OS",
-        target_vials: int = 200,
+        target_vials: int = 10,
         cells_per_vial: int = 1_000_000,
         starting_passage: int = 3,
         include_qc: bool = True,
@@ -150,7 +150,7 @@ class WorkflowBuilder:
 
         Biology intent:
           - Thaw one MCB vial (Passage P)
-          - Expand significantly (P -> P+3 or P+4)
+          - Expand (P -> P+1 or P+2)
           - Harvest and freeze `target_vials`
           - Perform QC
         """
@@ -159,12 +159,14 @@ class WorkflowBuilder:
         # 1. Thaw MCB vial
         process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line))
         
-        # 2. Expansion (simplified as a sequence of passages)
-        # In a real workflow, this would be a loop or graph, but here we list steps
-        # Assuming 3 passages needed for 200x expansion
-        for i in range(3):
-            process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
-            process_ops.append(self.ops.op_passage(flask_size, ratio=5, cell_line=cell_line))
+        # 2. Expansion
+        # For 1->10 vials, we likely just need to grow the thawed flask to confluence
+        # and maybe one passage if yield isn't enough.
+        # A T75 yields ~10e6 cells. 10 vials @ 1e6 = 10e6 cells.
+        # So one T75 is enough. We just feed it until confluent.
+        
+        # We add a feed step to simulate maintenance during growth
+        process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
 
         # 3. Harvest
         process_ops.append(self.ops.op_harvest(flask_size))

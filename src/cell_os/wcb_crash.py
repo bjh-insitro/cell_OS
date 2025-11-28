@@ -26,7 +26,7 @@ from cell_os.simulation.failure_modes import FailureModeSimulator
 class WCBTestConfig:
     """Configuration for WCB crash test simulation."""
     num_simulations: int = 100
-    target_wcb_vials: int = 200
+    target_wcb_vials: int = 10
     cells_per_vial: float = 1e6
     random_seed: Optional[int] = 123
     enable_failures: bool = True
@@ -70,7 +70,7 @@ class MockInventory:
 
 
 class WCBSimulation:
-    """Single WCB simulation run."""
+    """Single WCB simulation run driven by WorkflowBuilder."""
     
     def __init__(self, run_id: int, config: WCBTestConfig, rng: np.random.Generator):
         self.run_id = run_id
@@ -108,36 +108,24 @@ class WCBSimulation:
         self.max_passage = 0
         
     def run(self):
-        """Execute the full WCB workflow."""
+        """Execute the WCB workflow defined by WorkflowBuilder."""
         try:
-            # 1. Thaw 1 MCB vial
-            self._phase_thaw()
+            # 1. Build Workflow
+            from cell_os.workflows import WorkflowBuilder
+            builder = WorkflowBuilder(self.ops)
+            workflow = builder.build_working_cell_bank(
+                target_vials=self.config.target_wcb_vials,
+                cells_per_vial=self.config.cells_per_vial,
+                starting_passage=self.config.starting_mcb_passage,
+                include_qc=self.config.include_qc
+            )
             
-            target_total_cells = self.config.target_wcb_vials * self.config.cells_per_vial
-            
-            # 2. Expansion Loop
-            while self._get_total_cells() < target_total_cells:
-                self.day += 1
-                self.vm.advance_time(24.0)
-                self._record_daily_metrics()
-                
-                if not self.active_flasks:
-                    self.failures.append("All flasks lost")
+            # 2. Execute Ops
+            ops = workflow.processes[0].ops
+            for op in ops:
+                self._execute_op(op)
+                if self.terminal_failure:
                     break
-                    
-                self._manage_culture()
-                
-                if self.day > 60:
-                    self.failures.append("Timeout: Expansion took too long")
-                    break
-            
-            # 3. Freeze
-            if self.active_flasks:
-                self._phase_freeze()
-                
-                # 4. QC (simulated cost/time impact)
-                if self.config.include_qc:
-                    self._perform_qc()
                 
         except Exception as e:
             self.failures.append(f"Exception: {str(e)}")
@@ -146,12 +134,30 @@ class WCBSimulation:
             
         return self._compile_results()
 
+    def _execute_op(self, op):
+        """Map UnitOp to simulation logic."""
+        self._track_resources(op)
+        
+        # Map op type to logic
+        if "Thaw" in op.uo_id:
+            self._phase_thaw()
+        elif "Feed" in op.uo_id:
+            # Feed implies maintenance/growth
+            # We simulate growth until confluence or max time
+            self._phase_grow()
+        elif "Passage" in op.uo_id:
+            # Not expected in 1->10 workflow, but handled if present
+            self._perform_passage(self.active_flasks)
+        elif "Harvest" in op.uo_id:
+            pass # Just a logical step, actual harvest happens at freeze
+        elif "Freeze" in op.uo_id:
+            self._phase_freeze()
+        elif "Myco" in op.uo_id or "Sterility" in op.uo_id:
+            self._perform_qc(op)
+
     def _phase_thaw(self):
         """Thaw 1 MCB vial into T75."""
         flask_id = "Flask_WCB_Start"
-        
-        op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line)
-        self._track_resources(op)
         
         # MCB vial typically has 1e6 cells
         initial_cells = self.rng.normal(1e6, 1e5)
@@ -163,23 +169,34 @@ class WCBSimulation:
         self.max_passage = state.passage_number
         
         self.active_flasks.append(flask_id)
-
-    def _manage_culture(self):
-        """Check status and feed or passage."""
-        to_passage = []
-        surviving_flasks = []
         
-        for flask_id in self.active_flasks:
-            vessel_obj = self.vm.vessel_states.get(flask_id)
-            if not vessel_obj:
-                continue
+    def _phase_grow(self):
+        """Simulate growth period (Feed step)."""
+        # Grow for up to 7 days or until confluent
+        for _ in range(7):
+            self.day += 1
+            self.vm.advance_time(24.0)
+            self._record_daily_metrics()
             
-            # Update max passage
-            if vessel_obj.passage_number > self.max_passage:
-                self.max_passage = vessel_obj.passage_number
+            # Check contamination
+            self._check_contamination()
+            if self.terminal_failure:
+                return
             
-            # Contamination Check
-            if self.failure_sim:
+            # Check confluence
+            ready = True
+            for f in self.active_flasks:
+                state = self.vm.get_vessel_state(f)
+                if state["confluence"] < 0.8:
+                    ready = False
+            
+            if ready:
+                break
+
+    def _check_contamination(self):
+        if self.failure_sim:
+            for flask_id in self.active_flasks:
+                vessel_obj = self.vm.vessel_states.get(flask_id)
                 days_in_culture = (self.vm.simulated_time - vessel_obj.last_passage_time) / 24.0
                 failure = self.failure_sim.check_for_contamination(flask_id, days_in_culture)
                 if failure:
@@ -187,75 +204,33 @@ class WCBSimulation:
                     self.terminal_failure = True
                     self.failed_reason = failure.description
                     self.failures.append(f"TERMINAL: {failure.description} in {flask_id}")
-                    # WCB failure is terminal
                     self.active_flasks = []
                     return
-                
-            surviving_flasks.append(flask_id)
-            
-            state = self.vm.get_vessel_state(flask_id)
-            
-            if state["confluence"] > 1.0:
-                self.violations.append(f"Overconfluence in {flask_id}: {state['confluence']:.2f}")
-            
-            if state["confluence"] > 0.8:
-                to_passage.append(flask_id)
-            elif state["confluence"] < 0.1 and self.day > 5:
-                self.violations.append(f"Stagnation in {flask_id}")
-            else:
-                op = self.ops.op_feed(flask_id, media="mtesr_plus_kit")
-                self._track_resources(op)
-        
-        self.active_flasks = surviving_flasks
-        
-        if to_passage:
-            self._perform_passage(to_passage)
 
     def _perform_passage(self, source_flasks: List[str]):
-        """Passage cells, expanding to more flasks."""
+        """Passage cells (if needed)."""
+        # Simplified passage logic for compatibility
         new_flasks = []
-        
         for source_id in source_flasks:
             state = self.vm.get_vessel_state(source_id)
-            if not state:
-                continue
+            if not state: continue
             
             total_cells = state["cell_count"]
-            viability = state["viability"]
             current_p = state["passage_number"]
             
-            # WCB expansion needs to be aggressive but safe
-            cells_per_flask = 0.5e6
-            num_new_flasks = int(total_cells / cells_per_flask)
-            if num_new_flasks < 1:
-                num_new_flasks = 1
+            # 1:5 split
+            split_ratio = 5
+            cells_per_new_flask = total_cells / split_ratio
             
-            # Cap split ratio to avoid shock
-            if num_new_flasks > 15:
-                num_new_flasks = 15
-            
-            split_ratio = total_cells / (num_new_flasks * cells_per_flask)
-            
-            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line)
-            self._track_resources(op)
-            
-            passage_stress = 0.025
-            new_viability = viability * (1.0 - passage_stress)
-            cells_per_new_flask = total_cells / num_new_flasks
-            
-            for i in range(num_new_flasks):
-                new_id = f"Flask_P{current_p+1}_{self.day}_{i}_{source_id[-3:]}"
+            for i in range(split_ratio):
+                new_id = f"Flask_P{current_p+1}_{self.day}_{i}"
                 self.vm.seed_vessel(new_id, self.config.cell_line, cells_per_new_flask, capacity=2.5e7)
-                new_state = self.vm.vessel_states[new_id]
-                new_state.viability = new_viability
-                new_state.passage_number = current_p + 1
+                self.vm.vessel_states[new_id].passage_number = current_p + 1
                 new_flasks.append(new_id)
                 
-            if source_id in self.vm.vessel_states:
-                del self.vm.vessel_states[source_id]
-            self.active_flasks.remove(source_id)
+            del self.vm.vessel_states[source_id]
             
-        self.active_flasks.extend(new_flasks)
+        self.active_flasks = new_flasks
 
     def _phase_freeze(self):
         """Harvest and freeze WCB vials."""
@@ -270,28 +245,17 @@ class WCBSimulation:
             self.waste_vials = discarded_vials
             self.waste_cells = discarded_cells
         
-        op = self.ops.op_freeze(num_vials=num_vials)
-        self._track_resources(op)
-        
         self.frozen_vials = num_vials
 
-    def _perform_qc(self):
-        """Simulate QC steps and potential failures."""
-        # Mycoplasma
-        op_myco = self.ops.op_mycoplasma_test("WCB_Sample", method="pcr")
-        self._track_resources(op_myco)
-        
-        # Sterility
-        op_ster = self.ops.op_sterility_test("WCB_Sample", duration_days=7)
-        self._track_resources(op_ster)
-        
+    def _perform_qc(self, op):
+        """Simulate QC steps."""
         # Simulate QC failure (low probability)
         if self.failure_sim:
-            # 0.5% chance of QC failure post-freeze
+            # 0.5% chance of QC failure
             if self.rng.random() < 0.005:
                 self.terminal_failure = True
-                self.failed_reason = "QC FAILURE: Sterility positive"
-                self.frozen_vials = 0  # Batch rejected
+                self.failed_reason = f"QC FAILURE: {op.name}"
+                self.frozen_vials = 0
 
     def _get_total_cells(self):
         total = 0

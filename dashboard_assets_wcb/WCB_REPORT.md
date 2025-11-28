@@ -3,19 +3,19 @@
 **Generated**: 2025-11-28
 **Simulation**: 100 Monte Carlo runs
 **Cell Line**: U2OS
-**Target**: 200 vials (from 1 MCB vial)
+**Target**: 10 vials (from 1 MCB vial)
 
 ---
 
 ## Executive Summary
 
-The Working Cell Bank (WCB) simulation has been successfully implemented and validated. It simulates the expansion of a single MCB vial into a large-scale bank (200 vials), tracking passage numbers and including QC steps.
+The Working Cell Bank (WCB) simulation has been successfully implemented and validated. It simulates the expansion of a single MCB vial into a Working Cell Bank (10 vials), tracking passage numbers and including QC steps.
 
 **Results (100 runs)**:
-- **Success Rate**: 92.0%
-- **Median Yield**: 200 vials
-- **Median Duration**: 10.0 days
-- **Max Passage**: P4 (starting from P3)
+- **Success Rate**: 99.0%
+- **Median Yield**: 10 vials
+- **Median Duration**: 6.0 days
+- **Max Passage**: P3 (starting from P3)
 
 ---
 
@@ -23,9 +23,9 @@ The Working Cell Bank (WCB) simulation has been successfully implemented and val
 
 ### 1. WCB Workflow Logic
 - **Input**: 1 MCB vial (Passage 3)
-- **Expansion**: Thaw -> Expand -> Harvest -> Freeze
-- **Target**: 200 vials @ 1e6 cells/vial
-- **Passage Tracking**: Increments with each passage (P3 -> P4 -> P5...)
+- **Expansion**: Thaw -> Grow -> Harvest -> Freeze
+- **Target**: 10 vials @ 1e6 cells/vial
+- **Passage Tracking**: Increments with each passage
 
 ### 2. QC Integration
 - **Mycoplasma Test**: PCR-based
@@ -41,7 +41,7 @@ The Working Cell Bank (WCB) simulation has been successfully implemented and val
 
 ## Code Structure
 
-- `src/cell_os/wcb_crash.py`: Core simulation library
+- `src/cell_os/wcb_crash.py`: Core simulation library (uses `WorkflowBuilder`)
 - `examples/wcb_crash_test.py`: Runner script
 - `dashboard_assets_wcb/`: Output directory for assets
 
@@ -49,4 +49,4 @@ The Working Cell Bank (WCB) simulation has been successfully implemented and val
 
 1. **Dashboard Integration**: Create a WCB-specific dashboard page.
 2. **Senescence Modeling**: Implement growth rate slowing at high passages.
-3. **Cost Analysis**: Track media consumption for large-scale expansion.
+3. **Cost Analysis**: Track media consumption.

@@ -13,7 +13,7 @@ def main():
     """Run WCB crash test with default production settings."""
     config = WCBTestConfig(
         num_simulations=100,
-        target_wcb_vials=200,
+        target_wcb_vials=10,
         cells_per_vial=1e6,
         random_seed=None,
         enable_failures=True,
@@ -42,17 +42,17 @@ def main():
     # Gap Analysis
     print("\n--- GAP ANALYSIS (WCB Scale) ---")
     print("A. REALISTIC:")
-    print("- Expansion from 1 vial to 200 vials requires multiple passages.")
-    print("- Passage number accumulation tracked (starts at P3, ends ~P6-P7).")
+    print("- Expansion from 1 vial to 10 vials (1 passage).")
+    print("- Passage number accumulation tracked (starts at P3, ends P3 or P4).")
     print("- QC steps (Mycoplasma, Sterility) included in workflow.")
     
     print("\nB. UNREALISTIC/BROKEN:")
     print("- Senescence risk not fully modeled (U2OS is immortal, but primary cells would fade).")
-    print("- Incubator capacity for 200 vials worth of flasks not constrained.")
+    print("- Incubator capacity for 10 vials worth of flasks not constrained.")
     
     print("\nC. MISSING:")
     print("- Genetic drift analysis at higher passages.")
-    print("- Detailed cost analysis of large-scale media consumption.")
+    print("- Detailed cost analysis of media consumption.")
 
 
 if __name__ == "__main__":
