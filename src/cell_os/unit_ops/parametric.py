@@ -556,7 +556,10 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         # NOTE: Using 10mL pipette cost for these manual steps
         pipette_10ml_cost = self.inv.get_price("pipette_10ml")
         
-        steps.append(self.op_aspirate("source", 10.0, material_cost_usd=pipette_10ml_cost))
+        # Calculate total volume (assuming 1mL per vial + 10% overage/dead volume)
+        total_vol = num_vials * 1.1
+        
+        steps.append(self.op_aspirate("pooled_vessels", total_vol, material_cost_usd=pipette_10ml_cost))
         steps.append(self.op_dispense("vials", 1.0 * num_vials, freezing_media, material_cost_usd=pipette_10ml_cost))
         
         # --- NEW CODE: ACCOUNT FOR FINAL VIALS AND MEDIA COST ---

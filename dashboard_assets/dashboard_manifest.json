@@ -1,11 +1,11 @@
 {
-  "title": "MCB Crash Test (U2OS)",
-  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials.",
+  "title": "MCB Crash Test (U2OS) - Pilot Scale",
+  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total).",
   "components": [
     {
       "type": "metric",
       "title": "Median Vials",
-      "value": 228.0
+      "value": 35.0
     },
     {
       "type": "metric",

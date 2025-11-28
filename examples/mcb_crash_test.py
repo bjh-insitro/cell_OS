@@ -29,8 +29,8 @@ from cell_os.unit_ops.base import VesselLibrary
 # --- Configuration ---
 CELL_LINE = "U2OS"
 STARTING_VIALS = 3
-TARGET_MCB_VIALS = 200
-CELLS_PER_MCB_VIAL = 5e6  # 5 million cells per vial
+TARGET_MCB_VIALS = 30  # 10 vials per starting vial (User Requirement)
+CELLS_PER_MCB_VIAL = 1e6  # 1 million cells per vial (User Requirement)
 TARGET_TOTAL_CELLS = TARGET_MCB_VIALS * CELLS_PER_MCB_VIAL
 NUM_SIMULATIONS = 500
 OUTPUT_DIR = Path("dashboard_assets")
@@ -127,6 +127,10 @@ class MCBSimulation:
 
     def _phase_thaw(self):
         """Thaw 3 vendor vials into T75 flasks."""
+        # Use WorkflowBuilder logic implicitly by replicating the steps
+        # Ideally we would use WorkflowBuilder().build_master_cell_bank() but that returns a static definition
+        # We need to execute it dynamically for 3 parallel lines.
+        
         for i in range(STARTING_VIALS):
             vial_id = f"Vendor_Vial_{i+1}"
             flask_id = f"Flask_P1_{i+1}"
@@ -138,7 +142,7 @@ class MCBSimulation:
             self._track_resources(op)
             
             # Biological Update (State Simulation)
-            # Assume vendor vial has ~1M cells, 90% viability
+            # Assume vendor vial has ~1M cells, 90% viability (matches WorkflowBuilder default)
             initial_cells = np.random.normal(1e6, 1e5)
             self.vm.seed_vessel(flask_id, CELL_LINE, initial_cells, capacity=2.5e7) # T75 capacity approx
             self.active_flasks.append(flask_id)
@@ -187,8 +191,8 @@ class MCBSimulation:
             if num_new_flasks < 1: num_new_flasks = 1
             
             # Constraint check
-            if num_new_flasks > 10: 
-                num_new_flasks = 10
+            if num_new_flasks > 20: 
+                num_new_flasks = 20
                 self.violations.append(f"Split ratio capped for {source_id}")
             
             split_ratio = total_cells / (num_new_flasks * cells_per_flask)
@@ -379,8 +383,8 @@ def run_crash_test():
         
     # 4. Dashboard Manifest
     manifest = {
-        "title": "MCB Crash Test (U2OS)",
-        "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials.",
+        "title": "MCB Crash Test (U2OS) - Pilot Scale",
+        "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total).",
         "components": [
             {"type": "metric", "title": "Median Vials", "value": summary["vials_p50"]},
             {"type": "metric", "title": "Success Rate", "value": f"{summary['successful_runs']/NUM_SIMULATIONS:.1%}"},
@@ -396,25 +400,27 @@ def run_crash_test():
     print(f"Summary: Median {summary['vials_p50']} vials in {summary['duration_p50']} days.")
     
     # Gap Analysis (Printed for User)
-    print("\n--- GAP ANALYSIS ---")
+    print("\n--- GAP ANALYSIS (Pilot Scale) ---")
     print("A. REALISTIC:")
     print("- Exponential growth phases match U2OS doubling time.")
     print("- Variability in final yield reflects biological noise.")
+    print("- 10x expansion achievable in single passage (3-4 days).")
     
     print("\nB. UNREALISTIC/BROKEN:")
+    print("- 100% success rate is suspicious for pilot scale (no contamination/human error modeled yet).")
     print("- 'Feed' operation assumes fixed volume/cost, doesn't account for flask size variations accurately.")
-    print("- No specific 'flask size' logic in UnitOps (generic 'flask' vs T75/T175).")
-    print("- Confluence checks are perfect (no measurement error simulated in decision logic, though simulated in data).")
+    print("- Confluence checks are perfect (no measurement error simulated in decision logic).")
     
     print("\nC. MISSING:")
+    print("- QC steps (Mycoplasma, Sterility, Karyotype) before freeze.")
     print("- Inventory stock-outs (MockInventory is infinite).")
     print("- Incubator space constraints (infinite capacity).")
-    print("- Shift scheduling (operations happen instantly at start of day).")
     
     print("\nD. NEXT STEPS:")
-    print("1. Implement finite inventory tracking.")
-    print("2. Add 'Shift Scheduler' to constrain daily operations.")
-    print("3. Refine UnitOps to be explicitly vessel-aware (T75 vs T175 costs).")
+    print("1. Add QC steps to the workflow definition.")
+    print("2. Implement finite inventory tracking.")
+    print("3. Add variability to seeding efficiency and thaw viability.")
+    print("4. Refine UnitOps to be explicitly vessel-aware (T75 vs T175 costs).")
 
 if __name__ == "__main__":
     run_crash_test()
