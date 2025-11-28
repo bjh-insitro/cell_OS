@@ -39,6 +39,9 @@ class VesselLibrary:
             )
 
     def get(self, v_id: str) -> Vessel:
+        if v_id is None:
+            return Vessel("None", "Generic Vessel", 0.0, 1.0, 0.0, 1.0)
+
         if v_id not in self.vessels:
             # Fallback for aliases used in code but not in YAML
             if "plate_6well" in v_id: 

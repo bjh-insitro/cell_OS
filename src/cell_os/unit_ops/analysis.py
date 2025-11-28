@@ -9,12 +9,14 @@ class AnalysisOps:
         self.vessels = vessel_lib
         self.inv = pricing_inv
 
-    def op_count(self, vessel_id: str) -> UnitOp:
+    def op_count(self, vessel_id: str, method: str = "manual", material_cost_usd: float = None) -> UnitOp:
         inst_cost = 0.5  # Quick count
+        
+        mat_cost = material_cost_usd if material_cost_usd is not None else 0.5
         
         return UnitOp(
             uo_id=f"Count_{vessel_id}",
-            name=f"Count Cells ({vessel_id})",
+            name=f"Count Cells ({vessel_id}) - {method}",
             layer="atomic",
             category="analysis",
             time_score=5,
@@ -23,7 +25,7 @@ class AnalysisOps:
             failure_risk=0,
             staff_attention=1,
             instrument="Cell Counter",
-            material_cost_usd=0.5,  # Slide/chamber
+            material_cost_usd=mat_cost,  # Slide/chamber
             instrument_cost_usd=inst_cost,
             sub_steps=[]
         )
