@@ -7,7 +7,7 @@ into a single access interface.
 from typing import List, Optional
 from .base import VesselLibrary
 from .liquid_handling import LiquidHandlingOps
-from .incubation import IncubationOps
+from .protocols import ProtocolOps
 from .imaging import ImagingOps
 from .analysis import AnalysisOps
 
@@ -19,550 +19,610 @@ except ImportError:
     CELL_LINE_DB_AVAILABLE = False
 
 
-class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
-    """
-    Unified interface for all parametric operations.
+class ParametricOps(LiquidHandlingOps, ProtocolOps, ImagingOps, AnalysisOps):
+    """Unified interface for all parametric operations.
     Inherits from all specialized operation classes.
     """
     def __init__(self, vessel_lib: VesselLibrary, pricing_inv):
         self.vessels = vessel_lib
         self.inv = pricing_inv
-        self.resolver = None
         
         # Initialize parent classes
         LiquidHandlingOps.__init__(self, vessel_lib, pricing_inv)
-        IncubationOps.__init__(self, vessel_lib, pricing_inv)
+        ProtocolOps.__init__(self, vessel_lib, pricing_inv)
         ImagingOps.__init__(self, vessel_lib, pricing_inv)
         AnalysisOps.__init__(self, vessel_lib, pricing_inv)
-        # NOTE: ProtocolsOps is not initialized here yet, as per previous discussion,
-        # but the methods are implemented here for the time being.
-
+        
+        # Resolver for protocol selection (optional)
+        self.resolver = None
+    
     def get_cell_line_defaults(self, cell_line: str):
-        if not CELL_LINE_DB_AVAILABLE:
-            raise ValueError("Cell line database not available.")
-        return get_optimal_methods(cell_line)
+        """Get default parameters for a cell line from database."""
+        if CELL_LINE_DB_AVAILABLE:
+            return get_cell_line_profile(cell_line)
+        return {}
 
-    # --- NEW COMPOSITE UO: DETAILED THAW PROTOCOL (MCB) ---
+    # --- TIER 1: CORE CELL CULTURE OPERATIONS ---
+    
     def op_thaw(self, vessel_id: str, cell_line: str = None):
-        v = self.vessels.get(vessel_id)
+        """Thaw cells from cryovial into culture vessel."""
+        from .base import UnitOp
+        
         steps = []
         
-        from .base import UnitOp # Ensure UnitOp is in scope
-        
-        # Helper to retrieve price for a single disposable item (Unit Cost)
+        # Helper to get single item cost
         def get_single_cost(item_id: str):
-            """Retrieves the price for one logical unit (unit_price_usd)."""
-            return self.inv.get_price(item_id) if item_id else 0.0
-
-        # --- LOGIC START ---
+            # Retrieves the price for one logical unit (unit_price_usd).
+            return self.inv.get_price(item_id)
         
-        # Try to get config from resolver
-        config = None
-        if self.resolver and cell_line:
-            try:
-                config = self.resolver.get_thaw_config(cell_line, vessel_id)
-            except (ValueError, KeyError):
-                pass  # Fall back to legacy
+        # 1. Coating (if needed for iPSC or other adherent lines)
+        coating_needed = False
+        coating_agents = []
         
-        # Determine parameters from config or legacy
-        if config:
-            coating_needed = config["coating_required"]
-            coating_reagent = config["coating_reagent"]
-            media = config["media"]
-            volumes = config["volumes_mL"]
-        else:
-            # Legacy path
-            coating_needed = False
-            coating_reagent = "laminin_521"
-            media = "mtesr_plus_kit"
-            volumes = {
-                "media_aliquot": 40.0,
-                "pre_warm": v.max_volume_ml,  # Legacy used max_volume_ml
-                "wash_aliquot": 5.0,
-                "wash_vial": 1.0,
-                "resuspend": 1.0,
-                "transfer": 1.0
-            }
-            
-            # Legacy coating check
-            if cell_line:
-                if self.resolver:
-                    profile = self.resolver.get_cell_line_profile(cell_line)
-                    if profile and getattr(profile, 'coating_required', False):
-                        coating_needed = True
-                        reagent_attr = getattr(profile, "coating_reagent", getattr(profile, "coating", coating_reagent))
-                        if reagent_attr and reagent_attr != "none":
-                            coating_reagent = reagent_attr
-                elif CELL_LINE_DB_AVAILABLE:
-                    profile = get_cell_line_profile(cell_line)
-                    if profile and getattr(profile, 'coating_required', False):
-                        coating_needed = True
-                        reagent_attr = getattr(profile, "coating_reagent", getattr(profile, "coating", coating_reagent))
-                        if reagent_attr and reagent_attr != "none":
-                            coating_reagent = reagent_attr
+        if cell_line:
+            if cell_line.lower() in ["ipsc", "hesc"]:
+                coating_needed = True
+                coating_agents = ["matrigel"]
+            elif cell_line.lower() in ["u2os", "hek293t", "hela"]:
+                coating_needed = False  # These lines don't require coating
         
-        # 0. Conditional Coating
         if coating_needed:
-            steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, coating_reagent))
-            steps.append(self.op_incubate(vessel_id, 60))
-            steps.append(self.op_aspirate(vessel_id, v.coating_volume_ml))
+            steps.append(self.op_coat(vessel_id, agents=coating_agents))
         
-        # 1. Aliquot Required Media into 50mL Tube (using 25mL pipette)
-        media_vol = volumes["media_aliquot"]
-        tube_50ml_cost = get_single_cost("tube_50ml_conical")
-        pipette_25ml_cost = get_single_cost("pipette_25ml")
+        # 2. Warm media
+        media = "mtesr_plus_kit" if cell_line and cell_line.lower() in ["ipsc", "hesc"] else "dmem_10fbs"
+        media_vol_ml = 10.0  # Standard thaw volume
         
-        steps.append(UnitOp(
-            uo_id="Aliquot_Media_50mL", 
-            name=f"Aliquot {media_vol}mL Media to 50mL Tube",
-            material_cost_usd=tube_50ml_cost + pipette_25ml_cost + self.op_dispense(None, media_vol, media).material_cost_usd,
-            instrument="Manual", sub_steps=[]))
-            
-        # 2. Put Media into Flask (Pre-warm)
-        pre_warm_vol = volumes["pre_warm"]
-        pipette_10ml_cost = get_single_cost("pipette_10ml")
-        steps.append(self.op_dispense(vessel_id, pre_warm_vol, media, 
-                                      material_cost_usd=pipette_10ml_cost,
-                                      name="Pre-warm Media in Flask")) 
+        # 3. Thaw vial in water bath
+        # Simulated as incubation step
+        steps.append(self.op_incubate(
+            vessel_id="water_bath",
+            duration_min=2.0,
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=0.5
+        ))
         
-        # 3. Aliquot Wash/Dilution Media into 15mL Tube
-        wash_vol = volumes["wash_aliquot"]
-        tube_15ml_cost = get_single_cost("tube_15ml_conical")
-        pipette_5ml_cost = get_single_cost("pipette_5ml")
+        # 4. Transfer cells to vessel
+        # Using pipette for cell transfer
+        pipette_cost = get_single_cost("pipette_2ml")
+        steps.append(self.op_aspirate(
+            vessel_id="cryovial",
+            volume_ml=1.0,
+            material_cost_usd=pipette_cost
+        ))
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=1.0,
+            reagent=media,
+            material_cost_usd=pipette_cost
+        ))
         
-        steps.append(UnitOp(
-            uo_id="Aliquot_Wash_15mL", 
-            name=f"Aliquot {wash_vol}mL Wash Media to 15mL Tube",
-            material_cost_usd=tube_15ml_cost + pipette_5ml_cost + self.op_dispense(None, wash_vol, media).material_cost_usd,
-            instrument="Manual", sub_steps=[]))
+        # 5. Add media to vessel
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=media_vol_ml,
+            reagent=media,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
         
-        # 4. Thaw Vial (Incubate)
-        steps.append(self.op_incubate("vial", 2, 37.0))
+        # 6. Incubate overnight
+        steps.append(self.op_incubate(
+            vessel_id=vessel_id,
+            duration_min=960.0,  # 16 hours
+            temp_c=37.0,
+            co2_percent=5.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=2.0
+        ))
         
-        # 5. Transfer Vial Contents (using 1mL tip) and Wash
-        tip_1ml_cost = get_single_cost("tip_1000ul_lr")
+        # 7. Media change (remove DMSO)
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=media_vol_ml,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=media_vol_ml,
+            reagent=media,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
         
-        steps.append(UnitOp(
-            uo_id="Transfer_Vial_Contents", 
-            name="Transfer Vial Contents to 15mL Tube",
-            material_cost_usd=tip_1ml_cost,
-            instrument="Manual", sub_steps=[]))
-        
-        wash_vial_vol = volumes["wash_vial"]
-        pipette_2ml_cost = get_single_cost("pipette_2ml")
-        steps.append(self.op_dispense(None, wash_vial_vol, media, 
-                                      material_cost_usd=pipette_2ml_cost, 
-                                      name=f"Wash Vial with {wash_vial_vol}mL Media (2mL Pipette)"))
-        
-        # 6. Centrifuge
-        steps.append(self.op_centrifuge("tube_15ml_conical", 5))
-
-        # 7. Aspirate Supernatant
-        tip_200ul_cost = get_single_cost("tip_200ul_lr")
-        steps.append(self.op_aspirate(None, wash_vol, 
-                                      material_cost_usd=pipette_2ml_cost + tip_200ul_cost, 
-                                      name="Aspirate Supernatant (2mL Pipette + Tip)"))
-        
-        # 8. Re-suspend & Sample for Count
-        resuspend_vol = volumes["resuspend"]
-        steps.append(self.op_dispense(None, resuspend_vol, media, 
-                                      material_cost_usd=pipette_2ml_cost, 
-                                      name=f"Resuspend in {resuspend_vol}mL Media"))
-        
-        steps.append(self.op_count("tube_15ml_conical", method="nc-202",
-                                   material_cost_usd=get_single_cost("tip_200ul_lr")))
-        
-        # 9. Transfer the required amount of cells into the required vessel
-        transfer_vol = volumes["transfer"]
-        steps.append(self.op_dispense(vessel_id, transfer_vol, "cell_suspension", 
-                                      name=f"Transfer {transfer_vol}mL Cells to Flask (2mL Pipette)"))
-        
-        # 10. Final Incubate
-        steps.append(self.op_incubate(vessel_id, 960))
-        
-        # --- FINAL COST CALCULATION ---
+        # Calculate total costs
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
-        # Use vessel's consumable_id to look up price, fallback to vessel_id for backwards compatibility
-        pricing_key = v.consumable_id if v.consumable_id else vessel_id
-        vessel_cost = self.inv.get_price(pricing_key) 
         
-        from .base import UnitOp # This is redundant but kept for robustness 
+        # Add cryovial cost
+        cryovial_cost = get_single_cost("cryovial_1_8ml")
+        
+        # Add media cost (rough estimate: $0.50/mL for mTeSR, $0.05/mL for DMEM)
+        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
+        media_cost = media_vol_ml * 2 * media_cost_per_ml  # 2x media changes
+        
         return UnitOp(
             uo_id=f"Thaw_{vessel_id}",
-            name=f"Thaw into {v.name} (Coating: {'Yes' if coating_needed else 'No'})", 
-            layer="cell_prep",
+            name=f"Thaw cells into {vessel_id}" + (f" ({cell_line})" if cell_line else ""),
+            layer="culture",
             category="culture",
-            time_score=1,
-            cost_score=1,
-            automation_fit=1,
-            failure_risk=1,
-            staff_attention=1,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat + vessel_cost, 
-            instrument_cost_usd=total_inst + 2.8,
+            time_score=1000,  # ~16 hours
+            cost_score=2,
+            automation_fit=2,
+            failure_risk=3,
+            staff_attention=2,
+            instrument="Biosafety Cabinet + Incubator",
+            material_cost_usd=total_mat + cryovial_cost + media_cost,
+            instrument_cost_usd=total_inst + 10.0,
             sub_steps=steps
         )
 
-    # --- op_passage (Cell Expansion) ---
     def op_passage(self, vessel_id: str, ratio: int = 1, dissociation_method: str = "accutase", cell_line: str = None):
-        # 1. Try to resolve using ProtocolResolver if available
-        if self.resolver:
-            target_cell_line = cell_line
-            if not target_cell_line:
-                # Heuristic inference
-                if dissociation_method == "trypsin":
-                    target_cell_line = "HEK293"
-                elif dissociation_method == "accutase":
-                    target_cell_line = "iPSC"
-            
-            if target_cell_line:
-                # Infer vessel type
-                parts = vessel_id.split('_')
-                if len(parts) > 1 and parts[0] == "flask":
-                     vessel_type = parts[1].upper()
-                else:
-                     vessel_type = parts[-1].upper()
-                
-                try:
-                    ops = self.resolver.resolve_passage_protocol(target_cell_line, vessel_type)
-                    
-                    # Append Seeding Step (Legacy op_passage includes seeding)
-                    growth_media = self.resolver.cell_lines[target_cell_line]["growth_media"]
-                    v = self.vessels.get(vessel_id)
-                    pipette_10ml_cost = self.inv.get_price("pipette_10ml")
-                    
-                    sub_steps = ops[:]
-                    sub_steps.append(self.op_dispense(vessel_id, v.working_volume_ml, growth_media, material_cost_usd=pipette_10ml_cost))
-                    
-                    total_mat = sum(s.material_cost_usd for s in sub_steps)
-                    total_inst = sum(s.instrument_cost_usd for s in sub_steps)
-                    
-                    from .base import UnitOp
-                    return UnitOp(
-                        uo_id=f"Passage_{target_cell_line}_{vessel_id}",
-                        name=f"Passage {target_cell_line} in {vessel_id} (Resolved)",
-                        layer="cell_prep",
-                        category="culture",
-                        time_score=1,
-                        cost_score=1,
-                        automation_fit=1,
-                        failure_risk=1,
-                        staff_attention=1,
-                        instrument="Biosafety Cabinet",
-                        material_cost_usd=total_mat,
-                        instrument_cost_usd=total_inst + 2.8,
-                        sub_steps=sub_steps
-                    )
-                except Exception:
-                    # Fallback to legacy if resolution fails (e.g. unknown cell line)
-                    pass
-
-        # Legacy implementation
-        v = self.vessels.get(vessel_id)
+        """Passage cells (dissociate, split, re-plate)."""
+        from .base import UnitOp
+        
         steps = []
         
-        from .base import UnitOp # Added for consistency
+        # Helper to get single item cost
+        def get_single_cost(item_id: str):
+            return self.inv.get_price(item_id)
         
-        # NOTE: Using 10mL pipette cost for these manual steps
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
-
-        # 1. Aspirate
-        steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
+        # Auto-select dissociation method based on cell line
+        if cell_line and dissociation_method == "accutase":
+            if cell_line.lower() in ["ipsc", "hesc"]:
+                dissociation_method = "accutase"  # Gentle for stem cells
+            elif cell_line.lower() in ["u2os", "hek293t", "hela"]:
+                dissociation_method = "trypsin"  # Standard for adherent lines
         
-        if dissociation_method == "scraping":
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "dpbs", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-            needs_quench = False
-        elif dissociation_method == "versene":
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "dpbs", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.2, "versene_edta", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_incubate(vessel_id, 10))
-            needs_quench = False
-        else:
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "dpbs", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-            
-            enzyme = "accutase"
-            if dissociation_method == "tryple": enzyme = "tryple_express"
-            elif dissociation_method == "trypsin": enzyme = "trypsin_edta"
-            
-            # NOTE: Assuming a 5mL pipette for enzyme dispense
-            pipette_5ml_cost = self.inv.get_price("pipette_5ml")
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.2, enzyme, material_cost_usd=pipette_5ml_cost))
-            steps.append(self.op_incubate(vessel_id, 5))
-            needs_quench = True
-            
-        if needs_quench:
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "mtesr_plus_kit", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml * 1.2, material_cost_usd=pipette_10ml_cost))
-        elif dissociation_method != "scraping":
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml * 0.2, material_cost_usd=pipette_10ml_cost))
-            
-        steps.append(self.op_centrifuge(vessel_id, 5))
+        # 1. Aspirate old media
+        media_vol = 10.0  # Assume 10mL for T75
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=media_vol,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
         
-        if needs_quench:
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml * 1.2, material_cost_usd=pipette_10ml_cost))
-        else:
-            steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-            
-        steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "mtesr_plus_kit", material_cost_usd=pipette_10ml_cost))
+        # 2. Wash with PBS
+        pbs_vol = 5.0
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=pbs_vol,
+            reagent="pbs",
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=pbs_vol,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
         
-        # FIX: Replaced self.ops.op_count with self.op_count
-        steps.append(self.op_count(vessel_id)) # Note: Assumes op_count handles its own consumables (e.g. hemocytometer/tip)
-        steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "mtesr_plus_kit", material_cost_usd=pipette_10ml_cost))
+        # 3. Add dissociation reagent
+        dissociation_vol = 2.0
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=dissociation_vol,
+            reagent=dissociation_method,
+            material_cost_usd=get_single_cost("pipette_5ml")
+        ))
         
+        # 4. Incubate
+        incubation_time = 5.0 if dissociation_method == "trypsin" else 10.0
+        steps.append(self.op_incubate(
+            vessel_id=vessel_id,
+            duration_min=incubation_time,
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=0.5
+        ))
+        
+        # 5. Neutralize/collect cells
+        media = "mtesr_plus_kit" if cell_line and cell_line.lower() in ["ipsc", "hesc"] else "dmem_10fbs"
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=8.0,
+            reagent=media,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
+        
+        # 6. Triturate (mix)
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=10.0,
+            material_cost_usd=get_single_cost("pipette_10ml")
+        ))
+        
+        # 7. Dispense into new vessel(s)
+        # If ratio > 1, split into multiple vessels
+        vol_per_vessel = 10.0 / ratio
+        for i in range(ratio):
+            new_vessel_id = f"{vessel_id}_passage_{i+1}" if ratio > 1 else f"{vessel_id}_passaged"
+            steps.append(self.op_dispense(
+                vessel_id=new_vessel_id,
+                volume_ml=vol_per_vessel,
+                reagent=media,
+                material_cost_usd=get_single_cost("pipette_10ml")
+            ))
+        
+        # 8. Add fresh media to each new vessel
+        for i in range(ratio):
+            new_vessel_id = f"{vessel_id}_passage_{i+1}" if ratio > 1 else f"{vessel_id}_passaged"
+            steps.append(self.op_dispense(
+                vessel_id=new_vessel_id,
+                volume_ml=media_vol - vol_per_vessel,
+                reagent=media,
+                material_cost_usd=get_single_cost("pipette_10ml")
+            ))
+        
+        # Calculate total costs
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
+        # Add reagent costs
+        dissociation_cost = 2.0 * (2.0 if dissociation_method == "accutase" else 0.5)  # Accutase is more expensive
+        pbs_cost = pbs_vol * 0.01  # PBS is cheap
+        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
+        media_cost = media_vol * ratio * media_cost_per_ml
+        
+        # Add flask cost for new vessels
+        flask_cost = get_single_cost("flask_T75") * ratio
+        
         return UnitOp(
-            uo_id=f"Passage_{dissociation_method}_{vessel_id}",
-            name=f"Passage {v.name} ({dissociation_method}) (Granular)",
-            layer="cell_prep",
+            uo_id=f"Passage_{vessel_id}_1:{ratio}",
+            name=f"Passage {vessel_id} (1:{ratio} split, {dissociation_method})" + (f" [{cell_line}]" if cell_line else ""),
+            layer="culture",
             category="culture",
-            time_score=1,
-            cost_score=2 if dissociation_method == "accutase" else 1,
-            automation_fit=1,
-            failure_risk=1,
-            staff_attention=1,
+            time_score=30,
+            cost_score=2,
+            automation_fit=3,
+            failure_risk=2,
+            staff_attention=3,
             instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat,
-            instrument_cost_usd=total_inst + 2.8,
+            material_cost_usd=total_mat + dissociation_cost + pbs_cost + media_cost + flask_cost,
+            instrument_cost_usd=total_inst + 5.0,
             sub_steps=steps
         )
 
-    # --- op_feed (Cell Feeding) ---
     def op_feed(self, vessel_id: str, media: str = None, cell_line: str = None, supplements: List[str] = None):
-        v = self.vessels.get(vessel_id)
+        """Feed cells (media change)."""
+        from .base import UnitOp
+        
         steps = []
         
-        from .base import UnitOp # Added for consistency
+        # Auto-select media based on cell line
+        if media is None and cell_line:
+            if cell_line.lower() in ["ipsc", "hesc"]:
+                media = "mtesr_plus_kit"
+            else:
+                media = "dmem_10fbs"
+        elif media is None:
+            media = "dmem_10fbs"  # Default
         
-        # Try to get config from resolver
-        config = None
-        if self.resolver and cell_line:
-            try:
-                config = self.resolver.get_feed_config(cell_line, vessel_id)
-            except (ValueError, KeyError):
-                pass  # Fall back to legacy
+        media_vol = 10.0  # Standard for T75
         
-        # Determine parameters from config or arguments/legacy
-        if config:
-            feed_media = media if media else config["media"]
-            feed_volume = config["volume_ml"]
-        else:
-            # Legacy path
-            feed_media = media if media else "mtesr_plus_kit"
-            feed_volume = v.working_volume_ml
+        # 1. Aspirate old media
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=media_vol,
+            material_cost_usd=self.inv.get_price("pipette_10ml")
+        ))
         
-        # NOTE: Using 10mL pipette cost for these manual steps
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
+        # 2. Add fresh media
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=media_vol,
+            reagent=media,
+            material_cost_usd=self.inv.get_price("pipette_10ml")
+        ))
         
-        steps.append(self.op_aspirate(vessel_id, feed_volume, material_cost_usd=pipette_10ml_cost))
-        steps.append(self.op_dispense(vessel_id, feed_media, feed_volume, material_cost_usd=pipette_10ml_cost))
-        
+        # 3. Add supplements if specified
         if supplements:
             for supp in supplements:
-                # Assuming tips are used for small supplement volumes
-                tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
-                steps.append(self.op_dispense(vessel_id, feed_volume * 0.001, supp, material_cost_usd=tip_200ul_cost))
-                
+                steps.append(self.op_dispense(
+                    vessel_id=vessel_id,
+                    volume_ml=0.1,  # Small volume for supplements
+                    reagent=supp,
+                    material_cost_usd=self.inv.get_price("pipette_200ul")
+                ))
+        
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
+        # Add media cost
+        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
+        media_cost = media_vol * media_cost_per_ml
+        
+        # Add supplement costs
+        supplement_cost = len(supplements) * 5.0 if supplements else 0.0
+        
         return UnitOp(
-            uo_id=f"Feed_{vessel_id}_{feed_media}",
-            name=f"Feed {v.name} ({feed_media}) (Granular)",
-            layer="cell_prep",
+            uo_id=f"Feed_{vessel_id}",
+            name=f"Feed {vessel_id} ({media})" + (f" + {len(supplements)} supplements" if supplements else ""),
+            layer="culture",
             category="culture",
-            time_score=0,
-            cost_score=0,
-            automation_fit=1,
-            failure_risk=0,
-            staff_attention=0,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat,
-            instrument_cost_usd=total_inst + 0.5,
-            sub_steps=steps
-        )
-
-    # --- op_transduce (Lentivirus Addition) ---
-    def op_transduce(self, vessel_id: str, virus_vol_ul: float = 10.0, method: str = "passive"):
-        v = self.vessels.get(vessel_id)
-        steps = []
-        
-        from .base import UnitOp # Added for consistency
-        
-        # NOTE: Using 10mL pipette cost for media handling
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
-        tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
-        
-        steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-        steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "mtesr_plus_kit", material_cost_usd=pipette_10ml_cost))
-        # Virus dispense uses a dedicated tip
-        steps.append(self.op_dispense(vessel_id, virus_vol_ul / 1000.0, "lentivirus", material_cost_usd=tip_200ul_cost))
-        
-        if method == "spinoculation":
-            steps.append(self.op_centrifuge(vessel_id, 90, 1000))
-            steps.append(self.op_incubate(vessel_id, 240))
-        else:
-            steps.append(self.op_incubate(vessel_id, 960))
-            
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        return UnitOp(
-            uo_id=f"Transduce_{method}_{vessel_id}",
-            name=f"Transduce in {v.name} ({method}) (Granular)",
-            layer="genetic_supply_chain",
-            category="perturbation",
-            time_score=1,
+            time_score=10,
             cost_score=1,
-            automation_fit=1,
-            failure_risk=2,
-            staff_attention=2,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat,
-            instrument_cost_usd=total_inst + 2.8,
-            sub_steps=steps
-        )
-
-    def op_coat(self, vessel_id: str, agents: List[str] = None):
-        if agents is None: agents = ["laminin_521"]
-        v = self.vessels.get(vessel_id)
-        steps = []
-        
-        from .base import UnitOp # Added for consistency
-        
-        # NOTE: Using 10mL pipette cost for these manual steps
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
-        tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
-        
-        steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, "dpbs", material_cost_usd=pipette_10ml_cost))
-        for agent in agents:
-            steps.append(self.op_dispense(vessel_id, v.coating_volume_ml * 0.00001, agent, material_cost_usd=tip_200ul_cost))
-            
-        steps.append(self.op_incubate(vessel_id, 60))
-        steps.append(self.op_aspirate(vessel_id, v.coating_volume_ml, material_cost_usd=pipette_10ml_cost))
-        
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        return UnitOp(
-            uo_id=f"Coat_{vessel_id}_{'_'.join(agents)}",
-            name=f"Coat {v.name} with {', '.join(agents)} (Granular)",
-            layer="cell_prep",
-            category="culture",
-            time_score=1,
-            cost_score=1,
-            automation_fit=1,
-            failure_risk=0,
-            staff_attention=1,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat,
-            instrument_cost_usd=total_inst + 2.8,
-            sub_steps=steps
-        )
-
-    def op_transfect(self, vessel_id: str, method: str = "pei"):
-        v = self.vessels.get(vessel_id)
-        steps = []
-        
-        from .base import UnitOp # Added for consistency
-        
-        # NOTE: Using 10mL pipette cost for media handling
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
-        tip_200ul_cost = self.inv.get_price("tip_200ul_lr")
-        
-        if method == "pei":
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "dmem_high_glucose", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.1, "fbs", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_dispense(vessel_id, 0.0001, "pei_transfection", material_cost_usd=tip_200ul_cost))
-            steps.append(self.op_incubate("tube", 15))
-            steps.append(self.op_incubate(vessel_id, 960))
-        else:
-            # Simplified fallback for other methods
-            steps.append(self.op_dispense(vessel_id, v.working_volume_ml, "optimem", material_cost_usd=pipette_10ml_cost))
-            steps.append(self.op_dispense(vessel_id, 0.001, method, material_cost_usd=tip_200ul_cost))
-            steps.append(self.op_incubate(vessel_id, 240))
-            
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        return UnitOp(
-            uo_id=f"Transfect_{method}_{vessel_id}",
-            name=f"Transfect {v.name} ({method}) (Granular)",
-            layer="genetic_supply_chain",
-            category="perturbation",
-            time_score=1,
-            cost_score=1,
-            automation_fit=1,
-            failure_risk=2,
-            staff_attention=2,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat,
-            instrument_cost_usd=total_inst + 3.0,
-            sub_steps=steps
-        )
-
-    def op_harvest(self, vessel_id: str, dissociation_method: str = "accutase"):
-        v = self.vessels.get(vessel_id)
-        steps = []
-        
-        from .base import UnitOp # Added for consistency
-        
-        # NOTE: Using 10mL pipette cost for these manual steps
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
-        
-        steps.append(self.op_aspirate(vessel_id, v.working_volume_ml, material_cost_usd=pipette_10ml_cost))
-        
-        # FIX: Ensure the correct enzyme is used based on dissociation_method argument
-        if dissociation_method == "trypsin":
-             enzyme_reagent = "trypsin_edta"
-        else:
-             enzyme_reagent = "accutase"
-             
-        # NOTE: Assuming a 5mL pipette for enzyme dispense
-        pipette_5ml_cost = self.inv.get_price("pipette_5ml")
-        steps.append(self.op_dispense(vessel_id, v.working_volume_ml * 0.2, enzyme_reagent, material_cost_usd=pipette_5ml_cost))
-        steps.append(self.op_incubate(vessel_id, 5))
-        steps.append(self.op_aspirate(vessel_id, v.working_volume_ml * 0.2, material_cost_usd=pipette_10ml_cost))
-        
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        return UnitOp(
-            uo_id=f"Harvest_{dissociation_method}_{vessel_id}",
-            name=f"Harvest from {v.name} ({dissociation_method}) (Granular)",
-            layer="cell_prep",
-            category="culture",
-            time_score=1,
-            cost_score=1,
-            automation_fit=1,
+            automation_fit=4,
             failure_risk=1,
             staff_attention=1,
             instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat,
+            material_cost_usd=total_mat + media_cost + supplement_cost,
             instrument_cost_usd=total_inst + 2.0,
             sub_steps=steps
         )
 
-    def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor"):
+    def op_transduce(self, vessel_id: str, virus_vol_ul: float = 10.0, method: str = "passive"):
+        """Transduce cells with viral vector."""
+        from .base import UnitOp
+        
         steps = []
         
-        from .base import UnitOp # Added for consistency
+        # 1. Add virus to media
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=virus_vol_ul / 1000.0,
+            reagent="lentivirus",
+            material_cost_usd=self.inv.get_price("pipette_200ul")
+        ))
         
-        # NOTE: Using 10mL pipette cost for these manual steps
-        pipette_10ml_cost = self.inv.get_price("pipette_10ml")
+        # 2. If spinoculation, centrifuge
+        if method == "spinoculation":
+            steps.append(self.op_centrifuge(
+                vessel_id=vessel_id,
+                duration_min=90.0,
+                speed_rpm=1000,
+                temp_c=32.0,
+                material_cost_usd=0.0,
+                instrument_cost_usd=5.0
+            ))
+        
+        # 3. Incubate
+        incubation_time = 240.0 if method == "passive" else 120.0  # 4h passive, 2h spinoculation
+        steps.append(self.op_incubate(
+            vessel_id=vessel_id,
+            duration_min=incubation_time,
+            temp_c=37.0,
+            co2_percent=5.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=2.0
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        # Virus is expensive
+        virus_cost = virus_vol_ul * 10.0  # $10/µL estimate
+        
+        return UnitOp(
+            uo_id=f"Transduce_{vessel_id}_{method}",
+            name=f"Transduce {vessel_id} ({method}, {virus_vol_ul}µL virus)",
+            layer="genetic_modification",
+            category="transduction",
+            time_score=240 if method == "passive" else 210,
+            cost_score=4,
+            automation_fit=2,
+            failure_risk=3,
+            staff_attention=2,
+            instrument="Biosafety Cabinet" + (" + Centrifuge" if method == "spinoculation" else ""),
+            material_cost_usd=total_mat + virus_cost,
+            instrument_cost_usd=total_inst,
+            sub_steps=steps
+        )
+
+    def op_coat(self, vessel_id: str, agents: List[str] = None):
+        """Coat vessel with ECM or other agents."""
+        from .base import UnitOp
+        
+        if agents is None:
+            agents = ["matrigel"]
+        
+        steps = []
+        
+        coating_vol = 2.0  # mL
+        
+        for agent in agents:
+            # 1. Add coating agent
+            steps.append(self.op_dispense(
+                vessel_id=vessel_id,
+                volume_ml=coating_vol,
+                reagent=agent,
+                material_cost_usd=self.inv.get_price("pipette_5ml")
+            ))
+        
+        # 2. Incubate
+        steps.append(self.op_incubate(
+            vessel_id=vessel_id,
+            duration_min=60.0,
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=1.0
+        ))
+        
+        # 3. Aspirate coating solution
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=coating_vol,
+            material_cost_usd=self.inv.get_price("pipette_5ml")
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        # Coating agents are expensive (especially Matrigel)
+        coating_cost = sum(50.0 if agent == "matrigel" else 5.0 for agent in agents)
+        
+        return UnitOp(
+            uo_id=f"Coat_{vessel_id}_{'_'.join(agents)}",
+            name=f"Coat {vessel_id} with {', '.join(agents)}",
+            layer="preparation",
+            category="coating",
+            time_score=70,
+            cost_score=3,
+            automation_fit=3,
+            failure_risk=1,
+            staff_attention=1,
+            instrument="Biosafety Cabinet + Incubator",
+            material_cost_usd=total_mat + coating_cost,
+            instrument_cost_usd=total_inst,
+            sub_steps=steps
+        )
+
+    def op_transfect(self, vessel_id: str, method: str = "pei"):
+        """Transfect cells with plasmid DNA."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # 1. Prepare transfection complex
+        # (simplified - real protocol has multiple steps)
+        steps.append(self.op_dispense(
+            vessel_id="tube_15ml",
+            volume_ml=1.0,
+            reagent="opti_mem",
+            material_cost_usd=self.inv.get_price("tube_15ml_conical")
+        ))
+        
+        # 2. Add DNA
+        steps.append(self.op_dispense(
+            vessel_id="tube_15ml",
+            volume_ml=0.01,
+            reagent="plasmid_dna",
+            material_cost_usd=self.inv.get_price("pipette_200ul")
+        ))
+        
+        # 3. Add transfection reagent
+        reagent = method.lower()  # pei, lipofectamine, etc.
+        steps.append(self.op_dispense(
+            vessel_id="tube_15ml",
+            volume_ml=0.05,
+            reagent=reagent,
+            material_cost_usd=self.inv.get_price("pipette_200ul")
+        ))
+        
+        # 4. Incubate complex
+        steps.append(self.op_incubate(
+            vessel_id="tube_15ml",
+            duration_min=20.0,
+            temp_c=25.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=0.5
+        ))
+        
+        # 5. Add to cells
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=1.0,
+            reagent="transfection_complex",
+            material_cost_usd=self.inv.get_price("pipette_2ml")
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        # Reagent costs
+        reagent_cost = 10.0 if method == "pei" else 50.0  # Lipofectamine is expensive
+        dna_cost = 20.0  # Plasmid prep cost
+        
+        return UnitOp(
+            uo_id=f"Transfect_{vessel_id}_{method}",
+            name=f"Transfect {vessel_id} ({method})",
+            layer="genetic_modification",
+            category="transfection",
+            time_score=40,
+            cost_score=3,
+            automation_fit=2,
+            failure_risk=3,
+            staff_attention=3,
+            instrument="Biosafety Cabinet",
+            material_cost_usd=total_mat + reagent_cost + dna_cost,
+            instrument_cost_usd=total_inst + 2.0,
+            sub_steps=steps
+        )
+
+    def op_harvest(self, vessel_id: str, dissociation_method: str = "accutase"):
+        """Harvest cells for freezing or analysis."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # Similar to passage but collect into tube instead of re-plating
+        
+        # 1. Aspirate media
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=10.0,
+            material_cost_usd=self.inv.get_price("pipette_10ml")
+        ))
+        
+        # 2. Wash with PBS
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=5.0,
+            reagent="pbs",
+            material_cost_usd=self.inv.get_price("pipette_10ml")
+        ))
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=5.0,
+            material_cost_usd=self.inv.get_price("pipette_10ml")
+        ))
+        
+        # 3. Add dissociation reagent
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=2.0,
+            reagent=dissociation_method,
+            material_cost_usd=self.inv.get_price("pipette_5ml")
+        ))
+        
+        # 4. Incubate
+        steps.append(self.op_incubate(
+            vessel_id=vessel_id,
+            duration_min=10.0,
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=0.5
+        ))
+        
+        # 5. Collect cells into tube
+        steps.append(self.op_aspirate(
+            vessel_id=vessel_id,
+            volume_ml=2.0,
+            material_cost_usd=self.inv.get_price("tube_50ml_conical")
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        dissociation_cost = 2.0 * (2.0 if dissociation_method == "accutase" else 0.5)
+        
+        return UnitOp(
+            uo_id=f"Harvest_{vessel_id}",
+            name=f"Harvest cells from {vessel_id} ({dissociation_method})",
+            layer="culture",
+            category="harvest",
+            time_score=20,
+            cost_score=1,
+            automation_fit=3,
+            failure_risk=2,
+            staff_attention=2,
+            instrument="Biosafety Cabinet",
+            material_cost_usd=total_mat + dissociation_cost,
+            instrument_cost_usd=total_inst + 3.0,
+            sub_steps=steps
+        )
+
+    def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor"):
+        """Freeze cells into cryovials."""
+        from .base import UnitOp
+        
+        steps = []
         
         # Calculate total volume (assuming 1mL per vial + 10% overage/dead volume)
         total_vol = num_vials * 1.1
         
-        steps.append(self.op_aspirate("pooled_vessels", total_vol, material_cost_usd=pipette_10ml_cost))
-        steps.append(self.op_dispense("vials", 1.0 * num_vials, freezing_media, material_cost_usd=pipette_10ml_cost))
+        steps.append(self.op_aspirate("pooled_vessels", total_vol, material_cost_usd=self.inv.get_price("pipette_10ml")))
+        steps.append(self.op_dispense("vials", 1.0 * num_vials, freezing_media, material_cost_usd=self.inv.get_price("pipette_10ml")))
         
-        # --- NEW CODE: ACCOUNT FOR FINAL VIALS AND MEDIA COST ---
+        # Account for final vials and media cost
         vial_cost = self.inv.get_price("cryovial_1_8ml") * num_vials
         
         total_mat = sum(s.material_cost_usd for s in steps)
@@ -581,5 +641,266 @@ class ParametricOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
             instrument="Biosafety Cabinet",
             material_cost_usd=total_mat + vial_cost,
             instrument_cost_usd=total_inst + 5.0,
+            sub_steps=steps
+        )
+
+    # --- TIER 2: QC OPERATIONS ---
+    
+    def op_mycoplasma_test(self, sample_id: str, method: str = "pcr"):
+        """Test for mycoplasma contamination."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # 1. Collect sample
+        steps.append(self.op_aspirate(
+            vessel_id=sample_id,
+            volume_ml=1.0,
+            material_cost_usd=self.inv.get_price("tube_15ml_conical")
+        ))
+        
+        # 2. Process based on method
+        if method == "pcr":
+            # DNA extraction
+            steps.append(self.op_incubate(
+                vessel_id="tube_15ml",
+                duration_min=30.0,
+                temp_c=95.0,
+                material_cost_usd=5.0,  # DNA extraction kit
+                instrument_cost_usd=1.0
+            ))
+            
+            # PCR
+            steps.append(self.op_incubate(
+                vessel_id="pcr_plate",
+                duration_min=120.0,
+                temp_c=60.0,
+                material_cost_usd=10.0,  # PCR reagents
+                instrument_cost_usd=5.0
+            ))
+            
+            test_duration = 180  # 3 hours
+            test_cost = 25.0
+            
+        elif method == "culture":
+            # Culture-based detection (slower but cheaper)
+            steps.append(self.op_incubate(
+                vessel_id="culture_plate",
+                duration_min=10080.0,  # 7 days
+                temp_c=37.0,
+                material_cost_usd=15.0,
+                instrument_cost_usd=10.0
+            ))
+            
+            test_duration = 10080  # 7 days
+            test_cost = 30.0
+        
+        else:  # luminescence or other rapid methods
+            steps.append(self.op_incubate(
+                vessel_id="assay_plate",
+                duration_min=60.0,
+                temp_c=37.0,
+                material_cost_usd=50.0,  # Commercial kit
+                instrument_cost_usd=10.0
+            ))
+            
+            test_duration = 90  # 1.5 hours
+            test_cost = 75.0
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        return UnitOp(
+            uo_id=f"MycoTest_{sample_id}_{method}",
+            name=f"Mycoplasma Test ({method}) - {sample_id}",
+            layer="qc",
+            category="contamination_test",
+            time_score=test_duration,
+            cost_score=3,
+            automation_fit=4,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="PCR Machine" if method == "pcr" else "Incubator + Plate Reader",
+            material_cost_usd=total_mat + test_cost,
+            instrument_cost_usd=total_inst,
+            sub_steps=steps
+        )
+    
+    def op_sterility_test(self, sample_id: str, duration_days: int = 7):
+        """Test for bacterial/fungal contamination."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # 1. Collect sample
+        steps.append(self.op_aspirate(
+            vessel_id=sample_id,
+            volume_ml=5.0,
+            material_cost_usd=self.inv.get_price("tube_15ml_conical")
+        ))
+        
+        # 2. Inoculate culture media
+        steps.append(self.op_dispense(
+            vessel_id="culture_bottle",
+            volume_ml=5.0,
+            reagent="tryptic_soy_broth",
+            material_cost_usd=5.0
+        ))
+        
+        # 3. Incubate
+        steps.append(self.op_incubate(
+            vessel_id="culture_bottle",
+            duration_min=duration_days * 1440.0,  # Convert days to minutes
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=2.0 * duration_days
+        ))
+        
+        # 4. Visual inspection + optional plating
+        steps.append(self.op_incubate(
+            vessel_id="agar_plate",
+            duration_min=2880.0,  # 2 days
+            temp_c=37.0,
+            material_cost_usd=3.0,
+            instrument_cost_usd=1.0
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        return UnitOp(
+            uo_id=f"SterilityTest_{sample_id}_{duration_days}d",
+            name=f"Sterility Test ({duration_days} days) - {sample_id}",
+            layer="qc",
+            category="contamination_test",
+            time_score=duration_days * 1440 + 2880,
+            cost_score=2,
+            automation_fit=2,
+            failure_risk=1,
+            staff_attention=1,
+            instrument="Incubator",
+            material_cost_usd=total_mat + 15.0,
+            instrument_cost_usd=total_inst,
+            sub_steps=steps
+        )
+    
+    def op_karyotype(self, sample_id: str, method: str = "g_banding"):
+        """Karyotype analysis for chromosomal abnormalities."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # 1. Harvest cells in metaphase
+        # Add colcemid to arrest in metaphase
+        steps.append(self.op_dispense(
+            vessel_id=sample_id,
+            volume_ml=0.1,
+            reagent="colcemid",
+            material_cost_usd=5.0
+        ))
+        
+        steps.append(self.op_incubate(
+            vessel_id=sample_id,
+            duration_min=120.0,  # 2 hours
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=1.0
+        ))
+        
+        # 2. Harvest and fix
+        steps.append(self.op_aspirate(
+            vessel_id=sample_id,
+            volume_ml=5.0,
+            material_cost_usd=self.inv.get_price("tube_15ml_conical")
+        ))
+        
+        # 3. Process based on method
+        if method == "g_banding":
+            # Traditional G-banding
+            # Slide preparation, staining, imaging
+            test_duration = 2880  # 2 days
+            test_cost = 200.0  # Labor-intensive
+            
+        elif method == "fish":
+            # FISH for specific chromosomes
+            test_duration = 1440  # 1 day
+            test_cost = 300.0  # Expensive probes
+            
+        else:  # "array_cgh" or other molecular methods
+            test_duration = 4320  # 3 days
+            test_cost = 500.0  # High-throughput
+        
+        steps.append(self.op_incubate(
+            vessel_id="slide",
+            duration_min=test_duration,
+            temp_c=25.0,
+            material_cost_usd=test_cost,
+            instrument_cost_usd=50.0
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        return UnitOp(
+            uo_id=f"Karyotype_{sample_id}_{method}",
+            name=f"Karyotype ({method}) - {sample_id}",
+            layer="qc",
+            category="genetic_analysis",
+            time_score=test_duration + 120,
+            cost_score=4,
+            automation_fit=1,
+            failure_risk=2,
+            staff_attention=4,
+            instrument="Microscope" if method == "g_banding" else "Array Scanner",
+            material_cost_usd=total_mat,
+            instrument_cost_usd=total_inst,
+            sub_steps=steps
+        )
+    
+    def op_endotoxin_test(self, sample_id: str):
+        """Test for endotoxin contamination (LAL assay)."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # 1. Collect sample
+        steps.append(self.op_aspirate(
+            vessel_id=sample_id,
+            volume_ml=0.1,
+            material_cost_usd=self.inv.get_price("tube_15ml_conical")
+        ))
+        
+        # 2. LAL assay
+        steps.append(self.op_dispense(
+            vessel_id="assay_plate",
+            volume_ml=0.1,
+            reagent="lal_reagent",
+            material_cost_usd=25.0  # LAL reagent is expensive
+        ))
+        
+        steps.append(self.op_incubate(
+            vessel_id="assay_plate",
+            duration_min=60.0,
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=5.0
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        return UnitOp(
+            uo_id=f"EndotoxinTest_{sample_id}",
+            name=f"Endotoxin Test (LAL) - {sample_id}",
+            layer="qc",
+            category="contamination_test",
+            time_score=90,
+            cost_score=2,
+            automation_fit=4,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Plate Reader",
+            material_cost_usd=total_mat,
+            instrument_cost_usd=total_inst,
             sub_steps=steps
         )

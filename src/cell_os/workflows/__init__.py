@@ -72,6 +72,7 @@ class WorkflowBuilder:
         cell_line: str = "U2OS",
         target_vials: int = 10,
         cells_per_vial: int = 1_000_000,
+        include_qc: bool = True,
     ) -> Workflow:
         """
         Master Cell Bank (MCB) Production.
@@ -81,6 +82,7 @@ class WorkflowBuilder:
           - Seed 1e6 cells into a T75
           - Grow to confluence
           - Harvest and freeze `target_vials` vials at `cells_per_vial` each
+          - Perform QC tests (mycoplasma, sterility) if include_qc=True
           - Discard remaining cells
         """
         process_ops: List[UnitOp] = []
@@ -117,6 +119,18 @@ class WorkflowBuilder:
 
         # Freeze the master bank vials
         process_ops.append(self.ops.op_freeze(num_vials=target_vials))
+
+        # 4. QC Tests (if enabled)
+        if include_qc:
+            # Mycoplasma test (PCR-based, 3 hours)
+            process_ops.append(self.ops.op_mycoplasma_test(f"{flask_size}_sample", method="pcr"))
+            
+            # Sterility test (7 days)
+            process_ops.append(self.ops.op_sterility_test(f"{flask_size}_sample", duration_days=7))
+            
+            # Karyotype for stem cells
+            if cell_line.lower() in ["ipsc", "hesc"]:
+                process_ops.append(self.ops.op_karyotype(f"{flask_size}_sample", method="g_banding"))
 
         return Workflow("Master Cell Bank (MCB) Production", [
             Process("Cell Banking & Expansion", process_ops)
