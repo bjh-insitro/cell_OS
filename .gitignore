@@ -39,3 +39,4 @@ results/experiment_history.csv
 .DS_Store
 __pycache__/
 data/raw/crispick_guides.csv
+results/
