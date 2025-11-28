@@ -5,6 +5,7 @@ Advanced simulation capabilities for cell_OS:
 - Spatial effects (plate edge effects, temperature gradients)
 - Multi-assay support (flow, imaging, qPCR, ELISA, Western)
 - Failure modes (contamination, equipment failures)
+- Experimental design validation (power analysis, batch detection)
 """
 
 from .spatial_effects import (
@@ -26,6 +27,20 @@ from .multi_assay import (
     WesternBlotResult
 )
 
+from .failure_modes import (
+    FailureModeSimulator,
+    FailureType,
+    ContaminationType,
+    FailureEvent
+)
+
+from .design_validation import (
+    ExperimentalDesignValidator,
+    PowerAnalysisResult,
+    BatchConfoundingResult,
+    ReplicationResult
+)
+
 __all__ = [
     # Spatial effects
     'SpatialEffectsSimulator',
@@ -43,4 +58,16 @@ __all__ = [
     'qPCRResult',
     'ELISAResult',
     'WesternBlotResult',
+    
+    # Failure modes
+    'FailureModeSimulator',
+    'FailureType',
+    'ContaminationType',
+    'FailureEvent',
+    
+    # Design validation
+    'ExperimentalDesignValidator',
+    'PowerAnalysisResult',
+    'BatchConfoundingResult',
+    'ReplicationResult',
 ]
