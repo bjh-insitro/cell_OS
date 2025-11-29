@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from cell_os.simulation import TRUE_IC50, HILL_SLOPES, logistic_viability
+from cell_os.legacy_simulation import TRUE_IC50, HILL_SLOPES, logistic_viability
 
 def plot_simulation_results(csv_path: str, output_dir: str = "results/figures"):
     """
