@@ -26,6 +26,7 @@ from datetime import datetime
 from cell_os.autonomous_executor import AutonomousExecutor, ExperimentProposal, ExperimentResult
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from cell_os.job_queue import JobPriority
+from cell_os.campaign_db import CampaignDatabase, Campaign, CampaignIteration, Experiment
 
 
 @dataclass
@@ -169,137 +170,165 @@ class AutonomousCampaign:
     ):
         self.config = config
         self.executor = executor or AutonomousExecutor(
-            hardware=BiologicalVirtualMachine(simulation_speed=0.0)
+            hardware=BiologicalVirtualMachine()
         )
         self.learner = SimpleLearner()
+        self.iteration = 0
+        self.history: List[ExperimentResult] = []
+        self.total_cost = 0.0
         
-        # Setup output directory
+        # Initialize database
+        self.db = CampaignDatabase()
+        
+        # Create output directory
         self.output_dir = Path(config.output_dir) / config.campaign_id
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Campaign state
-        self.start_time = datetime.now()
-        self.total_experiments = 0
-        self.total_cost = 0.0
-    
+        # Save config
+        with open(self.output_dir / "config.yaml", "w") as f:
+            yaml.dump(asdict(config), f)
+
     def run(self):
         """Run the autonomous campaign."""
-        print(f"\n{'='*60}")
-        print(f"Starting Autonomous Campaign: {self.config.campaign_id}")
-        print(f"{'='*60}")
-        print(f"Max iterations: {self.config.max_iterations}")
-        print(f"Batch size: {self.config.batch_size}")
-        print(f"Cell lines: {', '.join(self.config.cell_lines)}")
-        print(f"Compounds: {', '.join(self.config.compounds)}")
-        print(f"Assay: {self.config.assay_type}")
-        print(f"{'='*60}\n")
+        logger.info(f"Starting campaign {self.config.campaign_id}")
         
-        while not self.learner.check_convergence(self.config):
-            # 1. Propose experiments
-            print(f"\n--- Proposing Experiments (Iteration {self.learner.iteration + 1}) ---")
-            proposals = self.learner.propose_experiments(
-                n=self.config.batch_size,
-                config=self.config
-            )
-            
-            print(f"Proposed {len(proposals)} experiments:")
-            for p in proposals:
-                print(f"  - {p.cell_line} + {p.compound} @ {p.dose:.3f} uM")
-            
-            # 2. Execute experiments
-            print(f"\n--- Executing Experiments ---")
-            start_exec = time.time()
-            results = self.executor.execute_batch(
-                proposals,
-                priority=JobPriority.HIGH,
-                wait=True,
-                timeout=300.0
-            )
-            exec_time = time.time() - start_exec
-            
-            print(f"Executed {len(results)} experiments in {exec_time:.1f}s")
-            
-            # 3. Update model
-            self.learner.update(results)
-            
-            # 4. Track progress
-            self.total_experiments += len(results)
-            
-            # 5. Save checkpoint
-            self._save_checkpoint(results)
-            
-            # 6. Check budget
-            if self.total_cost > self.config.initial_budget:
-                print(f"\n⚠️  Budget exceeded: ${self.total_cost:.2f} > ${self.config.initial_budget:.2f}")
-                break
+        # Create campaign in DB
+        self.db.create_campaign(Campaign(
+            campaign_id=self.config.campaign_id,
+            campaign_type="autonomous",
+            goal="optimization",
+            status="running",
+            config=asdict(self.config),
+            start_date=datetime.now().isoformat()
+        ))
         
-        # Campaign complete
-        self._finalize_campaign()
-    
+        start_time = time.time()
+        
+        try:
+            while self.iteration < self.config.max_iterations:
+                self.iteration += 1
+                logger.info(f"Iteration {self.iteration}/{self.config.max_iterations}")
+                
+                # 1. Propose experiments
+                proposals = self.learner.propose_experiments(
+                    self.config.batch_size,
+                    self.config
+                )
+                logger.info(f"Proposed {len(proposals)} experiments")
+                
+                # 2. Execute experiments
+                results = self.executor.execute_batch(
+                    proposals,
+                    priority=JobPriority.NORMAL,
+                    wait=True
+                )
+                logger.info(f"Completed {len(results)} experiments")
+                
+                # 3. Update model
+                self.learner.update(results)
+                self.history.extend(results)
+                
+                # 4. Check convergence
+                if self.learner.check_convergence(self.config):
+                    logger.info("Convergence reached!")
+                    break
+                
+                # 5. Save checkpoint
+                self._save_checkpoint(results)
+                
+        except KeyboardInterrupt:
+            logger.warning("Campaign interrupted by user")
+            self.db.update_campaign_status(self.config.campaign_id, "cancelled")
+        except Exception as e:
+            logger.error(f"Campaign failed: {e}")
+            self.db.update_campaign_status(self.config.campaign_id, "failed")
+            raise
+        finally:
+            self._finalize_campaign()
+            duration = time.time() - start_time
+            logger.info(f"Campaign finished in {duration:.2f}s")
+            self.executor.shutdown()
+
     def _save_checkpoint(self, results: List[ExperimentResult]):
         """Save campaign checkpoint."""
-        checkpoint_path = self.output_dir / f"checkpoint_iter_{self.learner.iteration}.json"
-        
+        # Save to JSON (legacy backup)
         checkpoint = {
-            "campaign_id": self.config.campaign_id,
-            "iteration": self.learner.iteration,
+            "iteration": self.iteration,
             "timestamp": datetime.now().isoformat(),
-            "total_experiments": self.total_experiments,
             "results": [r.to_dict() for r in results],
+            "total_experiments": len(self.history),
             "queue_stats": self.executor.get_queue_stats()
         }
         
+        checkpoint_path = self.output_dir / f"checkpoint_iter_{self.iteration:03d}.json"
         with open(checkpoint_path, "w") as f:
             json.dump(checkpoint, f, indent=2)
+            
+        # Save to Database
+        self.db.add_iteration(CampaignIteration(
+            campaign_id=self.config.campaign_id,
+            iteration_number=self.iteration,
+            results=[r.to_dict() for r in results],
+            metrics={
+                "total_experiments": len(self.history),
+                "queue_stats": self.executor.get_queue_stats()
+            }
+        ))
         
-        print(f"Checkpoint saved: {checkpoint_path}")
-    
+        # Save individual experiments to DB
+        for res in results:
+            exp_id = res.execution_id or f"exp_{self.config.campaign_id}_{self.iteration}_{res.proposal_id}"
+            
+            # Create experiment record if it doesn't exist
+            # (In a real system, Executor would create this, but we do it here for now)
+            try:
+                self.db.create_experiment(Experiment(
+                    experiment_id=exp_id,
+                    campaign_id=self.config.campaign_id,
+                    experiment_type=res.assay_type,
+                    cell_line_id=res.cell_line,
+                    status=res.status,
+                    metadata=res.metadata
+                ))
+            except Exception:
+                pass # Ignore if already exists
+            
+            # Link to campaign
+            self.db.link_experiment_to_campaign(
+                self.config.campaign_id,
+                exp_id,
+                iteration_number=self.iteration
+            )
+
     def _finalize_campaign(self):
         """Finalize campaign and generate report."""
-        duration = (datetime.now() - self.start_time).total_seconds()
+        best_result = self.learner.get_best_result()
         
-        print(f"\n{'='*60}")
-        print(f"Campaign Complete: {self.config.campaign_id}")
-        print(f"{'='*60}")
-        print(f"Total iterations: {self.learner.iteration}")
-        print(f"Total experiments: {self.total_experiments}")
-        print(f"Duration: {duration:.1f}s ({duration/60:.1f} min)")
-        print(f"Throughput: {self.total_experiments/duration:.2f} exp/sec")
-        
-        # Get best result
-        best = self.learner.get_best_result()
-        if best:
-            print(f"\nBest Result:")
-            print(f"  Cell line: {best.cell_line}")
-            print(f"  Compound: {best.compound}")
-            print(f"  Dose: {best.dose:.3f} uM")
-            print(f"  Measurement: {best.measurement:.3f}")
-        
-        # Save final report
-        report_path = self.output_dir / "campaign_report.json"
         report = {
             "campaign_id": self.config.campaign_id,
-            "config": {
-                "max_iterations": self.config.max_iterations,
-                "batch_size": self.config.batch_size,
-                "cell_lines": self.config.cell_lines,
-                "compounds": self.config.compounds,
-                "assay_type": self.config.assay_type
-            },
+            "status": "completed",
+            "config": asdict(self.config),
             "results": {
-                "total_iterations": self.learner.iteration,
-                "total_experiments": self.total_experiments,
-                "duration_seconds": duration,
-                "throughput": self.total_experiments / duration
+                "total_iterations": self.iteration,
+                "total_experiments": len(self.history),
+                "best_result": best_result.to_dict() if best_result else None,
+                "total_cost": self.total_cost
             },
-            "best_result": best.to_dict() if best else None,
-            "all_results": [r.to_dict() for r in self.learner.history]
+            "all_results": [r.to_dict() for r in self.history]
         }
         
-        with open(report_path, "w") as f:
+        # Save JSON report
+        with open(self.output_dir / "campaign_report.json", "w") as f:
             json.dump(report, f, indent=2)
+            
+        # Update Database status
+        self.db.update_campaign_status(
+            self.config.campaign_id,
+            "completed",
+            results_summary=report["results"]
+        )
         
-        print(f"\nFinal report saved: {report_path}")
+        logger.info(f"Campaign report saved to {self.output_dir}")
         print(f"{'='*60}\n")
         
         # Cleanup
