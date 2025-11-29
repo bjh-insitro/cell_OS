@@ -12,21 +12,6 @@ The system now has a robust **Execution Engine** with:
 
 ## Recommended Next Steps
 
-### ✅ 1. Unify Optimization and Execution (COMPLETE)
-~~Currently, `scripts/run_loop.py` (the optimization loop) uses a legacy `SimulationEngine`. It should be updated to use the new `WorkflowExecutor` and `JobQueue`.~~
-
-**Status**: ✅ **COMPLETE** (2025-11-28)
-- **Created**: `AutonomousExecutor` - Bridge between AI scientist and production infrastructure
-- **Created**: `scripts/run_loop_v2.py` - Modernized autonomous loop using production systems
-- **Created**: Comprehensive test suite (10 tests, 100% pass rate)
-- **Created**: Full documentation in `docs/AUTONOMOUS_EXECUTOR.md`
-- **Impact**: AI scientist now uses same infrastructure as manual experiments
-- **Next**: Integrate with real Gaussian Process models and acquisition functions
-
-### 2. Implement Real Hardware Support
-The `HardwareInterface` is currently backed by `VirtualMachine`.
-- **Goal**: Enable physical automation.
-- **Action**: Create `OpentronsInterface` or `HamiltonInterface` implementing `HardwareInterface`.
 - **Status**: Infrastructure ready, needs hardware-specific implementations
 
 ### 3. Advanced Scheduling
