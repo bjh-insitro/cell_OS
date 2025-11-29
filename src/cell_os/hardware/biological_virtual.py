@@ -38,6 +38,7 @@ class VesselState:
         self.confluence = 0.0
         self.vessel_capacity = 1e7  # Default capacity
         self.compounds = {}  # compound_id -> concentration
+        self.seed_time = 0.0
 
 
 class BiologicalVirtualMachine(VirtualMachine):
@@ -154,7 +155,10 @@ class BiologicalVirtualMachine(VirtualMachine):
             "doubling_time_h": 24.0,
             "max_confluence": 0.9,
             "default_ic50": 1.0,
-            "default_hill_slope": 1.0
+            "default_ic50": 1.0,
+            "default_hill_slope": 1.0,
+            "lag_duration_h": 12.0,
+            "edge_penalty": 0.15
         }
         
     def advance_time(self, hours: float):
@@ -177,13 +181,31 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Exponential growth with confluence-dependent saturation
         growth_rate = np.log(2) / doubling_time
         
+        # --- 1. Lag Phase Dynamics ---
+        # Growth ramps up linearly over lag_duration_h
+        lag_duration = params.get("lag_duration_h", self.defaults.get("lag_duration_h", 12.0))
+        time_since_seed = self.simulated_time - vessel.seed_time
+        
+        lag_factor = 1.0
+        if time_since_seed < lag_duration:
+            lag_factor = max(0.0, time_since_seed / lag_duration)
+            
+        # --- 2. Spatial Edge Effects ---
+        # Penalty for edge wells (evaporation/temp gradients)
+        edge_penalty = 0.0
+        if self._is_edge_well(vessel.vessel_id):
+            edge_penalty = params.get("edge_penalty", self.defaults.get("edge_penalty", 0.15))
+            
+        # Apply factors
+        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty)
+        
         # Reduce growth as confluence increases
         confluence = vessel.cell_count / vessel.vessel_capacity
         growth_factor = 1.0 - (confluence / max_confluence) ** 2
         growth_factor = max(0, growth_factor)
         
         # Update count
-        vessel.cell_count *= np.exp(growth_rate * hours * growth_factor)
+        vessel.cell_count *= np.exp(effective_growth_rate * hours * growth_factor)
         vessel.confluence = vessel.cell_count / vessel.vessel_capacity
         
         # Viability decreases with over-confluence
@@ -191,11 +213,34 @@ class BiologicalVirtualMachine(VirtualMachine):
             viability_loss = (vessel.confluence - max_confluence) * 0.1
             vessel.viability = max(0.5, vessel.viability - viability_loss)
             
+    def _is_edge_well(self, vessel_id: str) -> bool:
+        """
+        Check if vessel is an edge well (Rows A/H, Cols 1/12).
+        Assumes format like 'Plate1_A01' or just 'A01'.
+        """
+        # Extract the well part (last 3 chars usually)
+        # Try to find pattern [A-H][0-9]{2}
+        import re
+        match = re.search(r'([A-P])(\d{1,2})$', vessel_id)
+        if match:
+            row = match.group(1)
+            col = int(match.group(2))
+            
+            # Standard 96-well plate definition
+            is_row_edge = (row == 'A') or (row == 'H')
+            is_col_edge = (col == 1) or (col == 12)
+            
+            return is_row_edge or is_col_edge
+            
+        return False
+            
     def seed_vessel(self, vessel_id: str, cell_line: str, initial_count: float, capacity: float = 1e7):
         """Initialize a vessel with cells."""
         state = VesselState(vessel_id, cell_line, initial_count)
         state.vessel_capacity = capacity
+        state.vessel_capacity = capacity
         state.last_passage_time = self.simulated_time
+        state.seed_time = self.simulated_time
         self.vessel_states[vessel_id] = state
         logger.info(f"Seeded {vessel_id} with {initial_count:.2e} {cell_line} cells")
         

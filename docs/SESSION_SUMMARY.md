@@ -19,6 +19,7 @@ We successfully migrated the platform's data layer from scattered files to unifi
 
 ### **2. Full Integration**
 - **Simulation**: `BiologicalVirtualMachine` now loads parameters from `simulation_params.db` (with YAML fallback).
+- **Simulation Enhancements**: Added **Lag Phase Dynamics** and **Spatial Edge Effects** to `BiologicalVirtualMachine` for more realistic cell growth modeling.
 - **Hardware**: Implemented `HamiltonInterface` and `TecanInterface` for generating worklists.
 - **Scheduling**: Implemented `Scheduler` using OR-Tools for constraint-based resource optimization.
 - **Execution**: `AutonomousCampaign` (in `run_loop_v2.py`) now saves real-time progress to `campaigns.db`.
