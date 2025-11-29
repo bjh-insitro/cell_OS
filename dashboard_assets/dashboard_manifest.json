@@ -1,21 +1,21 @@
 {
   "title": "MCB Crash Test (U2OS) - Pilot Scale with Failures",
-  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total). Success rate: 99.0%",
+  "description": "Simulation of 500 MCB generation runs starting from 3 vendor vials (Target: 30 vials total). Success rate: 98.8%",
   "components": [
     {
       "type": "metric",
       "title": "Success Rate",
-      "value": "99.0%"
+      "value": "98.8%"
     },
     {
       "type": "metric",
       "title": "Contaminated Runs",
-      "value": 5
+      "value": 6
     },
     {
       "type": "metric",
       "title": "Failed Runs",
-      "value": 5
+      "value": 6
     },
     {
       "type": "metric",
