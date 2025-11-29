@@ -13,6 +13,14 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from .virtual import VirtualMachine
 
+# Import database for parameter loading
+try:
+    from ..simulation_params_db import SimulationParamsDatabase
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+    logger.warning("SimulationParamsDatabase not available, will use YAML fallback")
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,16 +54,71 @@ class BiologicalVirtualMachine(VirtualMachine):
     """
     
     def __init__(self, simulation_speed: float = 1.0, 
-                 params_file: Optional[str] = None):
-        super().__init__(simulation_speed)
-        self.vessel_states: Dict[str, VesselState] = {}
-        self.simulated_time = 0.0  # Hours since start
-        
-        # Load parameters from YAML
+                 params_file: Optional[str] = None,
+                 use_database: bool = True):
+        super().__init__(simulation_speed=simulation_speed)
+        self.vessels: Dict[str, VesselState] = {}
+        self.simulated_time_hours = 0.0
+        self.use_database = use_database and DB_AVAILABLE
         self._load_parameters(params_file)
-        
+    
     def _load_parameters(self, params_file: Optional[str] = None):
-        """Load simulation parameters from YAML file."""
+        """Load simulation parameters from database or YAML file."""
+        
+        # Try database first if enabled
+        if self.use_database:
+            try:
+                db = SimulationParamsDatabase()
+                logger.info("Loading parameters from database")
+                
+                # Load cell line parameters
+                self.cell_line_params = {}
+                for cell_line_id in db.get_all_cell_lines():
+                    params = db.get_cell_line_params(cell_line_id)
+                    if params:
+                        self.cell_line_params[cell_line_id] = {
+                            'doubling_time_h': params.doubling_time_h,
+                            'max_confluence': params.max_confluence,
+                            'max_passage': params.max_passage,
+                            'senescence_rate': params.senescence_rate,
+                            'seeding_efficiency': params.seeding_efficiency,
+                            'passage_stress': params.passage_stress,
+                            'cell_count_cv': params.cell_count_cv,
+                            'viability_cv': params.viability_cv,
+                            'biological_cv': params.biological_cv,
+                            'coating_required': params.coating_required
+                        }
+                
+                # Load compound sensitivity
+                self.compound_sensitivity = {}
+                for compound in db.get_all_compounds():
+                    self.compound_sensitivity[compound] = {}
+                    for cell_line_id in db.get_all_cell_lines():
+                        sensitivity = db.get_compound_sensitivity(compound, cell_line_id)
+                        if sensitivity:
+                            self.compound_sensitivity[compound][cell_line_id] = sensitivity.ic50_um
+                            if 'hill_slope' not in self.compound_sensitivity[compound]:
+                                self.compound_sensitivity[compound]['hill_slope'] = sensitivity.hill_slope
+                
+                # Load defaults
+                self.defaults = {}
+                for param_name in ['doubling_time_h', 'max_confluence', 'max_passage', 
+                                  'senescence_rate', 'seeding_efficiency', 'passage_stress',
+                                  'cell_count_cv', 'viability_cv', 'biological_cv',
+                                  'default_ic50', 'default_hill_slope']:
+                    value = db.get_default_param(param_name)
+                    if value is not None:
+                        self.defaults[param_name] = value
+                
+                logger.info(f"Loaded parameters from database")
+                logger.info(f"  Cell lines: {len(self.cell_line_params)}")
+                logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
+                return
+                
+            except Exception as e:
+                logger.warning(f"Failed to load from database: {e}, falling back to YAML")
+        
+        # Fallback to YAML
         if params_file is None:
             # Default to data/simulation_parameters.yaml
             params_file = Path(__file__).parent.parent.parent.parent / "data" / "simulation_parameters.yaml"
