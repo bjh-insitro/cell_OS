@@ -19,6 +19,7 @@ We successfully migrated the platform's data layer from scattered files to unifi
 
 ### **2. Full Integration**
 - **Simulation**: `BiologicalVirtualMachine` now loads parameters from `simulation_params.db` (with YAML fallback).
+- **Hardware**: Implemented `HamiltonInterface` for generating VENUS-compatible worklists.
 - **Execution**: `AutonomousCampaign` (in `run_loop_v2.py`) now saves real-time progress to `campaigns.db`.
 - **Dashboard**: `Autonomous Campaigns` page now queries `campaigns.db`, enabling instant loading and complex analytics.
 
@@ -54,9 +55,9 @@ We successfully migrated the platform's data layer from scattered files to unifi
 
 ## 🎯 **Next Steps**
 
-1. **Real Hardware**: Implement `HamiltonInterface` or `TecanInterface`.
-2. **Advanced Scheduling**: Implement `Scheduler` for resource optimization.
-3. **Investigate `test_cell_line_inspector.py`**: (Resolved) The `AssertionError` regarding media handling steps for iPSC thaw was fixed.🚀
+1.  **Advanced Scheduling**: Implement `Scheduler` for resource optimization.
+2.  **Tecan Interface**: Implement `TecanInterface` (optional/bonus).
+3.  **Investigate `test_cell_line_inspector.py`**: (Resolved) The `AssertionError` regarding media handling steps for iPSC thaw was fixed.🚀
 
 ---
 
