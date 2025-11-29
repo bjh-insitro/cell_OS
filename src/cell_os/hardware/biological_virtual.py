@@ -57,8 +57,8 @@ class BiologicalVirtualMachine(VirtualMachine):
                  params_file: Optional[str] = None,
                  use_database: bool = True):
         super().__init__(simulation_speed=simulation_speed)
-        self.vessels: Dict[str, VesselState] = {}
-        self.simulated_time_hours = 0.0
+        self.vessel_states: Dict[str, VesselState] = {}
+        self.simulated_time = 0.0
         self.use_database = use_database and DB_AVAILABLE
         self._load_parameters(params_file)
     

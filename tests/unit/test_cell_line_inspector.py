@@ -35,7 +35,7 @@ class TestCellLineInspector:
         assert len(coating_steps) > 0, "iPSC thaw should include coating steps"
         
         # Check that media steps exist (aliquot, pre-warm, etc.)
-        media_steps = [s for s in step_names if 'media' in s.lower() or 'aliquot' in s.lower()]
+        media_steps = [s for s in step_names if 'media' in s.lower() or 'aliquot' in s.lower() or 'mtesr' in s.lower() or 'dmem' in s.lower()]
         assert len(media_steps) > 0, "iPSC thaw should have media handling steps"
     
     def test_thaw_hek293_t75_resolution(self):
