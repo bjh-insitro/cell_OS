@@ -6,8 +6,12 @@ import pytest
 import tempfile
 import os
 from cell_os.simulation_executor import SimulationExecutor
-from cell_os.unit_ops.base import UnitOp
 
+class MockOp:
+    def __init__(self, operation, parameters):
+        self.uo_id = operation
+        self.name = operation
+        self.parameters = parameters
 
 class TestSimulationExecutor:
     
@@ -27,7 +31,7 @@ class TestSimulationExecutor:
     def test_basic_workflow_execution(self):
         """Test that workflows execute and collect data."""
         workflow = [
-            UnitOp(
+            MockOp(
                 operation="seed",
                 parameters={
                     "vessel_id": "T75_1",
@@ -35,14 +39,26 @@ class TestSimulationExecutor:
                     "initial_count": 1e6
                 }
             ),
-            UnitOp(
+            MockOp(
                 operation="viability_assay",
                 parameters={"vessel_id": "T75_1"}
             )
         ]
         
-        execution = self.executor.create_execution(workflow)
+        execution = self.executor.create_execution_from_protocol(
+            protocol_name="test_basic",
+            cell_line="HEK293T",
+            vessel_id="T75_1",
+            operation_type="test",
+            unit_ops=workflow
+        )
         result = self.executor.execute(execution.execution_id)
+        
+        if result.status.value == "failed":
+            print(f"Execution failed: {result.error_message}")
+            for step in result.steps:
+                if step.status.value == "failed":
+                    print(f"Step {step.name} failed: {step.error_message}")
         
         assert result.status.value == "completed"
         assert len(self.executor.collected_data) == 2
@@ -52,7 +68,7 @@ class TestSimulationExecutor:
     def test_passage_workflow(self):
         """Test passage workflow with data collection."""
         workflow = [
-            UnitOp(
+            MockOp(
                 operation="seed",
                 parameters={
                     "vessel_id": "T75_1",
@@ -60,7 +76,7 @@ class TestSimulationExecutor:
                     "initial_count": 4e6
                 }
             ),
-            UnitOp(
+            MockOp(
                 operation="passage",
                 parameters={
                     "source_vessel": "T75_1",
@@ -70,7 +86,13 @@ class TestSimulationExecutor:
             )
         ]
         
-        execution = self.executor.create_execution(workflow)
+        execution = self.executor.create_execution_from_protocol(
+            protocol_name="test_passage",
+            cell_line="HEK293T",
+            vessel_id="T75_1",
+            operation_type="passage",
+            unit_ops=workflow
+        )
         result = self.executor.execute(execution.execution_id)
         
         assert result.status.value == "completed"
@@ -89,7 +111,7 @@ class TestSimulationExecutor:
         # Seed wells
         for i, dose in enumerate(doses):
             workflow.append(
-                UnitOp(
+                MockOp(
                     operation="seed",
                     parameters={
                         "vessel_id": f"well_{i}",
@@ -102,7 +124,7 @@ class TestSimulationExecutor:
         # Treat
         for i, dose in enumerate(doses):
             workflow.append(
-                UnitOp(
+                MockOp(
                     operation="treat",
                     parameters={
                         "vessel_id": f"well_{i}",
@@ -115,13 +137,19 @@ class TestSimulationExecutor:
         # Measure
         for i in range(len(doses)):
             workflow.append(
-                UnitOp(
+                MockOp(
                     operation="viability_assay",
                     parameters={"vessel_id": f"well_{i}"}
                 )
             )
         
-        execution = self.executor.create_execution(workflow)
+        execution = self.executor.create_execution_from_protocol(
+            protocol_name="test_dose_response",
+            cell_line="HEK293T",
+            vessel_id="plate_1",
+            operation_type="screen",
+            unit_ops=workflow
+        )
         result = self.executor.execute(execution.execution_id)
         
         assert result.status.value == "completed"
@@ -135,18 +163,27 @@ class TestSimulationExecutor:
         
         # Viability should decrease with dose
         viabilities = [d["viability"] for d in viab_data]
+        # Note: Since simulation speed is 0.0 (instant), biological effects might not have time to develop
+        # unless treat_with_compound applies immediate effect.
+        # BiologicalVirtualMachine.treat_with_compound applies effect immediately.
         assert viabilities[0] > viabilities[-1]  # Lower dose = higher viability
         
     def test_data_export_json(self):
         """Test JSON data export."""
         workflow = [
-            UnitOp(
+            MockOp(
                 operation="seed",
                 parameters={"vessel_id": "T75_1", "cell_line": "HEK293T", "initial_count": 1e6}
             )
         ]
         
-        execution = self.executor.create_execution(workflow)
+        execution = self.executor.create_execution_from_protocol(
+            protocol_name="test_export",
+            cell_line="HEK293T",
+            vessel_id="T75_1",
+            operation_type="test",
+            unit_ops=workflow
+        )
         self.executor.execute(execution.execution_id)
         
         # Export
@@ -171,17 +208,23 @@ class TestSimulationExecutor:
     def test_vessel_state_tracking(self):
         """Test that vessel states are tracked correctly."""
         workflow = [
-            UnitOp(
+            MockOp(
                 operation="seed",
                 parameters={"vessel_id": "T75_1", "cell_line": "HEK293T", "initial_count": 1e6}
             ),
-            UnitOp(
+            MockOp(
                 operation="seed",
                 parameters={"vessel_id": "T75_2", "cell_line": "HeLa", "initial_count": 2e6}
             )
         ]
         
-        execution = self.executor.create_execution(workflow)
+        execution = self.executor.create_execution_from_protocol(
+            protocol_name="test_tracking",
+            cell_line="HEK293T",
+            vessel_id="T75_1",
+            operation_type="test",
+            unit_ops=workflow
+        )
         self.executor.execute(execution.execution_id)
         
         states = self.executor.get_vessel_states()
@@ -195,13 +238,19 @@ class TestSimulationExecutor:
     def test_reset_simulation(self):
         """Test simulation reset."""
         workflow = [
-            UnitOp(
+            MockOp(
                 operation="seed",
                 parameters={"vessel_id": "T75_1", "cell_line": "HEK293T", "initial_count": 1e6}
             )
         ]
         
-        execution = self.executor.create_execution(workflow)
+        execution = self.executor.create_execution_from_protocol(
+            protocol_name="test_reset",
+            cell_line="HEK293T",
+            vessel_id="T75_1",
+            operation_type="test",
+            unit_ops=workflow
+        )
         self.executor.execute(execution.execution_id)
         
         assert len(self.executor.collected_data) > 0

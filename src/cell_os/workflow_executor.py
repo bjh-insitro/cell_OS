@@ -427,6 +427,10 @@ class WorkflowExecutor:
             "required_resources": []
         }
         
+        # Copy explicit parameters if present (e.g. for simulation)
+        if hasattr(unit_op, 'parameters') and isinstance(unit_op.parameters, dict):
+            parameters.update(unit_op.parameters)
+        
         # Extract required resources from BOM items
         if hasattr(unit_op, 'items') and unit_op.items:
             for item in unit_op.items:

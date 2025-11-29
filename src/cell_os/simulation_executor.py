@@ -51,6 +51,7 @@ class SimulationExecutor(WorkflowExecutor):
         self.step_handlers["passage"] = self._handle_passage_with_data
         self.step_handlers["treat"] = self._handle_treat_with_data
         self.step_handlers["viability_assay"] = self._handle_viability_assay
+        self.step_handlers["viability"] = self._handle_viability_assay
         
     def _handle_seed_with_data(self, step) -> Dict[str, Any]:
         """Handle seeding with state initialization."""
@@ -76,7 +77,6 @@ class SimulationExecutor(WorkflowExecutor):
                 "vessel_id": vessel_id,
                 "cell_line": cell_line,
                 "initial_count": initial_count,
-                "execution_id": step.execution_id,
                 "step_id": step.step_id
             })
             
@@ -100,7 +100,6 @@ class SimulationExecutor(WorkflowExecutor):
                 "cells_transferred": result.get("cells_transferred"),
                 "viability": result.get("target_viability"),
                 "passage_number": result.get("passage_number"),
-                "execution_id": step.execution_id,
                 "step_id": step.step_id
             })
             
@@ -124,7 +123,6 @@ class SimulationExecutor(WorkflowExecutor):
                 "viability_effect": result.get("viability_effect"),
                 "current_viability": result.get("current_viability"),
                 "ic50": result.get("ic50"),
-                "execution_id": step.execution_id,
                 "step_id": step.step_id
             })
             
@@ -146,7 +144,6 @@ class SimulationExecutor(WorkflowExecutor):
                 "viability": result.get("viability"),
                 "confluence": result.get("confluence"),
                 "passage_number": result.get("passage_number"),
-                "execution_id": step.execution_id,
                 "step_id": step.step_id
             })
             
