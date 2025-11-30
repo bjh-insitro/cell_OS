@@ -158,8 +158,16 @@ def _render_resources(result):
     qty_pipettes_10ml = estimated_feeds + (estimated_passages * 2) + 2 # +2 for start/end
     qty_tips_1000ul = estimated_feeds + (estimated_passages * 4)
     
+    # Determine media type based on cell line
+    cell_line = result.cell_line.lower()
+    if cell_line in ["ipsc", "hesc"]:
+        media_name = "mTeSR Plus Kit (500mL)"
+        cost_media_bottle = 250.0  # $500/L -> $250/500mL
+    else:
+        media_name = "DMEM+10%FBS (500mL)"
+        cost_media_bottle = 25.0  # $50/L -> $25/500mL
+    
     # Unit Costs
-    cost_media_bottle = 250.0 # $500/L -> $250/500mL
     cost_vial_unit = 5.0
     cost_flask_unit = 10.0
     cost_pbs_unit = 25.0
@@ -168,7 +176,7 @@ def _render_resources(result):
     cost_tip_unit = 0.10
     
     consumables_data = [
-        {"Item": "mTeSR Plus Kit (500mL)", "Quantity": qty_media_bottles, "Unit Cost": f"${cost_media_bottle:.2f}", "Total Cost": f"${qty_media_bottles * cost_media_bottle:.2f}"},
+        {"Item": media_name, "Quantity": qty_media_bottles, "Unit Cost": f"${cost_media_bottle:.2f}", "Total Cost": f"${qty_media_bottles * cost_media_bottle:.2f}"},
         {"Item": "Cryovials (1.8mL)", "Quantity": qty_vials, "Unit Cost": f"${cost_vial_unit:.2f}", "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"},
         {"Item": "T75 Flasks", "Quantity": qty_flasks, "Unit Cost": f"${cost_flask_unit:.2f}", "Total Cost": f"${qty_flasks * cost_flask_unit:.2f}"},
         {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${cost_pipette_unit:.2f}", "Total Cost": f"${qty_pipettes_10ml * cost_pipette_unit:.2f}"},
