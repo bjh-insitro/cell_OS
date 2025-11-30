@@ -43,11 +43,18 @@ We successfully migrated the platform's data layer from scattered files to unifi
     *   Optimizes for: High CellROX signal + Acceptable Viability (>0.7) + Good Segmentation (>0.8).
     *   Verified with unit tests for U2OS, HepG2, and A549.
 
-### Next Steps (Phase 2)
+### Phase 2: Campaign Infrastructure (In Progress) 🚧
 
-1.  **Campaign Database Extension**: Add table for storing stage outputs (optimal doses, titers).
-2.  **Campaign Orchestrator**: Build `MultiCellLinePOSHCampaign` to manage the full lifecycle.
-3.  **Integration**: Wire up MCB -> WCB -> Dose Finding -> LV Titering.
+1.  **MCB Simulation Tab (Completed)** ✅
+    *   Created `src/cell_os/simulation/mcb_wrapper.py` wrapping `MCBSimulation` with a clean API.
+    *   Implemented `dashboard_app/pages/tab_campaign_posh.py` for simulating MCB generation.
+    *   Resolved `StreamlitDuplicateElementId` errors by adding unique keys to widgets in `tab_execution_monitor.py` and `tab_campaign_manager.py`.
+    *   Registered new tab "🧬 POSH Campaign Sim" in `dashboard_app/app.py`.
+
+2.  **Next Steps**:
+    *   **WCB Generation**: Extend the POSH Campaign Sim tab to support WCB generation from MCB vials.
+    *   **Dose Finding**: Integrate `TBHPDoseFinder` into the dashboard.
+    *   **Campaign Orchestrator**: Build `MultiCellLinePOSHCampaign` to manage state across steps.
 
 ### **3. Quality Assurance**
 - **Unit Tests**: Created `tests/unit/test_databases.py` covering all database operations (100% pass).
