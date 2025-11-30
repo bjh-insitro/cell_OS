@@ -230,16 +230,26 @@ def _render_resources(result, pricing, workflow_type="MCB"):
     # View toggle
     view_mode = st.radio("View Mode", ["Aggregate View", "Daily Breakdown"], horizontal=True, key="bom_view_mode")
     
-    # Calculate quantities
+    # Calculate quantities from actual simulation data
     qty_media_bottles = math.ceil(total_media / 0.5) # 500mL bottles
     qty_vials = num_vials + result.summary.get("waste_vials", 0)
-    qty_flasks = max(1, int(num_vials / 5)) # Estimate: 1 T75 per 5 vials
+    
+    # Use actual max flask count from simulation instead of estimate
+    if not result.daily_metrics.empty and 'flask_count' in result.daily_metrics.columns:
+        qty_flasks = int(result.daily_metrics['flask_count'].max())
+    else:
+        qty_flasks = max(1, int(num_vials / 5)) # Fallback estimate
+    
     qty_pbs = 1 # Fixed estimate
-    qty_dissociation = 1 # Fixed estimate
+    
+    # Estimate dissociation reagent based on actual passages
+    # Each passage uses ~5mL of dissociation reagent per flask
+    estimated_passages = max(1, int(result.summary.get("duration_days", 10) / 3)) # Passage every ~3 days
+    qty_dissociation_ml = estimated_passages * qty_flasks * 5.0
+    qty_dissociation = 1 # Still show as 1 unit for simplicity
     
     # Estimate Pipettes & Tips based on usage
     estimated_feeds = int((total_media * 1000) / 15)
-    estimated_passages = max(1, int(num_vials / 10))
     
     qty_pipettes_10ml = estimated_feeds + (estimated_passages * 2) + 2 
     qty_tips_1000ul = estimated_feeds + (estimated_passages * 4)
