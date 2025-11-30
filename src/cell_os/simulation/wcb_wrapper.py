@@ -131,4 +131,3 @@ def simulate_wcb_generation(
         success=result.success,
         summary=result.summary
     )
-```
