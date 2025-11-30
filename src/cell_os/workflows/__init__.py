@@ -169,7 +169,7 @@ class WorkflowBuilder:
         # 2. Expand (simplified - assume 1 passage for now)
         # In reality, might need multiple passages to reach 100 vials
         process_ops.append(self.ops.op_feed(flask_size))
-        process_ops.append(self.ops.op_passage(flask_size, flask_size, split_ratio=1.0/5.0))
+        process_ops.append(self.ops.op_passage(flask_size, ratio=5))
         process_ops.append(self.ops.op_feed(flask_size))
         
         # 3. Harvest

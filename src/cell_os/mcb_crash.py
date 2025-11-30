@@ -48,362 +48,56 @@ class MCBTestResult:
     daily_metrics: pd.DataFrame
 
 
-class MockInventory:
-    """Mock inventory for simulation."""
-    def get_price(self, item_id: str) -> float:
-        prices = {
-            "tube_50ml_conical": 0.50,
-            "tube_15ml_conical": 0.30,
-            "pipette_25ml": 0.40,
-            "pipette_10ml": 0.30,
-            "pipette_5ml": 0.25,
-            "pipette_2ml": 0.20,
-            "tip_1000ul_lr": 0.05,
-            "tip_200ul_lr": 0.02,
-            "cryovial_1_8ml": 0.75,
-            "flask_T75": 2.50,
-            "flask_T175": 4.00,
-            "flask_T225": 5.50,
-        }
-        return prices.get(item_id, 0.0)
-    
-    def consume_stock(self, resource_id, quantity, transaction_meta=None):
-        pass
-
+from cell_os.simulation.workflow_simulator import WorkflowSimulator, SimulationConfig
 
 class MCBSimulation:
-    """Single MCB simulation run."""
+    """
+    Single MCB simulation run.
+    Refactored to delegate to the shared WorkflowSimulator.
+    """
     
     def __init__(self, run_id: int, config: MCBTestConfig, rng: np.random.Generator):
         self.run_id = run_id
         self.config = config
         self.rng = rng
         
-        self.vm = BiologicalVirtualMachine(simulation_speed=1000.0)
-        self.executor = WorkflowExecutor(db_path=":memory:", hardware=self.vm, inventory_manager=MockInventory())
-        self.vessels = VesselLibrary()
-        self.ops = ParametricOps(self.vessels, MockInventory())
-        
-        if config.enable_failures:
-            # Use the same RNG for failure simulator
-            self.failure_sim = FailureModeSimulator(rng=rng)
-        else:
-            self.failure_sim = None
-        
-        # Metrics
-        self.history = []
-        self.daily_metrics = []
-        self.failures = []
-        self.violations = []
-        self.media_consumed_ml = 0.0
-        self.waste_vials = 0
-        self.waste_cells = 0.0
-        
-        # Failure tracking
-        self.had_contamination = False
-        self.terminal_failure = False
-        self.failed_reason = None
-        
-        # State
-        self.active_flasks = []
-        self.frozen_vials = 0
-        self.day = 0
-        
-        # Extract params from Workflow if present
-        self.flask_type = "flask_T75" # Default
-        self.media_type = "mtesr_plus_kit" # Default
-        
-        if self.config.workflow:
-            self._parse_workflow_params()
-        
-    def _parse_workflow_params(self):
-        """Extract simulation parameters from the provided Workflow."""
-        # Look for Thaw op to get flask size
-        for op in self.config.workflow.all_ops:
-            if "thaw" in op.name.lower() or "thaw" in getattr(op, 'uo_id', '').lower():
-                # Try to find vessel in items
-                if hasattr(op, 'items'):
-                    for item in op.items:
-                        if "flask" in item.resource_id.lower():
-                            self.flask_type = item.resource_id
-                            break
-            
-            # Look for Feed op to get media
-            if "feed" in op.name.lower():
-                if hasattr(op, 'parameters') and 'media' in op.parameters:
-                    self.media_type = op.parameters['media']
-                # Or check items
-                if hasattr(op, 'items'):
-                    for item in op.items:
-                        if "media" in item.resource_id.lower() or "kit" in item.resource_id.lower():
-                            # Map resource ID to simple media name if needed, or just use it
-                            # For now, we stick to mtesr_plus_kit as the key for logic, but could be dynamic
-                            pass
-
     def run(self):
-        """Execute the full MCB workflow."""
-        try:
-            self._phase_thaw()
-            
-            target_total_cells = self.config.target_mcb_vials * self.config.cells_per_vial
-            
-            while self._get_total_cells() < target_total_cells:
-                self.day += 1
-                self.vm.advance_time(24.0)
-                self._record_daily_metrics()
-                
-                if not self.active_flasks:
-                    self.failures.append("All flasks lost")
-                    break
-                    
-                self._manage_culture()
-                
-                if self.day > 60:
-                    self.failures.append("Timeout: Expansion took too long")
-                    break
-            
-            if self.active_flasks:
-                self._phase_freeze()
-                
-        except Exception as e:
-            self.failures.append(f"Exception: {str(e)}")
-            
-        return self._compile_results()
-
-    def _phase_thaw(self):
-        """Thaw vendor vials into flasks."""
-        for i in range(self.config.starting_vials):
-            flask_id = f"Flask_P1_{i+1}"
-            
-            # Use flask_type from workflow if available
-            op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line)
-            self._track_resources(op)
-            
-            initial_cells = self.rng.normal(1e6, 1e5)
-            # Capacity depends on flask type
-            capacity = 2.5e7 # Default T75
-            if "175" in self.flask_type: capacity = 5.0e7
-            if "225" in self.flask_type: capacity = 7.5e7
-            
-            self.vm.seed_vessel(flask_id, self.config.cell_line, initial_cells, capacity=capacity)
-            self.active_flasks.append(flask_id)
-
-    def _manage_culture(self):
-        """Check status and feed or passage."""
-        to_passage = []
-        surviving_flasks = []
+        """Execute the full MCB workflow using WorkflowSimulator."""
+        # Map MCBTestConfig to SimulationConfig
+        sim_config = SimulationConfig(
+            target_vials=self.config.target_mcb_vials,
+            cells_per_vial=self.config.cells_per_vial,
+            starting_vials=self.config.starting_vials,
+            cell_line=self.config.cell_line,
+            enable_failures=self.config.enable_failures,
+            workflow=self.config.workflow
+        )
         
-        for flask_id in self.active_flasks:
-            vessel_obj = self.vm.vessel_states.get(flask_id)
-            if not vessel_obj:
-                continue
-            
-            # Check for contamination if enabled
-            if self.failure_sim:
-                days_in_culture = (self.vm.simulated_time - vessel_obj.last_passage_time) / 24.0
-                failure = self.failure_sim.check_for_contamination(flask_id, days_in_culture)
-                if failure:
-                    self.had_contamination = True
-                    self.terminal_failure = True
-                    self.failed_reason = failure.description
-                    self.failures.append(f"TERMINAL: {failure.description} in {flask_id}")
-                    # Clear all flasks
-                    for fid in self.active_flasks:
-                        if fid in self.vm.vessel_states:
-                            del self.vm.vessel_states[fid]
-                    self.active_flasks = []
-                    return
-                
-            surviving_flasks.append(flask_id)
-            
-            state = self.vm.get_vessel_state(flask_id)
-            
-            if state["confluence"] > 1.0:
-                self.violations.append(f"Overconfluence in {flask_id}: {state['confluence']:.2f}")
-            
-            if state["confluence"] > 0.8:
-                to_passage.append(flask_id)
-            elif state["confluence"] < 0.1 and self.day > 5:
-                self.violations.append(f"Stagnation in {flask_id}")
-            else:
-                op = self.ops.op_feed(flask_id, media=self.media_type)
-                self._track_resources(op)
+        # Instantiate and run simulator
+        simulator = WorkflowSimulator(sim_config, self.rng)
+        result = simulator.run()
         
-        self.active_flasks = surviving_flasks
+        # Convert SimulationResult to the dictionary format expected by the harness
+        # This acts as an adapter to maintain compatibility with run_mcb_crash_test
         
-        if to_passage:
-            self._perform_passage(to_passage)
-
-    def _perform_passage(self, source_flasks: List[str]):
-        """Passage cells, expanding to more flasks."""
-        new_flasks = []
-        
-        # Determine capacity based on flask_type
-        capacity = 2.5e7
-        if "175" in self.flask_type: capacity = 5.0e7
-        if "225" in self.flask_type: capacity = 7.5e7
-        
-        for source_id in source_flasks:
-            state = self.vm.get_vessel_state(source_id)
-            if not state:
-                continue
-            
-            total_cells = state["cell_count"]
-            viability = state["viability"]
-            
-            cells_per_flask = 0.5e6
-            num_new_flasks = int(total_cells / cells_per_flask)
-            if num_new_flasks < 1:
-                num_new_flasks = 1
-            
-            if num_new_flasks > 20:
-                num_new_flasks = 20
-                self.violations.append(f"Split ratio capped for {source_id}")
-            
-            split_ratio = total_cells / (num_new_flasks * cells_per_flask)
-            
-            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line)
-            self._track_resources(op)
-            
-            passage_stress = 0.025
-            new_viability = viability * (1.0 - passage_stress)
-            cells_per_new_flask = total_cells / num_new_flasks
-            
-            current_p = state["passage_number"]
-            for i in range(num_new_flasks):
-                new_id = f"Flask_P{current_p+1}_{self.day}_{i}_{source_id[-3:]}"
-                self.vm.seed_vessel(new_id, self.config.cell_line, cells_per_new_flask, capacity=capacity)
-                new_state = self.vm.vessel_states[new_id]
-                new_state.viability = new_viability
-                new_state.passage_number = current_p + 1
-                new_flasks.append(new_id)
-                
-            if source_id in self.vm.vessel_states:
-                del self.vm.vessel_states[source_id]
-            self.active_flasks.remove(source_id)
-            
-        self.active_flasks.extend(new_flasks)
-
-    def _phase_freeze(self):
-        """Harvest all and freeze target number of vials, discarding excess."""
-        total_cells = self._get_total_cells()
-        potential_vials = int(total_cells / self.config.cells_per_vial)
-        
-        num_vials = min(potential_vials, self.config.target_mcb_vials)
-        
-        if potential_vials > num_vials:
-            discarded_vials = potential_vials - num_vials
-            discarded_cells = discarded_vials * self.config.cells_per_vial
-            self.waste_vials = discarded_vials
-            self.waste_cells = discarded_cells
-        
-        op = self.ops.op_freeze(num_vials=num_vials)
-        self._track_resources(op)
-        
-        self.frozen_vials = num_vials
-
-    def _get_total_cells(self):
-        total = 0
-        for flask_id in self.active_flasks:
-            state = self.vm.get_vessel_state(flask_id)
-            if state:
-                total += state["cell_count"]
-        return total
-
-    def _record_daily_metrics(self):
-        total_cells = self._get_total_cells()
-        
-        # Estimate Labor/BSC hours for this day
-        # Base load
-        bsc_hours = 0.0
-        staff_hours = 0.1 # Daily check
-        
-        # We need to know what operations happened TODAY.
-        # This is tricky because _manage_culture runs AFTER this record call in the loop.
-        # Let's move _record_daily_metrics to END of loop or track ops during the day.
-        
-        # Better: Track ops in a list for the current day
-        current_ops_load = self._calculate_daily_load()
-        bsc_hours += current_ops_load['bsc']
-        staff_hours += current_ops_load['staff']
-        
-        # Calculate average confluence and viability
-        confluences = []
-        viabilities = []
-        for flask_id in self.active_flasks:
-            state = self.vm.get_vessel_state(flask_id)
-            if state:
-                confluences.append(state["confluence"])
-                viabilities.append(state["viability"])
-        
-        avg_confluence = sum(confluences) / len(confluences) if confluences else 0.0
-        avg_viability = sum(viabilities) / len(viabilities) if viabilities else 0.0
-
-        self.daily_metrics.append({
-            "day": self.day,
-            "total_cells": total_cells,
-            "flask_count": len(self.active_flasks),
-            "media_consumed": self.media_consumed_ml,
-            "bsc_hours": bsc_hours,
-            "staff_hours": staff_hours,
-            "avg_confluence": avg_confluence,
-            "avg_viability": avg_viability
-        })
-        
-        # Reset daily counters if any (we don't have them yet, so we rely on state)
-
-    def _calculate_daily_load(self):
-        """Estimate load based on current state and likely actions."""
-        load = {'bsc': 0.0, 'staff': 0.0}
-        
-        # If day 0 (Thaw) - handled outside loop usually, but let's approximate
-        if self.day == 1: # First day of expansion
-             load['bsc'] += 1.0 # Thaw cleanup / first check
-             load['staff'] += 1.0
-             
-        # For each flask, check if it needs feeding or passage
-        for f in self.active_flasks:
-            state = self.vm.get_vessel_state(f)
-            if not state: continue
-            
-            if state['confluence'] > 0.8:
-                # Passage
-                load['bsc'] += 0.5
-                load['staff'] += 0.75
-            else:
-                # Feed
-                load['bsc'] += 0.1
-                load['staff'] += 0.15
-                
-        return load
-
-    def _track_resources(self, op):
-        """Extract cost and media usage from UnitOp."""
-        if "Feed" in op.name or "Passage" in op.name:
-            self.media_consumed_ml += 15.0
-        elif "Thaw" in op.name:
-            self.media_consumed_ml += 50.0
-
-    def _compile_results(self):
-        final_cells_banked = self.frozen_vials * self.config.cells_per_vial
-        total_cells_produced = final_cells_banked + self.waste_cells
-        waste_fraction = self.waste_cells / total_cells_produced if total_cells_produced > 0 else 0.0
+        # Convert daily metrics DataFrame to list of dicts
+        daily_metrics_list = result.daily_metrics.to_dict('records') if not result.daily_metrics.empty else []
         
         return {
             "run_id": self.run_id,
-            "duration_days": self.day,
-            "final_vials": self.frozen_vials,
-            "waste_vials": self.waste_vials,
-            "waste_cells": self.waste_cells,
-            "waste_vials_equivalent": self.waste_cells / self.config.cells_per_vial,
-            "waste_fraction": waste_fraction,
-            "had_contamination": self.had_contamination,
-            "terminal_failure": self.terminal_failure,
-            "failed_reason": self.failed_reason if self.failed_reason else "",
-            "total_media_l": self.media_consumed_ml / 1000.0,
-            "failures": self.failures,
-            "violations": self.violations,
-            "daily_metrics": self.daily_metrics
+            "duration_days": result.duration_days,
+            "final_vials": result.vials_generated,
+            "waste_vials": result.summary.get("waste_vials", 0),
+            "waste_cells": result.summary.get("waste_cells", 0.0),
+            "waste_vials_equivalent": result.summary.get("waste_vials_equivalent", 0.0),
+            "waste_fraction": result.summary.get("waste_fraction", 0.0),
+            "had_contamination": "contamination" in str(result.failures).lower(), # Approximate check
+            "terminal_failure": not result.success,
+            "failed_reason": str(result.failures) if result.failures else "",
+            "total_media_l": result.summary.get("total_media_l", 0.0),
+            "failures": result.failures,
+            "violations": result.violations,
+            "daily_metrics": daily_metrics_list
         }
 
 

@@ -111,6 +111,9 @@ class WorkflowSimulator:
     
     def _parse_workflow_params(self):
         """Extract simulation parameters from the workflow."""
+        if not self.config.workflow:
+            return
+            
         for op in self.config.workflow.all_ops:
             if "thaw" in op.name.lower():
                 if hasattr(op, 'items'):

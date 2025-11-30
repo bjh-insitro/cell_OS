@@ -15,7 +15,7 @@ from cell_os.simulation.workflow_simulator import WorkflowSimulator, SimulationC
 from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
-from cell_os.mcb_crash import MockInventory
+from cell_os.simulation.utils import MockInventory
 
 @dataclass
 class MCBVialSpec:
@@ -76,8 +76,7 @@ def simulate_wcb_generation(
         flask_size="flask_T75",
         cell_line=spec.cell_line,
         target_vials=target_vials,
-        cells_per_vial=int(cells_per_vial),
-        starting_passage=spec.passage_number
+        cells_per_vial=int(cells_per_vial)
     )
 
     # Configure simulation

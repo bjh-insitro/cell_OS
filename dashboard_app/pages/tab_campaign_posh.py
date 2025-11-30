@@ -12,7 +12,7 @@ import graphviz
 from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
-from cell_os.mcb_crash import MockInventory
+from cell_os.simulation.utils import MockInventory
 
 def _render_lineage(result):
     """Render a lineage tree using Graphviz."""
@@ -798,6 +798,156 @@ def render_posh_campaign_manager(df, pricing):
             
             result = simulate_mcb_generation(spec, target_vials=target_vials)
             st.session_state.mcb_results[cell_line] = result
+            
+    # Display MCB Results
+    if cell_line in st.session_state.mcb_results:
+        result = st.session_state.mcb_results[cell_line]
+        
+        if result.success:
+            st.success(f"✅ MCB Generated: {len(result.vials)} vials of {result.cell_line}")
+            
+            tab1, tab2, tab3 = st.tabs(["Lineage 🧬", "Resources 💰", "Quality 📉"])
+            
+            with tab1:
+                _render_lineage(result)
+                
+            with tab2:
+                _render_resources(result, pricing, workflow_type="MCB")
+                
+            with tab3:
+                st.subheader("Quality Metrics")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Final Viability", f"{result.daily_metrics['avg_viability'].iloc[-1]:.1%}")
+                with col2:
+                    st.metric("Waste Fraction", f"{result.summary.get('waste_fraction', 0):.1%}")
+                    
+                if result.summary.get('failures'):
+                    st.error(f"Failures: {result.summary['failures']}")
+        else:
+            st.error(f"❌ Simulation Failed: {result.summary.get('failed_reason', 'Unknown')}")
+
+    st.divider()
+    
+    # --- Phase 2: LV MOI Titration ---
+    st.markdown("""
+    **Phase 2: LV MOI Titration**
+    Determine the optimal viral volume to achieve target transduction efficiency.
+    """)
+    
+    from cell_os.simulation.titration_wrapper import simulate_titration
+    
+    with st.expander("Titration Configuration", expanded=True):
+        t_col1, t_col2, t_col3 = st.columns(3)
+        with t_col1:
+            est_titer = st.number_input("Estimated Titer (TU/mL)", value=1.0e8, format="%.1e", key="titration_est_titer")
+        with t_col2:
+            target_eff = st.slider("Target Transduction Efficiency", 0.1, 0.9, 0.30, 0.05, key="titration_target_eff")
+        with t_col3:
+            st.caption("Experiment Design")
+            st.text("Format: 6-well plate")
+            st.text("Cells/Well: 100,000")
+            
+        run_titration = st.button("▶️ Simulate Titration", key="run_titration_btn")
+        
+    if "titration_results" not in st.session_state:
+        st.session_state.titration_results = {}
+        
+    if run_titration:
+        with st.spinner("Simulating titration experiment..."):
+            # Simulate with some variance from estimated titer to be realistic
+            true_titer = est_titer * np.random.normal(1.0, 0.2) 
+            
+            t_result = simulate_titration(
+                cell_line=cell_line,
+                true_titer_tu_ml=true_titer,
+                target_transduction_efficiency=target_eff,
+                cells_per_well=100000
+            )
+            st.session_state.titration_results[cell_line] = t_result
+            
+    if cell_line in st.session_state.titration_results:
+        t_result = st.session_state.titration_results[cell_line]
+        
+        if t_result.success:
+            st.success(f"✅ Titration Complete for {cell_line}")
+            
+            # Metrics
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric("Fitted Titer (TU/mL)", f"{t_result.fitted_titer_tu_ml:.2e}")
+            with m2:
+                st.metric("Optimal Volume", f"{t_result.recommended_vol_ul:.2f} µL", help=f"For {target_eff:.0%} Efficiency")
+            with m3:
+                st.metric("Target MOI", f"{t_result.target_moi:.2f}")
+            with m4:
+                st.metric("Model Fit (R²)", f"{t_result.r_squared:.3f}")
+                
+            # Plot
+            # Create smooth curve for model
+            x_smooth = np.linspace(0, t_result.data['volume_ul'].max() * 1.1, 100)
+            # BFP = A * (1 - exp(-MOI)) = A * (1 - exp(-(Vol*Titer)/Cells))
+            # Titer in TU/uL = fitted_titer_tu_ml / 1000
+            titer_ul = t_result.fitted_titer_tu_ml / 1000.0
+            y_smooth = t_result.model.max_infectivity * (1.0 - np.exp(-(x_smooth * titer_ul) / 100000))
+            
+            fig = go.Figure()
+            
+            # Data points
+            fig.add_trace(go.Scatter(
+                x=t_result.data['volume_ul'],
+                y=t_result.data['fraction_bfp'],
+                mode='markers',
+                name='Observed Data',
+                marker=dict(color='blue', size=10, opacity=0.6)
+            ))
+            
+            # Model curve
+            fig.add_trace(go.Scatter(
+                x=x_smooth,
+                y=y_smooth,
+                mode='lines',
+                name='Fitted Poisson Model',
+                line=dict(color='red', width=2)
+            ))
+            
+            # Target point
+            fig.add_trace(go.Scatter(
+                x=[t_result.recommended_vol_ul],
+                y=[target_eff],
+                mode='markers',
+                name='Optimal Point',
+                marker=dict(color='green', size=15, symbol='star')
+            ))
+            
+            fig.update_layout(
+                title=f"Titration Curve: {cell_line}",
+                xaxis_title="Viral Volume (µL)",
+                yaxis_title="Transduction Efficiency (Fraction BFP)",
+                yaxis_range=[0, 1.0],
+                height=400,
+                template="plotly_white"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Cost Analysis
+            st.subheader("Titration Cost Analysis 💰")
+            # Estimate cost: 
+            # 1 Plate (6-well) -> $5
+            # Media: 6 wells * 2mL = 12mL -> ~$0.50
+            # Cells: Negligible cost from MCB
+            # Labor: 1 hour -> $100
+            # Virus: Sunk cost (produced previously)
+            
+            cost_labor = 100.0
+            cost_materials = 15.0 # Plate + Media + Tips
+            total_titration_cost = cost_labor + cost_materials
+            
+            st.info(f"Estimated Experiment Cost: **${total_titration_cost:.2f}** (Includes 1h labor + materials)")
+            
+        else:
+            st.error(f"❌ Titration Failed: {t_result.error_message}")
             st.success(f"Simulation complete for {cell_line}!")
             
     # Display Results
@@ -1025,9 +1175,9 @@ def _render_mcb_result(result, pricing):
             for i, key in enumerate(wcb_keys):
                 with wcb_tabs[i]:
                     result = st.session_state.wcb_results[key]
-                    _render_wcb_result(result, pricing) # PASS PRICING
+                    _render_wcb_result(result, pricing, unique_key=key) # PASS PRICING AND KEY
 
-def _render_wcb_result(result, pricing):
+def _render_wcb_result(result, pricing, unique_key):
     """Render metrics and plots for a single WCB result."""
     # Reuse similar logic to MCB but adapted for WCB context
     
@@ -1053,7 +1203,7 @@ def _render_wcb_result(result, pricing):
         ["🧬 Biology & Quality", "💰 Resources & Cost"], 
         horizontal=True,
         label_visibility="collapsed",
-        key=f"wcb_view_{result.cell_line}_{id(result)}"
+        key=f"wcb_view_{unique_key}"
     )
     
     if view_selection_wcb == "🧬 Biology & Quality":
@@ -1097,11 +1247,12 @@ def _render_wcb_result(result, pricing):
     
     col_qc1, col_qc2 = st.columns([1, 2])
     with col_qc1:
-        if st.button("Run Release QC Panel", key="run_qc_wcb"):
-            st.session_state.wcb_qc_run = True
+        qc_key = f"wcb_qc_run_{unique_key}"
+        if st.button("Run Release QC Panel", key=f"btn_qc_{unique_key}"):
+            st.session_state[qc_key] = True
             
     with col_qc2:
-        if st.session_state.get("wcb_qc_run"):
+        if st.session_state.get(qc_key):
             # Calculate QC costs
             vessels = VesselLibrary()
             inventory = MockInventory()

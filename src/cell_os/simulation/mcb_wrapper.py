@@ -15,7 +15,7 @@ from cell_os.simulation.workflow_simulator import WorkflowSimulator, SimulationC
 from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
-from cell_os.mcb_crash import MockInventory
+from cell_os.simulation.utils import MockInventory
 
 @dataclass
 class VendorVialSpec:

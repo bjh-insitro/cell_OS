@@ -12,8 +12,7 @@ import traceback # NEW IMPORT for error handling
 
 # --- CORE EXTERNAL IMPORTS ---
 from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
-from cell_os.workflow_renderer import render_workflow_graph
-from cell_os.workflow_renderer_plotly import render_workflow_plotly 
+from cell_os.rendering import render_workflow_graph, render_workflow_plotly 
 from cell_os.unit_ops import ParametricOps, VesselLibrary
 from cell_os.inventory import Inventory
 from cell_os.workflows import WorkflowBuilder, Workflow
