@@ -176,7 +176,7 @@ class MCBSimulation:
             flask_id = f"Flask_P1_{i+1}"
             
             # Use flask_type from workflow if available
-            op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line, vessel_type=self.flask_type)
+            op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line)
             self._track_resources(op)
             
             initial_cells = self.rng.normal(1e6, 1e5)
@@ -262,7 +262,7 @@ class MCBSimulation:
             
             split_ratio = total_cells / (num_new_flasks * cells_per_flask)
             
-            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line, vessel_type=self.flask_type)
+            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line)
             self._track_resources(op)
             
             passage_stress = 0.025
