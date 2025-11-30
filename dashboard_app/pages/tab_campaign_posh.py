@@ -252,7 +252,7 @@ def _render_mcb_result(result):
         avg_viability = pd.Series([v.viability for v in result.vials]).mean()
         st.metric("Avg Viability", f"{avg_viability*100:.1f}%")
     with col3:
-        days = result.summary.get("days_to_complete", 0)
+        days = result.summary.get("duration_days", 0)
         st.metric("Duration", f"{days} days")
     with col4:
         status = "✅ Success" if result.success else "❌ Failed"
