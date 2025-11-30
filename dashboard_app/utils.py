@@ -45,7 +45,7 @@ from cell_os.dino_analysis import load_dino_embeddings_from_csv
 
 # --- SHARED FUNCTIONS ---
 
-@st.cache_data
+@st.cache_data(ttl=60)  # Refresh cache every 60 seconds
 def load_data():
     """Loads experiment history and pricing data from CSV and the SQLite inventory database."""
     

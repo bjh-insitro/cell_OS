@@ -87,10 +87,25 @@ class WorkflowBuilder:
         """
         process_ops: List[UnitOp] = []
 
-        # 1. Thaw and seed from vendor vial (handles coating logic internally)
-        process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line))
+        # 1. Coat flask if needed (Day -1, 24hr before thaw)
+        try:
+            from cell_os.cell_line_database import get_cell_line_profile
+            profile = get_cell_line_profile(cell_line)
+            if profile and profile.coating_required:
+                coating_agent = profile.coating if profile.coating else "matrigel"
+                process_ops.append(self.ops.op_coat(flask_size, agents=[coating_agent]))
+        except (ImportError, Exception):
+            # Fallback for iPSC/hESC
+            if cell_line.lower() in ["ipsc", "hesc"]:
+                process_ops.append(self.ops.op_coat(flask_size, agents=["vitronectin"]))
 
-        # 2. Count cells after thaw for QC / bookkeeping
+        # 2. Thaw and seed from vendor vial (coating already done)
+        process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line, skip_coating=True))
+
+        # 3. Feed (Simulate one feed during expansion)
+        process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
+
+        # 4. Count cells after thaw for QC / bookkeeping
         process_ops.append(self.ops.op_count(flask_size, method="nc202"))
 
         # 3. Final Harvest and Freeze
@@ -128,19 +143,7 @@ class WorkflowBuilder:
             )
 
         # Freeze the master bank vials
-        process_ops.append(self.ops.op_freeze(num_vials=target_vials))
-
-        # 4. QC Tests (if enabled)
-        if include_qc:
-            # Mycoplasma test (PCR-based, 3 hours)
-            process_ops.append(self.ops.op_mycoplasma_test(f"{flask_size}_sample", method="pcr"))
-            
-            # Sterility test (7 days)
-            process_ops.append(self.ops.op_sterility_test(f"{flask_size}_sample", duration_days=7))
-            
-            # Karyotype for stem cells
-            if cell_line.lower() in ["ipsc", "hesc"]:
-                process_ops.append(self.ops.op_karyotype(f"{flask_size}_sample", method="g_banding"))
+        process_ops.append(self.ops.op_freeze(num_vials=target_vials, cell_line=cell_line))
 
         return Workflow("Master Cell Bank (MCB) Production", [
             Process("Cell Banking & Expansion", process_ops)
@@ -150,58 +153,71 @@ class WorkflowBuilder:
         self,
         flask_size: str = "flask_t75",
         cell_line: str = "U2OS",
-        target_vials: int = 10,
+        target_vials: int = 100,
         cells_per_vial: int = 1_000_000,
-        starting_passage: int = 3,
-        include_qc: bool = True,
     ) -> Workflow:
         """
         Working Cell Bank (WCB) Production.
-
+        
         Biology intent:
-          - Thaw one MCB vial (Passage P)
-          - Expand (P -> P+1 or P+2)
-          - Harvest and freeze `target_vials`
-          - Perform QC
+          - Thaw one MCB vial
+          - Expand to N flasks
+          - Harvest and freeze `target_vials` vials
         """
-        process_ops: List[UnitOp] = []
-
-        # 1. Thaw MCB vial
+        process_ops = []
+        
+        # 1. Thaw MCB
         process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line))
         
-        # 2. Expansion
-        # For 1->10 vials, we likely just need to grow the thawed flask to confluence
-        # and maybe one passage if yield isn't enough.
-        # A T75 yields ~10e6 cells. 10 vials @ 1e6 = 10e6 cells.
-        # So one T75 is enough. We just feed it until confluent.
+        # 2. Expand (simplified - assume 1 passage for now)
+        # In reality, might need multiple passages to reach 100 vials
+        process_ops.append(self.ops.op_feed(flask_size))
+        process_ops.append(self.ops.op_passage(flask_size, flask_size, split_ratio=1.0/5.0))
+        process_ops.append(self.ops.op_feed(flask_size))
         
-        # We add a feed step to simulate maintenance during growth
-        process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
-
-        # 3. Harvest - use cell line-specific dissociation method
-        dissociation = "trypsin"  # Default
+        # 3. Harvest
+        dissociation = "trypsin"
         try:
             from cell_os.cell_line_database import get_cell_line_profile
             profile = get_cell_line_profile(cell_line)
             if profile and profile.dissociation_method:
                 dissociation = profile.dissociation_method
         except (ImportError, Exception):
-            # Fallback to hardcoded logic
             if cell_line.lower() in ["ipsc", "hesc"]:
                 dissociation = "accutase"
         
         process_ops.append(self.ops.op_harvest(flask_size, dissociation_method=dissociation))
 
         # 4. Freeze
-        process_ops.append(self.ops.op_freeze(num_vials=target_vials))
+        process_ops.append(self.ops.op_freeze(num_vials=target_vials, cell_line=cell_line))
         
-        # 5. QC
-        if include_qc:
-            process_ops.append(self.ops.op_mycoplasma_test(f"{flask_size}_sample"))
-            process_ops.append(self.ops.op_sterility_test(f"{flask_size}_sample"))
-
         return Workflow("Working Cell Bank (WCB) Production", [
             Process("WCB Expansion", process_ops)
+        ])
+
+    def build_bank_release_qc(self, cell_line: str = "U2OS", sample_source: str = "flask_sample") -> Workflow:
+        """
+        Release QC Panel for Cell Banks.
+        
+        Includes:
+        - Mycoplasma (PCR)
+        - Sterility (7-day culture)
+        - Karyotype (G-banding) for stem cells
+        """
+        qc_ops = []
+        
+        # Mycoplasma test (PCR-based, 3 hours)
+        qc_ops.append(self.ops.op_mycoplasma_test(sample_source, method="pcr"))
+        
+        # Sterility test (7 days)
+        qc_ops.append(self.ops.op_sterility_test(sample_source, duration_days=7))
+        
+        # Karyotype for stem cells
+        if cell_line.lower() in ["ipsc", "hesc"]:
+            qc_ops.append(self.ops.op_karyotype(sample_source, method="g_banding"))
+            
+        return Workflow("Bank Release QC", [
+            Process("Quality Control Assays", qc_ops)
         ])
 
     def build_viral_titer(self, plate_size="plate_96well_tc") -> Workflow:

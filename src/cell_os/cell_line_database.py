@@ -1,15 +1,15 @@
 """
-Cell Line Database - Shim to data/cell_lines.yaml
+Cell Line Database - SQLite Backend
 
-This module provides cell-type-specific defaults by reading from the central
-configuration file (data/cell_lines.yaml). It maintains the legacy API
-for backward compatibility.
+This module provides cell-type-specific defaults by reading from the SQLite database.
+Maintains the legacy API for backward compatibility.
+
+Migration Note: This now reads from data/cell_lines.db instead of data/cell_lines.yaml
 """
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-import yaml
-from pathlib import Path
+from cell_os.cell_line_db import CellLineDatabase as SQLiteDB
 
 @dataclass
 class CellLineProfile:
@@ -41,33 +41,26 @@ class CellLineProfile:
     # Cost profile
     cost_tier: str  # "budget", "standard", "premium"
     
-    # New field for explicit coating requirement
+    # Fields with defaults (must come after non-default fields)
     coating_required: bool = False
+    vial_type: str = "cryovial_1_8ml"  # Default vial type
+    freezing_volume_ml: float = 1.0  # Default freezing volume
+    cells_per_vial: int = 1000000  # Default cells per vial
 
 
-_YAML_CACHE = None
+# Global database instance
+_DB_INSTANCE = None
 
-def _load_yaml():
-    global _YAML_CACHE
-    if _YAML_CACHE is None:
-        try:
-            # Assume running from root
-            path = Path("data/cell_lines.yaml")
-            if not path.exists():
-                 # Try relative path if running from tests?
-                 # For now assume root.
-                 return {}
-            with open(path, 'r') as f:
-                data = yaml.safe_load(f)
-            _YAML_CACHE = data.get('cell_lines', {})
-        except Exception as e:
-            print(f"Error loading cell_lines.yaml: {e}")
-            _YAML_CACHE = {}
-    return _YAML_CACHE
+def _get_db() -> SQLiteDB:
+    """Get or create database instance."""
+    global _DB_INSTANCE
+    if _DB_INSTANCE is None:
+        _DB_INSTANCE = SQLiteDB("data/cell_lines.db")
+    return _DB_INSTANCE
 
 def get_cell_line_profile(cell_line: str) -> Optional[CellLineProfile]:
     """
-    Get the profile for a specific cell line.
+    Get the profile for a specific cell line from SQLite database.
     
     Args:
         cell_line: Cell line identifier (case-insensitive)
@@ -75,35 +68,44 @@ def get_cell_line_profile(cell_line: str) -> Optional[CellLineProfile]:
     Returns:
         CellLineProfile if found, None otherwise
     """
-    data = _load_yaml()
-    # Case insensitive lookup
-    cell_line_map = {k.upper(): k for k in data.keys()}
-    key = cell_line_map.get(cell_line.upper())
+    db = _get_db()
     
-    if not key:
+    # Try exact match first
+    cell_line_obj = db.get_cell_line(cell_line)
+    
+    # Try case-insensitive match
+    if not cell_line_obj:
+        all_lines = db.get_all_cell_lines()
+        cell_line_map = {k.upper(): k for k in all_lines}
+        key = cell_line_map.get(cell_line.upper())
+        if key:
+            cell_line_obj = db.get_cell_line(key)
+    
+    if not cell_line_obj:
         return None
     
-    cfg = data[key]
-    if "profile" not in cfg:
-        return None
+    # Get characteristics
+    chars = db.get_characteristics(cell_line_obj.cell_line_id)
     
-    p = cfg["profile"]
     return CellLineProfile(
-        name=cfg.get("display_name", key),
-        cell_type=p.get("cell_type", "unknown"),
-        dissociation_method=p.get("dissociation_method", ""),
-        dissociation_notes=p.get("dissociation_notes", ""),
-        transfection_method=p.get("transfection_method", ""),
-        transfection_efficiency=p.get("transfection_efficiency", ""),
-        transfection_notes=p.get("transfection_notes", ""),
-        transduction_method=p.get("transduction_method", ""),
-        transduction_notes=p.get("transduction_notes", ""),
-        freezing_media=p.get("freezing_media", ""),
-        freezing_notes=p.get("freezing_notes", ""),
-        coating=p.get("coating_reagent", "none"),
-        media=p.get("media", ""),
-        cost_tier=p.get("cost_tier", "standard"),
-        coating_required=p.get("coating_required", False)
+        name=cell_line_obj.display_name,
+        cell_type=cell_line_obj.cell_type,
+        dissociation_method=chars.get("dissociation_method", ""),
+        dissociation_notes=chars.get("dissociation_notes", ""),
+        transfection_method=chars.get("transfection_method", ""),
+        transfection_efficiency=chars.get("transfection_efficiency", ""),
+        transfection_notes=chars.get("transfection_notes", ""),
+        transduction_method=chars.get("transduction_method", ""),
+        transduction_notes=chars.get("transduction_notes", ""),
+        freezing_media=chars.get("freezing_media", ""),
+        freezing_notes=chars.get("freezing_notes", ""),
+        vial_type=chars.get("vial_type", "cryovial_1_8ml"),
+        freezing_volume_ml=float(chars.get("freezing_volume_ml", 1.0)),
+        cells_per_vial=int(chars.get("cells_per_vial", 1000000)),
+        coating=cell_line_obj.coating_reagent or "none",
+        media=chars.get("media", cell_line_obj.growth_media),
+        cost_tier=cell_line_obj.cost_tier,
+        coating_required=cell_line_obj.coating_required
     )
 
 def get_optimal_methods(cell_line: str) -> Dict[str, str]:
@@ -131,8 +133,8 @@ def get_optimal_methods(cell_line: str) -> Dict[str, str]:
 
 def list_cell_lines() -> List[str]:
     """Get list of all supported cell lines."""
-    data = _load_yaml()
-    return list(data.keys())
+    db = _get_db()
+    return db.get_all_cell_lines()
 
 def get_cell_lines_by_type(cell_type: str) -> List[str]:
     """
@@ -144,12 +146,9 @@ def get_cell_lines_by_type(cell_type: str) -> List[str]:
     Returns:
         List of cell line identifiers
     """
-    data = _load_yaml()
-    results = []
-    for key, cfg in data.items():
-        if "profile" in cfg and cfg["profile"].get("cell_type") == cell_type:
-            results.append(key)
-    return results
+    db = _get_db()
+    cell_lines = db.find_cell_lines(cell_type=cell_type)
+    return [cl.cell_line_id for cl in cell_lines]
 
 def get_cell_lines_by_cost_tier(cost_tier: str) -> List[str]:
     """
@@ -161,21 +160,17 @@ def get_cell_lines_by_cost_tier(cost_tier: str) -> List[str]:
     Returns:
         List of cell line identifiers
     """
-    data = _load_yaml()
-    results = []
-    for key, cfg in data.items():
-        if "profile" in cfg and cfg["profile"].get("cost_tier") == cost_tier:
-            results.append(key)
-    return results
+    db = _get_db()
+    cell_lines = db.find_cell_lines(cost_tier=cost_tier)
+    return [cl.cell_line_id for cl in cell_lines]
 
 # Populate CELL_LINE_DATABASE for backward compatibility
 def _populate_legacy_db() -> Dict[str, CellLineProfile]:
-    db = {}
-    data = _load_yaml()
-    for key in data:
-        profile = get_cell_line_profile(key)
+    db_dict = {}
+    for cell_line_id in list_cell_lines():
+        profile = get_cell_line_profile(cell_line_id)
         if profile:
-            db[key] = profile
-    return db
+            db_dict[cell_line_id] = profile
+    return db_dict
 
 CELL_LINE_DATABASE = _populate_legacy_db()

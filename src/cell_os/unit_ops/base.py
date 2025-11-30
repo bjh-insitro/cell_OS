@@ -46,8 +46,16 @@ class VesselLibrary:
             # Fallback for aliases used in code but not in YAML
             if "plate_6well" in v_id: 
                 return Vessel(v_id, "6-Well Plate", 9.5, 3.0, 1.5, 16.8)
+            if "flask_t75" in v_id.lower():
+                return Vessel(v_id, "T-75 Flask", 75.0, 15.0, 12.5, 250.0)
             if "flask_t175" in v_id:
                 return Vessel(v_id, "T-175 Flask", 175.0, 30.0, 15.0, 600.0)
+            if "tube_50ml" in v_id:
+                return Vessel(v_id, "50mL Conical Tube", 15.0, 50.0, 0.0, 50.0)
+            if "tube_15ml" in v_id:
+                return Vessel(v_id, "15mL Conical Tube", 5.0, 15.0, 0.0, 15.0)
+            if "cryovial" in v_id:
+                return Vessel(v_id, "Cryovial", 1.8, 1.0, 0.0, 1.8)
             if "flow_tubes" in v_id:
                 return Vessel(v_id, "Flow Tube", 0.0, 0.5, 0.0, 5.0)
             

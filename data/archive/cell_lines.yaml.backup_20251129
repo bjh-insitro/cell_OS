@@ -50,10 +50,15 @@ cell_lines:
       reagent: vitronectin
     profile:
       cell_type: "iPSC"
+      media: "mtesr_plus_kit"
       coating_required: true
       coating_reagent: "vitronectin"
       dissociation_method: "accutase"
       dissociation_notes: "Ultra-gentle EDTA-only dissociation preserves pluripotency and reduces differentiation"
+      freezing_media: "cryostor_cs10"
+      vial_type: "tube_micronic_075"
+      freezing_volume_ml: 0.35
+      cells_per_vial: 1000000
       transfection_method: "nucleofection"
       transfection_efficiency: "medium"
       transfection_notes: "Nucleofection is most reliable for iPSCs, though efficiency varies by line"

@@ -64,7 +64,7 @@ class ParametricOps(ProtocolOps):
 
     # --- TIER 1: CORE CELL CULTURE OPERATIONS ---
     
-    def op_thaw(self, vessel_id: str, cell_line: str = None):
+    def op_thaw(self, vessel_id: str, cell_line: str = None, skip_coating: bool = False):
         """Thaw cells from cryovial into culture vessel."""
         from .base import UnitOp
         
@@ -83,7 +83,7 @@ class ParametricOps(ProtocolOps):
         if cell_line and CELL_LINE_DB_AVAILABLE:
             profile = get_cell_line_profile(cell_line)
             if profile:
-                coating_needed = profile.coating_required
+                coating_needed = profile.coating_required and not skip_coating
                 if coating_needed and profile.coating:
                     coating_reagent = profile.coating
                 if profile.media:
@@ -91,71 +91,178 @@ class ParametricOps(ProtocolOps):
         elif cell_line:
             # Fallback for when database is not available
             if cell_line.lower() in ["ipsc", "hesc"]:
-                coating_needed = True
+                coating_needed = True and not skip_coating
                 coating_reagent = "matrigel"
                 media = "mtesr_plus_kit"
         
         if coating_needed:
             steps.append(self.op_coat(vessel_id, agents=[coating_reagent]))
+            
+        # Aspirate coating solution (if this cell line requires coating)
+        # We do this if we just coated OR if we skipped coating (implying it was done before)
+        requires_coating = coating_needed or skip_coating
+        # Double check profile if skip_coating is True but we're not sure
+        if skip_coating and not requires_coating:
+             if profile and profile.coating_required:
+                 requires_coating = True
+             elif cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+                 requires_coating = True
+
+        if requires_coating:
+             # Assume standard coating volume for aspiration
+             aspirate_vol = 12.5 if "flask_T75" in vessel_id or "flask_t75" in vessel_id.lower() else 2.0
+             steps.append(self.op_aspirate(
+                vessel_id=vessel_id,
+                volume_ml=aspirate_vol,
+                material_cost_usd=get_single_cost("pipette_10ml"),
+                name=f"Aspirate {aspirate_vol}mL Coating from {vessel_id}"
+            ))
         
-        # 2. Prepare media volume
-        media_vol_ml = 10.0  # Standard thaw volume
-        
-        # 3. Thaw vial in water bath
-        # Simulated as incubation step
+        # 2. Thaw vial
         steps.append(self.op_incubate(
             vessel_id="water_bath",
             duration_min=2.0,
             temp_c=37.0,
             material_cost_usd=0.0,
-            instrument_cost_usd=0.5
+            instrument_cost_usd=0.5,
+            name="Thaw Vial in Water Bath"
         ))
         
-        # 4. Transfer cells to vessel
-        # Using pipette for cell transfer
-        pipette_cost = get_single_cost("pipette_2ml")
+        # 3. Add 5mL media to 15mL tube
+        tube_id = "tube_15ml"
+        tube_cost = get_single_cost("tube_15ml_conical")
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=5.0,
+            liquid_name=media,
+            material_cost_usd=get_single_cost("pipette_5ml") + (5.0 * get_single_cost(media)) + tube_cost,
+            name="Add 5mL Media to 15mL Tube"
+        ))
+        
+        # 4. Transfer vial contents to 15mL tube
         steps.append(self.op_aspirate(
             vessel_id="cryovial",
             volume_ml=1.0,
-            material_cost_usd=pipette_cost
+            material_cost_usd=get_single_cost("pipette_2ml"),
+            name="Aspirate Cells from Cryovial"
+        ))
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=1.0,
+            liquid_name="cells",
+            material_cost_usd=0.0, # Reuse pipette
+            name="Dispense Cells into 15mL Tube"
+        ))
+        
+        # 5. Wash vial with 500uL media and transfer
+        steps.append(self.op_dispense(
+            vessel_id="cryovial",
+            volume_ml=0.5,
+            liquid_name=media,
+            material_cost_usd=get_single_cost("pipette_2ml") + (0.5 * get_single_cost(media)),
+            name="Add 0.5mL Wash Media to Cryovial"
+        ))
+        steps.append(self.op_aspirate(
+            vessel_id="cryovial",
+            volume_ml=0.5,
+            material_cost_usd=0.0, # Reuse
+            name="Aspirate Wash from Cryovial"
+        ))
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=0.5,
+            liquid_name="wash",
+            material_cost_usd=0.0,
+            name="Dispense Wash into 15mL Tube"
+        ))
+        
+        # 6. Centrifuge
+        steps.append(self.op_centrifuge(
+            vessel_id=tube_id,
+            duration_min=5.0,
+            speed_rpm=1200,
+            temp_c=25.0,
+            instrument_cost_usd=0.5
+        ))
+        
+        # 7. Aspirate supernatant
+        steps.append(self.op_aspirate(
+            vessel_id=tube_id,
+            volume_ml=6.4, # Leave ~100uL pellet
+            material_cost_usd=get_single_cost("pipette_10ml"),
+            name="Aspirate Supernatant"
+        ))
+        
+        # 8. Resuspend in 1.1mL media
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=1.1,
+            liquid_name=media,
+            material_cost_usd=get_single_cost("pipette_2ml") + (1.1 * get_single_cost(media)),
+            name="Resuspend Pellet in 1.1mL Media"
+        ))
+        
+        # 9. Take 100uL for count
+        steps.append(self.op_aspirate(
+            vessel_id=tube_id,
+            volume_ml=0.1,
+            material_cost_usd=get_single_cost("tip_200ul_lr"),
+            name="Sample 100uL for Count"
+        ))
+        
+        # 10. Aspirate coating from Flask
+        requires_coating = coating_needed or skip_coating
+        # Double check profile if skip_coating is True but we're not sure
+        if skip_coating and not requires_coating:
+             if profile and profile.coating_required:
+                 requires_coating = True
+             elif cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+                 requires_coating = True
+
+        if requires_coating:
+             aspirate_vol = 12.5 if "flask_T75" in vessel_id.lower() else 2.0
+             steps.append(self.op_aspirate(
+                vessel_id=vessel_id,
+                volume_ml=aspirate_vol,
+                material_cost_usd=get_single_cost("pipette_10ml"),
+                name=f"Aspirate {aspirate_vol}mL Coating from {vessel_id}"
+            ))
+            
+        # 11. Add 15mL growth media to Flask
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=15.0,
+            liquid_name=media,
+            material_cost_usd=(2 * get_single_cost("pipette_10ml")) + (15.0 * get_single_cost(media)), # Use 2x 10mL pipettes or equivalent
+            name=f"Add 15mL Growth Media to {vessel_id}"
+        ))
+        
+        # 12. Transfer 1e6 cells (remaining 1mL) to Flask
+        steps.append(self.op_aspirate(
+            vessel_id=tube_id,
+            volume_ml=1.0,
+            material_cost_usd=get_single_cost("pipette_2ml"),
+            name="Aspirate Cells from 15mL Tube"
         ))
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=1.0,
-            liquid_name=media,
-            material_cost_usd=pipette_cost
+            liquid_name="cells",
+            material_cost_usd=0.0,
+            name=f"Dispense Cells into {vessel_id}"
         ))
         
-        # 5. Add media to vessel
-        steps.append(self.op_dispense(
-            vessel_id=vessel_id,
-            volume_ml=media_vol_ml,
-            liquid_name=media,
-            material_cost_usd=get_single_cost("pipette_10ml")
-        ))
-        
-        # 6. Incubate overnight
+        # 13. Incubate overnight
         steps.append(self.op_incubate(
             vessel_id=vessel_id,
-            duration_min=960.0,  # 16 hours
+            duration_min=1440.0,  # 24 hours
             temp_c=37.0,
             co2_pct=5.0,
             material_cost_usd=0.0,
             instrument_cost_usd=2.0
         ))
         
-        # 7. Media change (remove DMSO)
-        steps.append(self.op_aspirate(
-            vessel_id=vessel_id,
-            volume_ml=media_vol_ml,
-            material_cost_usd=get_single_cost("pipette_10ml")
-        ))
-        steps.append(self.op_dispense(
-            vessel_id=vessel_id,
-            volume_ml=media_vol_ml,
-            liquid_name=media,
-            material_cost_usd=get_single_cost("pipette_10ml")
-        ))
+
         
         # Calculate total costs
         total_mat = sum(s.material_cost_usd for s in steps)
@@ -317,10 +424,17 @@ class ParametricOps(ProtocolOps):
         
         # Auto-select media based on cell line
         if media is None and cell_line:
-            if cell_line.lower() in ["ipsc", "hesc"]:
-                media = "mtesr_plus_kit"
-            else:
-                media = "dmem_10fbs"
+            if CELL_LINE_DB_AVAILABLE:
+                profile = get_cell_line_profile(cell_line)
+                if profile and profile.media:
+                    media = profile.media
+            
+            # Fallback if DB failed or no media in profile
+            if media is None:
+                if cell_line.lower() in ["ipsc", "hesc"]:
+                    media = "mtesr_plus_kit"
+                else:
+                    media = "dmem_10fbs"
         elif media is None:
             media = "dmem_10fbs"  # Default
         
@@ -444,51 +558,128 @@ class ParametricOps(ProtocolOps):
         
         steps = []
         
-        coating_vol = 2.0  # mL
+        # Vessel-specific coating volumes (working solution)
+        # T75 = 75 cm², protocol calls for ~1 mL per 6 cm² = 12.5 mL
+        coating_vol = 12.5  # mL for T75
         
         for agent in agents:
-            # 1. Add coating agent
-            steps.append(self.op_dispense(
-                vessel_id=vessel_id,
-                volume_ml=coating_vol,
-                liquid_name=agent,
-                material_cost_usd=self.inv.get_price("pipette_5ml")
-            ))
+            # Vitronectin requires dilution in PBS
+            if agent == "vitronectin":
+                # Stock: 0.5 mg/mL (5mg in 10mL)
+                # Working: 10 µg/mL (0.01 mg/mL)
+                # Dilution: 50x
+                stock_vol_ml = coating_vol / 50.0  # 0.25 mL
+                pbs_vol_ml = coating_vol - stock_vol_ml  # 12.25 mL
+                
+                # Costs
+                pbs_cost = pbs_vol_ml * self.inv.get_price("dpbs")
+                stock_cost = stock_vol_ml * self.inv.get_price("vitronectin")
+                
+                # 1. Prepare Solution in Tube
+                # Add PBS
+                steps.append(self.op_dispense(
+                    vessel_id="tube_50ml",
+                    volume_ml=pbs_vol_ml,
+                    liquid_name="pbs",
+                    material_cost_usd=self.inv.get_price("pipette_10ml") + pbs_cost,
+                    name=f"Dispense {pbs_vol_ml:.2f}mL PBS into Tube"
+                ))
+                
+                # Add Vitronectin
+                steps.append(self.op_dispense(
+                    vessel_id="tube_50ml",
+                    volume_ml=stock_vol_ml,
+                    liquid_name=agent,
+                    material_cost_usd=self.inv.get_price("pipette_2ml") + stock_cost,
+                    name=f"Dispense {stock_vol_ml:.2f}mL {agent} into Tube"
+                ))
+                
+                # Mix (Aspirate/Dispense)
+                steps.append(self.op_aspirate(
+                    vessel_id="tube_50ml",
+                    volume_ml=5.0,
+                    material_cost_usd=0.0,
+                    name="Mix Solution (Aspirate)"
+                ))
+                steps.append(self.op_dispense(
+                    vessel_id="tube_50ml",
+                    volume_ml=5.0,
+                    liquid_name="mixture",
+                    material_cost_usd=0.0,
+                    name="Mix Solution (Dispense)"
+                ))
+                
+                # 2. Transfer to Flask
+                steps.append(self.op_aspirate(
+                    vessel_id="tube_50ml",
+                    volume_ml=coating_vol,
+                    material_cost_usd=self.inv.get_price("pipette_10ml"),
+                    name=f"Aspirate {coating_vol}mL Coating Solution"
+                ))
+                steps.append(self.op_dispense(
+                    vessel_id=vessel_id,
+                    volume_ml=coating_vol,
+                    liquid_name="coating_solution",
+                    material_cost_usd=0.0, # Pipette cost accounted for in aspirate
+                    name=f"Dispense {coating_vol}mL Coating Solution into Flask"
+                ))
+                
+            else:
+                # Other coating agents (Matrigel, Laminin, etc.) - use as-is
+                steps.append(self.op_dispense(
+                    vessel_id=vessel_id,
+                    volume_ml=coating_vol,
+                    liquid_name=agent,
+                    material_cost_usd=self.inv.get_price("pipette_10ml")
+                ))
         
-        # 2. Incubate
+        # Incubation time depends on coating agent
+        # Vitronectin: 24 hours (1440 min) at RT or 37°C
+        # Matrigel/Laminin: 1 hour (60 min) at 37°C
+        incubation_time = 1440.0 if "vitronectin" in agents else 60.0
+        
         steps.append(self.op_incubate(
             vessel_id=vessel_id,
-            duration_min=60.0,
+            duration_min=incubation_time,
             temp_c=37.0,
             material_cost_usd=0.0,
             instrument_cost_usd=1.0
         ))
         
-        # 3. Aspirate coating solution
-        steps.append(self.op_aspirate(
-            vessel_id=vessel_id,
-            volume_ml=coating_vol,
-            material_cost_usd=self.inv.get_price("pipette_5ml")
-        ))
+        # Aspirate coating solution is now handled in op_thaw or manually before seeding
         
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
-        # Coating agents are expensive (especially Matrigel)
-        coating_cost = sum(50.0 if agent == "matrigel" else 5.0 for agent in agents)
+        # Calculate coating agent cost based on actual usage
+        coating_cost = 0.0
+        for agent in agents:
+            if agent == "vitronectin":
+                # 0.25 mL of stock at $90/mL
+                # This cost is now included in the op_dispense step for vitronectin
+                pass 
+            elif agent == "matrigel":
+                # Matrigel is expensive, ~$50 per coating
+                coating_cost += 50.0
+            elif agent == "laminin_521":
+                # Laminin 521 is also expensive
+                coating_cost += 30.0
+            else:
+                # Other coatings
+                coating_cost += 5.0
         
         return UnitOp(
             uo_id=f"Coat_{vessel_id}_{'_'.join(agents)}",
             name=f"Coat {vessel_id} with {', '.join(agents)}",
             layer="preparation",
             category="coating",
-            time_score=70,
+            time_score=int(incubation_time + 15),  # Incubation + handling
             cost_score=3,
             automation_fit=3,
             failure_risk=1,
             staff_attention=1,
             instrument="Biosafety Cabinet + Incubator",
-            material_cost_usd=total_mat + coating_cost,
+            material_cost_usd=total_mat,
             instrument_cost_usd=total_inst,
             sub_steps=steps
         )
@@ -638,27 +829,41 @@ class ParametricOps(ProtocolOps):
             sub_steps=steps
         )
 
-    def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor"):
+    def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor", cell_line: str = None):
         """Freeze cells into cryovials."""
         from .base import UnitOp
         
         steps = []
         
-        # Calculate total volume (assuming 1mL per vial + 10% overage/dead volume)
-        total_vol = num_vials * 1.1
+        # Get cell line-specific freezing parameters
+        volume_per_vial = 1.0  # Default
+        vial_type = "cryovial_1_8ml"  # Default
+        
+        if cell_line and CELL_LINE_DB_AVAILABLE:
+            profile = get_cell_line_profile(cell_line)
+            if profile:
+                if hasattr(profile, 'freezing_volume_ml') and profile.freezing_volume_ml:
+                    volume_per_vial = profile.freezing_volume_ml
+                if hasattr(profile, 'vial_type') and profile.vial_type:
+                    vial_type = profile.vial_type
+                if hasattr(profile, 'freezing_media') and profile.freezing_media:
+                    freezing_media = profile.freezing_media
+        
+        # Calculate total volume (with 10% overage/dead volume)
+        total_vol = num_vials * volume_per_vial * 1.1
         
         steps.append(self.op_aspirate("pooled_vessels", total_vol, material_cost_usd=self.inv.get_price("pipette_10ml")))
-        steps.append(self.op_dispense("vials", 1.0 * num_vials, freezing_media, material_cost_usd=self.inv.get_price("pipette_10ml")))
+        steps.append(self.op_dispense("vials", volume_per_vial * num_vials, freezing_media, material_cost_usd=self.inv.get_price("pipette_10ml")))
         
         # Account for final vials and media cost
-        vial_cost = self.inv.get_price("cryovial_1_8ml") * num_vials
+        vial_cost = self.inv.get_price(vial_type) * num_vials
         
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
         return UnitOp(
             uo_id=f"Freeze_{num_vials}vials",
-            name=f"Freeze {num_vials} vials ({freezing_media})",
+            name=f"Freeze {num_vials} vials ({freezing_media}, {volume_per_vial}mL each)",
             layer="banking",
             category="culture",
             time_score=60,

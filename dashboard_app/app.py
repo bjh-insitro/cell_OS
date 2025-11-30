@@ -64,10 +64,12 @@ if st.sidebar.button("Refresh Data"):
 df, pricing = load_data()
 
 # -------------------------------------------------------------------
-# Tabs Definition (UPDATED FOR 17 TABS)
+# Sidebar Navigation (Replaces Tabs for Stability)
 # -------------------------------------------------------------------
-tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_analytics, tab_inventory, tab_campaign, tab_posh_sim, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", [
     "🚀 Mission Control", 
+    "🧬 POSH Campaign Sim",
     "🔬 Science", 
     "💰 Economics", 
     "🕸️ Workflow Visualizer", 
@@ -78,7 +80,6 @@ tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_ana
     "📈 Analytics",
     "📦 Inventory",
     "🗓️ Campaign Manager", 
-    "🧬 POSH Campaign Sim", # <-- NEW TAB
     "🧭 POSH Decision Assistant", 
     "🧪 POSH Screen Designer", 
     "📊 Campaign Reports", 
@@ -87,16 +88,19 @@ tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_ana
 ])
 
 # -------------------------------------------------------------------
-# Tab Content Assignment (Calls the external functions)
+# Page Rendering
 # -------------------------------------------------------------------
-with tab1:
+
+if page == "🚀 Mission Control":
     render_mission_control(df, pricing)
 
-with tab2:
+elif page == "🧬 POSH Campaign Sim":
+    render_posh_campaign_manager(df, pricing)
+
+elif page == "🔬 Science":
     render_science_explorer(df, pricing)
 
-with tab3:
-    # Inline/Fallback logic for Tab 3 (Economics)
+elif page == "💰 Economics":
     try:
         render_economics(df, pricing)
     except NameError:
@@ -111,44 +115,41 @@ with tab3:
         st.dataframe(pd.DataFrame(items), use_container_width=True)
         st.info("Live inventory tracking requires persisting the Inventory state to a file (TODO).")
 
-with tab4:
+elif page == "🕸️ Workflow Visualizer":
     render_workflow_visualizer(df, pricing)
 
-with tab_audit:
+elif page == "🛠️ Resource Audit":
     render_resource_audit(df, pricing)
-    
-with tab_bom: # <-- NEW TAB CONTENT
-    render_workflow_bom_audit(df, pricing) 
 
-with tab_inspector: # <-- CELL LINE INSPECTOR CONTENT
-    render_cell_line_inspector(df, pricing) 
+elif page == "🔍 Workflow BOM Audit":
+    render_workflow_bom_audit(df, pricing)
 
-with tab_executor: # <-- EXECUTION MONITOR CONTENT
-    render_execution_monitor(df, pricing) 
+elif page == "🧬 Cell Line Inspector":
+    render_cell_line_inspector(df, pricing)
 
-with tab_analytics: # <-- ANALYTICS CONTENT
+elif page == "⚙️ Execution Monitor":
+    render_execution_monitor(df, pricing)
+
+elif page == "📈 Analytics":
     render_analytics(df, pricing)
 
-with tab_inventory: # <-- INVENTORY CONTENT
+elif page == "📦 Inventory":
     render_inventory_manager(df, pricing)
 
-with tab_campaign: # <-- CAMPAIGN MANAGER CONTENT
+elif page == "🗓️ Campaign Manager":
     render_campaign_manager(df, pricing)
 
-with tab_posh_sim: # <-- NEW POSH CAMPAIGN SIM CONTENT
-    render_posh_campaign_manager(df, pricing)
-
-with tab5:
+elif page == "🧭 POSH Decision Assistant":
     render_posh_decisions(df, pricing)
 
-with tab6:
+elif page == "🧪 POSH Screen Designer":
     render_posh_designer(df, pricing)
 
-with tab7:
+elif page == "📊 Campaign Reports":
     render_campaign_reports(df, pricing)
 
-with tab8:
+elif page == "🧮 Budget Calculator":
     render_budget_calculator(df, pricing)
 
-with tab9:
+elif page == "🧬 Phenotype Clustering":
     render_phenotype_clustering(df, pricing)
