@@ -77,23 +77,30 @@ def migrate_compound_sensitivity(db: SimulationParamsDatabase, yaml_data: dict):
         
         # Add sensitivity for each cell line
         for key, value in data.items():
-            if key != "hill_slope":  # Skip hill_slope, it's not a cell line
-                cell_line_id = key
-                ic50_um = value
+            # Skip non-cell-line fields
+            if key in ["hill_slope", "description", "cellrox_params", "segmentation_params"]:
+                continue
+            
+            # Skip if value is a dict (nested parameters)
+            if isinstance(value, dict):
+                continue
                 
-                sensitivity = CompoundSensitivity(
-                    compound_name=compound_name,
-                    cell_line_id=cell_line_id,
-                    ic50_um=ic50_um,
-                    hill_slope=hill_slope,
-                    source="literature",
-                    version=1,
-                    notes="Migrated from YAML"
-                )
-                
-                sensitivity_id = db.add_compound_sensitivity(sensitivity)
-                count += 1
-                print(f"  ✅ {compound_name} + {cell_line_id}: IC50={ic50_um} µM")
+            cell_line_id = key
+            ic50_um = value
+            
+            sensitivity = CompoundSensitivity(
+                compound_name=compound_name,
+                cell_line_id=cell_line_id,
+                ic50_um=ic50_um,
+                hill_slope=hill_slope,
+                source="literature",
+                version=1,
+                notes="Migrated from YAML"
+            )
+            
+            sensitivity_id = db.add_compound_sensitivity(sensitivity)
+            count += 1
+            print(f"  ✅ {compound_name} + {cell_line_id}: IC50={ic50_um} µM")
     
     print(f"\n✅ Migrated {count} compound sensitivity records")
     return count
@@ -161,7 +168,12 @@ def validate_migration(db: SimulationParamsDatabase, yaml_data: dict):
     # Validate compound sensitivities
     for compound_name, data in yaml_data.get("compound_sensitivity", {}).items():
         for cell_line_id, ic50 in data.items():
-            if cell_line_id == "hill_slope":
+            # Skip non-cell-line fields
+            if cell_line_id in ["hill_slope", "description", "cellrox_params", "segmentation_params"]:
+                continue
+            
+            # Skip if value is a dict (nested parameters)
+            if isinstance(ic50, dict):
                 continue
             
             db_sensitivity = db.get_compound_sensitivity(compound_name, cell_line_id)

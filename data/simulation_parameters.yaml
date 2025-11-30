@@ -78,6 +78,31 @@ cell_lines:
     viability_cv: 0.05
     biological_cv: 0.10
 
+  HepG2:
+    doubling_time_h: 48.0  # Hepatocellular carcinoma, slower growing
+    max_confluence: 0.85
+    max_passage: 25
+    senescence_rate: 0.015
+    seeding_efficiency: 0.80
+    passage_stress: 0.03  # More sensitive to passage
+    
+    cell_count_cv: 0.12
+    viability_cv: 0.03
+    biological_cv: 0.07
+
+  A549:
+    doubling_time_h: 22.0  # Lung adenocarcinoma, moderate growth
+    max_confluence: 0.88
+    max_passage: 30
+    senescence_rate: 0.01
+    seeding_efficiency: 0.85
+    passage_stress: 0.02
+    
+    cell_count_cv: 0.11
+    viability_cv: 0.02
+    biological_cv: 0.06
+
+
 # Compound sensitivity database (IC50 values in μM)
 compound_sensitivity:
   staurosporine:
@@ -127,6 +152,50 @@ compound_sensitivity:
     U2OS: 250.0
     CHO: 180.0
     hill_slope: 1.5
+
+  tbhp:
+    description: "tert-Butyl hydroperoxide (oxidative stress inducer)"
+    # Viability IC50 (concentration for 50% cell death)
+    U2OS: 100.0
+    HepG2: 150.0  # More resistant (hepatocytes handle oxidative stress better)
+    A549: 80.0    # More sensitive (lung cells vulnerable to ROS)
+    HEK293T: 120.0
+    HeLa: 90.0
+    hill_slope: 2.0
+    
+    # CellROX signal parameters (oxidative stress readout)
+    cellrox_params:
+      U2OS:
+        ec50_uM: 50.0      # Concentration for half-max CellROX signal
+        max_fold: 5.0      # Maximum fold increase over baseline
+        baseline: 100.0    # Baseline fluorescence (arbitrary units)
+        hill_slope: 1.8
+      HepG2:
+        ec50_uM: 75.0      # Higher EC50 (more resistant)
+        max_fold: 4.0      # Lower max fold (better antioxidant capacity)
+        baseline: 120.0
+        hill_slope: 1.6
+      A549:
+        ec50_uM: 40.0      # Lower EC50 (more sensitive)
+        max_fold: 6.0      # Higher max fold (amplified ROS response)
+        baseline: 90.0
+        hill_slope: 2.0
+    
+    # Segmentation quality degradation (high dose causes cell rounding/death)
+    segmentation_params:
+      U2OS:
+        degradation_ic50_uM: 200.0  # Dose where 50% of cells become unsegmentable
+        min_quality: 0.3            # Minimum quality at very high doses
+        hill_slope: 2.5
+      HepG2:
+        degradation_ic50_uM: 250.0  # More resistant to morphology changes
+        min_quality: 0.4
+        hill_slope: 2.2
+      A549:
+        degradation_ic50_uM: 150.0  # More sensitive
+        min_quality: 0.25
+        hill_slope: 2.8
+
 
 # Default parameters for unknown cell lines/compounds
 defaults:
