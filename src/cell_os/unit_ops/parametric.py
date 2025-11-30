@@ -42,6 +42,26 @@ class ParametricOps(ProtocolOps):
             return get_cell_line_profile(cell_line)
         return {}
 
+    def op_centrifuge(self, vessel_id: str, duration_min: float, speed_rpm: float = 1000, temp_c: float = 25.0, material_cost_usd: float = 0.0, instrument_cost_usd: float = 0.0):
+        """Centrifuge a vessel."""
+        from .base import UnitOp
+        
+        return UnitOp(
+            uo_id=f"Centrifuge_{vessel_id}",
+            name=f"Centrifuge {vessel_id} ({duration_min}min @ {speed_rpm}rpm)",
+            layer="atomic",
+            category="separation",
+            time_score=duration_min,
+            cost_score=1,
+            automation_fit=3,
+            failure_risk=1,
+            staff_attention=1,
+            instrument="Centrifuge",
+            material_cost_usd=material_cost_usd,
+            instrument_cost_usd=instrument_cost_usd if instrument_cost_usd > 0 else 0.5,
+            sub_steps=[]
+        )
+
     # --- TIER 1: CORE CELL CULTURE OPERATIONS ---
     
     def op_thaw(self, vessel_id: str, cell_line: str = None):

@@ -87,8 +87,12 @@ class TestJobQueue:
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.queue = JobQueue(db_path=self.temp_db.name)
+        # Stop worker thread so it doesn't consume jobs while we test queue logic
+        self.queue.stop_worker()
     
     def teardown_method(self):
+        if hasattr(self, 'queue') and self.queue:
+            self.queue.stop_worker()
         if os.path.exists(self.temp_db.name):
             os.unlink(self.temp_db.name)
 
