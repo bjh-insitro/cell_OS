@@ -106,7 +106,6 @@ class WorkflowSimulator:
         
         # Extract params from workflow
         self.flask_type = "flask_T75"
-        self.media_type = "mtesr_plus_kit"
         self._parse_workflow_params()
     
     def _parse_workflow_params(self):
@@ -118,10 +117,6 @@ class WorkflowSimulator:
                         if "flask" in item.resource_id.lower():
                             self.flask_type = item.resource_id
                             break
-            
-            if "feed" in op.name.lower():
-                if hasattr(op, 'parameters') and 'media' in op.parameters:
-                    self.media_type = op.parameters['media']
     
     def run(self) -> SimulationResult:
         """
@@ -212,7 +207,7 @@ class WorkflowSimulator:
             elif state["confluence"] < 0.1 and self.day > 5:
                 self.violations.append(f"Stagnation in {flask_id}")
             else:
-                op = self.ops.op_feed(flask_id, media=self.media_type)
+                op = self.ops.op_feed(flask_id, cell_line=self.config.cell_line)
                 self._track_resources(op)
         
         self.active_flasks = surviving_flasks
