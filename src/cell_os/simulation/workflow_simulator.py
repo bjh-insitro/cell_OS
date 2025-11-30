@@ -136,12 +136,14 @@ class WorkflowSimulator:
             
             target_total_cells = self.config.target_vials * self.config.cells_per_vial
             
-            # Run until we have enough cells AND they are ready to harvest (>80% confluence)
+            # Run until we have enough cells OR high enough confluence for harvest
+            # Stop when EITHER condition is met to avoid over-expansion
             while True:
                 total_cells = self._get_total_cells()
                 avg_conf = self._get_avg_confluence()
                 
-                if total_cells >= target_total_cells and avg_conf >= 0.75:
+                # Stop if we have enough cells (with 10% buffer) OR if confluence is ready for harvest
+                if total_cells >= target_total_cells * 1.1 or (total_cells >= target_total_cells * 0.8 and avg_conf >= 0.75):
                     break
                 
                 self.day += 1
