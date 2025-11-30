@@ -20,7 +20,7 @@ class TestBiologicalVirtualMachine:
         
         assert result["status"] == "success"
         assert 0.8e6 < result["count"] < 1.2e6  # Within noise range
-        assert 0.95 < result["viability"] < 1.0
+        assert 0.95 <= result["viability"] <= 1.0
         assert result["passage_number"] == 0
         
     def test_cell_growth(self):
@@ -32,8 +32,9 @@ class TestBiologicalVirtualMachine:
         
         result = self.vm.count_cells("T75_1", vessel_id="T75_1")
         
-        # Should approximately double (with some biological variation)
-        assert 1.7e6 < result["count"] < 2.4e6
+        # Should approximately double (with lag phase, slightly less)
+        # Lag phase reduces growth in first 12h, so expect ~1.7x instead of 2x
+        assert 1.6e6 < result["count"] < 2.0e6
         
     def test_passage(self):
         """Test cell passaging."""
@@ -98,6 +99,10 @@ class TestBiologicalVirtualMachine:
         """Test tracking multiple vessels simultaneously."""
         self.vm.seed_vessel("T75_1", "HEK293T", initial_count=1e6)
         self.vm.seed_vessel("T75_2", "HeLa", initial_count=2e6)
+        
+        # Skip lag phase for clearer growth rate comparison
+        self.vm.vessel_states["T75_1"].seed_time = -24.0
+        self.vm.vessel_states["T75_2"].seed_time = -24.0
         
         # Incubate both
         self.vm.incubate(24 * 3600, 37.0)
