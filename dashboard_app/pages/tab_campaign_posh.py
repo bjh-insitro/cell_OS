@@ -240,40 +240,70 @@ def _render_resources(result, pricing, workflow_type="MCB"):
     else:
         qty_flasks = max(1, int(num_vials / 5)) # Fallback estimate
     
-    qty_pbs = 1 # Fixed estimate
     
     # Estimate dissociation reagent based on actual passages
     # Each passage uses ~5mL of dissociation reagent per flask
     estimated_passages = max(1, int(result.summary.get("duration_days", 10) / 3)) # Passage every ~3 days
+    
+    # Calculate actual volumes used
+    total_media_ml = total_media * 1000  # Convert L to mL
+    qty_freezing_media_ml = qty_vials * freezing_volume_ml
+    
+    # Estimate PBS usage: ~5mL per passage for washing
+    qty_pbs_ml = estimated_passages * qty_flasks * 5.0
+    
+    # Estimate dissociation reagent: ~5mL per passage per flask
     qty_dissociation_ml = estimated_passages * qty_flasks * 5.0
-    qty_dissociation = 1 # Still show as 1 unit for simplicity
     
     # Estimate Pipettes & Tips based on usage
     estimated_feeds = int((total_media * 1000) / 15)
-    
     qty_pipettes_10ml = estimated_feeds + (estimated_passages * 2) + 2 
     qty_tips_1000ul = estimated_feeds + (estimated_passages * 4)
     
-    # Calculate freezing media volume
-    qty_freezing_media_ml = qty_vials * freezing_volume_ml
+    # Estimate coating volume if needed
+    qty_coating_ml = 0
+    if coating_id:
+        # Estimate 2mL per flask for coating
+        qty_coating_ml = qty_flasks * 2.0
+    
+    # Get unit prices ($/mL or $/unit) from pricing database
+    media_unit_price = _get_item_cost(pricing, media_id, 0.814)  # $/mL
+    freezing_media_unit_price = _get_item_cost(pricing, freezing_media_id, 4.0)  # $/mL
+    pbs_unit_price = _get_item_cost(pricing, "dpbs", 0.0364)  # $/mL
+    dissociation_unit_price = _get_item_cost(pricing, dissociation_id, 0.22)  # $/mL
+    vial_unit_price = _get_item_cost(pricing, vial_type_id, 0.5)  # $/unit
+    flask_unit_price = _get_item_cost(pricing, "t75_flask", 1.32)  # $/unit
+    pipette_unit_price = _get_item_cost(pricing, "serological_pipette_10ml", 0.3)  # $/unit
+    tip_unit_price = _get_item_cost(pricing, "pipette_tip_1000ul_filter", 0.143)  # $/unit
+    coating_unit_price = _get_item_cost(pricing, coating_id, 50.0) if coating_id else 0  # $/mL
+    
+    # Calculate total costs
+    cost_media_total = total_media_ml * media_unit_price
+    cost_freezing_media_total = qty_freezing_media_ml * freezing_media_unit_price
+    cost_pbs_total = qty_pbs_ml * pbs_unit_price
+    cost_dissociation_total = qty_dissociation_ml * dissociation_unit_price
+    cost_vials_total = qty_vials * vial_unit_price
+    cost_flasks_total = qty_flasks * flask_unit_price
+    cost_pipettes_total = qty_pipettes_10ml * pipette_unit_price
+    cost_tips_total = qty_tips_1000ul * tip_unit_price
+    cost_coating_total = qty_coating_ml * coating_unit_price if coating_id else 0
     
     if view_mode == "Aggregate View":
-        # Dynamic aggregate view
+        # Build consumables list with actual volumes and costs
         consumables_data = [
-            {"Item": media_name, "Quantity": qty_media_bottles, "Unit Cost": f"${cost_media_bottle:.2f}", "Total Cost": f"${qty_media_bottles * cost_media_bottle:.2f}"},
-            {"Item": vial_name, "Quantity": qty_vials, "Unit Cost": f"${cost_vial_unit:.2f}", "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"},
-            {"Item": f"{freezing_media_name} ({qty_freezing_media_ml:.1f}mL)", "Quantity": 1, "Unit Cost": f"${cost_freezing_media:.2f}", "Total Cost": f"${cost_freezing_media:.2f}"},
-            {"Item": "T75 Flasks", "Quantity": qty_flasks, "Unit Cost": f"${cost_flask_unit:.2f}", "Total Cost": f"${qty_flasks * cost_flask_unit:.2f}"},
-            {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${cost_pipette_unit:.2f}", "Total Cost": f"${qty_pipettes_10ml * cost_pipette_unit:.2f}"},
-            {"Item": "Pipette Tips (1000uL)", "Quantity": qty_tips_1000ul, "Unit Cost": f"${cost_tip_unit:.2f}", "Total Cost": f"${qty_tips_1000ul * cost_tip_unit:.2f}"},
-            {"Item": "PBS (500mL)", "Quantity": qty_pbs, "Unit Cost": f"${cost_pbs_unit:.2f}", "Total Cost": f"${qty_pbs * cost_pbs_unit:.2f}"},
-            {"Item": dissociation_name, "Quantity": qty_dissociation, "Unit Cost": f"${cost_dissociation_unit:.2f}", "Total Cost": f"${qty_dissociation * cost_dissociation_unit:.2f}"}
+            {"Item": f"{media_name} ({total_media_ml:.0f}mL)", "Quantity": f"{total_media_ml:.0f} mL", "Unit Cost": f"${media_unit_price:.3f}/mL", "Total Cost": f"${cost_media_total:.2f}"},
+            {"Item": vial_name, "Quantity": qty_vials, "Unit Cost": f"${vial_unit_price:.2f}", "Total Cost": f"${cost_vials_total:.2f}"},
+            {"Item": f"{freezing_media_name} ({qty_freezing_media_ml:.1f}mL)", "Quantity": f"{qty_freezing_media_ml:.1f} mL", "Unit Cost": f"${freezing_media_unit_price:.2f}/mL", "Total Cost": f"${cost_freezing_media_total:.2f}"},
+            {"Item": "T75 Flasks", "Quantity": qty_flasks, "Unit Cost": f"${flask_unit_price:.2f}", "Total Cost": f"${cost_flasks_total:.2f}"},
+            {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${pipette_unit_price:.2f}", "Total Cost": f"${cost_pipettes_total:.2f}"},
+            {"Item": "Pipette Tips (1000uL)", "Quantity": qty_tips_1000ul, "Unit Cost": f"${tip_unit_price:.3f}", "Total Cost": f"${cost_tips_total:.2f}"},
+            {"Item": f"PBS ({qty_pbs_ml:.0f}mL)", "Quantity": f"{qty_pbs_ml:.0f} mL", "Unit Cost": f"${pbs_unit_price:.3f}/mL", "Total Cost": f"${cost_pbs_total:.2f}"},
+            {"Item": f"{dissociation_name} ({qty_dissociation_ml:.0f}mL)", "Quantity": f"{qty_dissociation_ml:.0f} mL", "Unit Cost": f"${dissociation_unit_price:.3f}/mL", "Total Cost": f"${cost_dissociation_total:.2f}"}
         ]
         
         if coating_id:
-             # Estimate 1 kit per campaign for simplicity
             consumables_data.append(
-                {"Item": coating_name, "Quantity": 1, "Unit Cost": f"${cost_coating_unit:.2f}", "Total Cost": f"${cost_coating_unit:.2f}"}
+                {"Item": f"{coating_name} ({qty_coating_ml:.0f}mL)", "Quantity": f"{qty_coating_ml:.0f} mL", "Unit Cost": f"${coating_unit_price:.2f}/mL", "Total Cost": f"${cost_coating_total:.2f}"}
             )
         
         st.dataframe(pd.DataFrame(consumables_data), use_container_width=True)
