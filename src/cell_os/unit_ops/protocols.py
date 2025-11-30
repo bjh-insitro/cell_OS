@@ -54,14 +54,23 @@ class ProtocolOps(LiquidHandlingOps, IncubationOps, ImagingOps, AnalysisOps):
         
         # 0. Conditional Coating Check
         coating_needed = False
+        coating_reagent = "laminin_521"  # Default
+        dissociation_reagent = "trypsin"  # Default
+        
         if cell_line and CELL_LINE_DB_AVAILABLE:
             profile = get_cell_line_profile(cell_line)
-            if profile and profile.get('coating_required', False):
-                coating_needed = True
+            if profile:
+                # Profile is a dataclass, not a dict
+                coating_needed = profile.coating_required
+                if coating_needed and profile.coating:
+                    coating_reagent = profile.coating
+                # Get the correct dissociation method
+                if profile.dissociation_method:
+                    dissociation_reagent = profile.dissociation_method
         
         if coating_needed:
             # Coating steps should be done 24h in advance, but we model the cost here.
-            steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, "laminin_521"))
+            steps.append(self.op_dispense(vessel_id, v.coating_volume_ml, coating_reagent))
             steps.append(self.op_incubate(vessel_id, 60))
             steps.append(self.op_aspirate(vessel_id, v.coating_volume_ml))
         

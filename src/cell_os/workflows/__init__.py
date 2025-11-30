@@ -111,8 +111,18 @@ class WorkflowBuilder:
                 pass
         
         if not use_resolver:
-            # Legacy fallback
-            dissociation = "accutase" if cell_line.lower() == "ipsc" else "trypsin"
+            # Legacy fallback - use cell line database if available
+            dissociation = "trypsin"  # Default
+            try:
+                from cell_os.cell_line_database import get_cell_line_profile
+                profile = get_cell_line_profile(cell_line)
+                if profile and profile.dissociation_method:
+                    dissociation = profile.dissociation_method
+            except (ImportError, Exception):
+                # Fallback to hardcoded logic
+                if cell_line.lower() in ["ipsc", "hesc"]:
+                    dissociation = "accutase"
+            
             process_ops.append(
                 self.ops.op_harvest(flask_size, dissociation_method=dissociation)
             )
@@ -168,8 +178,19 @@ class WorkflowBuilder:
         # We add a feed step to simulate maintenance during growth
         process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
 
-        # 3. Harvest
-        process_ops.append(self.ops.op_harvest(flask_size))
+        # 3. Harvest - use cell line-specific dissociation method
+        dissociation = "trypsin"  # Default
+        try:
+            from cell_os.cell_line_database import get_cell_line_profile
+            profile = get_cell_line_profile(cell_line)
+            if profile and profile.dissociation_method:
+                dissociation = profile.dissociation_method
+        except (ImportError, Exception):
+            # Fallback to hardcoded logic
+            if cell_line.lower() in ["ipsc", "hesc"]:
+                dissociation = "accutase"
+        
+        process_ops.append(self.ops.op_harvest(flask_size, dissociation_method=dissociation))
 
         # 4. Freeze
         process_ops.append(self.ops.op_freeze(num_vials=target_vials))

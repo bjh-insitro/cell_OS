@@ -1,15 +1,10 @@
-"""
-POSH Campaign Manager Tab.
-
-Focuses on simulating the end-to-end POSH campaign, starting with MCB generation.
-"""
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
 from cell_os.simulation.mcb_wrapper import simulate_mcb_generation, VendorVialSpec
+from cell_os.cell_line_database import get_cell_line_profile # NEW IMPORT
 
 import plotly.graph_objects as go
 import graphviz
@@ -64,17 +59,77 @@ def _render_lineage(result):
             
     st.graphviz_chart(dot)
 
-def _render_resources(result):
+def _get_item_cost(pricing, item_id, default_cost=0.0):
+    """Helper to safely get item cost from pricing dict."""
+    if not pricing or 'items' not in pricing:
+        return default_cost
+    
+    item = pricing['items'].get(item_id)
+    if item:
+        return item.get('unit_price_usd', default_cost)
+    return default_cost
+
+def _get_item_name(pricing, item_id, default_name):
+    """Helper to safely get item name from pricing dict."""
+    if not pricing or 'items' not in pricing:
+        return default_name
+    
+    item = pricing['items'].get(item_id)
+    if item:
+        return item.get('name', default_name)
+    return default_name
+
+def _render_resources(result, pricing):
     """Render resource usage and cost analysis."""
     st.subheader("Resource & Cost Analysis 💰")
     
-    # 1. Calculate Costs
-    # Assumptions
-    COST_MEDIA_L = 500.0
+    # 1. Dynamic Reagent Resolution
+    cell_line = result.cell_line
+    profile = get_cell_line_profile(cell_line)
+    
+    # Defaults
+    media_id = "dmem_10fbs"
+    dissociation_id = "trypsin_edta"
+    coating_id = None
+    
+    if profile:
+        if profile.media: media_id = profile.media
+        if profile.dissociation_method: 
+            # Map method to item ID (simple mapping)
+            if profile.dissociation_method == "accutase": dissociation_id = "accutase"
+            elif profile.dissociation_method == "versene": dissociation_id = "versene"
+            else: dissociation_id = "trypsin_edta"
+            
+        if profile.coating_required and profile.coating:
+            coating_id = profile.coating
+
+    # Look up costs and names
+    cost_media_bottle = _get_item_cost(pricing, media_id, 25.0)
+    media_name = _get_item_name(pricing, media_id, f"{media_id} (500mL)")
+    
+    cost_dissociation_unit = _get_item_cost(pricing, dissociation_id, 45.0)
+    dissociation_name = _get_item_name(pricing, dissociation_id, f"{dissociation_id} (100mL)")
+    
+    cost_coating_unit = 0.0
+    coating_name = ""
+    if coating_id:
+        cost_coating_unit = _get_item_cost(pricing, coating_id, 350.0)
+        coating_name = _get_item_name(pricing, coating_id, coating_id)
+    
+    # Define coating_needed for later use
+    coating_needed = (coating_id is not None)
+
+    # Standard items
+    cost_vial_unit = _get_item_cost(pricing, "cryovial_1_8ml", 5.0)
+    cost_flask_unit = _get_item_cost(pricing, "flask_t75", 10.0)
+    cost_pbs_unit = _get_item_cost(pricing, "pbs", 25.0)
+    cost_pipette_unit = _get_item_cost(pricing, "pipette_10ml", 0.50)
+    cost_tip_unit = _get_item_cost(pricing, "tip_1000ul_lr", 0.10)
+    
     COST_STAFF_HR = 100.0
     COST_BSC_HR = 50.0
-    COST_VIAL = 5.0
-    
+
+    # 2. Calculate Costs
     # Extract totals
     total_media = result.summary.get("total_media_l", 0.0)
     
@@ -89,15 +144,15 @@ def _render_resources(result):
     num_vials = len(result.vials)
     
     # Calculate Totals
-    cost_media = total_media * COST_MEDIA_L
+    cost_media = total_media * (cost_media_bottle * 2) # Approx $ per L (bottle is 500ml)
     cost_staff = total_staff * COST_STAFF_HR
     cost_bsc = total_bsc * COST_BSC_HR
-    cost_vials = num_vials * COST_VIAL
+    cost_vials = num_vials * cost_vial_unit
     
     total_cost = cost_media + cost_staff + cost_bsc + cost_vials
     cost_per_vial = total_cost / num_vials if num_vials > 0 else 0.0
     
-    # 2. Display KPI Metrics
+    # 3. Display KPI Metrics
     r_col1, r_col2, r_col3 = st.columns(3)
     with r_col1:
         st.metric("Total Campaign Cost", f"${total_cost:,.2f}")
@@ -108,7 +163,7 @@ def _render_resources(result):
         
     st.divider()
     
-    # 3. Visualizations
+    # 4. Visualizations
     c_col1, c_col2 = st.columns(2)
     
     with c_col1:
@@ -135,7 +190,7 @@ def _render_resources(result):
 
     st.divider()
     
-    # 4. Consumables Bill of Materials
+    # 5. Consumables Bill of Materials
     st.subheader("Consumables Bill of Materials 📦")
     
     import math
@@ -148,38 +203,17 @@ def _render_resources(result):
     qty_vials = num_vials + result.summary.get("waste_vials", 0)
     qty_flasks = max(1, int(num_vials / 5)) # Estimate: 1 T75 per 5 vials
     qty_pbs = 1 # Fixed estimate
-    qty_trypsin = 1 # Fixed estimate
+    qty_dissociation = 1 # Fixed estimate
     
     # Estimate Pipettes & Tips based on usage
-    # Feed = 15mL, Thaw = 50mL. Approx ops from total media.
-    # 1 Feed = 1 Pipette (10mL) + 1 Tip (1000uL)
-    # 1 Passage = 2 Pipettes + 4 Tips
-    # Rough proxy: 
     estimated_feeds = int((total_media * 1000) / 15)
     estimated_passages = max(1, int(num_vials / 10))
     
-    qty_pipettes_10ml = estimated_feeds + (estimated_passages * 2) + 2 # +2 for start/end
+    qty_pipettes_10ml = estimated_feeds + (estimated_passages * 2) + 2 
     qty_tips_1000ul = estimated_feeds + (estimated_passages * 4)
     
-    # Determine media type based on cell line
-    cell_line = result.cell_line.lower()
-    if cell_line in ["ipsc", "hesc"]:
-        media_name = "mTeSR Plus Kit (500mL)"
-        cost_media_bottle = 250.0  # $500/L -> $250/500mL
-    else:
-        media_name = "DMEM+10%FBS (500mL)"
-        cost_media_bottle = 25.0  # $50/L -> $25/500mL
-    
-    # Unit Costs
-    cost_vial_unit = 5.0
-    cost_flask_unit = 10.0
-    cost_pbs_unit = 25.0
-    cost_trypsin_unit = 45.0
-    cost_pipette_unit = 0.50
-    cost_tip_unit = 0.10
-    
     if view_mode == "Aggregate View":
-        # Original aggregate view
+        # Dynamic aggregate view
         consumables_data = [
             {"Item": media_name, "Quantity": qty_media_bottles, "Unit Cost": f"${cost_media_bottle:.2f}", "Total Cost": f"${qty_media_bottles * cost_media_bottle:.2f}"},
             {"Item": "Cryovials (1.8mL)", "Quantity": qty_vials, "Unit Cost": f"${cost_vial_unit:.2f}", "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"},
@@ -187,8 +221,14 @@ def _render_resources(result):
             {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${cost_pipette_unit:.2f}", "Total Cost": f"${qty_pipettes_10ml * cost_pipette_unit:.2f}"},
             {"Item": "Pipette Tips (1000uL)", "Quantity": qty_tips_1000ul, "Unit Cost": f"${cost_tip_unit:.2f}", "Total Cost": f"${qty_tips_1000ul * cost_tip_unit:.2f}"},
             {"Item": "PBS (500mL)", "Quantity": qty_pbs, "Unit Cost": f"${cost_pbs_unit:.2f}", "Total Cost": f"${qty_pbs * cost_pbs_unit:.2f}"},
-            {"Item": "Trypsin-EDTA (100mL)", "Quantity": qty_trypsin, "Unit Cost": f"${cost_trypsin_unit:.2f}", "Total Cost": f"${qty_trypsin * cost_trypsin_unit:.2f}"}
+            {"Item": dissociation_name, "Quantity": qty_dissociation, "Unit Cost": f"${cost_dissociation_unit:.2f}", "Total Cost": f"${qty_dissociation * cost_dissociation_unit:.2f}"}
         ]
+        
+        if coating_id:
+             # Estimate 1 kit per campaign for simplicity
+            consumables_data.append(
+                {"Item": coating_name, "Quantity": 1, "Unit Cost": f"${cost_coating_unit:.2f}", "Total Cost": f"${cost_coating_unit:.2f}"}
+            )
         
         st.dataframe(pd.DataFrame(consumables_data), use_container_width=True)
         
@@ -208,7 +248,6 @@ def _render_resources(result):
                 new_flasks = max(0, current_flasks - prev_flasks)
                 
                 # Estimate daily pipettes and tips based on flask count
-                # Assume 1 operation per flask per day (feed or passage)
                 daily_pipettes = current_flasks
                 daily_tips = current_flasks * 2  # 2 tips per operation
                 
@@ -332,8 +371,109 @@ def _render_resources(result):
             
             st.plotly_chart(fig_daily, use_container_width=True)
             
-        else:
-            st.info("Daily metrics not available for breakdown view.")
+            # --- NEW: Detailed Itemization ---
+            st.markdown("### 📋 Detailed Itemization")
+            detailed_items = []
+            
+            # Day 0: Coating (if needed)
+            if coating_needed:
+                 detailed_items.append({
+                    "Day": 0,
+                    "Item": coating_name,
+                    "Quantity": 1,
+                    "Unit Cost": f"${cost_coating_unit:.2f}",
+                    "Total Cost": f"${cost_coating_unit:.2f}"
+                })
+
+            prev_media = 0.0
+            prev_flasks = 0
+            
+            for idx, row in result.daily_metrics.iterrows():
+                day = int(row['day'])
+                current_media_ml = row.get('media_consumed', 0.0)
+                current_flasks = int(row.get('flask_count', 0))
+                
+                # Calculate deltas
+                media_used_ml = current_media_ml - prev_media
+                new_flasks = max(0, current_flasks - prev_flasks)
+                
+                # Daily consumables inference
+                daily_pipettes = current_flasks
+                daily_tips = current_flasks * 2
+                
+                # Media
+                if media_used_ml > 0:
+                     cost = (media_used_ml / 500.0) * cost_media_bottle
+                     detailed_items.append({
+                        "Day": day,
+                        "Item": f"Media ({media_name})",
+                        "Quantity": f"{media_used_ml:.1f} mL",
+                        "Unit Cost": f"${cost_media_bottle:.2f}/500mL",
+                        "Total Cost": f"${cost:.2f}"
+                    })
+                
+                # Flasks
+                if new_flasks > 0:
+                    detailed_items.append({
+                        "Day": day,
+                        "Item": "T75 Flasks",
+                        "Quantity": new_flasks,
+                        "Unit Cost": f"${cost_flask_unit:.2f}",
+                        "Total Cost": f"${new_flasks * cost_flask_unit:.2f}"
+                    })
+                    
+                # Pipettes & Tips
+                if daily_pipettes > 0:
+                     detailed_items.append({
+                        "Day": day,
+                        "Item": "Serological Pipettes (10mL)",
+                        "Quantity": daily_pipettes,
+                        "Unit Cost": f"${cost_pipette_unit:.2f}",
+                        "Total Cost": f"${daily_pipettes * cost_pipette_unit:.2f}"
+                    })
+                if daily_tips > 0:
+                     detailed_items.append({
+                        "Day": day,
+                        "Item": "Pipette Tips (1000uL)",
+                        "Quantity": daily_tips,
+                        "Unit Cost": f"${cost_tip_unit:.2f}",
+                        "Total Cost": f"${daily_tips * cost_tip_unit:.2f}"
+                    })
+                
+                prev_media = current_media_ml
+                prev_flasks = current_flasks
+
+            # Final Day Items (Harvest)
+            final_day = result.summary.get("duration_days", len(result.daily_metrics))
+            
+            # Vials
+            detailed_items.append({
+                "Day": final_day,
+                "Item": "Cryovials (1.8mL)",
+                "Quantity": qty_vials,
+                "Unit Cost": f"${cost_vial_unit:.2f}",
+                "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"
+            })
+            
+            # PBS
+            detailed_items.append({
+                "Day": final_day,
+                "Item": "PBS (500mL)",
+                "Quantity": qty_pbs,
+                "Unit Cost": f"${cost_pbs_unit:.2f}",
+                "Total Cost": f"${qty_pbs * cost_pbs_unit:.2f}"
+            })
+            
+            # Dissociation
+            detailed_items.append({
+                "Day": final_day,
+                "Item": dissociation_name,
+                "Quantity": qty_dissociation,
+                "Unit Cost": f"${cost_dissociation_unit:.2f}",
+                "Total Cost": f"${qty_dissociation * cost_dissociation_unit:.2f}"
+            })
+            
+            st.dataframe(pd.DataFrame(detailed_items), use_container_width=True)
 
 def render_posh_campaign_manager(df, pricing):
     """Render the POSH Campaign Manager tab."""
@@ -353,15 +493,15 @@ def render_posh_campaign_manager(df, pricing):
             
         with col2:
             st.subheader("Vendor Vial Specs")
-            initial_cells = st.number_input("Initial Cells", value=1.0e6, format="%.1e")
-            vendor_lot = st.text_input("Vendor Lot", value="LOT-2025-X")
+            initial_cells = st.number_input("Initial Cells", value=1.0e6, format="%.1e", key="posh_initial_cells")
+            vendor_lot = st.text_input("Vendor Lot", value="LOT-2025-X", key="posh_vendor_lot")
             
         with col3:
             st.subheader("Banking Targets")
-            target_vials = st.number_input("Target MCB Vials", value=10, min_value=10, max_value=100)
+            target_vials = st.number_input("Target MCB Vials", value=10, min_value=10, max_value=100, key="posh_target_vials")
             
         st.divider()
-        run_sim = st.button("▶️ Simulate MCB Generation", type="primary")
+        run_sim = st.button("▶️ Simulate MCB Generation", type="primary", key="posh_run_mcb_sim")
 
     # --- Main Content ---
     
@@ -391,13 +531,13 @@ def render_posh_campaign_manager(df, pricing):
         for i, c_line in enumerate(cell_lines_run):
             with tabs[i]:
                 result = st.session_state.mcb_results[c_line]
-                _render_mcb_result(result)
+                _render_mcb_result(result, pricing) # PASS PRICING
     else:
         st.info("Configure settings in the sidebar and click 'Simulate MCB Generation' to start.")
 
 import plotly.graph_objects as go
 
-def _render_mcb_result(result):
+def _render_mcb_result(result, pricing):
     """Render metrics and plots for a single MCB result."""
     
     # 1. KPI Metrics
@@ -446,7 +586,7 @@ def _render_mcb_result(result):
             st.warning("No vials generated.")
             
     with tab_res:
-        _render_resources(result)
+        _render_resources(result, pricing) # PASS PRICING
         
     # 5. Logs (outside tabs)
     with st.expander("Simulation Logs"):
@@ -483,18 +623,18 @@ def _render_mcb_result(result):
             
             with wcb_col1:
                 if available_mcb_vials:
-                    selected_mcb_label = st.selectbox("Source MCB Vial", available_mcb_vials)
+                    selected_mcb_label = st.selectbox("Source MCB Vial", available_mcb_vials, key="posh_wcb_source_vial")
                 else:
                     st.warning("No available MCB vials. Run Phase 1 to generate more.")
                     selected_mcb_label = None
                 
             with wcb_col2:
-                target_wcb_vials = st.number_input("Target WCB Vials", value=10, min_value=10, max_value=500)
+                target_wcb_vials = st.number_input("Target WCB Vials", value=10, min_value=10, max_value=500, key="posh_wcb_target_vials")
                 
             with wcb_col3:
                 st.write("") # Spacer
                 st.write("")
-                run_wcb_sim = st.button("▶️ Simulate WCB Generation", type="primary", disabled=not selected_mcb_label)
+                run_wcb_sim = st.button("▶️ Simulate WCB Generation", type="primary", disabled=not selected_mcb_label, key="posh_run_wcb_sim")
                 
         if run_wcb_sim and selected_mcb_label:
             source_vial = mcb_vial_map[selected_mcb_label]
@@ -516,8 +656,7 @@ def _render_mcb_result(result):
                 # Mark vial as consumed
                 st.session_state.consumed_mcb_vials.add(source_vial.vial_id)
                 
-                st.success(f"WCB Simulation complete for {source_vial.vial_id}!")
-                st.rerun() # Rerun to update the dropdown list
+                st.success(f"WCB Simulation complete for {source_vial.vial_id}! (Refresh to see updated vial list)")
 
         # Display WCB Results
         if st.session_state.wcb_results:
@@ -528,9 +667,9 @@ def _render_mcb_result(result):
             for i, key in enumerate(wcb_keys):
                 with wcb_tabs[i]:
                     result = st.session_state.wcb_results[key]
-                    _render_wcb_result(result)
+                    _render_wcb_result(result, pricing) # PASS PRICING
 
-def _render_wcb_result(result):
+def _render_wcb_result(result, pricing):
     """Render metrics and plots for a single WCB result."""
     # Reuse similar logic to MCB but adapted for WCB context
     
@@ -580,4 +719,4 @@ def _render_wcb_result(result):
             st.warning("No WCB vials generated.")
             
     with tab_res:
-        _render_resources(result)
+        _render_resources(result, pricing) # PASS PRICING

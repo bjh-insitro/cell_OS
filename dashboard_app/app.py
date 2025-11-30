@@ -52,6 +52,10 @@ from dashboard_app.pages.tab_9_phenotype_clustering import render_phenotype_clus
 st.set_page_config(page_title="cell_OS Dashboard", layout="wide")
 st.title("🧬 cell_OS Mission Control")
 
+# Initialize session state for active tab
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = 0
+
 # Sidebar: Configuration & Status
 st.sidebar.header("Status")
 if st.sidebar.button("Refresh Data"):

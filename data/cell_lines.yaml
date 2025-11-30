@@ -51,8 +51,8 @@ cell_lines:
     profile:
       cell_type: "iPSC"
       coating_required: true
-      coating_reagent: "laminin_521"
-      dissociation_method: "versene"
+      coating_reagent: "vitronectin"
+      dissociation_method: "accutase"
       dissociation_notes: "Ultra-gentle EDTA-only dissociation preserves pluripotency and reduces differentiation"
       transfection_method: "nucleofection"
       transfection_efficiency: "medium"

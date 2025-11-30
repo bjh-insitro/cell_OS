@@ -75,22 +75,30 @@ class ParametricOps(ProtocolOps):
             # Retrieves the price for one logical unit (unit_price_usd).
             return self.inv.get_price(item_id)
         
-        # 1. Coating (if needed for iPSC or other adherent lines)
+        # 1. Coating (if needed - check cell line database)
         coating_needed = False
-        coating_agents = []
+        coating_reagent = "matrigel"  # Default
+        media = "dmem_10fbs"  # Default
         
-        if cell_line:
+        if cell_line and CELL_LINE_DB_AVAILABLE:
+            profile = get_cell_line_profile(cell_line)
+            if profile:
+                coating_needed = profile.coating_required
+                if coating_needed and profile.coating:
+                    coating_reagent = profile.coating
+                if profile.media:
+                    media = profile.media
+        elif cell_line:
+            # Fallback for when database is not available
             if cell_line.lower() in ["ipsc", "hesc"]:
                 coating_needed = True
-                coating_agents = ["matrigel"]
-            elif cell_line.lower() in ["u2os", "hek293t", "hela"]:
-                coating_needed = False  # These lines don't require coating
+                coating_reagent = "matrigel"
+                media = "mtesr_plus_kit"
         
         if coating_needed:
-            steps.append(self.op_coat(vessel_id, agents=coating_agents))
+            steps.append(self.op_coat(vessel_id, agents=[coating_reagent]))
         
-        # 2. Warm media
-        media = "mtesr_plus_kit" if cell_line and cell_line.lower() in ["ipsc", "hesc"] else "dmem_10fbs"
+        # 2. Prepare media volume
         media_vol_ml = 10.0  # Standard thaw volume
         
         # 3. Thaw vial in water bath
