@@ -42,13 +42,16 @@ class ParametricOps(ProtocolOps):
             return get_cell_line_profile(cell_line)
         return {}
 
-    def op_centrifuge(self, vessel_id: str, duration_min: float, speed_rpm: float = 1000, temp_c: float = 25.0, material_cost_usd: float = 0.0, instrument_cost_usd: float = 0.0):
+    def op_centrifuge(self, vessel_id: str, duration_min: float, speed_rpm: float = 1000, temp_c: float = 25.0, material_cost_usd: float = 0.0, instrument_cost_usd: float = 0.0, name: str = None):
         """Centrifuge a vessel."""
         from .base import UnitOp
         
+        if name is None:
+            name = f"Centrifuge {vessel_id} ({duration_min}min @ {speed_rpm}rpm)"
+        
         return UnitOp(
             uo_id=f"Centrifuge_{vessel_id}",
-            name=f"Centrifuge {vessel_id} ({duration_min}min @ {speed_rpm}rpm)",
+            name=name,
             layer="atomic",
             category="separation",
             time_score=duration_min,
@@ -210,25 +213,8 @@ class ParametricOps(ProtocolOps):
             name="Sample 100uL for Count"
         ))
         
-        # 10. Aspirate coating from Flask
-        requires_coating = coating_needed or skip_coating
-        # Double check profile if skip_coating is True but we're not sure
-        if skip_coating and not requires_coating:
-             if profile and profile.coating_required:
-                 requires_coating = True
-             elif cell_line and cell_line.lower() in ["ipsc", "hesc"]:
-                 requires_coating = True
+        # 10. Add 15mL growth media to Flask
 
-        if requires_coating:
-             aspirate_vol = 12.5 if "flask_T75" in vessel_id.lower() else 2.0
-             steps.append(self.op_aspirate(
-                vessel_id=vessel_id,
-                volume_ml=aspirate_vol,
-                material_cost_usd=get_single_cost("pipette_10ml"),
-                name=f"Aspirate {aspirate_vol}mL Coating from {vessel_id}"
-            ))
-            
-        # 11. Add 15mL growth media to Flask
         steps.append(self.op_dispense(
             vessel_id=vessel_id,
             volume_ml=15.0,
@@ -262,7 +248,6 @@ class ParametricOps(ProtocolOps):
             instrument_cost_usd=2.0
         ))
         
-
         
         # Calculate total costs
         total_mat = sum(s.material_cost_usd for s in steps)
@@ -271,9 +256,13 @@ class ParametricOps(ProtocolOps):
         # Add cryovial cost
         cryovial_cost = get_single_cost("cryovial_1_8ml")
         
+        # Calculate total media volume used in thaw process
+        # 5mL in tube + 0.5mL wash + 1.1mL resuspension + 15mL in flask = 21.6mL
+        media_vol_ml = 5.0 + 0.5 + 1.1 + 15.0
+        
         # Add media cost (rough estimate: $0.50/mL for mTeSR, $0.05/mL for DMEM)
         media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
-        media_cost = media_vol_ml * 2 * media_cost_per_ml  # 2x media changes
+        media_cost = media_vol_ml * media_cost_per_ml
         
         return UnitOp(
             uo_id=f"Thaw_{vessel_id}",
@@ -438,13 +427,16 @@ class ParametricOps(ProtocolOps):
         elif media is None:
             media = "dmem_10fbs"  # Default
         
-        media_vol = 10.0  # Standard for T75
+        media_vol = 15.0  # Standard for T75
+        
+        # Calculate media cost per mL
+        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
         
         # 1. Aspirate old media
         steps.append(self.op_aspirate(
             vessel_id=vessel_id,
             volume_ml=media_vol,
-            material_cost_usd=self.inv.get_price("pipette_10ml")
+            material_cost_usd=self.inv.get_price("pipette_10ml") * 2  # Need 2x 10mL pipettes for 15mL
         ))
         
         # 2. Add fresh media
@@ -452,7 +444,7 @@ class ParametricOps(ProtocolOps):
             vessel_id=vessel_id,
             volume_ml=media_vol,
             liquid_name=media,
-            material_cost_usd=self.inv.get_price("pipette_10ml")
+            material_cost_usd=(self.inv.get_price("pipette_10ml") * 2) + (media_vol * media_cost_per_ml)
         ))
         
         # 3. Add supplements if specified
@@ -468,10 +460,6 @@ class ParametricOps(ProtocolOps):
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
-        # Add media cost
-        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
-        media_cost = media_vol * media_cost_per_ml
-        
         # Add supplement costs
         supplement_cost = len(supplements) * 5.0 if supplements else 0.0
         
@@ -486,7 +474,7 @@ class ParametricOps(ProtocolOps):
             failure_risk=1,
             staff_attention=1,
             instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat + media_cost + supplement_cost,
+            material_cost_usd=total_mat + supplement_cost,
             instrument_cost_usd=total_inst + 2.0,
             sub_steps=steps
         )
@@ -756,19 +744,21 @@ class ParametricOps(ProtocolOps):
             sub_steps=steps
         )
 
-    def op_harvest(self, vessel_id: str, dissociation_method: str = "accutase"):
+    def op_harvest(self, vessel_id: str, dissociation_method: str = "accutase", cell_line: str = None):
         """Harvest cells for freezing or analysis."""
         from .base import UnitOp
         
         steps = []
         
-        # Similar to passage but collect into tube instead of re-plating
+        # Determine media type for quench
+        media = "mtesr_plus_kit" if cell_line and cell_line.lower() in ["ipsc", "hesc"] else "dmem_10fbs"
         
-        # 1. Aspirate media
+        # 1. Aspirate media (15mL for T75)
         steps.append(self.op_aspirate(
             vessel_id=vessel_id,
-            volume_ml=10.0,
-            material_cost_usd=self.inv.get_price("pipette_10ml")
+            volume_ml=15.0,
+            material_cost_usd=self.inv.get_price("pipette_10ml") * 2,
+            name="Aspirate 15.0mL from T-75 Flask"
         ))
         
         # 2. Wash with PBS
@@ -776,12 +766,14 @@ class ParametricOps(ProtocolOps):
             vessel_id=vessel_id,
             volume_ml=5.0,
             liquid_name="pbs",
-            material_cost_usd=self.inv.get_price("pipette_10ml")
+            material_cost_usd=self.inv.get_price("pipette_10ml"),
+            name="Dispense 5.0mL pbs into T-75 Flask"
         ))
         steps.append(self.op_aspirate(
             vessel_id=vessel_id,
             volume_ml=5.0,
-            material_cost_usd=self.inv.get_price("pipette_10ml")
+            material_cost_usd=self.inv.get_price("pipette_10ml"),
+            name="Aspirate 5.0mL from T-75 Flask"
         ))
         
         # 3. Add dissociation reagent
@@ -789,7 +781,8 @@ class ParametricOps(ProtocolOps):
             vessel_id=vessel_id,
             volume_ml=2.0,
             liquid_name=dissociation_method,
-            material_cost_usd=self.inv.get_price("pipette_5ml")
+            material_cost_usd=0.0,
+            name=f"Dispense 2.0mL {dissociation_method} into T-75 Flask"
         ))
         
         # 4. Incubate
@@ -798,65 +791,150 @@ class ParametricOps(ProtocolOps):
             duration_min=10.0,
             temp_c=37.0,
             material_cost_usd=0.0,
-            instrument_cost_usd=0.5
+            instrument_cost_usd=0.5,
+            name="Incubate 10.0 min @ 37.0C"
         ))
         
-        # 5. Collect cells into tube
+        # 5. Quench with 5mL media
+        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=5.0,
+            liquid_name=media,
+            material_cost_usd=self.inv.get_price("pipette_10ml") + (5.0 * media_cost_per_ml),
+            name=f"Quench with 5.0mL {media}"
+        ))
+        
+        # 6. Collect cells into 15mL tube (7mL total)
+        tube_id = "tube_15ml"
         steps.append(self.op_aspirate(
             vessel_id=vessel_id,
-            volume_ml=2.0,
-            material_cost_usd=self.inv.get_price("tube_50ml_conical")
+            volume_ml=7.0,
+            material_cost_usd=self.inv.get_price("pipette_10ml"),
+            name="Aspirate 7.0mL from T-75 Flask"
+        ))
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=7.0,
+            liquid_name="cells",
+            material_cost_usd=self.inv.get_price("tube_15ml_conical"),
+            name="Dispense into 15mL tube"
+        ))
+        
+        # 7. Count cells (sample 100uL)
+        steps.append(self.op_aspirate(
+            vessel_id=tube_id,
+            volume_ml=0.1,
+            material_cost_usd=self.inv.get_price("tip_200ul_lr"),
+            name="Sample 100uL for count"
+        ))
+        
+        # 8. Centrifuge
+        steps.append(self.op_centrifuge(
+            vessel_id=tube_id,
+            duration_min=5.0,
+            speed_rpm=1200,
+            temp_c=25.0,
+            instrument_cost_usd=0.5,
+            name="Centrifuge 5min @ 1200rpm"
         ))
         
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
         
         dissociation_cost = 2.0 * (2.0 if dissociation_method == "accutase" else 0.5)
+        pbs_cost = 5.0 * 0.01  # PBS is cheap
         
         return UnitOp(
             uo_id=f"Harvest_{vessel_id}",
             name=f"Harvest cells from {vessel_id} ({dissociation_method})",
             layer="culture",
             category="harvest",
-            time_score=20,
-            cost_score=1,
+            time_score=30,
+            cost_score=2,
             automation_fit=3,
             failure_risk=2,
             staff_attention=2,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat + dissociation_cost,
+            instrument="Biosafety Cabinet + Centrifuge",
+            material_cost_usd=total_mat + dissociation_cost + pbs_cost,
             instrument_cost_usd=total_inst + 3.0,
             sub_steps=steps
         )
 
-    def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor", cell_line: str = None):
+    def op_freeze(self, num_vials: int = 10, freezing_media: str = "cryostor_cs10", cell_line: str = None):
         """Freeze cells into cryovials."""
         from .base import UnitOp
         
         steps = []
         
-        # Get cell line-specific freezing parameters
-        volume_per_vial = 1.0  # Default
-        vial_type = "cryovial_1_8ml"  # Default
+        # Use 0.35mL per vial for iPSC/hESC, 1.0mL for others
+        volume_per_vial = 0.35 if cell_line and cell_line.lower() in ["ipsc", "hesc"] else 1.0
+        vial_type = "micronic_tube" if volume_per_vial == 0.35 else "cryovial_1_8ml"
         
-        if cell_line and CELL_LINE_DB_AVAILABLE:
-            profile = get_cell_line_profile(cell_line)
-            if profile:
-                if hasattr(profile, 'freezing_volume_ml') and profile.freezing_volume_ml:
-                    volume_per_vial = profile.freezing_volume_ml
-                if hasattr(profile, 'vial_type') and profile.vial_type:
-                    vial_type = profile.vial_type
-                if hasattr(profile, 'freezing_media') and profile.freezing_media:
-                    freezing_media = profile.freezing_media
+        # 1. Aspirate supernatant (after centrifuge from harvest)
+        tube_id = "tube_15ml"
+        steps.append(self.op_aspirate(
+            vessel_id=tube_id,
+            volume_ml=6.9,  # Leave pellet with ~100uL
+            material_cost_usd=self.inv.get_price("pipette_10ml"),
+            name="Aspirate supernatant"
+        ))
         
-        # Calculate total volume (with 10% overage/dead volume)
-        total_vol = num_vials * volume_per_vial * 1.1
+        # 2. Resuspend pellet in CryoStor to achieve target concentration
+        # Target: 1e6 cells per 0.35mL (or per 1.0mL for other cell types)
+        # Total volume needed = num_vials * volume_per_vial
+        total_volume_ml = num_vials * volume_per_vial
         
-        steps.append(self.op_aspirate("pooled_vessels", total_vol, material_cost_usd=self.inv.get_price("pipette_10ml")))
-        steps.append(self.op_dispense("vials", volume_per_vial * num_vials, freezing_media, material_cost_usd=self.inv.get_price("pipette_10ml")))
+        cryostor_cost_per_ml = 5.0  # CryoStor CS10 is expensive
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=total_volume_ml,
+            liquid_name=freezing_media,
+            material_cost_usd=self.inv.get_price("pipette_2ml") + (total_volume_ml * cryostor_cost_per_ml),
+            name=f"Resuspend in {total_volume_ml:.2f}mL {freezing_media}"
+        ))
         
-        # Account for final vials and media cost
-        vial_cost = self.inv.get_price(vial_type) * num_vials
+        # 3. Mix by pipetting
+        steps.append(self.op_aspirate(
+            vessel_id=tube_id,
+            volume_ml=min(1.0, total_volume_ml),
+            material_cost_usd=0.0,  # Reuse pipette
+            name="Mix by pipetting"
+        ))
+        steps.append(self.op_dispense(
+            vessel_id=tube_id,
+            volume_ml=min(1.0, total_volume_ml),
+            liquid_name="cell_suspension",
+            material_cost_usd=0.0,
+            name="Mix by pipetting"
+        ))
+        
+        # 4. Aliquot into vials
+        for i in range(num_vials):
+            vial_id = f"vial_{i+1}"
+            steps.append(self.op_aspirate(
+                vessel_id=tube_id,
+                volume_ml=volume_per_vial,
+                material_cost_usd=self.inv.get_price("pipette_2ml") if i == 0 else 0.0,  # First vial pays for pipette
+                name=f"Aspirate {volume_per_vial}mL for vial {i+1}"
+            ))
+            steps.append(self.op_dispense(
+                vessel_id=vial_id,
+                volume_ml=volume_per_vial,
+                liquid_name="cell_suspension",
+                material_cost_usd=self.inv.get_price(vial_type),  # Each vial has a cost
+                name=f"Dispense into vial {i+1}"
+            ))
+        
+        # 5. Controlled rate freezing
+        steps.append(self.op_incubate(
+            vessel_id="controlled_rate_freezer",
+            duration_min=120.0,  # 2 hours
+            temp_c=-80.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=10.0,  # Controlled rate freezer is expensive to run
+            name="Controlled rate freezing to -80C"
+        ))
         
         total_mat = sum(s.material_cost_usd for s in steps)
         total_inst = sum(s.instrument_cost_usd for s in steps)
@@ -871,8 +949,8 @@ class ParametricOps(ProtocolOps):
             automation_fit=1,
             failure_risk=1,
             staff_attention=1,
-            instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat + vial_cost,
+            instrument="Biosafety Cabinet + Controlled Rate Freezer",
+            material_cost_usd=total_mat,
             instrument_cost_usd=total_inst + 5.0,
             sub_steps=steps
         )

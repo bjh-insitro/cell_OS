@@ -807,8 +807,9 @@ def _render_mcb_result(result, pricing):
         # 2. Plots
         st.subheader("Growth Curve")
         if not result.daily_metrics.empty:
-            fig = px.line(result.daily_metrics, x="day", y="total_cells", 
-                         title=f"{result.cell_line} Expansion", markers=True)
+            fig = px.line(result.daily_metrics, x="day", y="avg_confluence", 
+                         title=f"{result.cell_line} Confluence", markers=True)
+            fig.update_yaxes(tickformat=".0%")
             st.plotly_chart(fig, use_container_width=True)
             
         # 3. Lineage

@@ -105,10 +105,7 @@ class WorkflowBuilder:
         # 3. Feed (Simulate one feed during expansion)
         process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
 
-        # 4. Count cells after thaw for QC / bookkeeping
-        process_ops.append(self.ops.op_count(flask_size, method="nc202"))
-
-        # 3. Final Harvest and Freeze
+        # 4. Final Harvest and Freeze
         use_resolver = False
         if hasattr(self.ops, 'resolver') and self.ops.resolver:
             try:
@@ -139,7 +136,7 @@ class WorkflowBuilder:
                     dissociation = "accutase"
             
             process_ops.append(
-                self.ops.op_harvest(flask_size, dissociation_method=dissociation)
+                self.ops.op_harvest(flask_size, dissociation_method=dissociation, cell_line=cell_line)
             )
 
         # Freeze the master bank vials
@@ -186,7 +183,7 @@ class WorkflowBuilder:
             if cell_line.lower() in ["ipsc", "hesc"]:
                 dissociation = "accutase"
         
-        process_ops.append(self.ops.op_harvest(flask_size, dissociation_method=dissociation))
+        process_ops.append(self.ops.op_harvest(flask_size, dissociation_method=dissociation, cell_line=cell_line))
 
         # 4. Freeze
         process_ops.append(self.ops.op_freeze(num_vials=target_vials, cell_line=cell_line))

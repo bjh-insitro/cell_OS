@@ -35,7 +35,7 @@ class LiquidHandlingOps:
             cost_score=1,
             automation_fit=1,
             failure_risk=0,
-            staff_attention=0,
+            staff_attention=1,
             instrument="Liquid Handler",
             material_cost_usd=mat_cost,
             instrument_cost_usd=inst_cost,
@@ -57,7 +57,7 @@ class LiquidHandlingOps:
             cost_score=0,
             automation_fit=1,
             failure_risk=0,
-            staff_attention=0,
+            staff_attention=1,
             instrument="Liquid Handler",
             material_cost_usd=mat_cost,
             instrument_cost_usd=0.15,  # Tip + time

@@ -103,6 +103,7 @@ class WorkflowSimulator:
         self.day = 0
         self.terminal_failure = False
         self.failed_reason = None
+        self.daily_ops = []  # Track operations for daily labor calculation
         
         # Extract params from workflow
         self.flask_type = "flask_T75"
@@ -126,14 +127,25 @@ class WorkflowSimulator:
             SimulationResult with success status, metrics, and generated vials
         """
         try:
+            self.daily_ops = []
             self._phase_thaw()
+            
+            # Record Day 0 (Thaw day)
+            self._record_daily_metrics()
+            self.daily_ops = []
             
             target_total_cells = self.config.target_vials * self.config.cells_per_vial
             
-            while self._get_total_cells() < target_total_cells:
+            # Run until we have enough cells AND they are ready to harvest (>80% confluence)
+            while True:
+                total_cells = self._get_total_cells()
+                avg_conf = self._get_avg_confluence()
+                
+                if total_cells >= target_total_cells and avg_conf >= 0.75:
+                    break
+                
                 self.day += 1
                 self.vm.advance_time(24.0)
-                self._record_daily_metrics()
                 
                 if not self.active_flasks:
                     self.failures.append("All flasks lost")
@@ -141,12 +153,20 @@ class WorkflowSimulator:
                     
                 self._manage_culture()
                 
+                # Record metrics for this day (after operations)
+                self._record_daily_metrics()
+                self.daily_ops = []
+                
                 if self.day > 60:
                     self.failures.append("Timeout: Expansion took too long")
                     break
             
             if self.active_flasks:
                 self._phase_freeze()
+                # Record final day metrics (Freeze day)
+                self.day += 1
+                self._record_daily_metrics()
+                self.daily_ops = []
                 
         except Exception as e:
             self.failures.append(f"Exception: {str(e)}")
@@ -160,6 +180,7 @@ class WorkflowSimulator:
             
             op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line)
             self._track_resources(op)
+            self.daily_ops.append(op)
             
             initial_cells = self.rng.normal(1e6, 1e5)
             # Capacity depends on flask type
@@ -202,13 +223,18 @@ class WorkflowSimulator:
             if state["confluence"] > 1.0:
                 self.violations.append(f"Overconfluence in {flask_id}: {state['confluence']:.2f}")
             
-            if state["confluence"] > 0.8:
+            # Only passage if we haven't reached our target yield yet
+            # If we have enough cells, just let them grow to confluence for harvest
+            target_reached = self._get_total_cells() >= (self.config.target_vials * self.config.cells_per_vial)
+            
+            if state["confluence"] > 0.75 and not target_reached:
                 to_passage.append(flask_id)
             elif state["confluence"] < 0.1 and self.day > 5:
                 self.violations.append(f"Stagnation in {flask_id}")
             else:
                 op = self.ops.op_feed(flask_id, cell_line=self.config.cell_line)
                 self._track_resources(op)
+                self.daily_ops.append(op)
         
         self.active_flasks = surviving_flasks
         
@@ -245,6 +271,7 @@ class WorkflowSimulator:
             
             op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line)
             self._track_resources(op)
+            self.daily_ops.append(op)
             
             passage_stress = 0.025
             new_viability = viability * (1.0 - passage_stress)
@@ -290,6 +317,19 @@ class WorkflowSimulator:
             if state:
                 total += state["cell_count"]
         return total
+    
+    def _get_avg_confluence(self):
+        """Calculate average confluence of active flasks."""
+        if not self.active_flasks:
+            return 0.0
+            
+        confluences = []
+        for flask_id in self.active_flasks:
+            state = self.vm.get_vessel_state(flask_id)
+            if state:
+                confluences.append(state["confluence"])
+        
+        return sum(confluences) / len(confluences) if confluences else 0.0
     
     def _record_daily_metrics(self):
         """Record metrics for the current day."""
@@ -339,14 +379,21 @@ class WorkflowSimulator:
     
     def _calculate_daily_load(self):
         """Calculate labor and BSC hours for operations."""
-        # Simplified: estimate based on flask count
-        num_flasks = len(self.active_flasks)
+        total_minutes = 0.0
         
-        # Feed: 5 min per flask
-        # Passage: 30 min per flask
-        # Assume 1 feed per day per flask on average
-        staff_hours = (num_flasks * 5) / 60.0
-        bsc_hours = staff_hours  # BSC used during all operations
+        def get_labor_minutes(op):
+            # If op has sub-steps, sum their labor
+            if op.sub_steps:
+                return sum(get_labor_minutes(sub) for sub in op.sub_steps)
+            else:
+                # Atomic op: count time if staff attention is required
+                return op.time_score if op.staff_attention > 0 else 0.0
+        
+        for op in self.daily_ops:
+            total_minutes += get_labor_minutes(op)
+            
+        staff_hours = total_minutes / 60.0
+        bsc_hours = staff_hours  # Assume BSC is used for all labor steps
         
         return {'staff': staff_hours, 'bsc': bsc_hours}
     

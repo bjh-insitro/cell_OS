@@ -500,6 +500,17 @@ items:
     pack_price_usd: 395.6
     logical_unit: unit
     unit_price_usd: 0.412
+    
+  cryovial_1_8ml:
+    name: "Cryovial 1.8mL"
+    category: consumable
+    vendor: "Thermo"
+    catalog_number: "377267"
+    pack_size: 500
+    pack_unit: unit
+    pack_price_usd: 250.0
+    logical_unit: unit
+    unit_price_usd: 0.5
 
   plate_12well:
     name: "Falcon 12-well Plate"
