@@ -22,7 +22,7 @@ def render_posh_campaign_manager(df, pricing):
     # --- Sidebar Controls ---
     with st.sidebar:
         st.subheader("Campaign Settings")
-        cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549"])
+        cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549"], key="posh_sim_cell_line")
         
         st.subheader("Vendor Vial Specs")
         initial_cells = st.number_input("Initial Cells", value=1.0e6, format="%.1e")

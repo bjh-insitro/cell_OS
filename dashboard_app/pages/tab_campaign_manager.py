@@ -70,10 +70,10 @@ def render_create_campaign(manager, vessel_lib):
         with col1:
             from cell_os.cell_line_database import list_cell_lines
             cell_lines = list_cell_lines()
-            cell_line = st.selectbox("Cell Line", options=cell_lines)
+            cell_line = st.selectbox("Cell Line", options=cell_lines, key="camp_mgr_cell_line")
             
             vessels = list(vessel_lib.vessels.keys())
-            vessel_id = st.selectbox("Vessel", options=vessels)
+            vessel_id = st.selectbox("Vessel", options=vessels, key="camp_mgr_vessel")
             
         with col2:
             start_date = st.date_input("Start Date", value=datetime.now())

@@ -78,7 +78,8 @@ def render_execute_protocol(executor, queue):
         selected_cell_line = st.selectbox(
             "Cell Line",
             options=cell_lines,
-            help="Select the cell line"
+            help="Select the cell line",
+            key="exec_mon_cell_line"
         )
     
     with col2:
@@ -86,7 +87,8 @@ def render_execute_protocol(executor, queue):
         selected_vessel = st.selectbox(
             "Vessel",
             options=vessels,
-            help="Select the culture vessel"
+            help="Select the culture vessel",
+            key="exec_mon_vessel"
         )
     
     with col3:
@@ -94,7 +96,8 @@ def render_execute_protocol(executor, queue):
         selected_operation = st.selectbox(
             "Operation",
             options=operation_types,
-            help="Select the operation type"
+            help="Select the operation type",
+            key="exec_mon_operation"
         )
     
     # Execution options
@@ -373,160 +376,4 @@ def render_execution_history(executor):
                     if step.result:
                         st.json(step.result)
 
-def render_active_executions(executor):
-    """Render active executions monitor."""
-    st.subheader("Active Executions")
-    
-    # Get running executions
-    running = executor.list_executions(status=ExecutionStatus.RUNNING)
-    
-    if not running:
-        st.info("No active executions")
-        return
-    
-    for execution in running:
-        with st.expander(f"🔄 {execution.workflow_name} ({execution.execution_id[:8]}...)"):
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Cell Line", execution.cell_line)
-            with col2:
-                st.metric("Vessel", execution.vessel_id)
-            with col3:
-                st.metric("Operation", execution.operation_type)
-            
-            # Progress bar
-            completed_steps = sum(1 for s in execution.steps if s.status == StepStatus.COMPLETED)
-            total_steps = len(execution.steps)
-            progress = completed_steps / total_steps if total_steps > 0 else 0
-            
-            st.progress(progress)
-            st.caption(f"{completed_steps}/{total_steps} steps completed")
-            
-            # Current step
-            current_step = next((s for s in execution.steps if s.status == StepStatus.RUNNING), None)
-            if current_step:
-                st.info(f"Currently executing: {current_step.name}")
 
-
-def render_execution_history(executor):
-    """Render execution history."""
-    st.subheader("Execution History")
-    
-    # Filter options
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        status_filter = st.selectbox(
-            "Filter by Status",
-            options=["All", "Completed", "Failed", "Pending"],
-            index=0
-        )
-    
-    # Get executions
-    if status_filter == "All":
-        executions = executor.list_executions()
-    else:
-        status_map = {
-            "Completed": ExecutionStatus.COMPLETED,
-            "Failed": ExecutionStatus.FAILED,
-            "Pending": ExecutionStatus.PENDING
-        }
-        executions = executor.list_executions(status=status_map[status_filter])
-    
-    if not executions:
-        st.info("No executions found")
-        return
-    
-    # Display as table
-    history_data = []
-    for execution in executions:
-        duration = "—"
-        if execution.started_at and execution.completed_at:
-            duration = f"{(execution.completed_at - execution.started_at).total_seconds():.1f}s"
-        
-        history_data.append({
-            "ID": execution.execution_id[:8] + "...",
-            "Protocol": execution.workflow_name,
-            "Cell Line": execution.cell_line,
-            "Vessel": execution.vessel_id,
-            "Operation": execution.operation_type,
-            "Status": execution.status.value,
-            "Steps": f"{sum(1 for s in execution.steps if s.status == StepStatus.COMPLETED)}/{len(execution.steps)}",
-            "Duration": duration,
-            "Created": execution.created_at.strftime("%Y-%m-%d %H:%M")
-        })
-    
-    df_history = pd.DataFrame(history_data)
-    
-    # Color code by status
-    def color_status(val):
-        if val == "completed":
-            return "background-color: #d4edda"
-        elif val == "failed":
-            return "background-color: #f8d7da"
-        elif val == "running":
-            return "background-color: #fff3cd"
-        return ""
-    
-    styled_df = df_history.style.applymap(color_status, subset=["Status"])
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    
-    # Detailed view
-    st.divider()
-    st.subheader("Execution Details")
-    
-    selected_id = st.selectbox(
-        "Select execution to view details",
-        options=[e.execution_id for e in executions],
-        format_func=lambda x: f"{x[:8]}... - {next(e.workflow_name for e in executions if e.execution_id == x)}"
-    )
-    
-    if selected_id:
-        execution = executor.get_execution_status(selected_id)
-        
-        if execution:
-            # Metadata
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Status", execution.status.value.upper())
-            with col2:
-                st.metric("Total Steps", len(execution.steps))
-            with col3:
-                completed = sum(1 for s in execution.steps if s.status == StepStatus.COMPLETED)
-                st.metric("Completed", completed)
-            with col4:
-                failed = sum(1 for s in execution.steps if s.status == StepStatus.FAILED)
-                st.metric("Failed", failed)
-            
-            # Step details
-            st.subheader("Step-by-Step Log")
-            for step in execution.steps:
-                status_icon = {
-                    StepStatus.COMPLETED: "✅",
-                    StepStatus.FAILED: "❌",
-                    StepStatus.RUNNING: "🔄",
-                    StepStatus.PENDING: "⏳",
-                    StepStatus.SKIPPED: "⏭️"
-                }
-                
-                icon = status_icon.get(step.status, "❓")
-                
-                with st.expander(f"{icon} Step {step.step_index}: {step.name}"):
-                    col_a, col_b = st.columns(2)
-                    
-                    with col_a:
-                        st.write("**Type:**", step.operation_type)
-                        st.write("**Status:**", step.status.value)
-                    
-                    with col_b:
-                        if step.start_time:
-                            st.write("**Started:**", step.start_time.strftime("%H:%M:%S"))
-                        if step.end_time:
-                            st.write("**Ended:**", step.end_time.strftime("%H:%M:%S"))
-                    
-                    if step.error_message:
-                        st.error(f"Error: {step.error_message}")
-                    
-                    if step.result:
-                        st.json(step.result)
