@@ -20,6 +20,10 @@ from cell_os.workflow_executor import WorkflowExecutor
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
 from cell_os.simulation.failure_modes import FailureModeSimulator
+# Import Workflow type for type hinting (using string to avoid circular imports if any)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cell_os.workflows import Workflow
 
 
 @dataclass
@@ -33,6 +37,7 @@ class MCBTestConfig:
     output_dir: Optional[str] = None  # None means no disk assets
     cell_line: str = "U2OS"
     starting_vials: int = 3
+    workflow: Optional['Workflow'] = None
 
 
 @dataclass
@@ -104,6 +109,37 @@ class MCBSimulation:
         self.frozen_vials = 0
         self.day = 0
         
+        # Extract params from Workflow if present
+        self.flask_type = "flask_T75" # Default
+        self.media_type = "mtesr_plus_kit" # Default
+        
+        if self.config.workflow:
+            self._parse_workflow_params()
+        
+    def _parse_workflow_params(self):
+        """Extract simulation parameters from the provided Workflow."""
+        # Look for Thaw op to get flask size
+        for op in self.config.workflow.all_ops:
+            if "thaw" in op.name.lower() or "thaw" in getattr(op, 'uo_id', '').lower():
+                # Try to find vessel in items
+                if hasattr(op, 'items'):
+                    for item in op.items:
+                        if "flask" in item.resource_id.lower():
+                            self.flask_type = item.resource_id
+                            break
+            
+            # Look for Feed op to get media
+            if "feed" in op.name.lower():
+                if hasattr(op, 'parameters') and 'media' in op.parameters:
+                    self.media_type = op.parameters['media']
+                # Or check items
+                if hasattr(op, 'items'):
+                    for item in op.items:
+                        if "media" in item.resource_id.lower() or "kit" in item.resource_id.lower():
+                            # Map resource ID to simple media name if needed, or just use it
+                            # For now, we stick to mtesr_plus_kit as the key for logic, but could be dynamic
+                            pass
+
     def run(self):
         """Execute the full MCB workflow."""
         try:
@@ -135,15 +171,21 @@ class MCBSimulation:
         return self._compile_results()
 
     def _phase_thaw(self):
-        """Thaw vendor vials into T75 flasks."""
+        """Thaw vendor vials into flasks."""
         for i in range(self.config.starting_vials):
             flask_id = f"Flask_P1_{i+1}"
             
-            op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line)
+            # Use flask_type from workflow if available
+            op = self.ops.op_thaw(flask_id, cell_line=self.config.cell_line, vessel_type=self.flask_type)
             self._track_resources(op)
             
             initial_cells = self.rng.normal(1e6, 1e5)
-            self.vm.seed_vessel(flask_id, self.config.cell_line, initial_cells, capacity=2.5e7)
+            # Capacity depends on flask type
+            capacity = 2.5e7 # Default T75
+            if "175" in self.flask_type: capacity = 5.0e7
+            if "225" in self.flask_type: capacity = 7.5e7
+            
+            self.vm.seed_vessel(flask_id, self.config.cell_line, initial_cells, capacity=capacity)
             self.active_flasks.append(flask_id)
 
     def _manage_culture(self):
@@ -184,7 +226,7 @@ class MCBSimulation:
             elif state["confluence"] < 0.1 and self.day > 5:
                 self.violations.append(f"Stagnation in {flask_id}")
             else:
-                op = self.ops.op_feed(flask_id, media="mtesr_plus_kit")
+                op = self.ops.op_feed(flask_id, media=self.media_type)
                 self._track_resources(op)
         
         self.active_flasks = surviving_flasks
@@ -195,6 +237,11 @@ class MCBSimulation:
     def _perform_passage(self, source_flasks: List[str]):
         """Passage cells, expanding to more flasks."""
         new_flasks = []
+        
+        # Determine capacity based on flask_type
+        capacity = 2.5e7
+        if "175" in self.flask_type: capacity = 5.0e7
+        if "225" in self.flask_type: capacity = 7.5e7
         
         for source_id in source_flasks:
             state = self.vm.get_vessel_state(source_id)
@@ -215,7 +262,7 @@ class MCBSimulation:
             
             split_ratio = total_cells / (num_new_flasks * cells_per_flask)
             
-            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line)
+            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line, vessel_type=self.flask_type)
             self._track_resources(op)
             
             passage_stress = 0.025
@@ -225,7 +272,7 @@ class MCBSimulation:
             current_p = state["passage_number"]
             for i in range(num_new_flasks):
                 new_id = f"Flask_P{current_p+1}_{self.day}_{i}_{source_id[-3:]}"
-                self.vm.seed_vessel(new_id, self.config.cell_line, cells_per_new_flask, capacity=2.5e7)
+                self.vm.seed_vessel(new_id, self.config.cell_line, cells_per_new_flask, capacity=capacity)
                 new_state = self.vm.vessel_states[new_id]
                 new_state.viability = new_viability
                 new_state.passage_number = current_p + 1

@@ -20,20 +20,23 @@ from cell_os.workflow_executor import WorkflowExecutor
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
 from cell_os.simulation.failure_modes import FailureModeSimulator
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cell_os.workflows import Workflow
 
 
 @dataclass
 class WCBTestConfig:
     """Configuration for WCB crash test simulation."""
     num_simulations: int = 100
-    target_wcb_vials: int = 10
+    target_wcb_vials: int = 100
     cells_per_vial: float = 1e6
     random_seed: Optional[int] = 123
     enable_failures: bool = True
     output_dir: Optional[str] = None
     cell_line: str = "U2OS"
-    starting_mcb_passage: int = 3  # MCB usually frozen at P3-P5
-    include_qc: bool = True
+    starting_mcb_passage: int = 3
+    workflow: Optional['Workflow'] = None
 
 
 @dataclass
@@ -60,8 +63,6 @@ class MockInventory:
             "flask_T75": 2.50,
             "flask_T175": 4.00,
             "flask_T225": 5.50,
-            "culture_bottle": 3.00,
-            "agar_plate": 1.50,
         }
         return prices.get(item_id, 0.0)
     
@@ -70,7 +71,7 @@ class MockInventory:
 
 
 class WCBSimulation:
-    """Single WCB simulation run driven by WorkflowBuilder."""
+    """Single WCB simulation run."""
     
     def __init__(self, run_id: int, config: WCBTestConfig, rng: np.random.Generator):
         self.run_id = run_id
@@ -78,7 +79,6 @@ class WCBSimulation:
         self.rng = rng
         
         self.vm = BiologicalVirtualMachine(simulation_speed=1000.0)
-        self.executor = WorkflowExecutor(db_path=":memory:", hardware=self.vm, inventory_manager=MockInventory())
         self.vessels = VesselLibrary()
         self.ops = ParametricOps(self.vessels, MockInventory())
         
@@ -105,32 +105,58 @@ class WCBSimulation:
         self.active_flasks = []
         self.frozen_vials = 0
         self.day = 0
-        self.max_passage = 0
+        self.max_passage = config.starting_mcb_passage
         
-    def run(self):
-        """Execute the WCB workflow defined by WorkflowBuilder."""
-        try:
-            # 1. Build Workflow
-            from cell_os.workflows import WorkflowBuilder
-            builder = WorkflowBuilder(self.ops)
-            workflow = builder.build_working_cell_bank(
-                target_vials=self.config.target_wcb_vials,
-                cells_per_vial=self.config.cells_per_vial,
-                starting_passage=self.config.starting_mcb_passage,
-                include_qc=self.config.include_qc
-            )
+        # Extract params from Workflow if present
+        self.flask_type = "flask_T75" # Default
+        self.media_type = "mtesr_plus_kit" # Default
+        
+        if self.config.workflow:
+            self._parse_workflow_params()
             
-            # 2. Execute Ops
-            ops = workflow.processes[0].ops
-            for op in ops:
-                self._execute_op(op)
-                if self.terminal_failure:
+    def _parse_workflow_params(self):
+        """Extract simulation parameters from the provided Workflow."""
+        # Look for Thaw op to get flask size
+        for op in self.config.workflow.all_ops:
+            if "thaw" in op.name.lower() or "thaw" in getattr(op, 'uo_id', '').lower():
+                if hasattr(op, 'items'):
+                    for item in op.items:
+                        if "flask" in item.resource_id.lower():
+                            self.flask_type = item.resource_id
+                            break
+            
+            # Look for Feed op to get media
+            if "feed" in op.name.lower():
+                if hasattr(op, 'parameters') and 'media' in op.parameters:
+                    self.media_type = op.parameters['media']
+
+    def run(self):
+        """Execute the full WCB workflow."""
+        try:
+            self._phase_thaw()
+            
+            target_total_cells = self.config.target_wcb_vials * self.config.cells_per_vial
+            
+            while self._get_total_cells() < target_total_cells:
+                self.day += 1
+                self.vm.advance_time(24.0)
+                self._record_daily_metrics()
+                
+                if not self.active_flasks:
+                    self.failures.append("All flasks lost")
                     break
+                    
+                self._manage_culture()
+                
+                if self.day > 60:
+                    self.failures.append("Timeout: Expansion took too long")
+                    break
+            
+            if self.active_flasks:
+                self._phase_freeze()
                 
         except Exception as e:
             self.failures.append(f"Exception: {str(e)}")
-            self.terminal_failure = True
-            self.failed_reason = f"Exception: {str(e)}"
             
         return self._compile_results()
 
@@ -207,30 +233,85 @@ class WCBSimulation:
                     self.active_flasks = []
                     return
 
+    def _manage_culture(self):
+        """Decide whether to feed or passage."""
+        to_passage = []
+        surviving_flasks = []
+        
+        for flask_id in self.active_flasks:
+            state = self.vm.get_vessel_state(flask_id)
+            if not state:
+                continue
+            
+            # Check contamination
+            self._check_contamination()
+            if self.terminal_failure:
+                break
+            
+            if state["confluence"] > 0.8:
+                to_passage.append(flask_id)
+            else:
+                op = self.ops.op_feed(flask_id, media=self.media_type)
+                self._track_resources(op)
+                surviving_flasks.append(flask_id)
+        
+        self.active_flasks = surviving_flasks
+        
+        if to_passage:
+            self._perform_passage(to_passage)
+
     def _perform_passage(self, source_flasks: List[str]):
-        """Passage cells (if needed)."""
-        # Simplified passage logic for compatibility
+        """Passage cells, expanding to more flasks."""
         new_flasks = []
+        
+        # Determine capacity based on flask_type
+        capacity = 2.5e7
+        if "175" in self.flask_type: capacity = 5.0e7
+        if "225" in self.flask_type: capacity = 7.5e7
+        
         for source_id in source_flasks:
             state = self.vm.get_vessel_state(source_id)
-            if not state: continue
+            if not state:
+                continue
             
             total_cells = state["cell_count"]
+            viability = state["viability"]
+            
+            cells_per_flask = 0.5e6
+            num_new_flasks = int(total_cells / cells_per_flask)
+            if num_new_flasks < 1:
+                num_new_flasks = 1
+            
+            if num_new_flasks > 20:
+                num_new_flasks = 20
+                self.violations.append(f"Split ratio capped for {source_id}")
+            
+            split_ratio = total_cells / (num_new_flasks * cells_per_flask)
+            
+            op = self.ops.op_passage(source_id, ratio=int(split_ratio), cell_line=self.config.cell_line, vessel_type=self.flask_type)
+            self._track_resources(op)
+            
+            passage_stress = 0.025
+            new_viability = viability * (1.0 - passage_stress)
+            cells_per_new_flask = total_cells / num_new_flasks
+            
             current_p = state["passage_number"]
-            
-            # 1:5 split
-            split_ratio = 5
-            cells_per_new_flask = total_cells / split_ratio
-            
-            for i in range(split_ratio):
-                new_id = f"Flask_P{current_p+1}_{self.day}_{i}"
-                self.vm.seed_vessel(new_id, self.config.cell_line, cells_per_new_flask, capacity=2.5e7)
-                self.vm.vessel_states[new_id].passage_number = current_p + 1
+            for i in range(num_new_flasks):
+                new_id = f"Flask_P{current_p+1}_{self.day}_{i}_{source_id[-3:]}"
+                self.vm.seed_vessel(new_id, self.config.cell_line, cells_per_new_flask, capacity=capacity)
+                new_state = self.vm.vessel_states[new_id]
+                new_state.viability = new_viability
+                new_state.passage_number = current_p + 1
                 new_flasks.append(new_id)
                 
-            del self.vm.vessel_states[source_id]
+            if current_p + 1 > self.max_passage:
+                self.max_passage = current_p + 1
+                
+            if source_id in self.vm.vessel_states:
+                del self.vm.vessel_states[source_id]
+            self.active_flasks.remove(source_id)
             
-        self.active_flasks = new_flasks
+        self.active_flasks.extend(new_flasks)
 
     def _phase_freeze(self):
         """Harvest and freeze WCB vials."""

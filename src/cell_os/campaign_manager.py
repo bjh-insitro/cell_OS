@@ -127,14 +127,35 @@ class CampaignDatabase:
         rows = cursor.fetchall()
         conn.close()
         
-        return [Campaign(
-            campaign_id=r[0],
-            name=r[1],
-            description=r[2],
-            status=r[3],
-            created_at=datetime.fromisoformat(r[4]),
-            metadata=json.loads(r[5]) if r[5] else {}
-        ) for r in rows]
+        campaigns = []
+        for r in rows:
+            metadata = {}
+            if r[5] and isinstance(r[5], str) and r[5].strip():
+                try:
+                    metadata = json.loads(r[5])
+                except json.JSONDecodeError:
+                    print(f"Warning: Failed to parse metadata for campaign {r[0]}: {r[5]}")
+            
+            created_at = datetime.now()
+            if r[4]:
+                if isinstance(r[4], str):
+                    try:
+                        created_at = datetime.fromisoformat(r[4])
+                    except ValueError:
+                        pass
+                elif isinstance(r[4], datetime):
+                    created_at = r[4]
+
+            campaigns.append(Campaign(
+                campaign_id=r[0],
+                name=r[1],
+                description=r[2],
+                status=r[3],
+                created_at=created_at,
+                metadata=metadata
+            ))
+        
+        return campaigns
         
     def get_campaign_jobs(self, campaign_id: str) -> List[CampaignJob]:
         conn = sqlite3.connect(self.db_path)
@@ -150,7 +171,7 @@ class CampaignDatabase:
             cell_line=r[3],
             vessel_id=r[4],
             operation_type=r[5],
-            scheduled_time=datetime.fromisoformat(r[6]),
+            scheduled_time=datetime.fromisoformat(r[6]) if isinstance(r[6], str) else r[6],
             status=r[7],
             job_id=r[8]
         ) for r in rows]
