@@ -38,6 +38,7 @@ from dashboard_app.pages.tab_execution_monitor import render_execution_monitor #
 from dashboard_app.pages.tab_analytics import render_analytics # <-- ANALYTICS
 from dashboard_app.pages.tab_inventory import render_inventory_manager # <-- INVENTORY MANAGER
 from dashboard_app.pages.tab_campaign_manager import render_campaign_manager # <-- CAMPAIGN MANAGER
+from dashboard_app.pages.tab_campaign_posh import render_posh_campaign_manager # <-- NEW POSH CAMPAIGN SIM
 
 # Tab 6-10 (Shifted Tabs)
 from dashboard_app.pages.tab_5_posh_decisions import render_posh_decisions
@@ -59,9 +60,9 @@ if st.sidebar.button("Refresh Data"):
 df, pricing = load_data()
 
 # -------------------------------------------------------------------
-# Tabs Definition (UPDATED FOR 16 TABS)
+# Tabs Definition (UPDATED FOR 17 TABS)
 # -------------------------------------------------------------------
-tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_analytics, tab_inventory, tab_campaign, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_analytics, tab_inventory, tab_campaign, tab_posh_sim, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🚀 Mission Control", 
     "🔬 Science", 
     "💰 Economics", 
@@ -72,7 +73,8 @@ tab1, tab2, tab3, tab4, tab_audit, tab_bom, tab_inspector, tab_executor, tab_ana
     "⚙️ Execution Monitor",
     "📈 Analytics",
     "📦 Inventory",
-    "🗓️ Campaign Manager", # <-- CAMPAIGN MANAGER
+    "🗓️ Campaign Manager", 
+    "🧬 POSH Campaign Sim", # <-- NEW TAB
     "🧭 POSH Decision Assistant", 
     "🧪 POSH Screen Designer", 
     "📊 Campaign Reports", 
@@ -128,6 +130,9 @@ with tab_inventory: # <-- INVENTORY CONTENT
 
 with tab_campaign: # <-- CAMPAIGN MANAGER CONTENT
     render_campaign_manager(df, pricing)
+
+with tab_posh_sim: # <-- NEW POSH CAMPAIGN SIM CONTENT
+    render_posh_campaign_manager(df, pricing)
 
 with tab5:
     render_posh_decisions(df, pricing)
