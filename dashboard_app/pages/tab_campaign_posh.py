@@ -140,6 +140,9 @@ def _render_resources(result):
     
     import math
     
+    # View toggle
+    view_mode = st.radio("View Mode", ["Aggregate View", "Daily Breakdown"], horizontal=True, key="bom_view_mode")
+    
     # Calculate quantities
     qty_media_bottles = math.ceil(total_media / 0.5) # 500mL bottles
     qty_vials = num_vials + result.summary.get("waste_vials", 0)
@@ -175,17 +178,162 @@ def _render_resources(result):
     cost_pipette_unit = 0.50
     cost_tip_unit = 0.10
     
-    consumables_data = [
-        {"Item": media_name, "Quantity": qty_media_bottles, "Unit Cost": f"${cost_media_bottle:.2f}", "Total Cost": f"${qty_media_bottles * cost_media_bottle:.2f}"},
-        {"Item": "Cryovials (1.8mL)", "Quantity": qty_vials, "Unit Cost": f"${cost_vial_unit:.2f}", "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"},
-        {"Item": "T75 Flasks", "Quantity": qty_flasks, "Unit Cost": f"${cost_flask_unit:.2f}", "Total Cost": f"${qty_flasks * cost_flask_unit:.2f}"},
-        {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${cost_pipette_unit:.2f}", "Total Cost": f"${qty_pipettes_10ml * cost_pipette_unit:.2f}"},
-        {"Item": "Pipette Tips (1000uL)", "Quantity": qty_tips_1000ul, "Unit Cost": f"${cost_tip_unit:.2f}", "Total Cost": f"${qty_tips_1000ul * cost_tip_unit:.2f}"},
-        {"Item": "PBS (500mL)", "Quantity": qty_pbs, "Unit Cost": f"${cost_pbs_unit:.2f}", "Total Cost": f"${qty_pbs * cost_pbs_unit:.2f}"},
-        {"Item": "Trypsin-EDTA (100mL)", "Quantity": qty_trypsin, "Unit Cost": f"${cost_trypsin_unit:.2f}", "Total Cost": f"${qty_trypsin * cost_trypsin_unit:.2f}"}
-    ]
-    
-    st.dataframe(pd.DataFrame(consumables_data), use_container_width=True)
+    if view_mode == "Aggregate View":
+        # Original aggregate view
+        consumables_data = [
+            {"Item": media_name, "Quantity": qty_media_bottles, "Unit Cost": f"${cost_media_bottle:.2f}", "Total Cost": f"${qty_media_bottles * cost_media_bottle:.2f}"},
+            {"Item": "Cryovials (1.8mL)", "Quantity": qty_vials, "Unit Cost": f"${cost_vial_unit:.2f}", "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"},
+            {"Item": "T75 Flasks", "Quantity": qty_flasks, "Unit Cost": f"${cost_flask_unit:.2f}", "Total Cost": f"${qty_flasks * cost_flask_unit:.2f}"},
+            {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${cost_pipette_unit:.2f}", "Total Cost": f"${qty_pipettes_10ml * cost_pipette_unit:.2f}"},
+            {"Item": "Pipette Tips (1000uL)", "Quantity": qty_tips_1000ul, "Unit Cost": f"${cost_tip_unit:.2f}", "Total Cost": f"${qty_tips_1000ul * cost_tip_unit:.2f}"},
+            {"Item": "PBS (500mL)", "Quantity": qty_pbs, "Unit Cost": f"${cost_pbs_unit:.2f}", "Total Cost": f"${qty_pbs * cost_pbs_unit:.2f}"},
+            {"Item": "Trypsin-EDTA (100mL)", "Quantity": qty_trypsin, "Unit Cost": f"${cost_trypsin_unit:.2f}", "Total Cost": f"${qty_trypsin * cost_trypsin_unit:.2f}"}
+        ]
+        
+        st.dataframe(pd.DataFrame(consumables_data), use_container_width=True)
+        
+    else:  # Daily Breakdown
+        if not result.daily_metrics.empty:
+            daily_breakdown = []
+            prev_media = 0.0
+            prev_flasks = 0
+            
+            for idx, row in result.daily_metrics.iterrows():
+                day = int(row['day'])
+                current_media_ml = row.get('media_consumed', 0.0)
+                current_flasks = int(row.get('flask_count', 0))
+                
+                # Calculate daily deltas
+                media_used_ml = current_media_ml - prev_media
+                new_flasks = max(0, current_flasks - prev_flasks)
+                
+                # Estimate daily pipettes and tips based on flask count
+                # Assume 1 operation per flask per day (feed or passage)
+                daily_pipettes = current_flasks
+                daily_tips = current_flasks * 2  # 2 tips per operation
+                
+                # Calculate daily costs
+                cost_media_day = (media_used_ml / 500.0) * cost_media_bottle  # Convert mL to bottles
+                cost_flasks_day = new_flasks * cost_flask_unit
+                cost_pipettes_day = daily_pipettes * cost_pipette_unit
+                cost_tips_day = daily_tips * cost_tip_unit
+                cost_plasticware_day = cost_flasks_day + cost_pipettes_day + cost_tips_day
+                
+                daily_breakdown.append({
+                    "Day": day,
+                    "Media (mL)": f"{media_used_ml:.1f}",
+                    "New Flasks": new_flasks,
+                    "Pipettes": daily_pipettes,
+                    "Tips": daily_tips,
+                    "Media Cost": f"${cost_media_day:.2f}",
+                    "Plasticware Cost": f"${cost_plasticware_day:.2f}",
+                    "Daily Total": f"${cost_media_day + cost_plasticware_day:.2f}"
+                })
+                
+                prev_media = current_media_ml
+                prev_flasks = current_flasks
+            
+            # Add final day with vials
+            final_day = result.summary.get("duration_days", len(result.daily_metrics))
+            cost_vials_final = qty_vials * cost_vial_unit
+            daily_breakdown.append({
+                "Day": final_day,
+                "Media (mL)": "0.0",
+                "New Flasks": 0,
+                "Pipettes": 0,
+                "Tips": 0,
+                "Media Cost": "$0.00",
+                "Plasticware Cost": f"${cost_vials_final:.2f}",
+                "Daily Total": f"${cost_vials_final:.2f}"
+            })
+            
+            df_daily = pd.DataFrame(daily_breakdown)
+            st.dataframe(df_daily, use_container_width=True)
+            
+            # Daily cost visualization
+            st.markdown("**Daily Cost Breakdown**")
+            
+            # Prepare data for stacked bar chart
+            chart_data = []
+            for idx, row in result.daily_metrics.iterrows():
+                day = int(row['day'])
+                current_media_ml = row.get('media_consumed', 0.0)
+                current_flasks = int(row.get('flask_count', 0))
+                
+                if idx == 0:
+                    media_used_ml = current_media_ml
+                    new_flasks = current_flasks
+                else:
+                    prev_row = result.daily_metrics.iloc[idx - 1]
+                    media_used_ml = current_media_ml - prev_row.get('media_consumed', 0.0)
+                    new_flasks = max(0, current_flasks - int(prev_row.get('flask_count', 0)))
+                
+                daily_pipettes = current_flasks
+                daily_tips = current_flasks * 2
+                
+                cost_media_day = (media_used_ml / 500.0) * cost_media_bottle
+                cost_flasks_day = new_flasks * cost_flask_unit
+                cost_pipettes_day = daily_pipettes * cost_pipette_unit
+                cost_tips_day = daily_tips * cost_tip_unit
+                
+                chart_data.append({
+                    "Day": day,
+                    "Media": cost_media_day,
+                    "Flasks": cost_flasks_day,
+                    "Pipettes": cost_pipettes_day,
+                    "Tips": cost_tips_day
+                })
+            
+            # Add final day with vials
+            final_day = result.summary.get("duration_days", len(result.daily_metrics))
+            chart_data.append({
+                "Day": final_day,
+                "Media": 0.0,
+                "Flasks": 0.0,
+                "Pipettes": 0.0,
+                "Tips": 0.0,
+                "Vials": qty_vials * cost_vial_unit
+            })
+            
+            df_chart = pd.DataFrame(chart_data)
+            
+            # Create stacked bar chart
+            fig_daily = go.Figure()
+            
+            categories = ["Media", "Flasks", "Pipettes", "Tips"]
+            if "Vials" in df_chart.columns:
+                categories.append("Vials")
+            
+            colors = {
+                "Media": "#4CAF50",
+                "Flasks": "#2196F3",
+                "Pipettes": "#FF9800",
+                "Tips": "#9C27B0",
+                "Vials": "#F44336"
+            }
+            
+            for category in categories:
+                if category in df_chart.columns:
+                    fig_daily.add_trace(go.Bar(
+                        name=category,
+                        x=df_chart['Day'],
+                        y=df_chart[category],
+                        marker_color=colors.get(category, "#607D8B")
+                    ))
+            
+            fig_daily.update_layout(
+                barmode='stack',
+                height=350,
+                margin=dict(t=20, b=40, l=40, r=20),
+                xaxis_title="Day",
+                yaxis_title="Cost (USD)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            
+            st.plotly_chart(fig_daily, use_container_width=True)
+            
+        else:
+            st.info("Daily metrics not available for breakdown view.")
 
 def render_posh_campaign_manager(df, pricing):
     """Render the POSH Campaign Manager tab."""
@@ -201,7 +349,7 @@ def render_posh_campaign_manager(df, pricing):
         
         with col1:
             st.subheader("Campaign Settings")
-            cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549"], key="posh_sim_cell_line")
+            cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549", "iPSC"], key="posh_sim_cell_line")
             
         with col2:
             st.subheader("Vendor Vial Specs")
