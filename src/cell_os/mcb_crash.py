@@ -280,13 +280,27 @@ class MCBSimulation:
         bsc_hours += current_ops_load['bsc']
         staff_hours += current_ops_load['staff']
         
+        # Calculate average confluence and viability
+        confluences = []
+        viabilities = []
+        for flask_id in self.active_flasks:
+            state = self.vm.get_vessel_state(flask_id)
+            if state:
+                confluences.append(state["confluence"])
+                viabilities.append(state["viability"])
+        
+        avg_confluence = sum(confluences) / len(confluences) if confluences else 0.0
+        avg_viability = sum(viabilities) / len(viabilities) if viabilities else 0.0
+
         self.daily_metrics.append({
             "day": self.day,
             "total_cells": total_cells,
             "flask_count": len(self.active_flasks),
             "media_consumed": self.media_consumed_ml,
             "bsc_hours": bsc_hours,
-            "staff_hours": staff_hours
+            "staff_hours": staff_hours,
+            "avg_confluence": avg_confluence,
+            "avg_viability": avg_viability
         })
         
         # Reset daily counters if any (we don't have them yet, so we rely on state)
