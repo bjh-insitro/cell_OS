@@ -100,8 +100,11 @@ def init_automation_resources(vessel_path="data/raw/vessels.yaml"):
         builder = WorkflowBuilder(ops)
         return vessel_lib, inv, ops, builder, inv_manager
     except Exception as e:
-        # Display the specific error on the dashboard
-        st.error(f"FATAL RESOURCE ERROR: Could not initialize automation engine. Details: {e}")
-        # Display the full Python traceback in a code block for debugging
-        st.code(traceback.format_exc())
+        render_error(e, context="Automation Engine Initialization")
         return None, None, None, None, None
+
+def render_error(error: Exception, context: str = "Error"):
+    """Standardized error rendering for the dashboard."""
+    st.error(f"❌ {context}: {str(error)}")
+    with st.expander("Error Details"):
+        st.code(traceback.format_exc())

@@ -1,0 +1,147 @@
+```
+Dashboard Architecture - Refactored Design
+==========================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         app.py (Main Entry Point)                   │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
+│  │ setup_page() │  │render_sidebar│  │ render_page()│            │
+│  └──────────────┘  └──────────────┘  └──────────────┘            │
+│                                                                     │
+│  • Configures Streamlit                                            │
+│  • Loads data (df, pricing)                                        │
+│  • Creates page registry                                           │
+│  • Routes to selected page                                         │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ creates registry
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    config.py (Page Registry System)                 │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │ PageCategory (Enum)                                         │  │
+│  │  • CORE                                                     │  │
+│  │  • SIMULATION                                               │  │
+│  │  • AUDIT                                                    │  │
+│  │  • PLANNING                                                 │  │
+│  │  • ANALYSIS                                                 │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │ PageConfig (Dataclass)                                      │  │
+│  │  • key: str                                                 │  │
+│  │  • title: str                                               │  │
+│  │  • emoji: str                                               │  │
+│  │  • render_function: Callable                                │  │
+│  │  • category: PageCategory                                   │  │
+│  │  • description: Optional[str]                               │  │
+│  │  • order: int                                               │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │ PageRegistry (Class)                                        │  │
+│  │  • register(page)                                           │  │
+│  │  • get_page(title) → PageConfig                             │  │
+│  │  • get_all_pages() → List[PageConfig]                       │  │
+│  │  • get_page_titles() → List[str]                            │  │
+│  │  • get_pages_by_category() → Dict                           │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │ create_page_registry() → PageRegistry                       │  │
+│  │  • Imports all page render functions                        │  │
+│  │  • Registers all 17 pages with metadata                     │  │
+│  │  • Returns configured registry                              │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ imports render functions
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     pages/ (Page Modules)                           │
+│                                                                     │
+│  Core Pages (3):                                                   │
+│  ├─ tab_1_mission_control.py → render_mission_control()           │
+│  ├─ tab_2_science.py → render_science_explorer()                  │
+│  └─ tab_3_economics.py → render_economics()                       │
+│                                                                     │
+│  Simulation Pages (2):                                             │
+│  ├─ tab_campaign_posh.py → render_posh_campaign_manager()         │
+│  └─ tab_4_workflow.py → render_workflow_visualizer()              │
+│                                                                     │
+│  Audit & Inspection Pages (4):                                     │
+│  ├─ tab_audit_resources.py → render_resource_audit()              │
+│  ├─ tab_audit_workflow_bom.py → render_workflow_bom_audit()       │
+│  ├─ tab_cell_line_inspector.py → render_cell_line_inspector()     │
+│  └─ tab_execution_monitor.py → render_execution_monitor()         │
+│                                                                     │
+│  Planning & Management Pages (5):                                  │
+│  ├─ tab_inventory.py → render_inventory_manager()                 │
+│  ├─ tab_campaign_manager.py → render_campaign_manager()           │
+│  ├─ tab_5_posh_decisions.py → render_posh_decisions()             │
+│  ├─ tab_6_posh_designer.py → render_posh_designer()               │
+│  └─ tab_8_budget_calculator.py → render_budget_calculator()       │
+│                                                                     │
+│  Analysis & Reports Pages (3):                                     │
+│  ├─ tab_analytics.py → render_analytics()                         │
+│  ├─ tab_7_campaign_reports.py → render_campaign_reports()         │
+│  └─ tab_9_phenotype_clustering.py → render_phenotype_clustering() │
+│                                                                     │
+│  All render functions have signature: render_*(df, pricing)        │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+Data Flow
+=========
+
+User Interaction:
+  1. User selects page from sidebar dropdown
+  2. app.py calls render_sidebar() → returns selected page title
+  3. app.py calls render_page(title, registry, df, pricing)
+  4. render_page() looks up PageConfig from registry
+  5. render_page() calls page_config.render_function(df, pricing)
+  6. Page module renders its UI using Streamlit
+
+
+Key Benefits
+============
+
+✅ Maintainability
+   • Single source of truth for page configuration
+   • No more long if-elif chains
+   • Easy to see all pages at a glance
+
+✅ Scalability
+   • Add new pages by registering in config.py only
+   • Automatic categorization and ordering
+   • No need to modify routing logic
+
+✅ Flexibility
+   • Rich metadata for each page (description, category, order)
+   • Easy to implement advanced features (search, favorites, etc.)
+   • Clean separation of concerns
+
+✅ Testability
+   • Registry can be tested independently
+   • Mock pages easily for testing
+   • Clear interfaces between components
+
+
+Adding a New Page
+=================
+
+Old Way (5 edits):
+  1. Create page module
+  2. Add import to app.py
+  3. Add title to sidebar radio list
+  4. Add elif condition
+  5. Ensure emoji/title match exactly
+
+New Way (1 edit):
+  1. Create page module
+  2. Add registry.register() call in config.py
+
+That's it! ✨
+```
