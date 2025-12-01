@@ -15,6 +15,7 @@ from pathlib import Path
 import sqlite3
 import sqlite3
 import json
+from collections import deque
 from cell_os.hardware.base import HardwareInterface
 from cell_os.hardware.virtual import VirtualMachine
 
@@ -318,6 +319,158 @@ class ExecutionRepository:
         return executions[:limit]
 
 
+class ExecutionQueue:
+    """Simple in-memory execution queue with explicit start/stop controls."""
+
+    def __init__(self):
+        self._pending = deque()
+        self._active = False
+
+    def submit(self, execution_id: str):
+        self._pending.append(execution_id)
+
+    def start(self, worker: Callable[[str], None]):
+        """Process queued executions with the provided worker callback."""
+        self._active = True
+        while self._pending and self._active:
+            execution_id = self._pending.popleft()
+            worker(execution_id)
+
+    def stop(self):
+        self._active = False
+
+    def pending(self) -> List[str]:
+        return list(self._pending)
+
+
+class WorkflowRunner:
+    """Runs workflow executions step-by-step using registered handlers."""
+
+    def __init__(
+        self,
+        repo: ExecutionRepository,
+        hardware: Optional[HardwareInterface] = None,
+        inventory_manager=None,
+    ):
+        self.repo = repo
+        self.inventory_manager = inventory_manager
+        self.hardware = hardware or VirtualMachine()
+        self.step_handlers: Dict[str, Callable[[ExecutionStep], Dict[str, Any]]] = {}
+        self._register_default_handlers()
+        self._connect_hardware()
+
+    def _connect_hardware(self):
+        try:
+            self.hardware.connect()
+        except Exception as exc:
+            print(f"Warning: Could not connect to hardware: {exc}")
+
+    def register_handler(self, operation_type: str, handler: Callable[[ExecutionStep], Dict[str, Any]]):
+        self.step_handlers[operation_type] = handler
+
+    def run(self, execution: WorkflowExecution, dry_run: bool = False) -> WorkflowExecution:
+        if not execution:
+            raise ValueError("Execution not found")
+
+        execution.status = ExecutionStatus.RUNNING
+        execution.started_at = datetime.now()
+        self.repo.save(execution)
+
+        try:
+            for step in execution.steps:
+                step.status = StepStatus.RUNNING
+                step.start_time = datetime.now()
+                self.repo.save(execution)
+
+                try:
+                    handler = self.step_handlers.get(step.operation_type, self._handle_generic)
+                    if dry_run:
+                        step.result = {"dry_run": True}
+                    else:
+                        step.result = handler(step)
+                        if self.inventory_manager:
+                            self._deduct_resources(step, execution.execution_id)
+                    step.status = StepStatus.COMPLETED
+                    step.end_time = datetime.now()
+                except Exception as exc:
+                    step.status = StepStatus.FAILED
+                    step.error_message = str(exc)
+                    step.end_time = datetime.now()
+                    raise
+                finally:
+                    self.repo.save(execution)
+
+            execution.status = ExecutionStatus.COMPLETED
+            execution.completed_at = datetime.now()
+        except Exception as exc:
+            execution.status = ExecutionStatus.FAILED
+            execution.error_message = str(exc)
+            execution.completed_at = datetime.now()
+        finally:
+            self.repo.save(execution)
+
+        return execution
+
+    def _deduct_resources(self, step: ExecutionStep, execution_id: str):
+        required = step.parameters.get("required_resources", [])
+        for item in required:
+            try:
+                self.inventory_manager.consume_stock(
+                    resource_id=item["resource_id"],
+                    quantity=item["quantity"],
+                    transaction_meta={"execution_id": execution_id, "step_id": step.step_id},
+                )
+            except Exception as exc:
+                step.result = step.result or {}
+                step.result["inventory_warning"] = str(exc)
+
+    def _register_default_handlers(self):
+        self.step_handlers["dispense"] = self._handle_dispense
+        self.step_handlers["aspirate"] = self._handle_aspirate
+        self.step_handlers["incubate"] = self._handle_incubate
+        self.step_handlers["centrifuge"] = self._handle_centrifuge
+        self.step_handlers["count"] = self._handle_count
+        self.step_handlers["mix"] = self._handle_mix
+
+    def _handle_dispense(self, step: ExecutionStep) -> Dict[str, Any]:
+        vol_ml = step.parameters.get("volume_ml", 0.0)
+        vol_ul = vol_ml * 1000.0
+        loc = step.parameters.get("location", "unknown")
+        return self.hardware.dispense(vol_ul, loc)
+
+    def _handle_aspirate(self, step: ExecutionStep) -> Dict[str, Any]:
+        vol_ml = step.parameters.get("volume_ml", 0.0)
+        vol_ul = vol_ml * 1000.0
+        loc = step.parameters.get("location", "unknown")
+        return self.hardware.aspirate(vol_ul, loc)
+
+    def _handle_mix(self, step: ExecutionStep) -> Dict[str, Any]:
+        vol_ml = step.parameters.get("volume_ml", 0.0)
+        vol_ul = vol_ml * 1000.0
+        reps = step.parameters.get("repetitions", 3)
+        loc = step.parameters.get("location", "unknown")
+        return self.hardware.mix(vol_ul, reps, loc)
+
+    def _handle_incubate(self, step: ExecutionStep) -> Dict[str, Any]:
+        minutes = step.parameters.get("minutes", 0)
+        seconds = minutes * 60.0
+        temp = step.parameters.get("temperature_c", 37.0)
+        return self.hardware.incubate(seconds, temp)
+
+    def _handle_centrifuge(self, step: ExecutionStep) -> Dict[str, Any]:
+        minutes = step.parameters.get("minutes", 0)
+        seconds = minutes * 60.0
+        g = step.parameters.get("g_force", 300.0)
+        return self.hardware.centrifuge(seconds, g)
+
+    def _handle_count(self, step: ExecutionStep) -> Dict[str, Any]:
+        loc = step.parameters.get("location", "sample")
+        return self.hardware.count_cells(loc)
+
+    def _handle_generic(self, step: ExecutionStep) -> Dict[str, Any]:
+        return {"status": "success", "message": f"Executed {step.operation_type}"}
+
+
 class WorkflowExecutor:
     """
     Executes workflows step-by-step with progress tracking and error handling.
@@ -333,70 +486,36 @@ class WorkflowExecutor:
         persistence = ExecutionPersistence(db_path)
         self.persistence = persistence
         self.repo = repository or ExecutionRepository(persistence)
+        self.queue = ExecutionQueue()
+        self.runner = WorkflowRunner(
+            repo=self.repo,
+            hardware=hardware,
+            inventory_manager=inventory_manager,
+        )
+        self.step_handlers = self.runner.step_handlers
+        self.hardware = self.runner.hardware
         self.inventory_manager = inventory_manager
-        self.hardware = hardware or VirtualMachine()
-        self.step_handlers: Dict[str, Callable] = {}
-        self._register_default_handlers()
-        
-        # Ensure hardware is connected
-        try:
-            self.hardware.connect()
-        except Exception as e:
-            print(f"Warning: Could not connect to hardware: {e}")
-    
-    def _register_default_handlers(self):
-        """Register default step handlers."""
-        self.step_handlers["dispense"] = self._handle_dispense
-        self.step_handlers["aspirate"] = self._handle_aspirate
-        self.step_handlers["incubate"] = self._handle_incubate
-        self.step_handlers["centrifuge"] = self._handle_centrifuge
-        self.step_handlers["count"] = self._handle_count
-        self.step_handlers["mix"] = self._handle_mix
-    
-    def _handle_dispense(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Handle dispense operation."""
-        vol_ml = step.parameters.get("volume_ml", 0.0)
-        vol_ul = vol_ml * 1000.0
-        loc = step.parameters.get("location", "unknown")
-        return self.hardware.dispense(vol_ul, loc)
-    
-    def _handle_aspirate(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Handle aspirate operation."""
-        vol_ml = step.parameters.get("volume_ml", 0.0)
-        vol_ul = vol_ml * 1000.0
-        loc = step.parameters.get("location", "unknown")
-        return self.hardware.aspirate(vol_ul, loc)
-    
-    def _handle_mix(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Handle mix operation."""
-        vol_ml = step.parameters.get("volume_ml", 0.0)
-        vol_ul = vol_ml * 1000.0
-        reps = step.parameters.get("repetitions", 3)
-        loc = step.parameters.get("location", "unknown")
-        return self.hardware.mix(vol_ul, reps, loc)
-    
-    def _handle_incubate(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Handle incubation operation."""
-        minutes = step.parameters.get("minutes", 0)
-        seconds = minutes * 60.0
-        temp = step.parameters.get("temperature_c", 37.0)
-        return self.hardware.incubate(seconds, temp)
-    
-    def _handle_centrifuge(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Handle centrifuge operation."""
-        minutes = step.parameters.get("minutes", 0)
-        seconds = minutes * 60.0
-        g = step.parameters.get("g_force", 300.0)
-        return self.hardware.centrifuge(seconds, g)
-    
-    def _handle_count(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Handle cell counting operation."""
-        loc = step.parameters.get("location", "sample")
-        return self.hardware.count_cells(loc)
+        self.db = self.persistence  # backward compatibility
     
     def register_handler(self, operation_type: str, handler: Callable):
         """Register a custom step handler."""
-        self.step_handlers[operation_type] = handler
+        self.runner.register_handler(operation_type, handler)
+
+    def enqueue_execution(self, execution_id: str):
+        """Add an execution ID to the local queue."""
+        self.queue.submit(execution_id)
+
+    def start_worker(self, dry_run: bool = False):
+        """Process queued executions synchronously."""
+        self.queue.start(lambda exec_id: self.execute(exec_id, dry_run=dry_run))
+
+    def stop_worker(self):
+        """Stop queue processing."""
+        self.queue.stop()
+
+    def pending_queue(self) -> List[str]:
+        """Return queued execution IDs."""
+        return self.queue.pending()
     
     def create_execution_from_protocol(
         self,
@@ -491,92 +610,12 @@ class WorkflowExecutor:
     
     def execute(self, execution_id: str, dry_run: bool = False) -> WorkflowExecution:
         """
-        Execute a workflow.
-        
-        Args:
-            execution_id: ID of the execution to run
-            dry_run: If True, simulate without actually executing
-            
-        Returns:
-            Updated WorkflowExecution
+        Execute a workflow by delegating to the WorkflowRunner.
         """
         execution = self.repo.get(execution_id)
         if not execution:
             raise ValueError(f"Execution {execution_id} not found")
-        
-        # Update status
-        execution.status = ExecutionStatus.RUNNING
-        execution.started_at = datetime.now()
-        self.repo.save(execution)
-        
-        try:
-            # Execute each step
-            for step in execution.steps:
-                step.status = StepStatus.RUNNING
-                step.start_time = datetime.now()
-                self.repo.save(execution)
-                
-                try:
-                    # Get handler for this operation type
-                    handler = self.step_handlers.get(step.operation_type, self._handle_generic)
-                    
-                    if not dry_run:
-                        result = handler(step)
-                        step.result = result
-                        
-                        # Deduct resources if inventory manager is available
-                        if self.inventory_manager:
-                            self._deduct_resources(step, execution_id)
-                    else:
-                        step.result = {"dry_run": True}
-                    
-                    step.status = StepStatus.COMPLETED
-                    step.end_time = datetime.now()
-                    
-                except Exception as e:
-                    step.status = StepStatus.FAILED
-                    step.error_message = str(e)
-                    step.end_time = datetime.now()
-                    raise
-                
-                finally:
-                    self.repo.save(execution)
-            
-            # Mark execution as completed
-            execution.status = ExecutionStatus.COMPLETED
-            execution.completed_at = datetime.now()
-            
-        except Exception as e:
-            execution.status = ExecutionStatus.FAILED
-            execution.error_message = str(e)
-            execution.completed_at = datetime.now()
-        
-        finally:
-            self.repo.save(execution)
-        
-        return execution
-    
-    def _deduct_resources(self, step: ExecutionStep, execution_id: str):
-        """Deduct resources required for the step."""
-        required = step.parameters.get("required_resources", [])
-        for item in required:
-            try:
-                self.inventory_manager.consume_stock(
-                    resource_id=item["resource_id"],
-                    quantity=item["quantity"],
-                    transaction_meta={"execution_id": execution_id, "step_id": step.step_id}
-                )
-            except Exception as e:
-                # Log warning but don't fail execution? Or fail?
-                # For now, let's log it in the step result
-                if step.result:
-                    step.result["inventory_warning"] = str(e)
-                else:
-                    step.result = {"inventory_warning": str(e)}
-
-    def _handle_generic(self, step: ExecutionStep) -> Dict[str, Any]:
-        """Generic handler for unknown operation types."""
-        return {"status": "success", "message": f"Executed {step.operation_type}"}
+        return self.runner.run(execution, dry_run=dry_run)
     
     def get_execution_status(self, execution_id: str) -> Optional[WorkflowExecution]:
         """Get current status of an execution."""
