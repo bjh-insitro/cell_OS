@@ -33,27 +33,26 @@ class CellLineConfigStore:
                 data = yaml.safe_load(f) or {}
             self._yaml_data = data.get("cell_lines", {})
 
-        # Always initialize the DB repository so we can fall back to SQLite when
-        # a cell line is missing from the legacy YAML fixtures.
+        # Always initialize the DB repository; it is the primary source of truth
+        # now that protocol parameters are stored in SQLite.
         self._db = CellLineRepository(db_path)
-
-        if self._yaml_data and self._db:
-            self._source = "hybrid"
-        elif self._yaml_data:
-            self._source = "yaml"
-        else:
-            self._source = "db"
 
     def get_config(self, cell_line: str) -> Dict[str, Any]:
         """Return a legacy-style configuration dictionary for a cell line."""
         key = self._resolve_cell_line_key(cell_line)
         cache_key = key.lower()
         if cache_key not in self._cache:
-            if self._yaml_data and key in self._yaml_data:
+            config: Optional[Dict[str, Any]] = None
+            if self._db:
+                try:
+                    config = self._build_config_from_db(key)
+                except ValueError:
+                    config = None
+
+            if config is None and self._yaml_data and key in self._yaml_data:
                 config = self._get_yaml_config(key)
-            elif self._db:
-                config = self._build_config_from_db(key)
-            else:
+
+            if config is None:
                 raise ValueError(f"Unknown cell line: {cell_line}")
             self._cache[cache_key] = config
         return copy.deepcopy(self._cache[cache_key])
@@ -97,12 +96,12 @@ class CellLineConfigStore:
             "growth_media": cell.growth_media,
             "wash_buffer": cell.wash_buffer,
             "detach_reagent": cell.detach_reagent,
-            "coating_required": cell.coating_required,
+            "coating_required": bool(cell.coating_required),
             "coating_reagent": cell.coating_reagent,
             "profile": {
                 **characteristics,
                 "cell_type": cell.cell_type,
-                "coating_required": cell.coating_required,
+                "coating_required": bool(cell.coating_required),
                 "coating_reagent": cell.coating_reagent or "none",
                 "media": characteristics.get("media", cell.growth_media),
             },
