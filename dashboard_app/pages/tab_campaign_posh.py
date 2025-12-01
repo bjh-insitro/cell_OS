@@ -1013,56 +1013,162 @@ def render_posh_campaign_manager(df, pricing):
                 # Create smooth curve for model
                 x_smooth = np.linspace(0, t_result.data['volume_ul'].max() * 1.1, 100)
                 # BFP = A * (1 - exp(-MOI)) = A * (1 - exp(-(Vol*Titer)/Cells))
-            # Titer in TU/uL = fitted_titer_tu_ml / 1000
-            titer_ul = t_result.fitted_titer_tu_ml / 1000.0
-            y_smooth = t_result.model.max_infectivity * (1.0 - np.exp(-(x_smooth * titer_ul) / 100000))
+                # Titer in TU/uL = fitted_titer_tu_ml / 1000
+                titer_ul = t_result.fitted_titer_tu_ml / 1000.0
+                y_smooth = t_result.model.max_infectivity * (1.0 - np.exp(-(x_smooth * titer_ul) / 100000))
+                
+                fig = go.Figure()
+                
+                # Data points
+                fig.add_trace(go.Scatter(
+                    x=t_result.data['volume_ul'],
+                    y=t_result.data['fraction_bfp'],
+                    mode='markers',
+                    name='Observed Data',
+                    marker=dict(color='blue', size=10, opacity=0.6)
+                ))
+                
+                # Model curve
+                fig.add_trace(go.Scatter(
+                    x=x_smooth,
+                    y=y_smooth,
+                    mode='lines',
+                    name='Fitted Poisson Model',
+                    line=dict(color='red', width=2)
+                ))
+                
+                # Target point
+                fig.add_trace(go.Scatter(
+                    x=[t_result.recommended_vol_ul],
+                    y=[target_eff],
+                    mode='markers',
+                    name='Optimal Point',
+                    marker=dict(color='green', size=15, symbol='star')
+                ))
+                
+                fig.update_layout(
+                    title=f"Titration Curve: {titration_cell_line}",
+                    xaxis_title="Viral Volume (µL)",
+                    yaxis_title="Transduction Efficiency (Fraction BFP)",
+                    yaxis_range=[0, 1.0],
+                    height=400,
+                    template="plotly_white"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Cost Analysis
+                st.subheader("Titration Cost Analysis 💰")
+                _render_titration_resources(t_result, pricing)
+                
+            else:
+                st.error(f"❌ Titration Failed: {t_result.error_message}")
+        
+        # --- Phase 4: Library Transduction & Banking ---
+        st.divider()
+        st.markdown("""
+        **Phase 4: Library Transduction & Banking**
+        Create a bank of library-transduced cells for POSH screens.
+        """)
+        
+        from cell_os.simulation.library_banking_wrapper import simulate_library_banking
+        
+        with st.expander("Library Banking Configuration", expanded=True):
+            lb_col1, lb_col2, lb_col3, lb_col4 = st.columns(4)
+            with lb_col1:
+                lb_cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549", "iPSC"], key="lb_cell_line")
+            with lb_col2:
+                library_size = st.number_input("Library Size (# gRNAs)", value=1000, step=100, key="library_size")
+            with lb_col3:
+                representation = st.number_input("Representation (cells/gRNA)", value=1000, step=100, key="representation")
+            with lb_col4:
+                target_cells_per_grna = st.number_input("Target cells/gRNA (screen)", value=750, step=50, key="target_cells_per_grna")
             
-            fig = go.Figure()
+            # Check if titration results are available
+            if lb_cell_line in st.session_state.titration_results:
+                t_result = st.session_state.titration_results[lb_cell_line]
+                st.success(f"✓ Using titration results: Titer = {t_result.fitted_titer_tu_ml:.2e} TU/mL, MOI = {t_result.target_moi:.2f}")
+                fitted_titer = t_result.fitted_titer_tu_ml
+                optimal_moi = t_result.target_moi
+            else:
+                st.warning(f"⚠️ No titration results for {lb_cell_line}. Using default values.")
+                fitted_titer = 1.0e8
+                optimal_moi = 0.3
             
-            # Data points
-            fig.add_trace(go.Scatter(
-                x=t_result.data['volume_ul'],
-                y=t_result.data['fraction_bfp'],
-                mode='markers',
-                name='Observed Data',
-                marker=dict(color='blue', size=10, opacity=0.6)
-            ))
+            run_library_banking = st.button("▶️ Simulate Library Banking", key="run_library_banking_btn")
+        
+        if "library_banking_results" not in st.session_state:
+            st.session_state.library_banking_results = {}
+        
+        if run_library_banking:
+            with st.spinner("Simulating library banking workflow..."):
+                lb_result = simulate_library_banking(
+                    cell_line=lb_cell_line,
+                    library_size=library_size,
+                    fitted_titer_tu_ml=fitted_titer,
+                    optimal_moi=optimal_moi,
+                    representation=representation,
+                    target_cells_per_grna=target_cells_per_grna
+                )
+                st.session_state.library_banking_results[lb_cell_line] = lb_result
+        
+        if lb_cell_line in st.session_state.library_banking_results:
+            lb_result = st.session_state.library_banking_results[lb_cell_line]
             
-            # Model curve
-            fig.add_trace(go.Scatter(
-                x=x_smooth,
-                y=y_smooth,
-                mode='lines',
-                name='Fitted Poisson Model',
-                line=dict(color='red', width=2)
-            ))
+            if lb_result.success:
+                st.success(f"✅ Library Banking Simulation Complete for {lb_cell_line}")
+                
+                # Metrics
+                m1, m2, m3, m4 = st.columns(4)
+                with m1:
+                    st.metric("Transduction Cells", f"{lb_result.transduction_cells_needed:,}")
+                with m2:
+                    st.metric("Viral Volume", f"{lb_result.viral_volume_ml:.1f} mL")
+                with m3:
+                    st.metric("Transduction Flasks", f"{lb_result.transduction_flasks}")
+                with m4:
+                    st.metric("Total Vials Banked", f"{lb_result.cryo_vials_needed}")
+                
+                # Banking details
+                st.subheader("Banking Strategy")
+                b1, b2, b3 = st.columns(3)
+                with b1:
+                    st.metric("Post-Selection Cells", f"{lb_result.post_selection_cells:,}", 
+                             help=f"{lb_result.selection_survival_rate*100:.0f}% survival")
+                with b2:
+                    st.metric("Expansion Needed", f"{lb_result.expansion_fold_needed:.1f}×")
+                with b3:
+                    st.metric("Vials per Screen", f"{lb_result.vials_per_screen} vials", 
+                             help=f"{lb_result.cells_per_vial/1e6:.0f}M cells/vial")
+                
+                # Workflow display
+                st.subheader("Workflow Steps")
+                if lb_result.workflow:
+                    workflow_steps = []
+                    step_num = 1
+                    for process in lb_result.workflow.processes:
+                        for op in process.ops:
+                            workflow_steps.append({
+                                "Step": step_num,
+                                "Operation": op.name,
+                                "Category": op.category,
+                                "Material Cost": f"${op.material_cost_usd:.2f}",
+                                "Instrument Cost": f"${op.instrument_cost_usd:.2f}"
+                            })
+                            step_num += 1
+                    
+                    st.dataframe(pd.DataFrame(workflow_steps), use_container_width=True)
+                    
+                    # Total cost
+                    total_mat = sum(op.material_cost_usd for process in lb_result.workflow.processes for op in process.ops)
+                    total_inst = sum(op.instrument_cost_usd for process in lb_result.workflow.processes for op in process.ops)
+                    total_cost = total_mat + total_inst
+                    
+                    st.metric("Total Workflow Cost", f"${total_cost:,.2f}", 
+                             help=f"Materials: ${total_mat:,.2f} | Instruments: ${total_inst:,.2f}")
+            else:
+                st.error(f"❌ Library Banking Failed: {lb_result.error_message}")
             
-            # Target point
-            fig.add_trace(go.Scatter(
-                x=[t_result.recommended_vol_ul],
-                y=[target_eff],
-                mode='markers',
-                name='Optimal Point',
-                marker=dict(color='green', size=15, symbol='star')
-            ))
-            
-            fig.update_layout(
-                title=f"Titration Curve: {titration_cell_line}",
-                xaxis_title="Viral Volume (µL)",
-                yaxis_title="Transduction Efficiency (Fraction BFP)",
-                yaxis_range=[0, 1.0],
-                height=400,
-                template="plotly_white"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Cost Analysis
-            st.subheader("Titration Cost Analysis 💰")
-            _render_titration_resources(t_result, pricing)
-            
-        else:
-            st.error(f"❌ Titration Failed: {t_result.error_message}")
             
     # Display Results
     if st.session_state.mcb_results:

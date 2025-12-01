@@ -826,6 +826,87 @@ class ParametricOps(ProtocolOps):
             sub_steps=steps
         )
 
+    def op_seed(self, vessel_id: str, num_cells: int, cell_line: str = None, name: str = None):
+        """Seed cells into a vessel (generic/flask)."""
+        from .base import UnitOp
+        
+        steps = []
+        
+        # Helper to get single item cost
+        def get_single_cost(item_id: str):
+            return self.inv.get_price(item_id)
+        
+        # Determine media
+        media = "dmem_10fbs"
+        if cell_line:
+            if CELL_LINE_DB_AVAILABLE:
+                profile = get_cell_line_profile(cell_line)
+                if profile and profile.media:
+                    media = profile.media
+            elif cell_line.lower() in ["ipsc", "hesc"]:
+                media = "mtesr_plus_kit"
+        
+        media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
+        
+        # Determine volume based on vessel type
+        volume_ml = 15.0  # Default for T75
+        if "t25" in vessel_id.lower():
+            volume_ml = 5.0
+        elif "t175" in vessel_id.lower():
+            volume_ml = 30.0
+            
+        # 1. Dispense media
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=volume_ml,
+            liquid_name=media,
+            material_cost_usd=get_single_cost("pipette_25ml") + (volume_ml * media_cost_per_ml),
+            name=f"Fill {vessel_id} with {volume_ml}mL {media}"
+        ))
+        
+        # 2. Add cells (assume concentrated suspension)
+        steps.append(self.op_dispense(
+            vessel_id=vessel_id,
+            volume_ml=1.0,
+            liquid_name="cell_suspension",
+            material_cost_usd=get_single_cost("pipette_5ml"),
+            name=f"Seed {num_cells:,} cells"
+        ))
+        
+        # 3. Incubate
+        steps.append(self.op_incubate(
+            vessel_id=vessel_id,
+            duration_min=1440,  # 24 hours
+            temp_c=37.0,
+            material_cost_usd=0.0,
+            instrument_cost_usd=1.0,
+            name="Incubate overnight"
+        ))
+        
+        total_mat = sum(s.material_cost_usd for s in steps)
+        total_inst = sum(s.instrument_cost_usd for s in steps)
+        
+        # Add vessel cost
+        vessel_cost = 0.0
+        if "t75" in vessel_id.lower():
+            vessel_cost = get_single_cost("flask_T75")
+        
+        return UnitOp(
+            uo_id=f"Seed_{vessel_id}",
+            name=name if name else f"Seed {num_cells} cells in {vessel_id}",
+            layer="culture",
+            category="seeding",
+            time_score=20,
+            cost_score=2,
+            automation_fit=3,
+            failure_risk=1,
+            staff_attention=2,
+            instrument="Biosafety Cabinet + Incubator",
+            material_cost_usd=total_mat + vessel_cost,
+            instrument_cost_usd=total_inst,
+            sub_steps=steps
+        )
+    
     def op_harvest(self, vessel_id: str, dissociation_method: str = None, cell_line: str = None, name: str = None):
         """Harvest cells for freezing or analysis."""
         from .base import UnitOp

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List
+import numpy as np
 from cell_os.unit_ops import UnitOp, ParametricOps, AssayRecipe
 from .zombie_posh_shopping_list import ZombiePOSHShoppingList
 
@@ -261,14 +262,15 @@ class WorkflowBuilder:
             name=f"Transduce {num_wells} wells"
         ))
             
-        # 4. Feed plates (24h post-transduction - single consolidated op)
+        # 4. Feed plates (24h post-transduction)
         # This removes virus and provides fresh media
-        feed_volume = 2.0 * num_wells
-        process_ops.append(self.ops.op_feed(
-            "plate_6well", 
-            cell_line=cell_line, 
-            name=f"Media change {num_plates} plates (remove virus)"
-        ))
+        # Create individual feed operations for each plate to properly account for media
+        for plate_idx in range(num_plates):
+            process_ops.append(self.ops.op_feed(
+                "plate_6well", 
+                cell_line=cell_line, 
+                name=f"Media change plate {plate_idx+1}/{num_plates} (remove virus)"
+            ))
         
         # 5. Harvest & Flow Cytometry (48h later)
         # Consolidated harvest operation for all plates
@@ -288,6 +290,129 @@ class WorkflowBuilder:
         return Workflow("LV Titration Experiment", [
             Process("Titration Execution", process_ops)
         ])
+
+    def build_library_banking_workflow(
+        self, 
+        cell_line: str = "U2OS", 
+        library_size: int = 1000,
+        representation: int = 1000
+    ) -> Workflow:
+        """
+        Library Transduction and Banking Workflow.
+        
+        Creates a bank of library-transduced cells for POSH screens.
+        
+        Workflow:
+        1. Thaw WCB vials
+        2. Expand to transduction scale
+        3. Transduce with gRNA library (spinoculation)
+        4. Puromycin selection (5-7 days)
+        5. Expand for banking
+        6. Freeze into vials for 4 screens
+        
+        Args:
+            cell_line: Cell line name
+            library_size: Number of gRNAs in library
+            representation: Coverage for transduction (cells per gRNA)
+        """
+        process_ops = []
+        
+        # Calculate scale
+        transduction_cells_needed = library_size * representation
+        
+        # Check if coating needed
+        coating_needed = False
+        coating_agent = "vitronectin"
+        if cell_line.lower() in ["ipsc", "hesc"]:
+            coating_needed = True
+            try:
+                from cell_os.cell_line_database import get_cell_line_profile
+                profile = get_cell_line_profile(cell_line)
+                if profile and profile.coating:
+                    coating_agent = profile.coating
+            except:
+                pass
+        
+        # 1. Thaw WCB vials into T75 flasks
+        # Estimate vials needed: ~1M cells/vial, need transduction_cells_needed
+        # Add 50% buffer for expansion
+        vials_to_thaw = max(1, int((transduction_cells_needed * 1.5) / 1e6))
+        
+        for i in range(min(vials_to_thaw, 5)):  # Cap at 5 for workflow display
+            if coating_needed:
+                process_ops.append(self.ops.op_coat("flask_t75", agents=[coating_agent]))
+            process_ops.append(self.ops.op_thaw("flask_t75", cell_line=cell_line, skip_coating=True))
+        
+        # 2. Expand to transduction scale (2-3 passages)
+        process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+        process_ops.append(self.ops.op_passage("flask_t75", cell_line=cell_line))
+        process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+        
+        # 3. Harvest and seed into transduction flasks
+        process_ops.append(self.ops.op_harvest("flask_t75", cell_line=cell_line))
+        
+        # Calculate transduction flasks needed
+        # Seed at low density for transduction (~2M cells per T75)
+        cells_per_flask_transduction = 2000000
+        transduction_flasks = int(np.ceil(transduction_cells_needed / cells_per_flask_transduction))
+        
+        # Coat flasks if needed
+        if coating_needed:
+            process_ops.append(self.ops.op_coat("flask_t75", agents=[coating_agent], num_vessels=transduction_flasks))
+        
+        # Seed transduction flasks
+        process_ops.append(self.ops.op_seed(
+            "flask_t75",
+            num_cells=transduction_cells_needed,
+            cell_line=cell_line,
+            name=f"Seed {transduction_flasks} flasks for transduction"
+        ))
+        
+        # 4. Transduce with library (passive)
+        process_ops.append(self.ops.op_transduce(
+            "flask_t75",
+            method="passive",
+            virus_vol_ul=100.0
+        ))
+        
+        # 5. Puromycin selection (5-7 days)
+        for day in range(5):
+            process_ops.append(self.ops.op_feed(
+                "flask_t75",
+                cell_line=cell_line,
+                supplements=["puromycin"],
+                name=f"Selection Day {day+1} (Puromycin)"
+            ))
+        
+        # 6. Expand for banking
+        # Passage 2-3 times to reach banking scale
+        for passage_num in range(3):
+            process_ops.append(self.ops.op_passage(
+                "flask_t75",
+                cell_line=cell_line
+            ))
+            process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+        
+        # 7. Harvest and freeze for banking
+        process_ops.append(self.ops.op_harvest("flask_t75", cell_line=cell_line))
+        
+        # Calculate vials needed for 4 screens
+        # Assume 5M cells/vial, need ~750 cells/gRNA per screen
+        cells_per_screen = int((library_size * 750 / 0.6) * 1.2)  # Adjust for barcode efficiency + buffer
+        cells_per_vial = 5e6
+        vials_per_screen = int(np.ceil(cells_per_screen / cells_per_vial))
+        total_vials = vials_per_screen * 4
+        
+        process_ops.append(self.ops.op_freeze(
+            num_vials=total_vials,
+            cell_line=cell_line,
+            freezing_media="cryostor_cs10"
+        ))
+        
+        return Workflow("Library Transduction & Banking", [
+            Process("Library Banking", process_ops)
+        ])
+
 
     def build_bank_release_qc(self, cell_line: str = "U2OS", sample_source: str = "flask_sample") -> Workflow:
         """
