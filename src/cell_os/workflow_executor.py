@@ -102,7 +102,7 @@ class WorkflowExecution:
         }
 
 
-class ExecutionDatabase:
+class ExecutionPersistence:
     """SQLite database for storing workflow executions."""
     
     def __init__(self, db_path: str = "data/executions.db"):
@@ -284,13 +284,55 @@ class ExecutionDatabase:
         return [self.get_execution(eid) for eid in execution_ids if self.get_execution(eid)]
 
 
+class ExecutionRepository:
+    """Repository layer that coordinates persistence and in-memory cache."""
+
+    def __init__(self, persistence: Optional[ExecutionPersistence] = None):
+        self.persistence = persistence
+        self._memory: Dict[str, WorkflowExecution] = {}
+
+    def save(self, execution: WorkflowExecution):
+        self._memory[execution.execution_id] = execution
+        if self.persistence:
+            self.persistence.save_execution(execution)
+
+    def get(self, execution_id: str) -> Optional[WorkflowExecution]:
+        if execution_id in self._memory:
+            return self._memory[execution_id]
+        if self.persistence:
+            execution = self.persistence.get_execution(execution_id)
+            if execution:
+                self._memory[execution_id] = execution
+            return execution
+        return None
+
+    def list(self, status: Optional[ExecutionStatus] = None, limit: int = 100) -> List[WorkflowExecution]:
+        if self.persistence:
+            executions = self.persistence.list_executions(status=status, limit=limit)
+            for execution in executions:
+                self._memory[execution.execution_id] = execution
+            return executions
+        executions = list(self._memory.values())
+        if status:
+            executions = [e for e in executions if e.status == status]
+        return executions[:limit]
+
+
 class WorkflowExecutor:
     """
     Executes workflows step-by-step with progress tracking and error handling.
     """
     
-    def __init__(self, db_path: str = "data/executions.db", inventory_manager=None, hardware: Optional[HardwareInterface] = None):
-        self.db = ExecutionDatabase(db_path)
+    def __init__(
+        self,
+        db_path: str = "data/executions.db",
+        inventory_manager=None,
+        hardware: Optional[HardwareInterface] = None,
+        repository: Optional[ExecutionRepository] = None,
+    ):
+        persistence = ExecutionPersistence(db_path)
+        self.persistence = persistence
+        self.repo = repository or ExecutionRepository(persistence)
         self.inventory_manager = inventory_manager
         self.hardware = hardware or VirtualMachine()
         self.step_handlers: Dict[str, Callable] = {}
@@ -402,7 +444,7 @@ class WorkflowExecutor:
                 execution.steps.append(step)
         
         # Save to database
-        self.db.save_execution(execution)
+        self.repo.save(execution)
         
         return execution
     
@@ -458,21 +500,21 @@ class WorkflowExecutor:
         Returns:
             Updated WorkflowExecution
         """
-        execution = self.db.get_execution(execution_id)
+        execution = self.repo.get(execution_id)
         if not execution:
             raise ValueError(f"Execution {execution_id} not found")
         
         # Update status
         execution.status = ExecutionStatus.RUNNING
         execution.started_at = datetime.now()
-        self.db.save_execution(execution)
+        self.repo.save(execution)
         
         try:
             # Execute each step
             for step in execution.steps:
                 step.status = StepStatus.RUNNING
                 step.start_time = datetime.now()
-                self.db.save_execution(execution)
+                self.repo.save(execution)
                 
                 try:
                     # Get handler for this operation type
@@ -498,7 +540,7 @@ class WorkflowExecutor:
                     raise
                 
                 finally:
-                    self.db.save_execution(execution)
+                    self.repo.save(execution)
             
             # Mark execution as completed
             execution.status = ExecutionStatus.COMPLETED
@@ -510,7 +552,7 @@ class WorkflowExecutor:
             execution.completed_at = datetime.now()
         
         finally:
-            self.db.save_execution(execution)
+            self.repo.save(execution)
         
         return execution
     
@@ -538,8 +580,8 @@ class WorkflowExecutor:
     
     def get_execution_status(self, execution_id: str) -> Optional[WorkflowExecution]:
         """Get current status of an execution."""
-        return self.db.get_execution(execution_id)
+        return self.repo.get(execution_id)
     
     def list_executions(self, status: Optional[ExecutionStatus] = None) -> List[WorkflowExecution]:
         """List all executions, optionally filtered by status."""
-        return self.db.list_executions(status)
+        return self.repo.list(status)

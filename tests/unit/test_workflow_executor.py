@@ -12,19 +12,20 @@ from cell_os.workflow_executor import (
     ExecutionStep,
     ExecutionStatus,
     StepStatus,
-    ExecutionDatabase
+    ExecutionPersistence,
+    ExecutionRepository,
 )
 from cell_os.unit_ops.base import UnitOp
 
 
-class TestExecutionDatabase:
-    """Test the execution database."""
+class TestExecutionPersistence:
+    """Test the execution persistence layer."""
     
     def setup_method(self):
         """Create a temporary database for each test."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
-        self.db = ExecutionDatabase(self.temp_db.name)
+        self.db = ExecutionPersistence(self.temp_db.name)
     
     def teardown_method(self):
         """Clean up temporary database."""
@@ -88,6 +89,54 @@ class TestExecutionDatabase:
         # List running only
         running = self.db.list_executions(status=ExecutionStatus.RUNNING)
         assert len(running) == 1
+
+
+class TestExecutionRepository:
+    """Test repository caching and listing."""
+
+    def setup_method(self):
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        self.temp_db.close()
+        persistence = ExecutionPersistence(self.temp_db.name)
+        self.repo = ExecutionRepository(persistence)
+
+    def teardown_method(self):
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
+
+    def test_repository_caches_executions(self):
+        execution = WorkflowExecution(
+            execution_id="repo-001",
+            workflow_name="Repo Test",
+            cell_line="U2OS",
+            vessel_id="flask_t25",
+            operation_type="feed",
+        )
+        self.repo.save(execution)
+
+        fetched = self.repo.get("repo-001")
+        assert fetched is not None
+        assert fetched.workflow_name == "Repo Test"
+
+        # delete db file to ensure cache serves subsequent read
+        os.unlink(self.temp_db.name)
+        cached = self.repo.get("repo-001")
+        assert cached is fetched
+
+    def test_repository_list_filters_by_status(self):
+        for idx in range(3):
+            execution = WorkflowExecution(
+                execution_id=f"repo-{idx}",
+                workflow_name=f"Workflow {idx}",
+                cell_line="Test",
+                vessel_id="flask_t175",
+                operation_type="thaw",
+                status=ExecutionStatus.COMPLETED if idx < 2 else ExecutionStatus.RUNNING,
+            )
+            self.repo.save(execution)
+
+        completed = self.repo.list(status=ExecutionStatus.COMPLETED)
+        assert len(completed) >= 2
 
 
 class TestWorkflowExecutor:
