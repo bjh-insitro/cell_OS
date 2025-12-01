@@ -38,6 +38,11 @@ Successfully refactored `dashboard_app/app.py` from a monolithic 155-line file w
   - Validation test script
   - Tests all 17 pages load correctly
   - Verifies category organization
+- [x] **Parametric Operations Refactoring** (High Impact)
+  - [x] Create `src/cell_os/unit_ops/operations/` directory
+  - [x] Extract `CellCultureOps`, `TransfectionOps`, `VesselOps`, `HarvestFreezeOps`, `QCOps`
+  - [x] Refactor `ParametricOps` to use delegation
+  - [x] Verify backward compatibility
 
 ## Key Improvements
 

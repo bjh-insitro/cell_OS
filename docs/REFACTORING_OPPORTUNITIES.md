@@ -54,16 +54,6 @@ scripts/
 
 ---
 
-### 2. **Parametric Operations Refactoring**
-**Location**: `src/cell_os/unit_ops/parametric.py` (1,344 lines!)  
-**Current State**: Massive single class with 20+ operations  
-**Problem**:
-- Extremely long file (1,344 lines)
-- Single responsibility principle violated
-- Hard to test individual operations
-- Difficult to extend with new operations
-
-**Proposed Refactoring**:
 ```
 src/cell_os/unit_ops/
 ├── base.py                    # Base classes
