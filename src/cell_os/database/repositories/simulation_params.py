@@ -51,7 +51,7 @@ class SimulationParamsRepository(BaseRepository):
     
     def _init_schema(self):
         """Initialize database schema."""
-        conn = self._get_connection()
+        conn = self._get_raw_connection()
         try:
             cursor = conn.cursor()
             
@@ -208,16 +208,25 @@ class SimulationParamsRepository(BaseRepository):
             'updated_at': datetime.now().isoformat()
         }
         # Use INSERT OR REPLACE for upsert
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT OR REPLACE INTO default_params (param_name, param_value, description, updated_at) VALUES (?, ?, ?, ?)",
-                (param_name, param_value, description, data['updated_at'])
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        if self.use_pooling:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO default_params (param_name, param_value, description, updated_at) VALUES (?, ?, ?, ?)",
+                    (param_name, param_value, description, data['updated_at'])
+                )
+                conn.commit()
+        else:
+            conn = self._get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO default_params (param_name, param_value, description, updated_at) VALUES (?, ?, ?, ?)",
+                    (param_name, param_value, description, data['updated_at'])
+                )
+                conn.commit()
+            finally:
+                conn.close()
     
     def get_default_param(self, param_name: str) -> Optional[float]:
         """Get a default parameter value."""

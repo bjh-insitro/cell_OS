@@ -14,7 +14,7 @@ class ExperimentalRepository(BaseRepository):
     
     def _init_schema(self):
         """Initialize database schema."""
-        conn = self._get_connection()
+        conn = self._get_raw_connection()
         try:
             cursor = conn.cursor()
             
@@ -50,47 +50,81 @@ class ExperimentalRepository(BaseRepository):
     
     def add_measurements(self, df: pd.DataFrame):
         """Add a batch of measurements from a DataFrame."""
-        conn = self._get_connection()
-        try:
-            # Expected columns
-            expected_cols = [
-                "plate_id", "well_id", "cell_line", "compound", "dose_uM", 
-                "time_h", "raw_signal", "is_control", "date", 
-                "incubator_id", "liquid_handler_id", "viability_norm"
-            ]
-            
-            # Filter to available columns
-            cols_to_use = [c for c in expected_cols if c in df.columns]
-            
-            df[cols_to_use].to_sql("measurements", conn, if_exists="append", index=False)
-        finally:
-            conn.close()
+        if self.use_pooling:
+            with self._get_connection() as conn:
+                # Expected columns
+                expected_cols = [
+                    "plate_id", "well_id", "cell_line", "compound", "dose_uM", 
+                    "time_h", "raw_signal", "is_control", "date", 
+                    "incubator_id", "liquid_handler_id", "viability_norm"
+                ]
+                
+                # Filter to available columns
+                cols_to_use = [c for c in expected_cols if c in df.columns]
+                
+                df[cols_to_use].to_sql("measurements", conn, if_exists="append", index=False)
+        else:
+            conn = self._get_connection()
+            try:
+                # Expected columns
+                expected_cols = [
+                    "plate_id", "well_id", "cell_line", "compound", "dose_uM", 
+                    "time_h", "raw_signal", "is_control", "date", 
+                    "incubator_id", "liquid_handler_id", "viability_norm"
+                ]
+                
+                # Filter to available columns
+                cols_to_use = [c for c in expected_cols if c in df.columns]
+                
+                df[cols_to_use].to_sql("measurements", conn, if_exists="append", index=False)
+            finally:
+                conn.close()
     
     def get_measurements(self, cell_line: Optional[str] = None, 
                         compound: Optional[str] = None,
                         plate_id: Optional[str] = None) -> pd.DataFrame:
         """Retrieve measurements with optional filtering."""
-        conn = self._get_connection()
-        try:
-            query = "SELECT * FROM measurements WHERE 1=1"
-            params = []
-            
-            if cell_line:
-                query += " AND cell_line = ?"
-                params.append(cell_line)
+        if self.use_pooling:
+            with self._get_connection() as conn:
+                query = "SELECT * FROM measurements WHERE 1=1"
+                params = []
                 
-            if compound:
-                query += " AND compound = ?"
-                params.append(compound)
+                if cell_line:
+                    query += " AND cell_line = ?"
+                    params.append(cell_line)
+                    
+                if compound:
+                    query += " AND compound = ?"
+                    params.append(compound)
+                    
+                if plate_id:
+                    query += " AND plate_id = ?"
+                    params.append(plate_id)
+                    
+                df = pd.read_sql_query(query, conn, params=params)
+                return df
+        else:
+            conn = self._get_connection()
+            try:
+                query = "SELECT * FROM measurements WHERE 1=1"
+                params = []
                 
-            if plate_id:
-                query += " AND plate_id = ?"
-                params.append(plate_id)
-                
-            df = pd.read_sql_query(query, conn, params=params)
-            return df
-        finally:
-            conn.close()
+                if cell_line:
+                    query += " AND cell_line = ?"
+                    params.append(cell_line)
+                    
+                if compound:
+                    query += " AND compound = ?"
+                    params.append(compound)
+                    
+                if plate_id:
+                    query += " AND plate_id = ?"
+                    params.append(plate_id)
+                    
+                df = pd.read_sql_query(query, conn, params=params)
+                return df
+            finally:
+                conn.close()
     
     def get_dose_response(self, cell_line: str, compound: str) -> pd.DataFrame:
         """Get dose-response data for a specific cell line and compound."""

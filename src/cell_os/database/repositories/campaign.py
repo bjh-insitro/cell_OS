@@ -71,7 +71,7 @@ class CampaignRepository(BaseRepository):
     
     def _init_schema(self):
         """Initialize database schema."""
-        conn = self._get_connection()
+        conn = self._get_raw_connection()
         try:
             cursor = conn.cursor()
             
