@@ -13,3 +13,4 @@ networkx
 ortools
 tqdm
 pytest
+pylint
