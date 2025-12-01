@@ -42,6 +42,9 @@ class ProtocolResolver:
             cell_lines_db: Path to SQLite database (used when YAML is absent)
         """
         self.config_store = CellLineConfigStore(cell_lines_yaml, cell_lines_db)
+        self._thaw_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+        self._feed_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+        self._passage_cache: Dict[tuple[str, str], List[UnitOp]] = {}
         self.vessels = vessels or VesselLibrary()
         self.inventory = inventory or Inventory()  # Loads from database by default
         
@@ -110,6 +113,10 @@ class ProtocolResolver:
         Returns:
             Dictionary with thaw configuration including volumes, media, coating info
         """
+        cache_key = (cell_line, vessel_id)
+        if cache_key in self._thaw_cache:
+            return self._thaw_cache[cache_key]
+
         cell_config = self.config_store.get_config(cell_line)
         profile = self.get_cell_line_profile(cell_line)
         vessel = self.vessels.get(vessel_id)
@@ -162,6 +169,7 @@ class ProtocolResolver:
             })
         }
         
+        self._thaw_cache[cache_key] = config
         return config
     
     def get_feed_config(self, cell_line: str, vessel_id: str) -> Dict[str, Any]:
@@ -175,6 +183,10 @@ class ProtocolResolver:
         Returns:
             Dictionary with feed configuration including volume, media, schedule
         """
+        cache_key = (cell_line, vessel_id)
+        if cache_key in self._feed_cache:
+            return self._feed_cache[cache_key]
+
         cell_config = self.config_store.get_config(cell_line)
         vessel = self.vessels.get(vessel_id)
         
@@ -215,6 +227,7 @@ class ProtocolResolver:
             "schedule": feed_config.get("schedule", {"interval_days": 1})
         }
         
+        self._feed_cache[cache_key] = config
         return config
 
     def resolve_passage_protocol(self, cell_line_name: str, vessel_type: str) -> List[UnitOp]:
@@ -254,7 +267,10 @@ class ProtocolResolver:
         template: List[Dict[str, Any]]
     ) -> List[UnitOp]:
         """Internal helper to resolve a protocol from a template."""
-        # Get cell line config
+        cache_key = (cell_line_name, vessel_key)
+        if cache_key in self._passage_cache:
+            return [op for op in self._passage_cache[cache_key]]
+
         cell_config = self.config_store.get_config(cell_line_name)
         
         # Get vessel spec
@@ -290,6 +306,7 @@ class ProtocolResolver:
             uo = self._instantiate_step(step, cell_config, passage_params, vessel_id, enable_scaling)
             unit_ops.append(uo)
         
+        self._passage_cache[cache_key] = unit_ops
         return unit_ops
     
     def _instantiate_step(
