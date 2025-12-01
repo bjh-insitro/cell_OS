@@ -101,6 +101,14 @@ class BiologicalVirtualMachine(VirtualMachine):
                             self.compound_sensitivity[compound][cell_line_id] = sensitivity.ic50_um
                             if 'hill_slope' not in self.compound_sensitivity[compound]:
                                 self.compound_sensitivity[compound]['hill_slope'] = sensitivity.hill_slope
+
+                # Drop compounds that never returned any sensitivity rows so we can
+                # detect incomplete databases and fall back to YAML fixtures.
+                self.compound_sensitivity = {
+                    compound: data
+                    for compound, data in self.compound_sensitivity.items()
+                    if any(key != 'hill_slope' for key in data.keys())
+                }
                 
                 # Load defaults
                 self.defaults = {}
@@ -112,10 +120,21 @@ class BiologicalVirtualMachine(VirtualMachine):
                     if value is not None:
                         self.defaults[param_name] = value
                 
-                logger.info(f"Loaded parameters from database")
-                logger.info(f"  Cell lines: {len(self.cell_line_params)}")
-                logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
-                return
+                has_defaults = bool(self.defaults)
+                if self.cell_line_params and self.compound_sensitivity and has_defaults:
+                    logger.info("Loaded parameters from database")
+                    logger.info(f"  Cell lines: {len(self.cell_line_params)}")
+                    logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
+                    return
+
+                logger.warning(
+                    "Simulation parameter database is missing data "
+                    "(cell_lines=%s, compounds=%s, defaults=%s); "
+                    "falling back to YAML",
+                    len(self.cell_line_params),
+                    len(self.compound_sensitivity),
+                    len(self.defaults),
+                )
                 
             except Exception as e:
                 logger.warning(f"Failed to load from database: {e}, falling back to YAML")
@@ -538,4 +557,3 @@ class BiologicalVirtualMachine(VirtualMachine):
         
         with open(yaml_path, 'r') as f:
             self.raw_yaml_data = yaml.safe_load(f)
-
