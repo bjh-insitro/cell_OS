@@ -2,10 +2,6 @@
 Test configuration management.
 """
 import os
-import sys
-# Force local src into path to avoid picking up installed package from Desktop
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
-
 from unittest import mock
 from cell_os.config.settings import CellOSSettings, defaults
 
