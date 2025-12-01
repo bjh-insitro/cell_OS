@@ -88,7 +88,7 @@ Benefits:
 
 ### **Autonomous Executor** (Morning)
 1. `src/cell_os/autonomous_executor.py` (600 lines)
-2. `scripts/run_loop_v2.py` (400 lines)
+2. `scripts/demos/run_loop_v2.py` (400 lines)
 3. `tests/integration/test_autonomous_executor.py` (250 lines)
 4. `dashboard_app/pages/4_Autonomous_Campaigns.py` (400 lines)
 5. `docs/AUTONOMOUS_EXECUTOR.md` (500 lines)

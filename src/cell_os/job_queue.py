@@ -188,30 +188,22 @@ class JobQueueDatabase:
 class JobQueue:
     """
     Job queue for scheduling and executing workflows.
-    
-    Features:
-    - Priority-based scheduling
-    - Scheduled execution (run at specific time)
-    - Resource locking (prevent conflicts)
-    - Automatic retry on failure
-    - Background worker thread
     """
     
-    def __init__(self, executor=None, db_path: str = "data/job_queue.db"):
+    def __init__(self, executor=None, db_path: str = "data/job_queue.db", notification_manager=None, start_worker: bool = True):
         from cell_os.notifications import NotificationManager
         self.db = JobQueueDatabase(db_path)
         self.executor = executor
         self.queue = PriorityQueue()
         self.resource_locks: Dict[str, str] = {}  # resource_id -> job_id
-        self.running = True
-        self.notification_manager = NotificationManager()
+        self.running = False
+        self.notification_manager = notification_manager or NotificationManager()
         
-        # Load pending jobs from database
+        self.worker_thread = None
+        self.running = False
         self._load_pending_jobs()
-        
-        # Start worker thread
-        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
-        self.worker_thread.start()
+        if start_worker:
+            self.start_worker()
     
     def _load_pending_jobs(self):
         """Load pending jobs from database into queue."""
@@ -306,8 +298,11 @@ class JobQueue:
     
     def start_worker(self):
         """Start the background worker thread."""
-        # Worker is now started in __init__
-        pass
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.running = True
+        self.worker_thread.start()
     
     def stop_worker(self):
         """Stop the background worker thread."""

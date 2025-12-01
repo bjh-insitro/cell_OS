@@ -23,7 +23,7 @@ pip install -e .
 
 ```bash
 # Run an example titration campaign
-python cli/run_campaign.py --config config/campaign_example.yaml
+cell-os-run --config config/campaign_example.yaml
 
 # View results in the dashboard
 streamlit run dashboard_app/dashboard.py
@@ -67,7 +67,7 @@ All data is saved to `data/experiments.db` (SQLite). This enables:
 ### Basic Command
 
 ```bash
-python cli/run_campaign.py --config <path-to-config.yaml>
+cell-os-run --config <path-to-config.yaml>
 ```
 
 ### Options
@@ -81,7 +81,7 @@ python cli/run_campaign.py --config <path-to-config.yaml>
 ### Example: Dry Run
 
 ```bash
-python cli/run_campaign.py --config config/campaign_example.yaml --dry-run
+cell-os-run --config config/campaign_example.yaml --dry-run
 ```
 
 Output:
@@ -160,6 +160,12 @@ db.cursor.execute("""
 ---
 
 ## Advanced Usage
+
+### Data Sources & Fallbacks
+
+- **SQLite-first**: By default, `ProtocolResolver` reads cell-line protocols from `data/cell_lines.db` and `Inventory` loads pricing/stock from `data/inventory.db`. This keeps the automation stack consistent with production deployments.
+- **Legacy YAML fixtures**: Passing explicit YAML paths (e.g., `Inventory("data/raw/pricing.yaml")`) still works and seeds the historical stock defaults. These YAML files are considered **deprecated fixtures** meant for tests/notebooks; edit the SQLite databases for real changes.
+- **CLI entry point**: `cell-os-run` is installed automatically via `pip install -e .`. Use it instead of `python cli/run_campaign.py` unless you’re editing the CLI module itself.
 
 ### Custom Scenarios
 

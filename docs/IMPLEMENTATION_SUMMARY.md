@@ -19,7 +19,7 @@ I implemented a **critical integration layer** that bridges the AI scientist (au
    - Tracks execution and collects results
    - Provides crash recovery and resource management
 
-2. **Modernized Run Loop** (`scripts/run_loop_v2.py`)
+2. **Modernized Run Loop** (`scripts/demos/run_loop_v2.py`)
    - 400+ lines replacing legacy `run_loop.py`
    - Uses production WorkflowExecutor + JobQueue
    - Automatic checkpointing and state persistence
@@ -246,7 +246,7 @@ Best Result:
   - Custom operation handlers
 
 ### Scripts
-- `scripts/run_loop_v2.py` (400 lines)
+- `scripts/demos/run_loop_v2.py` (400 lines)
   - `CampaignConfig` class
   - `SimpleLearner` class
   - `AutonomousCampaign` class

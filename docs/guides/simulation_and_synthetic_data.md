@@ -44,7 +44,7 @@ executor = WorkflowExecutor(hardware=BiologicalVirtualMachine())
 **Strengths**:
 - ✅ Realistic noise modeling (batch, pipetting, measurement)
 - ✅ Well-structured for dose-response experiments
-- ✅ Integrates with optimization loop (`scripts/run_loop.py`)
+- ✅ Integrates with optimization loop (`scripts/demos/run_loop.py`)
 
 **Limitations**:
 - ❌ Limited to viability assays only

@@ -9,6 +9,10 @@ import json
 import base64
 import numpy as np
 import pandas as pd
+import matplotlib
+
+# Force a non-interactive backend so plotting works in headless CI environments
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import io
 from dataclasses import dataclass, field

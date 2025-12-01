@@ -6,14 +6,13 @@ logical reagent roles and volume keys to cell-line-specific parameters.
 """
 
 from typing import List, Dict, Any, Optional
-import yaml
-from pathlib import Path
 from types import SimpleNamespace
 
 from cell_os.unit_ops.base import UnitOp, VesselLibrary
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.inventory import Inventory
 from cell_os.protocol_templates import PASSAGE_T75_TEMPLATE, PASSAGE_T25_TEMPLATE
+from cell_os.cell_line_config import CellLineConfigStore
 
 
 class ProtocolResolver:
@@ -30,17 +29,22 @@ class ProtocolResolver:
         self,
         cell_lines_yaml: str = "data/cell_lines.yaml",
         vessels: Optional[VesselLibrary] = None,
-        inventory: Optional[Inventory] = None
+        inventory: Optional[Inventory] = None,
+        cell_lines_db: str = "data/cell_lines.db",
     ):
         """
         Initialize protocol resolver.
         
         Args:
-            cell_lines_yaml: Path to cell line configuration YAML
+            cell_lines_yaml: Path to cell line configuration YAML (if exists)
             vessels: VesselLibrary instance (creates new if None)
             inventory: Inventory instance (creates new if None)
+            cell_lines_db: Path to SQLite database (used when YAML is absent)
         """
-        self.cell_lines = self._load_cell_lines(cell_lines_yaml)
+        self.config_store = CellLineConfigStore(cell_lines_yaml, cell_lines_db)
+        self._thaw_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+        self._feed_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+        self._passage_cache: Dict[tuple[str, str], List[UnitOp]] = {}
         self.vessels = vessels or VesselLibrary()
         self.inventory = inventory or Inventory()  # Loads from database by default
         
@@ -53,14 +57,14 @@ class ProtocolResolver:
         Get cell line profile from YAML configuration.
         Returns an object with attributes matching the profile fields.
         """
-        if cell_line not in self.cell_lines:
+        try:
+            cfg = self.config_store.get_config(cell_line)
+        except ValueError:
             return None
-        
-        cfg = self.cell_lines[cell_line]
-        if "profile" not in cfg:
+        profile = cfg.get("profile")
+        if not profile:
             return None
-            
-        return SimpleNamespace(**cfg["profile"])
+        return SimpleNamespace(**profile)
     
     def _scale_volumes(self, volumes: Dict[str, float], from_vessel_id: str, to_vessel_id: str, scaling_method: str = "working_volume") -> Dict[str, float]:
         """
@@ -109,10 +113,11 @@ class ProtocolResolver:
         Returns:
             Dictionary with thaw configuration including volumes, media, coating info
         """
-        if cell_line not in self.cell_lines:
-            raise ValueError(f"Unknown cell line: {cell_line}")
-        
-        cell_config = self.cell_lines[cell_line]
+        cache_key = (cell_line, vessel_id)
+        if cache_key in self._thaw_cache:
+            return self._thaw_cache[cache_key]
+
+        cell_config = self.config_store.get_config(cell_line)
         profile = self.get_cell_line_profile(cell_line)
         vessel = self.vessels.get(vessel_id)
         
@@ -164,6 +169,7 @@ class ProtocolResolver:
             })
         }
         
+        self._thaw_cache[cache_key] = config
         return config
     
     def get_feed_config(self, cell_line: str, vessel_id: str) -> Dict[str, Any]:
@@ -177,10 +183,11 @@ class ProtocolResolver:
         Returns:
             Dictionary with feed configuration including volume, media, schedule
         """
-        if cell_line not in self.cell_lines:
-            raise ValueError(f"Unknown cell line: {cell_line}")
-        
-        cell_config = self.cell_lines[cell_line]
+        cache_key = (cell_line, vessel_id)
+        if cache_key in self._feed_cache:
+            return self._feed_cache[cache_key]
+
+        cell_config = self.config_store.get_config(cell_line)
         vessel = self.vessels.get(vessel_id)
         
         # Infer vessel type from vessel_id
@@ -220,19 +227,9 @@ class ProtocolResolver:
             "schedule": feed_config.get("schedule", {"interval_days": 1})
         }
         
+        self._feed_cache[cache_key] = config
         return config
 
-    def _load_cell_lines(self, yaml_path: str) -> Dict[str, Any]:
-        """Load cell line configurations from YAML."""
-        path = Path(yaml_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Cell lines config not found: {yaml_path}")
-        
-        with open(path, 'r') as f:
-            data = yaml.safe_load(f)
-        
-        return data.get('cell_lines', {})
-    
     def resolve_passage_protocol(self, cell_line_name: str, vessel_type: str) -> List[UnitOp]:
         """
         Resolve passaging protocol for a specific cell line and vessel type.
@@ -270,11 +267,11 @@ class ProtocolResolver:
         template: List[Dict[str, Any]]
     ) -> List[UnitOp]:
         """Internal helper to resolve a protocol from a template."""
-        # Get cell line config
-        if cell_line_name not in self.cell_lines:
-            raise ValueError(f"Unknown cell line: {cell_line_name}")
-        
-        cell_config = self.cell_lines[cell_line_name]
+        cache_key = (cell_line_name, vessel_key)
+        if cache_key in self._passage_cache:
+            return [op for op in self._passage_cache[cache_key]]
+
+        cell_config = self.config_store.get_config(cell_line_name)
         
         # Get vessel spec
         vessel = self.vessels.get(vessel_id)
@@ -309,6 +306,7 @@ class ProtocolResolver:
             uo = self._instantiate_step(step, cell_config, passage_params, vessel_id, enable_scaling)
             unit_ops.append(uo)
         
+        self._passage_cache[cache_key] = unit_ops
         return unit_ops
     
     def _instantiate_step(

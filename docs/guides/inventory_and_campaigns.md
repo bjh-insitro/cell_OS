@@ -17,6 +17,8 @@ The Inventory Manager tracks the consumption of reagents and consumables, ensuri
 
 ### Usage
 
+> **Note on data sources:** `Inventory` hydrates from the canonical SQLite database (`data/inventory.db`) when no path is provided. Legacy YAML fixtures (e.g., `data/raw/pricing.yaml`) still work for tests/notebooks, but production edits should be made via the DB or the `InventoryManager` API.
+
 #### Viewing Stock
 Navigate to the **📦 Inventory** tab in the dashboard to view current stock levels, filter by category, and search for specific items.
 

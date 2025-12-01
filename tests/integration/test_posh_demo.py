@@ -1,6 +1,7 @@
 """Smoketest for POSH campaign demo script."""
 
 import os
+import sys
 import subprocess
 import pytest
 import pandas as pd
@@ -8,9 +9,13 @@ import pandas as pd
 
 def test_posh_campaign_demo_runs():
     """Test that the POSH campaign demo runs and writes a non-empty hits CSV."""
-    # Run the demo script via subprocess
+    script = os.path.join("scripts", "run_posh_campaign_demo.py")
+    if not os.path.exists(script):
+        pytest.skip(f"Demo script not found: {script}")
+
+    # Run the demo script via the current interpreter to avoid venv path assumptions
     result = subprocess.run(
-        ["venv/bin/python", "scripts/run_posh_campaign_demo.py"],
+        [sys.executable, script],
         cwd=os.getcwd(),
         capture_output=True,
         text=True,

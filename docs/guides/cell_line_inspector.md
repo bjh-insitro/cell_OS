@@ -17,7 +17,7 @@ The inspector serves several key functions:
 
 The Cell Line Inspector uses the same engine that drives actual workflows:
 
-- **ProtocolResolver**: Reads configuration from `data/cell_lines.yaml`
+- **ProtocolResolver**: Reads configuration from `data/cell_lines.db` (SQLite). If the deprecated YAML file (`data/cell_lines.yaml`) is explicitly provided, it will still work for legacy tests/notebooks, but new edits should target the database.
 - **ParametricOps**: Generates concrete unit operations with costs
 - **No Custom Logic**: What you see is what the system will execute
 
@@ -82,7 +82,7 @@ If a workflow fails or produces unexpected results:
 
 ## Configuration Source
 
-All protocols shown in the inspector are driven by `data/cell_lines.yaml`. The configuration includes:
+All protocols shown in the inspector are driven by `data/cell_lines.db`. Use the `cell_os.cell_line_db.CellLineDatabase` API or the migration scripts in `scripts/migrate_*.py` to add/update entries. The legacy YAML (`data/cell_lines.yaml`) is kept as a deprecated fixture for tests; avoid editing it unless you know the DB will be regenerated.
 
 ### Vessel Scaling
 
@@ -182,41 +182,33 @@ passage:
 
 To add a new cell line and validate it with the inspector:
 
-1. **Edit `data/cell_lines.yaml`**:
-   ```yaml
-   NewCellLine:
-     display_name: "My New Cell Line"
-     growth_media: dmem_high_glucose
-     wash_buffer: dpbs
-     detach_reagent: trypsin_edta
-     coating: null
-     
-     profile:
-       cell_type: "immortalized"
-       coating_required: false
-       # ... other profile fields
-     
-     passage:
-       reference_vessel: T75
-       # ... passage configuration
-     
-     thaw:
-       reference_vessel: T75
-       # ... thaw configuration
-     
-     feed:
-       reference_vessel: T75
-       # ... feed configuration
+1. **Update the canonical SQLite DB (`data/cell_lines.db`)** using the `CellLineDatabase` API or the migration scripts. Example:
+   ```python
+   from cell_os.cell_line_db import CellLineDatabase, CellLine
+
+   db = CellLineDatabase("data/cell_lines.db")
+   db.add_cell_line(CellLine(
+       cell_line_id="NewCellLine",
+       display_name="My New Cell Line",
+       cell_type="immortalized",
+       growth_media="dmem_high_glucose",
+       wash_buffer="dpbs",
+       detach_reagent="trypsin_edta",
+       coating_required=False,
+   ))
    ```
+   Use `db.add_protocol(...)` to insert thaw/feed/passage parameters for the vessel types you care about.
 
-2. **Refresh the Dashboard**: Reload the page to pick up the new configuration
+2. **(Optional)** Update the deprecated YAML fixture (`data/cell_lines.yaml`) if a legacy test or notebook still reads it directly. Remember to re-run the migration scripts so the DB stays in sync.
 
-3. **Inspect Each Operation**:
+3. **Refresh the Dashboard**: Reload the page to pick up the new configuration.
+
+4. **Inspect Each Operation**:
    - Select your new cell line
    - Test thaw, passage, and feed
    - Verify all steps are correct
 
-4. **Iterate**: Adjust YAML configuration and re-inspect until satisfied
+5. **Iterate**: Adjust DB entries (or YAML fixture) and re-inspect until satisfied.
 
 ## Technical Details
 

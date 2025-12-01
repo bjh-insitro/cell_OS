@@ -1,212 +1,38 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import numpy as np
-from datetime import datetime
-
-from cell_os.simulation.mcb_wrapper import simulate_mcb_generation, VendorVialSpec
-from cell_os.cell_line_database import get_cell_line_profile # NEW IMPORT
-
 import plotly.graph_objects as go
+import numpy as np
+import math
+from datetime import datetime
 import graphviz
 
+from cell_os.simulation.mcb_wrapper import simulate_mcb_generation, VendorVialSpec
+from cell_os.cell_line_database import get_cell_line_profile
 from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
 from cell_os.simulation.utils import MockInventory
 
-def _render_unit_ops_table(workflow):
-    """Render the table of parameterized unit operations."""
-    # Column headers
-    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
-    with col1:
-        st.markdown("**Operation**")
-    with col2:
-        st.markdown("**Time**")
-    with col3:
-        st.markdown("**Cost**")
-    with col4:
-        st.markdown("**Labor**")
-    with col5:
-        st.markdown("**Category**")
-    st.divider()
-    
-    # Extract ops with expandable sub-steps
-    for process in workflow.processes:
-        for idx, op in enumerate(process.ops):
-            # Calculate active labor time (exclude incubation)
-            labor_min = 0.0
-            if op.sub_steps:
-                for step in op.sub_steps:
-                    if step.category != "incubation":
-                        labor_min += step.time_score
-            else:
-                # If no sub-steps, assume all is labor unless category is incubation
-                if op.category != "incubation":
-                    labor_min = op.time_score
-            
-            # Labor load: staff_attention (1-5 scale) * active time in hours
-            labor_hours = (op.staff_attention * labor_min) / 60.0
-            
-            # Main operation summary
-            col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
-            with col1:
-                st.markdown(f"**{idx+1}. {op.name}**")
-            with col2:
-                st.text(f"{op.time_score} min")
-            with col3:
-                st.text(f"${op.material_cost_usd + op.instrument_cost_usd:.2f}")
-            with col4:
-                st.text(f"{labor_hours:.2f}h")
-            with col5:
-                st.text(op.category)
-            
-            # Show sub-steps if they exist
-            if op.sub_steps:
-                with st.expander(f"🔍 View {len(op.sub_steps)} Atomic Steps"):
-                    sub_steps_data = []
-                    for sub_step in op.sub_steps:
-                        sub_steps_data.append({
-                            "Step": sub_step.name,
-                            "Category": sub_step.category,
-                            "Time (min)": sub_step.time_score,
-                            "Material Cost": f"${sub_step.material_cost_usd:.2f}",
-                            "Instrument Cost": f"${sub_step.instrument_cost_usd:.2f}"
-                        })
-                    st.dataframe(pd.DataFrame(sub_steps_data), use_container_width=True)
-            
-            st.divider()
-
-def _render_titration_resources(result, pricing):
-    """Render resources for titration using the workflow."""
-    if not result.workflow:
-        st.warning("No workflow data available for resource analysis.")
-        return
-
-    workflow = result.workflow
-    
-    # 1. Calculate Totals from Workflow
-    total_material_cost = 0.0
-    total_labor_min = 0.0
-    total_instrument_cost = 0.0
-    
-    # Itemized list for BOM
-    bom_items = []
-    
-    for process in workflow.processes:
-        for op in process.ops:
-            total_material_cost += op.material_cost_usd
-            total_instrument_cost += op.instrument_cost_usd
-            
-            # Labor
-            if op.category != "incubation":
-                total_labor_min += op.time_score
-            elif op.sub_steps:
-                 for step in op.sub_steps:
-                      if step.category != "incubation":
-                           total_labor_min += step.time_score
-    
-    total_labor_hours = total_labor_min / 60.0
-    labor_cost = total_labor_hours * 100.0 # $100/hr
-    
-    # 2. Display High Level Metrics
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Total Material Cost", f"${total_material_cost:.2f}")
-    with c2:
-        st.metric("Total Labor Cost", f"${labor_cost:.2f}", help=f"{total_labor_hours:.2f} hours @ $100/hr")
-    with c3:
-        st.metric("Instrument Cost", f"${total_instrument_cost:.2f}")
-        
-    st.divider()
-    
-    # 3. Parameterized Unit Ops
-    st.subheader("Parameterized Unit Operations")
-    _render_unit_ops_table(workflow)
+# Import reusable components
+from dashboard_app.components.campaign_visualizers import (
+    render_lineage,
+    render_unit_ops_table,
+    render_titration_resources,
+    get_item_cost,
+    get_item_pack_price,
+    get_item_name,
+    PricingInventory
+)
 
 
-def _render_lineage(result):
-    """Render a lineage tree using Graphviz."""
-    st.subheader("Sample Lineage")
+def _render_simulation_resources(result, pricing, workflow_type="MCB"):
+    """
+    Render resource usage and BOM based on simulation results.
     
-    if not result.vials:
-        st.info("No lineage to display.")
-        return
-
-    # Create Digraph
-    dot = graphviz.Digraph(comment='Sample Lineage')
-    dot.attr(rankdir='LR') # Left to Right layout
-    
-    # Input Node
-    # For MCB, source is Vendor Vial. For WCB, source is MCB Vial.
-    source_id = result.vials[0].source_vendor_vial_id if hasattr(result.vials[0], 'source_vendor_vial_id') else result.vials[0].source_mcb_vial_id
-    input_label = f"Input\n{source_id}"
-    dot.node('Input', input_label, shape='box', style='filled', fillcolor='#e1f5fe')
-    
-    # Process Node
-    process_label = "Expansion\n& Banking"
-    dot.node('Process', process_label, shape='ellipse', style='filled', fillcolor='#fff9c4')
-    
-    # Edge Input -> Process
-    dot.edge('Input', 'Process')
-    
-    # Output Nodes (Vials)
-    # To avoid clutter, if > 10 vials, summarize
-    num_vials = len(result.vials)
-    if num_vials > 10:
-        # Show first 3, last 3, and a summary node
-        display_vials = result.vials[:3] + result.vials[-3:]
-        
-        for v in display_vials:
-            label = f"{v.vial_id}\n(P{v.passage_number})"
-            dot.node(v.vial_id, label, shape='note', style='filled', fillcolor='#e8f5e9')
-            dot.edge('Process', v.vial_id)
-            
-        # Summary node
-        summary_label = f"... {num_vials - 6} more vials ..."
-        dot.node('Summary', summary_label, shape='plaintext')
-        dot.edge('Process', 'Summary', style='dashed')
-        
-    else:
-        for v in result.vials:
-            label = f"{v.vial_id}\n(P{v.passage_number})"
-            dot.node(v.vial_id, label, shape='note', style='filled', fillcolor='#e8f5e9')
-            dot.edge('Process', v.vial_id)
-            
-    st.graphviz_chart(dot)
-
-def _get_item_cost(pricing, item_id, default_cost=0.0):
-    """Helper to safely get item cost from pricing dict."""
-    if not pricing or 'items' not in pricing:
-        return default_cost
-    
-    item = pricing['items'].get(item_id)
-    if item:
-        return item.get('unit_price_usd', default_cost)
-    return default_cost
-
-def _get_item_pack_price(pricing, item_id, default_cost=0.0):
-    """Get item pack price from pricing dict."""
-    if not pricing or 'items' not in pricing:
-        return default_cost
-    
-    item = pricing['items'].get(item_id)
-    if item:
-        return item.get('pack_price_usd', default_cost)
-    return default_cost
-
-def _get_item_name(pricing, item_id, default_name):
-    """Helper to safely get item name from pricing dict."""
-    if not pricing or 'items' not in pricing:
-        return default_name
-    
-    item = pricing['items'].get(item_id)
-    if item:
-        return item.get('name', default_name)
-    return default_name
-
-def _render_resources(result, pricing, workflow_type="MCB"):
-    """Render resource usage and BOM."""
+    This function contains specific logic for MCB/WCB simulation metrics
+    that is distinct from the generic BOM rendering.
+    """
     st.subheader("Resource & Cost Analysis 💰")
     
     # 1. Dynamic Reagent Resolution
@@ -230,17 +56,17 @@ def _render_resources(result, pricing, workflow_type="MCB"):
             coating_id = profile.coating
 
     # Look up costs and names
-    cost_media_bottle = _get_item_pack_price(pricing, media_id, 50.0)
-    media_name = _get_item_name(pricing, media_id, f"{media_id} (500mL)")
+    cost_media_bottle = get_item_pack_price(pricing, media_id, 50.0)
+    media_name = get_item_name(pricing, media_id, f"{media_id} (500mL)")
     
-    cost_dissociation_unit = _get_item_cost(pricing, dissociation_id, 45.0)
-    dissociation_name = _get_item_name(pricing, dissociation_id, f"{dissociation_id} (100mL)")
+    cost_dissociation_unit = get_item_cost(pricing, dissociation_id, 45.0)
+    dissociation_name = get_item_name(pricing, dissociation_id, f"{dissociation_id} (100mL)")
     
     cost_coating_unit = 0.0
     coating_name = ""
     if coating_id:
-        cost_coating_unit = _get_item_cost(pricing, coating_id, 350.0)
-        coating_name = _get_item_name(pricing, coating_id, coating_id)
+        cost_coating_unit = get_item_cost(pricing, coating_id, 350.0)
+        coating_name = get_item_name(pricing, coating_id, coating_id)
     
     # Get freezing parameters
     freezing_media_id = "cryostor_cs10"  # Default
@@ -255,19 +81,19 @@ def _render_resources(result, pricing, workflow_type="MCB"):
         if hasattr(profile, 'freezing_volume_ml') and profile.freezing_volume_ml:
             freezing_volume_ml = profile.freezing_volume_ml
     
-    cost_freezing_media = _get_item_cost(pricing, freezing_media_id, 150.0)
-    freezing_media_name = _get_item_name(pricing, freezing_media_id, freezing_media_id)
+    cost_freezing_media = get_item_cost(pricing, freezing_media_id, 150.0)
+    freezing_media_name = get_item_name(pricing, freezing_media_id, freezing_media_id)
     
     # Define coating_needed for later use
     coating_needed = (coating_id is not None)
 
     # Standard items
-    cost_vial_unit = _get_item_cost(pricing, vial_type_id, 5.0)
-    vial_name = _get_item_name(pricing, vial_type_id, vial_type_id)
-    cost_flask_unit = _get_item_cost(pricing, "flask_t75", 10.0)
-    cost_pbs_unit = _get_item_cost(pricing, "pbs", 25.0)
-    cost_pipette_unit = _get_item_cost(pricing, "pipette_10ml", 0.50)
-    cost_tip_unit = _get_item_cost(pricing, "tip_1000ul_lr", 0.10)
+    cost_vial_unit = get_item_cost(pricing, vial_type_id, 5.0)
+    vial_name = get_item_name(pricing, vial_type_id, vial_type_id)
+    cost_flask_unit = get_item_cost(pricing, "flask_t75", 10.0)
+    cost_pbs_unit = get_item_cost(pricing, "pbs", 25.0)
+    cost_pipette_unit = get_item_cost(pricing, "pipette_10ml", 0.50)
+    cost_tip_unit = get_item_cost(pricing, "tip_1000ul_lr", 0.10)
     
     COST_STAFF_HR = 100.0
     COST_BSC_HR = 50.0
@@ -336,10 +162,8 @@ def _render_resources(result, pricing, workflow_type="MCB"):
     # 5. Consumables Bill of Materials
     st.subheader("Consumables Bill of Materials 📦")
     
-    import math
-    
     # View toggle
-    view_mode = st.radio("View Mode", ["Aggregate View", "Daily Breakdown"], horizontal=True, key="bom_view_mode")
+    view_mode = st.radio("View Mode", ["Aggregate View", "Daily Breakdown"], horizontal=True, key=f"bom_view_mode_{workflow_type}_{result.cell_line}")
     
     # Calculate quantities from actual simulation data
     qty_media_bottles = math.ceil(total_media / 0.5) # 500mL bottles
@@ -378,15 +202,15 @@ def _render_resources(result, pricing, workflow_type="MCB"):
         qty_coating_ml = qty_flasks * 2.0
     
     # Get unit prices ($/mL or $/unit) from pricing database
-    media_unit_price = _get_item_cost(pricing, media_id, 0.814)  # $/mL
-    freezing_media_unit_price = _get_item_cost(pricing, freezing_media_id, 4.0)  # $/mL
-    pbs_unit_price = _get_item_cost(pricing, "dpbs", 0.0364)  # $/mL
-    dissociation_unit_price = _get_item_cost(pricing, dissociation_id, 0.22)  # $/mL
-    vial_unit_price = _get_item_cost(pricing, vial_type_id, 0.5)  # $/unit
-    flask_unit_price = _get_item_cost(pricing, "t75_flask", 1.32)  # $/unit
-    pipette_unit_price = _get_item_cost(pricing, "serological_pipette_10ml", 0.3)  # $/unit
-    tip_unit_price = _get_item_cost(pricing, "pipette_tip_1000ul_filter", 0.143)  # $/unit
-    coating_unit_price = _get_item_cost(pricing, coating_id, 50.0) if coating_id else 0  # $/mL
+    media_unit_price = get_item_cost(pricing, media_id, 0.814)  # $/mL
+    freezing_media_unit_price = get_item_cost(pricing, freezing_media_id, 4.0)  # $/mL
+    pbs_unit_price = get_item_cost(pricing, "dpbs", 0.0364)  # $/mL
+    dissociation_unit_price = get_item_cost(pricing, dissociation_id, 0.22)  # $/mL
+    vial_unit_price = get_item_cost(pricing, vial_type_id, 0.5)  # $/unit
+    flask_unit_price = get_item_cost(pricing, "t75_flask", 1.32)  # $/unit
+    pipette_unit_price = get_item_cost(pricing, "serological_pipette_10ml", 0.3)  # $/unit
+    tip_unit_price = get_item_cost(pricing, "pipette_tip_1000ul_filter", 0.143)  # $/unit
+    coating_unit_price = get_item_cost(pricing, coating_id, 50.0) if coating_id else 0  # $/mL
     
     # Calculate total costs
     cost_media_total = total_media_ml * media_unit_price
@@ -485,7 +309,7 @@ def _render_resources(result, pricing, workflow_type="MCB"):
             # Add Day -1 for coating (if needed)
             if coating_needed:
                 pbs_vol_ml = 12.25
-                cost_pbs_per_ml = _get_item_cost(pricing, "dpbs", 0.04)
+                cost_pbs_per_ml = get_item_cost(pricing, "dpbs", 0.04)
                 pbs_cost = pbs_vol_ml * cost_pbs_per_ml
                 
                 chart_data.append({
@@ -592,7 +416,7 @@ def _render_resources(result, pricing, workflow_type="MCB"):
                 
                 # PBS for dilution (12.25 mL for vitronectin)
                 pbs_vol_ml = 12.25
-                cost_pbs_per_ml = _get_item_cost(pricing, "dpbs", 0.04)
+                cost_pbs_per_ml = get_item_cost(pricing, "dpbs", 0.04)
                 pbs_cost = pbs_vol_ml * cost_pbs_per_ml
                 detailed_items.append({
                     "Day": -1,
@@ -748,10 +572,6 @@ def _render_resources(result, pricing, workflow_type="MCB"):
                     fill_value=0.0
                 )
                 
-                # Sort columns (Day 0, Day 1, ...)
-                # Simple string sort works for Day 0-9, but Day 10 comes before Day 2
-                # Let's try to sort naturally if possible, or just leave as is
-                
                 # Add Total column
                 pivot["Total"] = pivot.sum(axis=1)
                 
@@ -764,22 +584,7 @@ def _render_resources(result, pricing, workflow_type="MCB"):
             st.markdown("### 🔬 Parameterized Unit Operations")
             
             # Rebuild workflow to get ops
-            # Rebuild workflow to get ops
             vessels = VesselLibrary()
-            
-            # Use PricingInventory to get real prices from DB
-            class PricingInventory:
-                def __init__(self, pricing_data):
-                    self.pricing = pricing_data
-                    
-                def get_price(self, item_id: str) -> float:
-                    if not self.pricing or 'items' not in self.pricing:
-                        return 0.0
-                    item = self.pricing['items'].get(item_id)
-                    if item:
-                        # Prefer unit_price_usd
-                        return item.get('unit_price_usd', 0.0)
-                    return 0.0
             
             inventory = PricingInventory(pricing)
             ops = ParametricOps(vessels, inventory)
@@ -802,10 +607,11 @@ def _render_resources(result, pricing, workflow_type="MCB"):
                     )
                     
                 # Render table
-                _render_unit_ops_table(workflow)
+                render_unit_ops_table(workflow)
                         
             except Exception as e:
                 st.warning(f"Could not render unit ops: {e}")
+
 
 def render_posh_campaign_manager(df, pricing):
     """Render the POSH Campaign Manager tab."""
@@ -856,10 +662,10 @@ def render_posh_campaign_manager(df, pricing):
             tab1, tab2, tab3 = st.tabs(["Lineage 🧬", "Resources 💰", "Quality 📉"])
             
             with tab1:
-                _render_lineage(result)
+                render_lineage(result)
                 
             with tab2:
-                _render_resources(result, pricing, workflow_type="MCB")
+                _render_simulation_resources(result, pricing, workflow_type="MCB")
                 
             with tab3:
                 st.subheader("Quality Metrics")
@@ -1059,7 +865,7 @@ def render_posh_campaign_manager(df, pricing):
                 
                 # Cost Analysis
                 st.subheader("Titration Cost Analysis 💰")
-                _render_titration_resources(t_result, pricing)
+                render_titration_resources(t_result, pricing)
                 
             else:
                 st.error(f"❌ Titration Failed: {t_result.error_message}")
@@ -1183,7 +989,6 @@ def render_posh_campaign_manager(df, pricing):
     else:
         st.info("Configure settings in the sidebar and click 'Simulate MCB Generation' to start.")
 
-import plotly.graph_objects as go
 
 def _render_mcb_result(result, pricing):
     """Render metrics and plots for a single MCB result."""
@@ -1223,7 +1028,7 @@ def _render_mcb_result(result, pricing):
             st.plotly_chart(fig, use_container_width=True)
             
         # 3. Lineage
-        _render_lineage(result)
+        render_lineage(result)
                 
         # 4. Vial Table
         st.subheader("Generated MCB Vials")
@@ -1241,49 +1046,13 @@ def _render_mcb_result(result, pricing):
             st.warning("No vials generated.")
             
     elif view_selection == "💰 Resources & Cost":
-        _render_resources(result, pricing, workflow_type="MCB") # PASS PRICING
+        _render_simulation_resources(result, pricing, workflow_type="MCB") # PASS PRICING
         
     # 5. Logs (outside tabs)
     with st.expander("Simulation Logs"):
         for log in result.logs:
             st.text(log)
 
-    # 6. Release QC
-    st.divider()
-    st.subheader("🛡️ Release Quality Control")
-    st.markdown("Run post-banking QC assays to certify the bank for release.")
-    
-    col_qc1, col_qc2 = st.columns([1, 2])
-    with col_qc1:
-        if st.button("Run Release QC Panel", key="run_qc_wcb"):
-            st.session_state.wcb_qc_run = True
-            
-    with col_qc2:
-        if st.session_state.get("wcb_qc_run"):
-            # Calculate QC costs
-            vessels = VesselLibrary()
-            inventory = MockInventory()
-            ops = ParametricOps(vessels, inventory)
-            builder = WorkflowBuilder(ops)
-            qc_workflow = builder.build_bank_release_qc(cell_line=result.cell_line)
-            
-            qc_data = []
-            total_qc_cost = 0.0
-            
-            for process in qc_workflow.processes:
-                for op in process.ops:
-                    cost = op.material_cost_usd + op.instrument_cost_usd
-                    total_qc_cost += cost
-                    qc_data.append({
-                        "Assay": op.name,
-                        "Type": op.category,
-                        "Cost": f"${cost:.2f}"
-                    })
-            
-            st.success("✅ QC Panel Passed")
-            st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
-            st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
-            
     # 6. Release QC
     st.divider()
     st.subheader("🛡️ Release Quality Control")
@@ -1319,6 +1088,7 @@ def _render_mcb_result(result, pricing):
             st.success("✅ QC Panel Passed")
             st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
             st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
+
 
 def _render_wcb_result(result, pricing, unique_key):
     """Render metrics and plots for a single WCB result."""
@@ -1358,7 +1128,7 @@ def _render_wcb_result(result, pricing, unique_key):
             st.plotly_chart(fig, use_container_width=True)
             
         # 3. Lineage
-        _render_lineage(result)
+        render_lineage(result)
                 
         # 4. Vial Table
         st.subheader("Generated WCB Vials")
@@ -1376,7 +1146,7 @@ def _render_wcb_result(result, pricing, unique_key):
             st.warning("No WCB vials generated.")
             
     elif view_selection_wcb == "💰 Resources & Cost":
-        _render_resources(result, pricing, workflow_type="WCB") # PASS PRICING
+        _render_simulation_resources(result, pricing, workflow_type="WCB") # PASS PRICING
 
     # 5. Logs (outside tabs)
     with st.expander("Simulation Logs"):

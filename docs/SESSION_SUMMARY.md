@@ -73,7 +73,7 @@ We successfully migrated the platform's data layer from scattered files to unifi
 - `src/cell_os/cell_line_db.py`
 - `src/cell_os/campaign_db.py`
 - `src/cell_os/hardware/biological_virtual.py` (Updated)
-- `scripts/run_loop_v2.py` (Updated)
+- `scripts/demos/run_loop_v2.py` (Updated)
 - `dashboard_app/pages/4_Autonomous_Campaigns.py` (Updated)
 
 ### **Scripts**

@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import warnings
+
+warnings.warn(
+    "cell_os.cell_line_db is deprecated and will be removed. "
+    "Use cell_os.database.repositories.cell_line instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 @dataclass
@@ -321,6 +329,25 @@ class CellLineDatabase:
         if row:
             return json.loads(row[0])
         return None
+
+    def get_protocols(
+        self,
+        cell_line_id: str,
+        protocol_type: str
+    ) -> Dict[str, Dict[str, Any]]:
+        """Return all protocol parameters for a cell line and protocol type."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT vessel_type, parameters FROM cell_line_protocols
+            WHERE cell_line_id = ? AND protocol_type = ?
+            """,
+            (cell_line_id, protocol_type),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return {row[0]: json.loads(row[1]) for row in rows}
     
     def add_vial(
         self,

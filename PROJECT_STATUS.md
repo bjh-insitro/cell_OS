@@ -18,6 +18,7 @@
 - **Cell Lines**: `cell_lines.db` (Metadata, protocols, inventory).
 - **Campaigns**: `campaigns.db` (Full history of autonomous runs).
 - **Migration**: All legacy YAML/JSON data migrated to SQLite.
+- **Backward-compatible loaders**: `ProtocolResolver` and `Inventory` now hydrate from SQLite by default, falling back to YAML only when explicitly requested. CLI entry points are exposed via `cell-os-run` so scripts work outside the repo root.
 
 ### C. Process Simulation (MCB & WCB)
 - **MCB Crash Test**: Refactored into `MCBSimulation`. Validated with U2OS and iPSC.

@@ -12,7 +12,7 @@ The **AutonomousExecutor** is a critical integration layer that connects the AI 
 
 ### Problem Solved
 
-Previously, the autonomous optimization loop (`scripts/run_loop.py`) used a legacy `SimulationEngine` that was separate from the production execution system. This created:
+Previously, the autonomous optimization loop (`scripts/demos/run_loop.py`) used a legacy `SimulationEngine` that was separate from the production execution system. This created:
 
 - **Duplicate code paths** for manual vs. autonomous experiments
 - **No unified scheduling** across experiment types
@@ -191,10 +191,10 @@ for result in results:
 
 ```bash
 # Run with default settings
-python scripts/run_loop_v2.py --max-iterations 10 --batch-size 8
+python scripts/demos/run_loop_v2.py --max-iterations 10 --batch-size 8
 
 # Run with custom campaign ID
-python scripts/run_loop_v2.py \
+python scripts/demos/run_loop_v2.py \
     --campaign-id my_optimization \
     --max-iterations 20 \
     --batch-size 16
@@ -502,7 +502,7 @@ The **AutonomousExecutor** successfully unifies the AI scientist with the produc
 
 **Files Created**:
 - `src/cell_os/autonomous_executor.py` - Main implementation
-- `scripts/run_loop_v2.py` - Modernized autonomous loop
+- `scripts/demos/run_loop_v2.py` - Modernized autonomous loop
 - `tests/integration/test_autonomous_executor.py` - Test suite
 - `docs/AUTONOMOUS_EXECUTOR.md` - This documentation
 

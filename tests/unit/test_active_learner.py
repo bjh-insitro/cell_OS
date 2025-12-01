@@ -15,7 +15,7 @@ import pandas as pd
 
 def test_active_learner_initialization():
     """Test ActiveLearner can be initialized."""
-    # This would require importing from scripts/run_loop.py
+    # This would require importing from scripts/demos/run_loop.py
     # Since that's an entry point script, we'll create a minimal test
     
     from pathlib import Path

@@ -1,71 +1,65 @@
 import sqlite3
 import json
-from typing import List, Dict, Any, Union, Tuple
+import logging
+import os
+from typing import List, Dict, Any, Union, Tuple, Optional
 from datetime import datetime
 
-class ExperimentDB:
-    """
-    Manages the centralized SQLite database for all cell_OS experiment history and metadata.
-    Establishes a schema to link Design, Batches (Physical Runs), and Results (Measurements).
-    """
-    
-    def __init__(self, db_path: str = 'data/cell_os_experiments.db'):
-        # Ensure the data directory exists before connecting
-        import os
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        
-        self.conn = sqlite3.connect(db_path)
-        self.cursor = self.conn.cursor()
-        self._create_schema()
-        print(f"✅ Connected to Experiment Database: {db_path}")
+logger = logging.getLogger(__name__)
 
-    def _create_schema(self):
-        """
-        Defines the tables required for linking campaign steps: 
-        designs (The Plan) -> batches (The Run) -> results (The Data).
-        """
-        
-        # 1. DESIGNS Table: High-level experiment and library metadata
-        self.cursor.execute("""
+
+class DatabaseInitializer:
+    """Responsible for creating connections and ensuring schema readiness."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+
+    def connect(self) -> sqlite3.Connection:
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        conn = sqlite3.connect(self.db_path)
+        self._create_schema(conn)
+        return conn
+
+    def _create_schema(self, conn: sqlite3.Connection):
+        cursor = conn.cursor()
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS designs (
-                design_id TEXT PRIMARY KEY,       -- Unique ID for the experiment design (e.g., 'POSH_SCREEN_GOLGI')
+                design_id TEXT PRIMARY KEY,
                 project_name TEXT NOT NULL,
                 library_name TEXT,
                 cell_line TEXT,
-                target_moi REAL,                 -- Target MOI from design
+                target_moi REAL,
                 gRNA_count INTEGER,
                 creation_date TEXT
             )
         """)
-        
-        # 2. BATCHES Table: Links the design to a physical execution (e.g., a plate)
-        self.cursor.execute("""
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS batches (
                 batch_id INTEGER PRIMARY KEY,
                 design_id TEXT,
-                plate_barcode TEXT UNIQUE,       -- Unique identifier for the plate/physical run
-                hardware_interface TEXT,         -- e.g., 'MockSimulator' or 'RealLab'
+                plate_barcode TEXT UNIQUE,
+                hardware_interface TEXT,
                 run_date TEXT,
                 FOREIGN KEY (design_id) REFERENCES designs (design_id)
             )
         """)
 
-        # 3. RESULTS Table: Stores the actual quantitative measurements
-        self.cursor.execute("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS results (
                 result_id INTEGER PRIMARY KEY,
                 batch_id INTEGER,
-                measurement_type TEXT,           -- e.g., 'titration_moi', 'dino_embedding_dm', 'lv_transduction_eff'
-                well_id TEXT,                    -- Can be NULL if result is plate-level (e.g., D_M)
-                value REAL,                      -- Primary numerical value (e.g., MOI, D_M, or TE)
-                data_path TEXT,                  -- Path to corresponding raw/processed data (e.g., /data/processed/embeddings.csv)
-                metadata TEXT,                   -- JSON string for complex data/embeddings/full vectors
+                measurement_type TEXT,
+                well_id TEXT,
+                value REAL,
+                data_path TEXT,
+                metadata TEXT,
                 FOREIGN KEY (batch_id) REFERENCES batches (batch_id)
             )
         """)
-        
-        # 4. AGENT_STATE Table: Stores the serialized state of agents for crash recovery
-        self.cursor.execute("""
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS agent_state (
                 agent_id TEXT PRIMARY KEY,
                 experiment_id TEXT,
@@ -74,10 +68,8 @@ class ExperimentDB:
                 FOREIGN KEY(experiment_id) REFERENCES designs(design_id)
             )
         """)
-        
-        # 5. EXPERIMENTS Table: Legacy table for backward compatibility with state_manager
-        # Maps to designs table conceptually
-        self.cursor.execute("""
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS experiments (
                 experiment_id TEXT PRIMARY KEY,
                 name TEXT,
@@ -85,9 +77,8 @@ class ExperimentDB:
                 status TEXT
             )
         """)
-        
-        # 6. TITRATION_RESULTS Table: Specialized table for LV titration data
-        self.cursor.execute("""
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS titration_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 experiment_id TEXT,
@@ -100,9 +91,8 @@ class ExperimentDB:
                 FOREIGN KEY(experiment_id) REFERENCES experiments(experiment_id)
             )
         """)
-        
-        # 7. DINO_EMBEDDINGS Table: Stores morphological embeddings and hit calls
-        self.cursor.execute("""
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS dino_embeddings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 experiment_id TEXT,
@@ -118,8 +108,16 @@ class ExperimentDB:
                 FOREIGN KEY(batch_id) REFERENCES batches(batch_id)
             )
         """)
-        
-        self.conn.commit()
+
+        conn.commit()
+
+
+class ExperimentRepository:
+    """Pure data-access layer for experiment records."""
+
+    def __init__(self, connection: sqlite3.Connection):
+        self.conn = connection
+        self.cursor = self.conn.cursor()
 
     def insert_design(self, design_data: Dict[str, Any]) -> None:
         """Inserts a new experiment design record."""
@@ -270,3 +268,20 @@ class ExperimentDB:
         
     def close(self):
         self.conn.close()
+
+
+class ExperimentDB(ExperimentRepository):
+    """
+    Manages the centralized SQLite database for cell_OS using a dedicated initializer.
+    """
+
+    def __init__(
+        self,
+        db_path: str = "data/cell_os_experiments.db",
+        initializer: Optional[DatabaseInitializer] = None,
+    ):
+        self.db_path = db_path
+        self.initializer = initializer or DatabaseInitializer(db_path)
+        connection = self.initializer.connect()
+        super().__init__(connection)
+        logger.info("Connected to Experiment Database: %s", db_path)

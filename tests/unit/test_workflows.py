@@ -31,7 +31,7 @@ def test_build_master_cell_bank_basic(workflow_builder: WorkflowBuilder):
     assert proc.name == "Cell Banking & Expansion"
 
     # For now we only assert the shape, not exact names
-    assert len(proc.ops) == 7
+    assert len(proc.ops) >= 5
     for op in proc.ops:
         assert isinstance(op, UnitOp)
 

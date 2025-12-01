@@ -12,10 +12,40 @@ class TestBiologicalVirtualMachine:
     def setup_method(self):
         self.vm = BiologicalVirtualMachine(simulation_speed=0.0)  # Instant execution
         
+        # Manually set parameters to avoid DB dependency
+        self.vm.cell_line_params["HEK293T"] = {
+            "doubling_time_h": 24.0,
+            "max_confluence": 1.0,
+            "max_passage": 30,
+            "senescence_rate": 0.0,
+            "seeding_efficiency": 0.9,
+            "passage_stress": 0.1,
+            "cell_count_cv": 0.1,
+            "viability_cv": 0.05,
+            "biological_cv": 0.05,
+            "lag_phase_h": 12.0
+        }
+        self.vm.cell_line_params["HeLa"] = {
+            "doubling_time_h": 20.0,
+            "max_confluence": 1.0,
+            "max_passage": 30,
+            "senescence_rate": 0.0,
+            "seeding_efficiency": 0.9,
+            "passage_stress": 0.1,
+            "cell_count_cv": 0.1,
+            "viability_cv": 0.05,
+            "biological_cv": 0.05,
+            "lag_phase_h": 12.0
+        }
+        self.vm.compound_sensitivity["staurosporine"] = {
+            "HEK293T": 0.05,
+            "hill_slope": 1.0
+        }
+        
     def test_seed_and_count(self):
         """Test basic seeding and cell counting."""
         self.vm.seed_vessel("T75_1", "HEK293T", initial_count=1e6, capacity=1e7)
-        
+        np.random.seed(42)
         result = self.vm.count_cells("T75_1", vessel_id="T75_1")
         
         assert result["status"] == "success"
@@ -107,7 +137,12 @@ class TestBiologicalVirtualMachine:
         
         # Incubate both
         self.vm.incubate(24 * 3600, 37.0)
-        
+
+        # Remove measurement noise for deterministic comparison
+        for line in ["HEK293T", "HeLa"]:
+            params = self.vm.cell_line_params.setdefault(line, {})
+            params["cell_count_cv"] = 0.0
+
         # HeLa should grow faster (20h doubling time vs 24h)
         hek_result = self.vm.count_cells("T75_1", vessel_id="T75_1")
         hela_result = self.vm.count_cells("T75_2", vessel_id="T75_2")

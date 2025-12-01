@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import warnings
+
+warnings.warn(
+    "cell_os.simulation_params_db is deprecated and will be removed. "
+    "Use cell_os.database.repositories.simulation_params instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 @dataclass

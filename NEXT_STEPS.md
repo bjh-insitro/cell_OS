@@ -10,6 +10,10 @@ The system now has a robust **Execution Engine** with:
 - **Dashboard**: Comprehensive UI for monitoring and control.
 - **✅ Autonomous Executor**: Unified AI scientist with production infrastructure.
 
+### Developer Onboarding Notes (NEW)
+- **CLI entry point**: `pip install -e .` now exposes `cell-os-run`, so campaign scripts can be launched without repo-relative paths.
+- **SQLite-first loaders**: `ProtocolResolver` and `Inventory` hydrate from `data/cell_lines.db` / `data/inventory.db` automatically, falling back to legacy YAML only when explicitly requested. New contributors don’t need to resurrect archived YAML files to get a working environment.
+
 ## Recommended Next Steps
 
 - **Status**: Infrastructure ready, needs hardware-specific implementations
@@ -41,4 +45,3 @@ Building on the AutonomousExecutor foundation:
 - **Run validation campaigns** with real biological data
 - **Calibrate simulation parameters** against real experiments
 - **Establish benchmarks** for autonomous vs. manual optimization
-

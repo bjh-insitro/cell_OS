@@ -6,179 +6,14 @@ and submitting them to the Job Queue.
 """
 
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
-import sqlite3
-import json
-from pathlib import Path
+from typing import List, Optional
 
 from cell_os.job_queue import JobQueue, JobPriority
-
-
-@dataclass
-class Campaign:
-    """Represents a high-level campaign (collection of related jobs)."""
-    campaign_id: str
-    name: str
-    description: str
-    status: str = "active"  # active, completed, cancelled
-    created_at: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class CampaignJob:
-    """A job within a campaign."""
-    campaign_job_id: str
-    campaign_id: str
-    protocol_name: str
-    cell_line: str
-    vessel_id: str
-    operation_type: str
-    scheduled_time: datetime
-    status: str = "pending"  # pending, submitted, completed, failed
-    job_id: Optional[str] = None  # Link to JobQueue job_id
-
-
-class CampaignDatabase:
-    """SQLite database for campaigns."""
-    
-    def __init__(self, db_path: str = "data/campaigns.db"):
-        self.db_path = db_path
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
-        
-    def _init_db(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS campaigns (
-                campaign_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                metadata TEXT
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS campaign_jobs (
-                campaign_job_id TEXT PRIMARY KEY,
-                campaign_id TEXT NOT NULL,
-                protocol_name TEXT NOT NULL,
-                cell_line TEXT NOT NULL,
-                vessel_id TEXT NOT NULL,
-                operation_type TEXT NOT NULL,
-                scheduled_time TEXT NOT NULL,
-                status TEXT NOT NULL,
-                job_id TEXT,
-                FOREIGN KEY (campaign_id) REFERENCES campaigns(campaign_id)
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
-        
-    def save_campaign(self, campaign: Campaign):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO campaigns (campaign_id, name, description, status, created_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            campaign.campaign_id,
-            campaign.name,
-            campaign.description,
-            campaign.status,
-            campaign.created_at.isoformat(),
-            json.dumps(campaign.metadata)
-        ))
-        conn.commit()
-        conn.close()
-        
-    def save_campaign_job(self, job: CampaignJob):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO campaign_jobs 
-            (campaign_job_id, campaign_id, protocol_name, cell_line, vessel_id, operation_type, scheduled_time, status, job_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            job.campaign_job_id,
-            job.campaign_id,
-            job.protocol_name,
-            job.cell_line,
-            job.vessel_id,
-            job.operation_type,
-            job.scheduled_time.isoformat(),
-            job.status,
-            job.job_id
-        ))
-        conn.commit()
-        conn.close()
-        
-    def list_campaigns(self) -> List[Campaign]:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM campaigns ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        conn.close()
-        
-        campaigns = []
-        for r in rows:
-            metadata = {}
-            if r[5] and isinstance(r[5], str) and r[5].strip():
-                try:
-                    metadata = json.loads(r[5])
-                except json.JSONDecodeError:
-                    print(f"Warning: Failed to parse metadata for campaign {r[0]}: {r[5]}")
-            
-            created_at = datetime.now()
-            if r[4]:
-                if isinstance(r[4], str):
-                    try:
-                        created_at = datetime.fromisoformat(r[4])
-                    except ValueError:
-                        pass
-                elif isinstance(r[4], datetime):
-                    created_at = r[4]
-
-            campaigns.append(Campaign(
-                campaign_id=r[0],
-                name=r[1],
-                description=r[2],
-                status=r[3],
-                created_at=created_at,
-                metadata=metadata
-            ))
-        
-        return campaigns
-        
-    def get_campaign_jobs(self, campaign_id: str) -> List[CampaignJob]:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM campaign_jobs WHERE campaign_id = ? ORDER BY scheduled_time ASC", (campaign_id,))
-        rows = cursor.fetchall()
-        conn.close()
-        
-        return [CampaignJob(
-            campaign_job_id=r[0],
-            campaign_id=r[1],
-            protocol_name=r[2],
-            cell_line=r[3],
-            vessel_id=r[4],
-            operation_type=r[5],
-            scheduled_time=datetime.fromisoformat(r[6]) if isinstance(r[6], str) else r[6],
-            status=r[7],
-            job_id=r[8]
-        ) for r in rows]
-
-
-from cell_os.workflow_executor import WorkflowExecutor
+from cell_os.workflow_execution import WorkflowExecutor
 from cell_os.protocol_resolver import ProtocolResolver
+from cell_os.database.repositories.campaign import CampaignRepository, Campaign, CampaignJob
+
 
 class CampaignManager:
     """
@@ -189,16 +24,19 @@ class CampaignManager:
         self.job_queue = job_queue
         self.executor = executor
         self.resolver = resolver
-        self.db = CampaignDatabase(db_path)
+        self.db = CampaignRepository(db_path)
         
     def create_campaign(self, name: str, description: str = "") -> Campaign:
         """Create a new campaign."""
         campaign = Campaign(
             campaign_id=str(uuid.uuid4()),
+            campaign_type="manual",
             name=name,
-            description=description
+            description=description,
+            status="active",
+            created_at=datetime.now().isoformat()
         )
-        self.db.save_campaign(campaign)
+        self.db.create_campaign(campaign)
         return campaign
         
     def add_job_to_campaign(self, campaign_id: str, protocol_name: str, cell_line: str, 
@@ -213,7 +51,7 @@ class CampaignManager:
             operation_type=operation_type,
             scheduled_time=scheduled_time
         )
-        self.db.save_campaign_job(job)
+        self.db.add_campaign_job(job)
         return job
         
     def generate_maintenance_schedule(self, campaign_id: str, cell_line: str, vessel_id: str, 
@@ -302,17 +140,14 @@ class CampaignManager:
                 # 4. Update Campaign Job
                 job.status = "submitted"
                 job.job_id = queue_job.job_id
-                self.db.save_campaign_job(job)
+                self.db.add_campaign_job(job)
                 
             except Exception as e:
                 print(f"Failed to submit job {job.campaign_job_id}: {e}")
                 job.status = "failed" # Mark as failed submission
-                self.db.save_campaign_job(job)
+                self.db.add_campaign_job(job)
         
         # Update campaign status
-        campaign_list = [c for c in self.db.list_campaigns() if c.campaign_id == campaign_id]
-        if campaign_list:
-            campaign = campaign_list[0]
-            campaign.status = "active" # Or running
-            self.db.save_campaign(campaign)
-
+        campaign = self.db.get_campaign(campaign_id)
+        if campaign:
+            self.db.update_campaign_status(campaign_id, "active")

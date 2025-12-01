@@ -9,7 +9,7 @@ import os
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from cell_os.experimental_db import ExperimentalDatabase
+from cell_os.database.repositories.experimental import ExperimentalRepository
 
 def migrate():
     csv_path = "data/raw/phase0_all_plates.csv"
@@ -25,7 +25,7 @@ def migrate():
     print(f"Found {len(df)} records.")
     
     print(f"Initializing database at {db_path}...")
-    db = ExperimentalDatabase(db_path)
+    db = ExperimentalRepository(db_path)
     
     print("Migrating data...")
     db.add_measurements(df)

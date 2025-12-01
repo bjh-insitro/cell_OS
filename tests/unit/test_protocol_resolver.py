@@ -212,7 +212,7 @@ class TestProtocolResolver:
         assert profile is not None
         assert profile.cell_type == "iPSC"
         assert profile.coating_required is True
-        assert profile.coating_reagent == "laminin_521"
+        assert profile.coating_reagent == "vitronectin"
         
         profile_hek = resolver.get_cell_line_profile("HEK293")
         assert profile_hek is not None
@@ -224,7 +224,7 @@ class TestProtocolResolver:
         config = resolver.get_thaw_config("iPSC", "flask_t75")
         
         assert config["coating_required"] is True
-        assert config["coating_reagent"] == "laminin_521"
+        assert config["coating_reagent"] == "vitronectin"
         assert config["media"] == "mtesr_plus_kit"
         assert config["volumes_mL"]["media_aliquot"] == 40.0
         assert config["volumes_mL"]["pre_warm"] == 15.0
@@ -257,3 +257,22 @@ class TestProtocolResolver:
         assert config["media"] == "dmem_high_glucose"
         assert config["volume_ml"] == 15.0
         assert config["schedule"]["interval_days"] == 2
+
+    def test_thaw_scaling_reference_vessel(self):
+        """Scaling from T75 reference should adjust volumes for larger vessels."""
+        resolver = ProtocolResolver()
+        config_t75 = resolver.get_thaw_config("iPSC", "flask_t75")
+        config_t175 = resolver.get_thaw_config("iPSC", "flask_t175")
+
+        assert config_t75["volumes_mL"]["media_aliquot"] == 40.0
+        # Expect roughly double volume for T175 (working volume ratio)
+        assert config_t175["volumes_mL"]["media_aliquot"] == 80.0
+
+    def test_feed_scaling_reference_vessel(self):
+        """Feed config should scale volume for vessels lacking explicit entries."""
+        resolver = ProtocolResolver()
+        config_t25 = resolver.get_feed_config("iPSC", "flask_t25")
+
+        # Reference uses 15 mL for T75 (working volume 15)
+        # T25 working volume 5 => 5 mL
+        assert config_t25["volume_ml"] == 5.0

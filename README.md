@@ -4,8 +4,9 @@
 
 `cell_OS` is a production-ready platform for autonomous scientific discovery. It designs experiments, executes them (via simulation or real hardware), fits models, makes decisions, and generates reports—all without human intervention.
 
-[![Tests](https://img.shields.io/badge/tests-186%20passing-brightgreen)]() 
-[![Python](https://img.shields.io/badge/python-3.11-blue)]()
+[![Tests](https://img.shields.io/badge/tests-379%20passing-brightgreen)]() 
+[![CI](https://github.com/brighart/cell_OS/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/brighart/cell_OS/actions/workflows/tests.yml)
+[![Python](https://img.shields.io/badge/python-3.9+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 
 ---
@@ -21,7 +22,7 @@ source venv/bin/activate
 pip install -e .
 
 # Run an autonomous titration campaign
-python cli/run_campaign.py --config config/campaign_example.yaml
+cell-os-run --config config/campaign_example.yaml
 
 # Launch the dashboard
 streamlit run dashboard_app/dashboard.py
@@ -102,7 +103,7 @@ graph TB
 - **Query API**: Complex queries like "find all screens with D_M > 2.0"
 
 ### 🎛️ Multi-Interface
-- **CLI**: `python cli/run_campaign.py --config my_config.yaml`
+- **CLI**: `cell-os-run --config my_config.yaml`
 - **Dashboard**: Interactive Streamlit app with 8 tabs
 - **Programmatic**: Import agents as Python modules
 
@@ -110,6 +111,12 @@ graph TB
 - **HTML Reports**: Titration curves, cost breakdowns, decision manifests
 - **Budget Calculator**: Pre-flight cost estimation
 - **QC Dashboards**: Outlier detection, plate effects
+
+### 🗂️ Data Sources & CLI
+- **SQLite-first**: Cell-line protocols (`data/cell_lines.db`) and inventory/pricing (`data/inventory.db`) are loaded from SQLite by default for consistency with the automation stack.
+- **Legacy YAML fallback**: Passing explicit YAML paths (e.g., `Inventory("data/raw/pricing.yaml")`) still works and seeds the historical stock defaults, which keeps notebooks/tests reproducible.
+- **Protocol resolver**: Automatically falls back to the SQLite database when the deprecated `data/cell_lines.yaml` is absent, so fresh clones don’t need to restore archived YAML.
+- **Installable CLI**: `pip install -e .` exposes the `cell-os-run` entry point, so you can run `cell-os-run --config ...` from anywhere without relying on repo-relative Python paths.
 
 ---
 
@@ -163,7 +170,7 @@ budget:
 
 Run it:
 ```bash
-python cli/run_campaign.py --config my_campaign.yaml
+cell-os-run --config my_campaign.yaml
 ```
 
 View results:
@@ -191,22 +198,22 @@ Launch with: `streamlit run dashboard_app/dashboard.py`
 ## 🧪 Testing
 
 ```bash
-# Run all tests (186 tests, ~6 seconds)
-pytest tests -v
+# Run the full suite (379 tests, ~40 seconds on a laptop)
+python3 -m pytest -v
 
-# Run specific suite
-pytest tests/integration/test_persistence.py -v
+# Target a suite
+python3 -m pytest tests/integration/test_persistence.py -v
 ```
 
-All tests passing ✅
+All tests passing ✅ (`python3 -m pytest -v`)
 
 ---
 
 ## 📚 Documentation
 
 - **[User Guide](docs/guides/USER_GUIDE.md)** - Installation, CLI usage, troubleshooting
-- **[API Docs](docs/api/)** - Module-level documentation (coming soon)
-- **[Tutorial Notebooks](notebooks/)** - Hands-on examples
+- **Architecture Notes** - See `docs/architecture/` for subsystem deep dives
+- **Tutorial Notebooks** - Explore `notebooks/` for hands-on examples
 
 ---
 

@@ -9,7 +9,7 @@ Migration Note: This now reads from data/cell_lines.db instead of data/cell_line
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-from cell_os.cell_line_db import CellLineDatabase as SQLiteDB
+from cell_os.database.repositories.cell_line import CellLineRepository
 
 @dataclass
 class CellLineProfile:
@@ -51,11 +51,11 @@ class CellLineProfile:
 # Global database instance
 _DB_INSTANCE = None
 
-def _get_db() -> SQLiteDB:
+def _get_db() -> CellLineRepository:
     """Get or create database instance."""
     global _DB_INSTANCE
     if _DB_INSTANCE is None:
-        _DB_INSTANCE = SQLiteDB("data/cell_lines.db")
+        _DB_INSTANCE = CellLineRepository("data/cell_lines.db")
     return _DB_INSTANCE
 
 def get_cell_line_profile(cell_line: str) -> Optional[CellLineProfile]:
@@ -84,8 +84,9 @@ def get_cell_line_profile(cell_line: str) -> Optional[CellLineProfile]:
     if not cell_line_obj:
         return None
     
-    # Get characteristics
-    chars = db.get_characteristics(cell_line_obj.cell_line_id)
+    # Get characteristics and convert to dict
+    char_list = db.get_characteristics(cell_line_obj.cell_line_id)
+    chars = {c.characteristic: c.value for c in char_list}
     
     return CellLineProfile(
         name=cell_line_obj.display_name,

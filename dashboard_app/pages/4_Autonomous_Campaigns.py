@@ -9,7 +9,7 @@ import sys
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from cell_os.campaign_db import CampaignDatabase
+from cell_os.database.repositories.campaign import CampaignRepository
 
 st.set_page_config(
     page_title="Autonomous Campaigns",
@@ -20,7 +20,7 @@ st.set_page_config(
 # Initialize database
 @st.cache_resource
 def get_db():
-    return CampaignDatabase()
+    return CampaignRepository()
 
 def load_campaign_list():
     """Load list of available campaigns from database."""
@@ -58,7 +58,7 @@ def load_campaign_data(campaign_id):
 def render_campaign_selector(campaigns):
     """Render campaign selection dropdown."""
     if not campaigns:
-        st.warning("No campaigns found in database. Run `python scripts/run_loop_v2.py` to create one.")
+        st.warning("No campaigns found in database. Run `python scripts/demos/run_loop_v2.py` to create one.")
         return None
     
     # Create label map
@@ -348,7 +348,7 @@ def main():
     
     if not campaigns:
         st.info("No campaigns found in database. Run an autonomous campaign to see results here.")
-        st.code("python scripts/run_loop_v2.py --max-iterations 10 --batch-size 8")
+        st.code("python scripts/demos/run_loop_v2.py --max-iterations 10 --batch-size 8")
         return
     
     # Select campaign

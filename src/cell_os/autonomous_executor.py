@@ -1,7 +1,7 @@
 """
 Autonomous Executor - Bridge between AI Scientist and Execution Infrastructure
 
-This module connects the autonomous optimization loop (scripts/run_loop.py) with
+This module connects the autonomous optimization loop (scripts/demos/run_loop.py) with
 the production-ready execution infrastructure (WorkflowExecutor + JobQueue).
 
 Key Features:
