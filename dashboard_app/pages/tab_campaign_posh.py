@@ -74,7 +74,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
     # Get freezing parameters
     freezing_media_id = "cryostor_cs10"  # Default
     vial_type_id = "micronic_tube"  # Default updated to 0.75mL Micronic
-    freezing_volume_ml = 0.5  # Default updated
+    freezing_volume_ml = 0.35  # Default updated to 0.35mL for all cells
     
     if profile:
         if hasattr(profile, 'freezing_media') and profile.freezing_media:

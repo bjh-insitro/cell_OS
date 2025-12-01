@@ -146,9 +146,9 @@ class HarvestFreezeOps(BaseOperation):
         def get_single_cost(item_id: str):
             return self.get_price(item_id)
         
-        # Use 0.35mL per vial for iPSC/hESC, 0.5mL for others (Micronic 0.75mL tubes)
-        volume_per_vial = 0.35 if cell_line and cell_line.lower() in ["ipsc", "hesc"] else 0.5
-        vial_type = "micronic_tube"  # Default to Micronic 0.75mL tubes as requested
+        # Determine freezing volume (updated to 0.35mL for 0.75mL Micronic tubes)
+        volume_per_vial = 0.35  # Standard for all cell types
+        vial_type = "micronic_tube"  # 0.75mL Micronic tubes as requested
         
         # 1. Aspirate supernatant (after centrifuge from harvest)
         tube_id = "tube_15ml"

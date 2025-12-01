@@ -44,7 +44,7 @@ class CellLineProfile:
     # Fields with defaults (must come after non-default fields)
     coating_required: bool = False
     vial_type: str = "micronic_tube"  # Default vial type
-    freezing_volume_ml: float = 0.5  # Default freezing volume
+    freezing_volume_ml: float = 0.35  # Volume per vial for freezing (mL)
     cells_per_vial: int = 1000000  # Default cells per vial
 
 
