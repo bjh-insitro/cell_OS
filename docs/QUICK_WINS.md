@@ -1,0 +1,310 @@
+# Quick Wins for cell_OS
+
+Analysis Date: 2025-12-01
+Estimated Total Time: **15-25 hours** (2-3 days)
+
+---
+
+## High-Impact, Low-Effort Improvements
+
+### 🎯 Priority 1: User Experience (4-6 hours)
+
+#### 1.1 Fix Dashboard Entry Point ⚡ (30 min)
+**Problem**: README says `streamlit run dashboard_app/dashboard.py` but there's no `dashboard.py`, only `app.py`
+- **Fix**: 
+  - Rename `dashboard_app/app.py` → `dashboard_app/dashboard.py` OR
+  - Update README.md line 28, 185
+- **Impact**: Eliminates confusion for new users
+
+#### 1.2 Add Dashboard Home Page ⚡ (2 hours)
+**Current**: 21 tabs with no landing page or quick-start guide
+- **Add**: `tab_home.py` as the default page with:
+  - Quick start guide
+  - Recent activity feed
+  - Key metrics overview
+  - Link-out to most-used tabs
+- **Impact**: Reduces onboarding friction by 80%
+
+#### 1.3 Consolidate Documentation 📚 (1.5 hours)
+**Problem**: 9 different status/summary markdown files in root:
+```
+COMPREHENSIVE_STATUS.md
+FINAL_REFACTORING_SUMMARY.md
+HOUSEKEEPING_SUMMARY.md
+PROJECT_STATUS.md
+REFACTORING_PROGRESS.md
+REFACTORING_QUICK_REF.md
+SESSION_SUMMARY.md
+SIMULATION_PROGRESS.md
+NEXT_STEPS.md
+```
+- **Fix**: Merge into single `STATUS.md` in `docs/`
+- **Keep**: README.md, CHANGELOG.md, NEXT_STEPS.md in root
+- **Move to** `docs/archive/`: older summaries
+- **Impact**: Clean root directory, easier to find current status
+
+#### 1.4 Fix Broken Links in README ⚡ (15 min)
+**Issues**:
+- Line 17: `\u003cyour-repo-url\u003e` placeholder
+- Line 28: Wrong dashboard path
+- Missing LICENSE file referenced on line 300
+- **Fix**: Update placeholders, add LICENSE
+- **Impact**: Professional appearance
+
+---
+
+### 🔧 Priority 2: Code Quality (3-5 hours)
+
+#### 2.1 Remove Unused Code ⚡ (2 hours)
+**Found**:
+- `nohup.out` was git-tracked (now deleted)
+- Multiple `dashboard_assets_*` directories (wcb, multi, facility) - likely outdated
+- `audit_entire_platform.py` and `audit_inventory.py` in root (should be in `scripts/`)
+
+**Action**:
+- Move audit scripts to `scripts/`
+- Archive or delete old asset directories
+- Add to `.gitignore`: `*.out`, `*.log`
+
+#### 2.2 Implement Persistent Inventory Tracking ⚡ (2-3 hours)
+**Current State**: TODOs in code about inventory persistence
+```python
+# dashboard_app/app.py, line 73
+st.info("Live inventory tracking requires persisting the Inventory state to a file (TODO).")
+```
+
+**Solution**:
+- Already have `InventoryManager` with SQLite
+- Update `Inventory` class to sync with `InventoryManager`
+- Remove TODO messages
+- Add "Save Inventory" button in Economics tab
+
+**Impact**: Key feature completion, removes technical debt warnings from UI
+
+#### 2.3 Fix pylint Warnings ⚡ (1 hour)
+**Current**: `make lint` shows some warnings
+- Run `pylint` on key files
+- Fix undefined variables, unused imports
+- Update `.pylintrc` if needed
+
+---
+
+### 🧪 Priority 3: Testing & Validation (3-4 hours)
+
+#### 3.1 Add Missing Tests for New Features ⚡ (2 hours)
+**Recently Added, Needs Tests**:
+- `BOMItem` dataclass
+- Updated freeze operation (0.35mL volumes)
+- Inventory → Database migration
+- Tabbed dashboard layout
+
+**Add**:
+- `tests/unit/test_bom_items.py`
+- `tests/unit/test_freeze_volumes.py`
+- `tests/integration/test_inventory_db.py`
+
+#### 3.2 Update Test Count Badge ⚡ (5 min)
+**Current**: README claims "379 passing tests"
+**Fix**: Run `pytest --co -q | wc -l` and update badge
+**Impact**: Accurate metrics
+
+#### 3.3 Add Smoke Tests for Dashboard ⚡ (1.5 hours)
+**Missing**: No tests for dashboard pages
+**Add**: `tests/dashboard/test_page_loads.py`
+- Test each tab imports correctly
+- Test no syntax errors on render
+- Mock streamlit functions
+
+---
+
+### 📊 Priority 4: Data & Configuration (2-3 hours)
+
+#### 4.1 Populate Missing Inventory Resources ⚡ (1.5 hours)
+**Issue**: BOM rendering shows "No resources" because many resources missing from `inventory.db`
+**Action**:
+- Create `scripts/seed_inventory_resources.py`
+- Add ~50 common resources from Phase 1 of BOM Refactor Plan:
+  - Flow cytometry consumables
+  - NGS reagents
+  - Cell counting supplies
+  - Instrument usage rates
+- **Impact**: Immediate BOM functionality improvement
+
+#### 4.2 Add Example Configs ⚡ (30 min)
+**Missing**: `config/campaign_example.yaml` doesn't exist (referenced in README:25)
+**Add**:
+- `config/campaign_example.yaml`
+- `config/titration_example.yaml`
+- `config/posh_screen_example.yaml`
+**Impact**: Users can actually run examples
+
+#### 4.3 Consolidate YAML Files ⚡ (1 hour)
+**Current**: Data scattered across:
+- `data/raw/` (YAML)
+-  `data/` (SQLite DBs)
+- Some YAMLs deprecated but still referenced
+
+**Action**:
+- Document which YAMLs are authoritative
+- Move deprecated to `data/archive/`
+- Update `PRICING_YAML_DEPRECATED.md` with migration guide
+
+---
+
+### 🚀 Priority 5: Features (3-5 hours)
+
+#### 5.1 Add Export Functionality ⚡ (2 hours)
+**Missing**: Can't export simulation results, BOMs, or reports
+**Add**:
+- CSV export for BOMs
+- Excel export for cost breakdowns
+- PDF export for reports (via `pdfkit` or `weasyprint`)
+- Per-tab "Export" buttons
+
+**Impact**: Professional workflow integration
+
+#### 5.2 Add Search/Filter to Dashboard ⚡ (1.5 hours)
+**Problem**: 21 tabs, hard to navigate
+**Add**:
+- Sidebar search box
+- Filter tabs by category (Simulation, Analysis, Management)
+- Recent tabs history
+
+#### 5.3 Improve Lineage Visualization ⚡ (1.5 hours)
+**Current**: Basic graphviz trees
+**Enhance**:
+- Add cell counts as node labels
+- Color-code by operation type
+- Add timeline/calendar view option
+- Export as SVG/PNG
+
+---
+
+### 📈 Priority 6: Performance & Reliability (2-3 hours)
+
+#### 6.1 Add Caching to Dashboard ⚡ (1 hour)
+**Problem**: Simulations rerun on every page refresh
+**Fix**:
+- Add `@st.cache_data` to simulation functions
+- Cache pricing lookups
+- Cache database queries
+**Impact**: 10x faster page loads
+
+#### 6.2 Add Error Handling ⚡ (1.5 hours)
+**Current**: Dashboard crashes show raw Python errors
+**Add**:
+- Try/except blocks around simulation calls
+- User-friendly error messages
+- Error logging to file
+- "Report Issue" button with auto-populated error details
+
+#### 6.3 Add Loading Indicators ⚡ (30 min)
+**Missing**: Long simulations have no progress feedback
+**Add**: `st.spinner()` contexts around:
+- MCB/WCB simulation
+- Titration runs
+- BOM aggregation
+**Impact**: Better UX during 5-10s operations
+
+---
+
+## Implementation Priority Matrix
+
+| Quick Win | Time | Impact | Difficulty | Priority |
+|-----------|------|--------|------------|----------|
+| Fix README links | 15min | High | Easy | **P0** |
+| Add LICENSE file | 10min | High | Easy | **P0** |
+| Rename dashboard.py | 5min | High | Easy | **P0** |
+| Add example configs | 30min | High | Easy | **P0** |
+| Dashboard home page | 2h | High | Medium | **P1** |
+| Persistent inventory | 2-3h | High | Medium | **P1** |
+| Seed inventory resources | 1.5h | High | Medium | **P1** |
+| Export functionality | 2h | High | Medium | **P1** |
+| Add caching | 1h | Medium | Easy | **P2** |
+| Consolidate docs | 1.5h | Medium | Easy | **P2** |
+| Remove unused code | 2h | Medium | Easy | **P2** |
+| Add error handling | 1.5h | Medium | Medium | **P2** |
+| Dashboard search | 1.5h | Medium | Medium | **P3** |
+| Smoke tests | 1.5h | Low | Easy | **P3** |
+| Improve lineage viz | 1.5h | Low | Medium | **P3** |
+
+---
+
+## Quick Start Guide (Complete in 1 Day)
+
+### Morning Session (4 hours)
+1. ✅ Fix README placeholders *(15 min)*
+2. ✅ Add LICENSE file *(10 min)*
+3. ✅ Rename `app.py` → `dashboard.py` *(5 min)*
+4. ✅ Add example YAML configs *(30 min)*
+5. ✅ Create dashboard home page *(2 hours)*
+6. ✅ Add loading spinners *(30 min)*
+7. ✅ Fix broken links *(15 min)*
+
+### Afternoon Session (4 hours)
+8. ✅ Implement persistent inventory *(2.5 hours)*
+9. ✅ Seed inventory resources *(1.5 hours)*
+
+**Result**: Professional first impression, key feature complete, ready for demos
+
+---
+
+## Long-Term Wins (Schedule for Week 2+)
+
+### Database Optimization (4-6 hours)
+- Add indexes to frequently queried columns
+- Implement connection pooling
+- Add query caching layer
+
+### Advanced Visualizations (6-8 hours)
+- Interactive dose-response curves (plotly)
+- 3D phenotype clustering
+- Workflow Gantt charts
+- Real-time resource utilization heatmaps
+
+### CI/CD Pipeline (3-4 hours)
+- GitHub Actions for tests
+- Automatic deployment to staging
+- Pre-commit hooks for linting
+
+### Multi-User Support (8-12 hours)
+- User authentication (Streamlit auth)
+- Role-based access control
+- Audit logging per user
+
+---
+
+## Rejected Ideas (Not Worth It)
+
+❌ **Migrate all YAML to database** - Already mostly done, diminishing returns  
+❌ **Refactor entire unit ops system** - Too large, track in separate plan  
+❌ **Add real hardware integration** - Requires hardware access  
+❌ **Implement DINO embeddings** - Research spike needed first  
+
+---
+
+## Success Metrics
+
+After completing Quick Wins, you should see:
+- ✅ New users can run first simulation in \u003c 5 minutes
+- ✅ Zero broken links in README
+- ✅ Dashboard doesn't crash on any tab
+- ✅ Inventory tracking persists between sessions
+- ✅ BOMs display actual resources (not "No resources used")
+- ✅ Professional appearance (clean docs, working examples)
+
+---
+
+## Next Steps
+
+1. **Review this doc** with team
+2. **Prioritize top 5** for this sprint
+3. **Create GitHub issues** for selected items
+4. **Assign owners**
+5. **Set deadline**: 1 week for P0-P1 items
+
+---
+
+**Last Updated**: 2025-12-01  
+**Status**: 🟢 Ready for Review  
+**Owner**: TBD
