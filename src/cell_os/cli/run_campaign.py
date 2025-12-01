@@ -7,16 +7,17 @@ but is importable so it can be wired up as a console entry point.
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 import yaml
 
 from cell_os.budget_manager import BudgetConfig
 from cell_os.html_reporter import generate_html_report
-from cell_os.posh_lv_moi import ScreenConfig
+from cell_os.posh_lv_moi import ScreenConfig, TitrationReport
 from cell_os.titration_loop import AutonomousTitrationAgent
 
 
@@ -25,6 +26,23 @@ def load_config(config_path: str) -> Dict:
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config
+
+
+def _reports_to_rows(reports: List[TitrationReport]) -> List[Dict[str, float]]:
+    """Flatten TitrationReport objects into CSV-friendly rows."""
+    rows: List[Dict[str, float]] = []
+    for report in reports:
+        rows.append(
+            {
+                "cell_line": report.cell_line,
+                "status": report.status,
+                "rounds_run": report.rounds_run,
+                "final_probability_of_success": round(float(report.final_pos or 0.0), 6),
+                "recommended_volume_ul": round(float(report.final_vol or 0.0), 6),
+                "final_cost_usd": round(float(report.final_cost or 0.0), 2),
+            }
+        )
+    return rows
 
 
 def run_campaign_from_config(config: Dict, experiment_id_override: Optional[str] = None):
@@ -97,8 +115,15 @@ def run_campaign_from_config(config: Dict, experiment_id_override: Optional[str]
 
         if output_settings.get("save_csv", True):
             csv_path = results_dir / f"{experiment_id}_summary.csv"
-            print(f"💾 Saving CSV Summary: {csv_path}")
-            # TODO: Implement CSV export
+            rows = _reports_to_rows(reports)
+            if rows:
+                print(f"💾 Saving CSV Summary: {csv_path}")
+                with open(csv_path, "w", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+                    writer.writeheader()
+                    writer.writerows(rows)
+            else:
+                print("⚠️ No data available for CSV export; skipping.")
 
     print(f"\n✅ Campaign Complete. Results saved to: {results_dir}")
     return reports
@@ -156,4 +181,3 @@ Example:
 
 if __name__ == "__main__":
     sys.exit(main())
-

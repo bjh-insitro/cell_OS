@@ -4,8 +4,9 @@
 
 `cell_OS` is a production-ready platform for autonomous scientific discovery. It designs experiments, executes them (via simulation or real hardware), fits models, makes decisions, and generates reports—all without human intervention.
 
-[![Tests](https://img.shields.io/badge/tests-186%20passing-brightgreen)]() 
-[![Python](https://img.shields.io/badge/python-3.11-blue)]()
+[![Tests](https://img.shields.io/badge/tests-379%20passing-brightgreen)]() 
+[![CI](https://github.com/brighart/cell_OS/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/brighart/cell_OS/actions/workflows/tests.yml)
+[![Python](https://img.shields.io/badge/python-3.9+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 
 ---
@@ -197,22 +198,22 @@ Launch with: `streamlit run dashboard_app/dashboard.py`
 ## 🧪 Testing
 
 ```bash
-# Run all tests (186 tests, ~6 seconds)
-pytest tests -v
+# Run the full suite (379 tests, ~40 seconds on a laptop)
+python3 -m pytest -v
 
-# Run specific suite
-pytest tests/integration/test_persistence.py -v
+# Target a suite
+python3 -m pytest tests/integration/test_persistence.py -v
 ```
 
-All tests passing ✅
+All tests passing ✅ (`python3 -m pytest -v`)
 
 ---
 
 ## 📚 Documentation
 
 - **[User Guide](docs/guides/USER_GUIDE.md)** - Installation, CLI usage, troubleshooting
-- **[API Docs](docs/api/)** - Module-level documentation (coming soon)
-- **[Tutorial Notebooks](notebooks/)** - Hands-on examples
+- **Architecture Notes** - See `docs/architecture/` for subsystem deep dives
+- **Tutorial Notebooks** - Explore `notebooks/` for hands-on examples
 
 ---
 

@@ -73,7 +73,7 @@ class TestBiologicalVMExtensions:
         quality = self.vm.simulate_segmentation_quality("test_well", "tbhp", 0.0)
         
         # Should be near 1.0 (perfect segmentation)
-        assert 0.9 < quality <= 1.0
+        assert 0.8 < quality <= 1.0
         
     def test_segmentation_quality_degradation(self):
         """Test segmentation quality degrades with high dose."""

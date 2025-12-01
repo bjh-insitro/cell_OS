@@ -15,7 +15,7 @@ class TestBiologicalVirtualMachine:
     def test_seed_and_count(self):
         """Test basic seeding and cell counting."""
         self.vm.seed_vessel("T75_1", "HEK293T", initial_count=1e6, capacity=1e7)
-        
+        np.random.seed(42)
         result = self.vm.count_cells("T75_1", vessel_id="T75_1")
         
         assert result["status"] == "success"
@@ -107,7 +107,12 @@ class TestBiologicalVirtualMachine:
         
         # Incubate both
         self.vm.incubate(24 * 3600, 37.0)
-        
+
+        # Remove measurement noise for deterministic comparison
+        for line in ["HEK293T", "HeLa"]:
+            params = self.vm.cell_line_params.setdefault(line, {})
+            params["cell_count_cv"] = 0.0
+
         # HeLa should grow faster (20h doubling time vs 24h)
         hek_result = self.vm.count_cells("T75_1", vessel_id="T75_1")
         hela_result = self.vm.count_cells("T75_2", vessel_id="T75_2")
