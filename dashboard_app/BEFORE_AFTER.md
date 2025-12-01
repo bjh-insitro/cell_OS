@@ -268,3 +268,35 @@ While the total line count increased (+184%), the code is now:
 - **Highly maintainable**
 
 **The refactoring is a clear win! 🎉**
+
+---
+
+## Database Access
+
+### BEFORE: Scattered Direct Access
+```python
+# In various files (e.g., cell_line_config.py)
+from cell_os.cell_line_db import CellLineDatabase
+
+def load_config():
+    db = CellLineDatabase("data/cell_lines.db")
+    # Direct SQL queries or specific method calls
+    # Hard to mock, hard to swap implementation
+```
+
+### AFTER: Repository Pattern
+```python
+# In any file
+from cell_os.database.repositories.cell_line import CellLineRepository
+
+def load_config(repo: CellLineRepository):
+    # Standardized interface
+    # Easy to mock for testing
+    # Centralized logic
+```
+
+**Benefits:**
+- ✅ Unified interface (BaseRepository)
+- ✅ Decoupled from specific DB implementation
+- ✅ Easy to test with mocks
+- ✅ Centralized schema management

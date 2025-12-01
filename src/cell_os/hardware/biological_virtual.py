@@ -15,11 +15,11 @@ from .virtual import VirtualMachine
 
 # Import database for parameter loading
 try:
-    from ..simulation_params_db import SimulationParamsDatabase
+    from ..database.repositories.simulation_params import SimulationParamsRepository
     DB_AVAILABLE = True
 except ImportError:
     DB_AVAILABLE = False
-    logger.warning("SimulationParamsDatabase not available, will use YAML fallback")
+    logger.warning("SimulationParamsRepository not available, will use YAML fallback")
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Try database first if enabled
         if self.use_database:
             try:
-                db = SimulationParamsDatabase()
+                db = SimulationParamsRepository()
                 logger.info("Loading parameters from database")
                 
                 # Load cell line parameters

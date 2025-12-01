@@ -9,7 +9,7 @@ import sys
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from cell_os.campaign_db import CampaignDatabase
+from cell_os.database.repositories.campaign import CampaignRepository
 
 st.set_page_config(
     page_title="Autonomous Campaigns",
@@ -20,7 +20,7 @@ st.set_page_config(
 # Initialize database
 @st.cache_resource
 def get_db():
-    return CampaignDatabase()
+    return CampaignRepository()
 
 def load_campaign_list():
     """Load list of available campaigns from database."""

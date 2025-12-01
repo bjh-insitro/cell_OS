@@ -6,9 +6,10 @@ import pytest
 import tempfile
 import os
 from datetime import datetime, timedelta
-from cell_os.campaign_manager import CampaignManager, CampaignDatabase
+from cell_os.campaign_manager import CampaignManager
+from cell_os.database.repositories.campaign import CampaignRepository, Campaign
 from cell_os.job_queue import JobQueue
-from cell_os.workflow_executor import WorkflowExecutor
+from cell_os.workflow_execution import WorkflowExecutor
 from cell_os.protocol_resolver import ProtocolResolver
 
 class MockJobQueue:
@@ -40,22 +41,22 @@ class TestCampaignDatabase:
     def setup_method(self):
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
-        self.db = CampaignDatabase(self.temp_db.name)
+        self.db = CampaignRepository(self.temp_db.name)
         
     def teardown_method(self):
         if os.path.exists(self.temp_db.name):
             os.unlink(self.temp_db.name)
             
     def test_save_and_retrieve_campaign(self):
-        from cell_os.campaign_manager import Campaign
         campaign = Campaign(
             campaign_id="camp-1",
+            campaign_type="manual",
             name="Test Campaign",
             description="Test Desc"
         )
-        self.db.save_campaign(campaign)
+        self.db.create_campaign(campaign)
         
-        retrieved = self.db.list_campaigns()
+        retrieved = self.db.find_campaigns()
         assert len(retrieved) == 1
         assert retrieved[0].name == "Test Campaign"
 

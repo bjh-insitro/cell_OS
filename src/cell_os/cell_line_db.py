@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import warnings
+
+warnings.warn(
+    "cell_os.cell_line_db is deprecated and will be removed. "
+    "Use cell_os.database.repositories.cell_line instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 @dataclass

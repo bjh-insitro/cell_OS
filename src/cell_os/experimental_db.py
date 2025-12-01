@@ -6,6 +6,14 @@ Handles storage and retrieval of experimental data (e.g. plate reader measuremen
 
 import sqlite3
 import pandas as pd
+import warnings
+
+warnings.warn(
+    "cell_os.experimental_db is deprecated and will be removed. "
+    "Use cell_os.database.repositories.experimental instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
 from datetime import datetime

@@ -172,10 +172,10 @@ class CellLineRepository(BaseRepository):
     def get_characteristics(self, cell_line_id: str) -> List[CellLineCharacteristic]:
         """Get all characteristics for a cell line."""
         rows = self._fetch_all(
-            "SELECT * FROM cell_line_characteristics WHERE cell_line_id = ?",
+            "SELECT cell_line_id, characteristic, value, notes FROM cell_line_characteristics WHERE cell_line_id = ?",
             (cell_line_id,)
         )
-        return [CellLineCharacteristic(**{k: v for k, v in row.items() if k != 'id'}) for row in rows]
+        return [CellLineCharacteristic(**row) for row in rows]
     
     def add_protocol(self, protocol: ProtocolParameters):
         """Add protocol parameters for a cell line."""

@@ -12,7 +12,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from cell_os.cell_line_db import CellLineDatabase
+from cell_os.database.repositories.cell_line import CellLineRepository
 
 
 class CellLineConfigStore:
@@ -25,7 +25,7 @@ class CellLineConfigStore:
     ):
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._yaml_data: Optional[Dict[str, Any]] = None
-        self._db: Optional[CellLineDatabase] = None
+        self._db: Optional[CellLineRepository] = None
         path = Path(yaml_path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -33,7 +33,7 @@ class CellLineConfigStore:
             self._yaml_data = data.get("cell_lines", {})
             self._source = "yaml"
         else:
-            self._db = CellLineDatabase(db_path)
+            self._db = CellLineRepository(db_path)
             self._source = "db"
 
     def get_config(self, cell_line: str) -> Dict[str, Any]:
@@ -76,7 +76,10 @@ class CellLineConfigStore:
         if cell is None:
             raise ValueError(f"Unknown cell line: {cell_line}")
 
-        characteristics = self._db.get_characteristics(cell_line)
+        # Convert list of characteristics to dict
+        char_list = self._db.get_characteristics(cell_line)
+        characteristics = {c.characteristic: c.value for c in char_list}
+        
         config: Dict[str, Any] = {
             "growth_media": cell.growth_media,
             "wash_buffer": cell.wash_buffer,
@@ -103,14 +106,17 @@ class CellLineConfigStore:
         self, cell_line: str, protocol_type: str
     ) -> Dict[str, Any]:
         assert self._db is not None
-        protocol_map = self._db.get_protocols(cell_line, protocol_type)
-        if not protocol_map:
+        # Get list of ProtocolParameters objects
+        protocol_list = self._db.get_protocols(cell_line, protocol_type)
+        if not protocol_list:
             return {}
 
-        config = {vessel: params for vessel, params in protocol_map.items()}
+        # Convert to dict mapping vessel_type -> parameters
+        config = {p.vessel_type: p.parameters for p in protocol_list}
+        
         if "reference_vessel" not in config:
             if "T75" in config:
                 config["reference_vessel"] = "T75"
-            else:
-                config["reference_vessel"] = next(iter(protocol_map.keys()))
+            elif config:
+                config["reference_vessel"] = next(iter(config.keys()))
         return config

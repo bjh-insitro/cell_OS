@@ -17,8 +17,8 @@ import sys
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from cell_os.campaign_db import (
-    CampaignDatabase,
+from cell_os.database.repositories.campaign import (
+    CampaignRepository,
     Campaign,
     CampaignIteration
 )
@@ -52,7 +52,7 @@ def load_checkpoints(campaign_dir: Path) -> List[dict]:
     return checkpoints
 
 
-def migrate_campaign(db: CampaignDatabase, campaign_dir: Path, report: dict):
+def migrate_campaign(db: CampaignRepository, campaign_dir: Path, report: dict):
     """Migrate a single campaign."""
     campaign_id = report["campaign_id"]
     
@@ -126,7 +126,7 @@ def main():
         Path(db_path).rename(backup_path)
         print(f"⚠️  Backed up existing database to {backup_path}")
     
-    db = CampaignDatabase(db_path)
+    db = CampaignRepository(db_path)
     print(f"✅ Created {db_path}")
     
     # Migrate each campaign
@@ -156,9 +156,10 @@ def main():
     print("\n📋 Campaigns:")
     for campaign_id in db.get_all_campaigns():
         stats = db.get_campaign_stats(campaign_id)
+        campaign = db.get_campaign(campaign_id)
         print(f"  {campaign_id}")
-        print(f"    Iterations: {stats['iterations']}")
-        print(f"    Status: {stats['status']}")
+        print(f"    Iterations: {stats.get('iteration_count', 0)}")
+        print(f"    Status: {campaign.status if campaign else 'unknown'}")
     
     print("\n" + "="*60)
     print("✅ Migration completed successfully!")

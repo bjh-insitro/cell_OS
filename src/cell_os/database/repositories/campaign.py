@@ -13,6 +13,8 @@ class Campaign:
     """Campaign metadata."""
     campaign_id: str
     campaign_type: str
+    name: Optional[str] = None
+    description: Optional[str] = None
     goal: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -47,6 +49,20 @@ class Experiment:
     metadata: Optional[Dict[str, Any]] = None
 
 
+@dataclass
+class CampaignJob:
+    """A scheduled job within a campaign."""
+    campaign_job_id: str
+    campaign_id: str
+    protocol_name: str
+    cell_line: str
+    vessel_id: str
+    operation_type: str
+    scheduled_time: datetime
+    status: str = "pending"  # pending, submitted, completed, failed
+    job_id: Optional[str] = None  # Link to JobQueue job_id
+
+
 class CampaignRepository(BaseRepository):
     """Repository for campaign and experiment tracking."""
     
@@ -64,6 +80,8 @@ class CampaignRepository(BaseRepository):
                 CREATE TABLE IF NOT EXISTS campaigns (
                     campaign_id TEXT PRIMARY KEY,
                     campaign_type TEXT NOT NULL,
+                    name TEXT,
+                    description TEXT,
                     goal TEXT,
                     start_date TEXT,
                     end_date TEXT,
@@ -116,6 +134,22 @@ class CampaignRepository(BaseRepository):
                     PRIMARY KEY (campaign_id, experiment_id),
                     FOREIGN KEY (campaign_id) REFERENCES campaigns(campaign_id),
                     FOREIGN KEY (experiment_id) REFERENCES experiments(experiment_id)
+                )
+            """)
+            
+            # Campaign Jobs table (for scheduled maintenance)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS campaign_jobs (
+                    campaign_job_id TEXT PRIMARY KEY,
+                    campaign_id TEXT NOT NULL,
+                    protocol_name TEXT NOT NULL,
+                    cell_line TEXT NOT NULL,
+                    vessel_id TEXT NOT NULL,
+                    operation_type TEXT NOT NULL,
+                    scheduled_time TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    job_id TEXT,
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns(campaign_id)
                 )
             """)
             
@@ -266,3 +300,47 @@ class CampaignRepository(BaseRepository):
         """Get list of all campaign IDs."""
         rows = self._fetch_all("SELECT campaign_id FROM campaigns")
         return [row['campaign_id'] for row in rows]
+
+    def add_campaign_job(self, job: CampaignJob):
+        """Add or update a campaign job."""
+        data = {
+            'campaign_job_id': job.campaign_job_id,
+            'campaign_id': job.campaign_id,
+            'protocol_name': job.protocol_name,
+            'cell_line': job.cell_line,
+            'vessel_id': job.vessel_id,
+            'operation_type': job.operation_type,
+            'scheduled_time': job.scheduled_time.isoformat() if isinstance(job.scheduled_time, datetime) else job.scheduled_time,
+            'status': job.status,
+            'job_id': job.job_id
+        }
+        
+        # Check if exists
+        existing = self._fetch_one(
+            "SELECT campaign_job_id FROM campaign_jobs WHERE campaign_job_id = ?",
+            (job.campaign_job_id,)
+        )
+        
+        if existing:
+            self._update('campaign_jobs', data, "campaign_job_id = ?", (job.campaign_job_id,))
+        else:
+            self._insert('campaign_jobs', data)
+
+    def get_campaign_jobs(self, campaign_id: str) -> List[CampaignJob]:
+        """Get all jobs for a campaign."""
+        rows = self._fetch_all(
+            "SELECT * FROM campaign_jobs WHERE campaign_id = ? ORDER BY scheduled_time ASC",
+            (campaign_id,)
+        )
+        
+        return [CampaignJob(
+            campaign_job_id=r['campaign_job_id'],
+            campaign_id=r['campaign_id'],
+            protocol_name=r['protocol_name'],
+            cell_line=r['cell_line'],
+            vessel_id=r['vessel_id'],
+            operation_type=r['operation_type'],
+            scheduled_time=datetime.fromisoformat(r['scheduled_time']),
+            status=r['status'],
+            job_id=r['job_id']
+        ) for r in rows]

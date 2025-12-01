@@ -6,14 +6,14 @@ import pytest
 import tempfile
 import os
 import pandas as pd
-from cell_os.experimental_db import ExperimentalDatabase
+from cell_os.database.repositories.experimental import ExperimentalRepository
 
 class TestExperimentalDatabase:
     
     def setup_method(self):
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
-        self.db = ExperimentalDatabase(self.temp_db.name)
+        self.db = ExperimentalRepository(self.temp_db.name)
         
     def teardown_method(self):
         if os.path.exists(self.temp_db.name):

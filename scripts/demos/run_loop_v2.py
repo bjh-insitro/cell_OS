@@ -26,7 +26,7 @@ from datetime import datetime
 from cell_os.autonomous_executor import AutonomousExecutor, ExperimentProposal, ExperimentResult
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from cell_os.job_queue import JobPriority
-from cell_os.campaign_db import CampaignDatabase, Campaign, CampaignIteration, Experiment
+from cell_os.database.repositories.campaign import CampaignRepository, Campaign, CampaignIteration, Experiment
 
 
 @dataclass
@@ -178,7 +178,7 @@ class AutonomousCampaign:
         self.total_cost = 0.0
         
         # Initialize database
-        self.db = CampaignDatabase()
+        self.db = CampaignRepository()
         
         # Create output directory
         self.output_dir = Path(config.output_dir) / config.campaign_id
