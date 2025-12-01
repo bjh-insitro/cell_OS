@@ -116,6 +116,7 @@ class Scheduler:
         status = solver.Solve(model)
         
         results = []
+        task_lookup = {task.id: task for task in tasks}
         if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
             print(f"Schedule found! Makespan: {solver.Value(makespan)} min")
             for task in tasks:
@@ -125,8 +126,10 @@ class Scheduler:
                     task_id=task.id,
                     start_time=start,
                     end_time=end,
-                    resource_assignments={} # TODO: Assign specific units if capacity > 1
+                    resource_assignments={}
                 ))
+
+            self._assign_resource_units(results, task_lookup)
         else:
             print("No solution found.")
             
@@ -143,4 +146,45 @@ class Scheduler:
         
         print("\n--- Schedule Gantt ---")
         for r in sorted_results:
-            print(f"[{r.start_time:4d} - {r.end_time:4d}] {r.task_id}")
+            assignment_str = ""
+            if r.resource_assignments:
+                formatted = ", ".join(
+                    f"{res}:{unit}" for res, unit in r.resource_assignments.items()
+                )
+                assignment_str = f" [{formatted}]"
+            print(f"[{r.start_time:4d} - {r.end_time:4d}] {r.task_id}{assignment_str}")
+
+    def _assign_resource_units(self, results: List[ScheduleResult], tasks: Dict[str, Task]):
+        """Assign specific resource units post-solve."""
+        result_lookup = {r.task_id: r for r in results}
+
+        for res_id, resource in self.resources.items():
+            relevant = [
+                result_lookup[task_id]
+                for task_id, task in tasks.items()
+                if res_id in task.resources_required and task_id in result_lookup
+            ]
+            if not relevant:
+                continue
+
+            capacity = resource.capacity
+            if capacity == 1:
+                for r in relevant:
+                    r.resource_assignments[res_id] = res_id
+                continue
+
+            relevant.sort(key=lambda x: x.start_time)
+            unit_available = [0] * capacity
+
+            for sched in relevant:
+                assigned_unit = None
+                for idx in range(capacity):
+                    if unit_available[idx] <= sched.start_time:
+                        assigned_unit = idx
+                        break
+
+                if assigned_unit is None:
+                    assigned_unit = min(range(capacity), key=lambda i: unit_available[i])
+
+                unit_available[assigned_unit] = max(unit_available[assigned_unit], sched.end_time)
+                sched.resource_assignments[res_id] = f"{res_id}_{assigned_unit}"

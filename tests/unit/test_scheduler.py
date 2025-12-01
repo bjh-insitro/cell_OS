@@ -72,3 +72,30 @@ class TestScheduler:
         
         max_end = max(r.end_time for r in results)
         assert max_end == 60
+
+    def test_resource_assignments_with_capacity(self):
+        """Ensure assignments include concrete unit identifiers when capacity > 1."""
+        resources = [
+            Resource(id="incubator", name="Incubator", capacity=2)
+        ]
+
+        t1 = Task(id="t1", name="Inc 1", duration_min=30, resources_required=["incubator"])
+        t2 = Task(id="t2", name="Inc 2", duration_min=30, resources_required=["incubator"])
+        # Force t3 to run after t2 so only t1/t2 overlap
+        t3 = Task(
+            id="t3",
+            name="Inc 3",
+            duration_min=30,
+            resources_required=["incubator"],
+            predecessors=["t2"],
+        )
+
+        scheduler = Scheduler(resources)
+        results = scheduler.schedule([t1, t2, t3])
+        sched = {r.task_id: r for r in results}
+
+        for task_id in ["t1", "t2", "t3"]:
+            assert "incubator" in sched[task_id].resource_assignments
+
+        # First two tasks should run concurrently on different units
+        assert sched["t1"].resource_assignments["incubator"] != sched["t2"].resource_assignments["incubator"]
