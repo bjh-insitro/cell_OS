@@ -58,7 +58,7 @@ def load_campaign_data(campaign_id):
 def render_campaign_selector(campaigns):
     """Render campaign selection dropdown."""
     if not campaigns:
-        st.warning("No campaigns found in database. Run `python scripts/run_loop_v2.py` to create one.")
+        st.warning("No campaigns found in database. Run `python scripts/demos/run_loop_v2.py` to create one.")
         return None
     
     # Create label map
@@ -348,7 +348,7 @@ def main():
     
     if not campaigns:
         st.info("No campaigns found in database. Run an autonomous campaign to see results here.")
-        st.code("python scripts/run_loop_v2.py --max-iterations 10 --batch-size 8")
+        st.code("python scripts/demos/run_loop_v2.py --max-iterations 10 --batch-size 8")
         return
     
     # Select campaign

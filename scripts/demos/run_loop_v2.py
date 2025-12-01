@@ -1,7 +1,7 @@
 """
 Modernized Autonomous Experiment Loop
 
-This is a refactored version of scripts/run_loop.py that uses the production
+This is a refactored version of scripts/demos/run_loop.py that uses the production
 execution infrastructure (AutonomousExecutor, WorkflowExecutor, JobQueue).
 
 Key Improvements:
@@ -12,7 +12,7 @@ Key Improvements:
 - Cleaner separation of concerns
 
 Usage:
-    python scripts/run_loop_v2.py --config config/autonomous_campaign.yaml
+    python scripts/demos/run_loop_v2.py --config config/autonomous_campaign.yaml
 """
 
 import argparse

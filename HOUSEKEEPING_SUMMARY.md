@@ -56,7 +56,7 @@ Updated `.gitignore` to exclude large guide CSVs
 
 ```bash
 # Run the loop (updated path)
-python scripts/run_loop.py
+python scripts/demos/run_loop.py
 
 # Launch dashboard (updated path)
 streamlit run scripts/dashboard.py

@@ -2,8 +2,8 @@
 
 ## 🧹 Cleanup & Organization
 - **Moved CLI Scripts**: Moved `imaging_loop_dashboard.py` and `imaging_loop_simulator.py` from `dashboard_app/` to `scripts/` to separate CLI tools from the web dashboard.
-  - `dashboard_app/imaging_loop_dashboard.py` → `scripts/run_imaging_loop_cli.py`
-  - `dashboard_app/imaging_loop_simulator.py` → `scripts/run_imaging_simulation.py`
+  - `dashboard_app/imaging_loop_dashboard.py` → `scripts/demos/run_imaging_loop_cli.py`
+  - `dashboard_app/imaging_loop_simulator.py` → `scripts/testing/run_imaging_simulation.py`
 
 ## 🧩 Component Refactoring
 - **Created `dashboard_app/components/`**: New directory for reusable UI components.

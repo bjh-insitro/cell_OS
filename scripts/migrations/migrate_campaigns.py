@@ -111,7 +111,7 @@ def main():
     if not campaign_folders:
         print("⚠️  No campaign folders found in results/autonomous_campaigns/")
         print("   Run an autonomous campaign first:")
-        print("   python scripts/run_loop_v2.py --max-iterations 5")
+        print("   python scripts/demos/run_loop_v2.py --max-iterations 5")
         return 0
     
     print(f"✅ Found {len(campaign_folders)} campaign folders")
