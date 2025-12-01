@@ -3,9 +3,14 @@ Static analysis tests to catch common Python errors before runtime.
 These tests use pylint and other static analysis tools to find issues that
 unit tests might miss.
 """
-import pytest
+import importlib.util
+import py_compile
 import subprocess
+import tempfile
 from pathlib import Path
+
+import pytest
+import os
 
 
 class TestStaticAnalysis:
@@ -14,6 +19,9 @@ class TestStaticAnalysis:
     def test_no_undefined_variables_in_dashboard(self):
         """Use pylint to check for undefined variables in dashboard files."""
         dashboard_dir = Path("dashboard_app")
+
+        if importlib.util.find_spec("pylint") is None:
+            pytest.skip("pylint not available in environment")
         
         # Run pylint on all Python files
         result = subprocess.run(
@@ -38,16 +46,18 @@ class TestStaticAnalysis:
         """Check for Python syntax errors in all dashboard files."""
         dashboard_dir = Path("dashboard_app")
         errors = []
-        
+        cache_dir = Path(tempfile.mkdtemp())
+
         for py_file in dashboard_dir.rglob("*.py"):
-            result = subprocess.run(
-                ["python3", "-m", "py_compile", str(py_file)],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode != 0:
-                errors.append(f"{py_file}: {result.stderr}")
+            compiled_path = cache_dir / (py_file.stem + ".pyc")
+            try:
+                py_compile.compile(
+                    str(py_file),
+                    cfile=str(compiled_path),
+                    doraise=True,
+                )
+            except py_compile.PyCompileError as exc:
+                errors.append(f"{py_file}: {exc.msg}")
         
         if errors:
             pytest.fail(f"Syntax errors found:\n" + "\n".join(errors))
@@ -62,14 +72,18 @@ class TestStaticAnalysis:
                 continue
             
             # Convert path to module name
-            rel_path = py_file.relative_to(Path.cwd())
-            module_name = str(rel_path).replace("/", ".").replace(".py", "")
-            
+            module_path = py_file.with_suffix("")
+            module_name = ".".join(module_path.parts)
+            if any(not part.isidentifier() for part in module_path.parts):
+                continue  # Skip files that cannot be imported as modules (numeric names)
+
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(Path.cwd())
             result = subprocess.run(
                 ["python3", "-c", f"import {module_name}"],
                 capture_output=True,
                 text=True,
-                env={"PYTHONPATH": str(Path.cwd())}
+                env=env
             )
             
             if result.returncode != 0:

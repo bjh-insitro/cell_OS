@@ -83,13 +83,21 @@ def render_analytics(df, pricing):
             },
             hole=0.4
         )
-        st.plotly_chart(fig_status, use_container_width=True)
+        st.plotly_chart(
+            fig_status,
+            use_container_width=True,
+            key="analytics_status_distribution"
+        )
         
     with col_chart2:
         st.subheader("Executions Over Time")
         daily_counts = df_exec.groupby('date').size().reset_index(name='Count')
         fig_timeline = px.bar(daily_counts, x='date', y='Count', title="Daily Execution Volume")
-        st.plotly_chart(fig_timeline, use_container_width=True)
+        st.plotly_chart(
+            fig_timeline,
+            use_container_width=True,
+            key="analytics_execution_timeline"
+        )
         
     # --- Detailed Analysis ---
     st.subheader("Protocol Performance")
@@ -130,4 +138,8 @@ def render_analytics(df, pricing):
         color='Executions',
         color_continuous_scale='Viridis'
     )
-    st.plotly_chart(fig_cells, use_container_width=True)
+    st.plotly_chart(
+        fig_cells,
+        use_container_width=True,
+        key="analytics_cell_line_activity"
+    )

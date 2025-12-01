@@ -18,12 +18,13 @@ from cell_os.job_queue import JobPriority, JobStatus
 
 
 @pytest.fixture
-def executor():
+def executor(tmp_path):
     """Create an autonomous executor for testing."""
     hardware = BiologicalVirtualMachine(simulation_speed=0.0)
+    db_path = tmp_path / "autonomous_experiments.db"
     executor = AutonomousExecutor(
         hardware=hardware,
-        db_path="data/test_autonomous.db"
+        db_path=str(db_path)
     )
     yield executor
     executor.shutdown()

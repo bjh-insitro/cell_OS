@@ -6,6 +6,20 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 
+def _select_dashboard_option(app_test: AppTest, substring: str) -> bool:
+    """Select an option containing the given substring from the navigation selectbox."""
+    if not app_test.selectbox:
+        return False
+
+    for sb in app_test.selectbox:
+        options = getattr(sb, "options", []) or []
+        for option in options:
+            if substring in option:
+                sb.select(option)
+                return True
+    return False
+
+
 class TestDashboardRendering:
     """Test that dashboard pages render without errors."""
     
@@ -21,16 +35,10 @@ class TestDashboardRendering:
         at.run()
         
         # Find and select the POSH Campaign tab
-        # Note: Adjust selector based on actual tab implementation
         if at.tabs:
-            # If using st.tabs
             at.tabs[0].select()
-        elif at.selectbox:
-            # If using selectbox for navigation
-            for sb in at.selectbox:
-                if "POSH" in str(sb.options):
-                    sb.select("POSH Campaign Sim")
-                    break
+        else:
+            _select_dashboard_option(at, "POSH Campaign")
         
         at.run()
         
@@ -43,11 +51,8 @@ class TestDashboardRendering:
         at.run()
         
         # Navigate to POSH Campaign
-        if at.selectbox:
-            for sb in at.selectbox:
-                if "POSH" in str(sb.options):
-                    sb.select("POSH Campaign Sim")
-                    break
+        if not _select_dashboard_option(at, "POSH Campaign"):
+            pytest.skip("Dashboard navigation selectbox not found")
         
         at.run()
         
@@ -105,7 +110,7 @@ class TestPlotlyChartKeys:
             for match in matches:
                 call = match.group()
                 # Extract key if present
-                key_match = re.search(r'key\s*=\s*["\']([^"\']+)["\']', call)
+                key_match = re.search(r'key\s*=\s*f?["\']([^"\']+)["\']', call)
                 if key_match:
                     key = key_match.group(1)
                     plotly_calls.append({

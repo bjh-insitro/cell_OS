@@ -211,7 +211,12 @@ def render_resources(result, pricing, workflow_type="MCB"):
             title=f"Cost Breakdown ({workflow_type})"
         )
         fig.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig, use_container_width=True)
+        normalized_type = workflow_type.lower()
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key=f"campaign_cost_breakdown_{normalized_type}"
+        )
 
 
 def render_titration_resources(result, pricing):

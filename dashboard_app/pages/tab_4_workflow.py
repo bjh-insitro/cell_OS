@@ -84,7 +84,12 @@ def render_workflow_visualizer(df, pricing):
                     # CHOOSE RENDERER: COMPLEX WORKFLOW
                     if "Plotly" in viz_engine:
                         fig = render_workflow_plotly(result_obj, detail_level="process")
-                        st.plotly_chart(fig, use_container_width=True)
+                        sanitized_name = selected_option_name.replace(' ', '_')
+                        st.plotly_chart(
+                            fig,
+                            use_container_width=True,
+                            key=f"workflow_plot_{sanitized_name}"
+                        )
                     else:
                         dot = render_workflow_graph(result_obj, title=selected_option_name, detail_level=detail_mode)
                         st.graphviz_chart(dot)
