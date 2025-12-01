@@ -15,7 +15,7 @@
 
 ```bash
 # Clone and install
-git clone <your-repo-url>
+git clone https://github.com/brighart/cell_OS.git
 cd cell_OS
 python -m venv venv
 source venv/bin/activate
@@ -25,7 +25,7 @@ pip install -e .
 cell-os-run --config config/campaign_example.yaml
 
 # Launch the dashboard
-streamlit run dashboard_app/dashboard.py
+streamlit run dashboard_app/app.py
 ```
 
 **That's it!** The agent will autonomously titrate lentiviral vectors, fit models, make GO/NO-GO decisions, and generate an interactive report.
@@ -182,7 +182,7 @@ View results:
 
 ## 📊 Dashboard Tabs
 
-Launch with: `streamlit run dashboard_app/dashboard.py`
+Launch with: `streamlit run dashboard_app/app.py`
 
 1. **🚀 Mission Control** - Budget, cycle count, recent activity
 2. **🔬 Science** - Dose-response curves with GP fits
