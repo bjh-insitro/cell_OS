@@ -203,9 +203,35 @@ python3 -m pytest -v
 
 # Target a suite
 python3 -m pytest tests/integration/test_persistence.py -v
+
+# Run the focused static-analysis checks (pylint)
+make lint
 ```
 
 All tests passing ✅ (`python3 -m pytest -v`)
+
+### Linting & Static Analysis
+
+Run `make lint` to execute `tests/static/test_code_analysis.py`, which shells out to `pylint`
+using the curated rules in [.pylintrc](.pylintrc). This keeps dashboard code free of
+undefined/unused variables without forcing contributors to remember the exact pylintrc flags.
+CI runs the same pytest target, so keep it green before opening a PR.
+
+### Bootstrapping Local Databases
+
+Fresh clones need the SQLite fixtures seeded from the authoritative YAML files. Use:
+
+```bash
+make bootstrap-data
+# or: python3 scripts/bootstrap_data.py
+```
+
+The helper script runs both seeding utilities:
+
+1. `scripts/seed_cell_line_protocols.py` → `data/cell_lines.db`
+2. `scripts/seed_simulation_params.py` → `data/simulation_params.db`
+
+Re-run it whenever the YAML fixtures change so protocol resolver and simulation tests stay in sync.
 
 ---
 

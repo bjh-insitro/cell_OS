@@ -1,0 +1,18 @@
+[MASTER]
+jobs=1
+persistent=yes
+load-plugins=
+
+[MESSAGES CONTROL]
+disable=all
+enable=undefined-variable,used-before-assignment,unused-variable,unused-argument
+
+[REPORTS]
+output-format=colorized
+score=no
+
+[TYPECHECK]
+ignored-modules=
+
+[FORMAT]
+max-line-length=100
