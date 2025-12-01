@@ -5,19 +5,18 @@ The Autonomous Agent orchestrating the titration campaign.
 from typing import List, Dict, Any
 from dataclasses import dataclass, field
 import pandas as pd
-import numpy as np
 
 # --- CORRECT IMPORTS ---
 from cell_os.posh_lv_moi import (
-    fit_lv_transduction_model, 
-    LVTitrationResult, 
-    LVBatch, 
-    POSHScenario, 
-    ScreenSimulator, 
-    ScreenConfig, 
+    fit_lv_transduction_model,
+    LVTitrationResult,
+    LVBatch,
+    POSHScenario,
+    ScreenSimulator,
+    ScreenConfig,
     LVAutoExplorer,
     LVDesignError,
-    TitrationReport # <-- Imported from posh_lv_moi.py to break the cycle
+    TitrationReport,  # <-- Imported from posh_lv_moi.py to break the cycle
 )
 # In cell_os/titration_loop.py, near the top
 
@@ -26,30 +25,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from cell_os.budget_manager import BudgetConfig # <-- Imported for pricing data
 
+from cell_os.titration_lab import MockTitrationLab
 # --- Agent Implementation ---
-
-def _mock_lab_step(cell_line: str, volumes: List[float], true_params: Dict) -> pd.DataFrame:
-    """Mocks the physical lab step to generate data."""
-    rows = []
-    titer = true_params['titer']
-    alpha = true_params['alpha']
-    
-    for v in volumes:
-        moi = (v * titer) / 100000
-        p_bfp = alpha * (1.0 - np.exp(-moi))
-        noise = np.random.normal(0, 0.03)
-        if cell_line == "HepG2" and v < 1.0: noise += np.random.normal(0, 0.02)
-        obs = np.clip(p_bfp + noise, 0.001, 0.999)
-        rows.append({"volume_ul": v, "fraction_bfp": obs})
-        
-    return pd.DataFrame(rows)
-
 
 from core.state_manager import StateManager
 
 class AutonomousTitrationAgent:
     def __init__(self, config: ScreenConfig, prices: "BudgetConfig", experiment_id: str = None):
         self.prices = prices
+        self.lab = MockTitrationLab(prices)
         self.config = config
         self.dummy_batch = LVBatch("Batch", 500, 0, None)
         self.dummy_scen = POSHScenario("Auto", ["Demo"], 1, 1, 100, 1, 0.3, 0.05, 0.8, 0.9, 2.0, 1000)
@@ -65,19 +49,6 @@ class AutonomousTitrationAgent:
         print(msg)
         self.logs.append(msg)
 
-    def _calculate_round_cost(self, df_round: pd.DataFrame) -> float:
-        """Calculates the sunk cost for the wells used in the current round."""
-        wells = len(df_round)
-        virus_used = df_round['volume_ul'].sum()
-        
-        # Uses unit costs from BudgetConfig (derived from Parametric Ops)
-        cost_reagents_flow = (wells * self.prices.reagent_cost_per_well) + \
-                             ((wells * self.prices.mins_per_sample_flow) / 60.0 * self.prices.flow_rate_per_hour)
-        
-        cost_virus = virus_used * self.prices.virus_price
-        
-        return cost_reagents_flow + cost_virus
-        
     def run_campaign(self, cell_lines: List[Dict]) -> List[TitrationReport]:
         reports = []
         self._log(f"🚀 LAUNCHING AUTONOMOUS TITRATION CAMPAIGN (Exp ID: {self.state_manager.experiment_id})")
@@ -118,11 +89,11 @@ class AutonomousTitrationAgent:
         # --- INITIAL PILOT ROUND (ROUND 1) ---
         initial_vols = [0.1, 0.3, 0.5, 1.0, 3.0, 5.0, 10.0]
         
-        df_r1 = _mock_lab_step(name, initial_vols, true_params)
+        df_r1 = self.lab.run_step(name, initial_vols, true_params)
         df_cumulative = df_r1.copy()
         
         rounds_run = 1
-        cost_r1 = self._calculate_round_cost(df_r1)
+        cost_r1 = self.lab.calculate_round_cost(df_r1)
         total_cost_incurred += cost_r1
         
         self._log(f"   Round 1: Testing {len(initial_vols)} standard points.")
@@ -163,11 +134,11 @@ class AutonomousTitrationAgent:
             rounds_run += 1
             self._log(f"   🤖 R{rounds_run} Request: {suggestions} µL")
             
-            df_new = _mock_lab_step(name, suggestions, true_params)
+            df_new = self.lab.run_step(name, suggestions, true_params)
             df_cumulative = pd.concat([df_cumulative, df_new], ignore_index=True)
             
             # 4. Update Costs & Log
-            cost_new = self._calculate_round_cost(df_new)
+            cost_new = self.lab.calculate_round_cost(df_new)
             total_cost_incurred += cost_new
             
             for _, row in df_new.iterrows():
