@@ -5,12 +5,21 @@ Tests posterior rebuilding and update logic.
 """
 
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 import pandas as pd
 
-# Import ActiveLearner from run_loop since it's defined there
-# We'll need to mock or extract it for proper testing
-# For now, test the core logic
+
+def _load_run_loop_module():
+    """Helper to import scripts/demos/run_loop.py for tests."""
+    repo_root = Path(__file__).resolve().parents[2]
+    run_loop_path = repo_root / "scripts" / "demos" / "run_loop.py"
+    spec = importlib.util.spec_from_file_location("run_loop", run_loop_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_active_learner_initialization():
@@ -18,16 +27,7 @@ def test_active_learner_initialization():
     # This would require importing from scripts/demos/run_loop.py
     # Since that's an entry point script, we'll create a minimal test
     
-    from pathlib import Path
-    import importlib.util
-    
-    spec = importlib.util.spec_from_file_location(
-        "run_loop",
-        Path(__file__).parent.parent.parent / "scripts" / "run_loop.py"
-    )
-    run_loop = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(run_loop)
-    
+    run_loop = _load_run_loop_module()
     learner = run_loop.ActiveLearner()
     
     assert learner is not None
@@ -37,16 +37,7 @@ def test_active_learner_initialization():
 
 def test_active_learner_update():
     """Test updating ActiveLearner with new records."""
-    from pathlib import Path
-    import importlib.util
-    
-    spec = importlib.util.spec_from_file_location(
-        "run_loop",
-        Path(__file__).parent.parent.parent / "scripts" / "run_loop.py"
-    )
-    run_loop = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(run_loop)
-    
+    run_loop = _load_run_loop_module()
     learner = run_loop.ActiveLearner()
     
     # Create mock experiment records
@@ -75,16 +66,7 @@ def test_active_learner_update():
 
 def test_active_learner_posterior_rebuild():
     """Test that posterior rebuilds after update."""
-    from pathlib import Path
-    import importlib.util
-    
-    spec = importlib.util.spec_from_file_location(
-        "run_loop",
-        Path(__file__).parent.parent.parent / "scripts" / "run_loop.py"
-    )
-    run_loop = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(run_loop)
-    
+    run_loop = _load_run_loop_module()
     learner = run_loop.ActiveLearner()
     
     # Add sufficient records to build a GP
@@ -106,16 +88,7 @@ def test_active_learner_posterior_rebuild():
 
 def test_active_learner_multiple_slices():
     """Test that ActiveLearner creates separate GPs for different slices."""
-    from pathlib import Path
-    import importlib.util
-    
-    spec = importlib.util.spec_from_file_location(
-        "run_loop",
-        Path(__file__).parent.parent.parent / "scripts" / "run_loop.py"
-    )
-    run_loop = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(run_loop)
-    
+    run_loop = _load_run_loop_module()
     learner = run_loop.ActiveLearner()
     
     records = []
