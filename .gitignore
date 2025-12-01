@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,6 +7,9 @@ __pycache__/
 env/
 venv/
 *.egg-info/
+dist/
+build/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb_checkpoints/
@@ -22,21 +26,26 @@ venv/
 *.swo
 *~
 
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+nohup.out
+streamlit.log
+
 # Project specific
 results/*.csv
 results/*.png
 results/*.jpg
 results/experiment_history.csv
-
-# Temporary files
-*.tmp
-*.bak
-*.log
+results/
 
 # Data files (optional - uncomment if needed)
 # data/processed/*
 # !data/processed/.gitkeep
-.DS_Store
-__pycache__/
 data/raw/crispick_guides.csv
-results/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/

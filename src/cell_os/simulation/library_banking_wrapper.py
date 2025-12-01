@@ -13,7 +13,8 @@ from typing import List, Dict, Any, Optional
 from cell_os.workflows import Workflow, WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
-from cell_os.simulation.utils import MockInventory
+# from cell_os.simulation.utils import MockInventory
+from cell_os.inventory import Inventory
 
 
 @dataclass
@@ -45,6 +46,7 @@ class LibraryBankingResult:
     # Fields with defaults (must be at the end)
     selection_survival_rate: float = 0.5
     workflow: Optional[Workflow] = None
+    lineage_data: Optional[Dict[str, Any]] = None
     success: bool = True
     error_message: str = ""
 
@@ -117,7 +119,7 @@ def simulate_library_banking(
         cryo_vials_needed = vials_per_screen * num_screens
         
         # 8. Build workflow
-        inv = MockInventory()
+        inv = Inventory(pricing_path="data/raw/pricing.yaml")
         vessels = VesselLibrary()
         ops = ParametricOps(vessels, inv)
         builder = WorkflowBuilder(ops)
@@ -128,6 +130,118 @@ def simulate_library_banking(
             representation=representation
         )
         
+        # Build lineage data using actual workflow steps
+        lineage_data = None
+        if workflow:
+            nodes = []
+            edges = []
+            
+            # Starting point: WCB Vials
+            nodes.append({
+                "id": "WCB_Vials",
+                "type": "Vial",
+                "cells": transduction_cells_needed
+            })
+            
+            current_id = "WCB_Vials"
+            vessel_counter = 0
+            
+            ops = workflow.all_ops if hasattr(workflow, 'all_ops') else workflow.steps
+            
+            for i, op in enumerate(ops):
+                op_type = getattr(op, 'op_type', getattr(op, 'uo_id', 'Unknown'))
+                
+                # Format label for display
+                display_label = op_type.replace('_', ' ').title()
+            
+                if 'thaw' in op_type.lower():
+                    vessel_counter += 1
+                    next_id = f"Flask_Transduction_{vessel_counter}"
+                    nodes.append({
+                        "id": next_id,
+                        "type": "Flask",
+                        "cells": transduction_cells_needed
+                    })
+                    edges.append({
+                        "source": current_id,
+                        "target": next_id,
+                        "op": display_label
+                    })
+                    current_id = next_id
+                
+                elif 'transduce' in op_type.lower() or 'infect' in op_type.lower():
+                    # Transduction happens in the same flask usually, but let's show state change
+                    next_id = f"Flask_Infected"
+                    nodes.append({
+                        "id": next_id,
+                        "type": "Flask",
+                        "cells": transduction_cells_needed
+                    })
+                    edges.append({
+                        "source": current_id,
+                        "target": next_id,
+                        "op": display_label
+                    })
+                    current_id = next_id
+                    
+                elif 'select' in op_type.lower() or 'puromycin' in op_type.lower():
+                    # Selection reduces cell count
+                    next_id = f"Flask_Selected"
+                    nodes.append({
+                        "id": next_id,
+                        "type": "Flask",
+                        "cells": post_selection_cells
+                    })
+                    edges.append({
+                        "source": current_id,
+                        "target": next_id,
+                        "op": display_label
+                    })
+                    current_id = next_id
+                    
+                elif 'expand' in op_type.lower() or 'passage' in op_type.lower():
+                    vessel_counter += 1
+                    next_id = f"Flask_Expansion_{vessel_counter}"
+                    nodes.append({
+                        "id": next_id,
+                        "type": "Flask",
+                        "cells": total_cells_for_banking
+                    })
+                    edges.append({
+                        "source": current_id,
+                        "target": next_id,
+                        "op": display_label
+                    })
+                    current_id = next_id
+                    
+                elif 'bank' in op_type.lower() or 'freeze' in op_type.lower():
+                    # Show a few screen banks
+                    for s in range(min(3, num_screens)):
+                        bank_id = f"Screen_{s+1}_Bank"
+                        nodes.append({
+                            "id": bank_id,
+                            "type": "Box",
+                            "cells": cells_per_screen
+                        })
+                        edges.append({
+                            "source": current_id,
+                            "target": bank_id,
+                            "op": display_label
+                        })
+                    
+                    if num_screens > 3:
+                        nodes.append({
+                            "id": f"... +{num_screens-3} more",
+                            "type": "Box",
+                            "cells": cells_per_screen
+                        })
+                        edges.append({
+                            "source": current_id,
+                            "target": f"... +{num_screens-3} more",
+                            "op": display_label
+                        })
+            lineage_data = {"nodes": nodes, "edges": edges}
+
         return LibraryBankingResult(
             cell_line=cell_line,
             library_size=library_size,
@@ -147,6 +261,7 @@ def simulate_library_banking(
             cells_per_vial=cells_per_vial,
             vials_per_screen=vials_per_screen,
             workflow=workflow,
+            lineage_data=lineage_data,
             success=True
         )
         

@@ -43,8 +43,8 @@ class CellLineProfile:
     
     # Fields with defaults (must come after non-default fields)
     coating_required: bool = False
-    vial_type: str = "cryovial_1_8ml"  # Default vial type
-    freezing_volume_ml: float = 1.0  # Default freezing volume
+    vial_type: str = "micronic_tube"  # Default vial type
+    freezing_volume_ml: float = 0.5  # Default freezing volume
     cells_per_vial: int = 1000000  # Default cells per vial
 
 
@@ -100,8 +100,8 @@ def get_cell_line_profile(cell_line: str) -> Optional[CellLineProfile]:
         transduction_notes=chars.get("transduction_notes", ""),
         freezing_media=chars.get("freezing_media", ""),
         freezing_notes=chars.get("freezing_notes", ""),
-        vial_type=chars.get("vial_type", "cryovial_1_8ml"),
-        freezing_volume_ml=float(chars.get("freezing_volume_ml", 1.0)),
+        vial_type=chars.get("vial_type", "micronic_tube"),
+        freezing_volume_ml=float(chars.get("freezing_volume_ml", 0.5)),
         cells_per_vial=int(chars.get("cells_per_vial", 1000000)),
         coating=cell_line_obj.coating_reagent or "none",
         media=chars.get("media", cell_line_obj.growth_media),

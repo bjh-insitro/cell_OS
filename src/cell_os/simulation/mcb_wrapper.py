@@ -11,11 +11,12 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from cell_os.inventory import Inventory
 from cell_os.simulation.workflow_simulator import WorkflowSimulator, SimulationConfig
 from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
-from cell_os.simulation.utils import MockInventory
+# from cell_os.simulation.utils import MockInventory
 
 @dataclass
 class VendorVialSpec:
@@ -71,7 +72,7 @@ def simulate_mcb_generation(
     """
     # Build the workflow to get the recipe
     vessels = VesselLibrary()
-    inventory = MockInventory()
+    inventory = Inventory(pricing_path="data/raw/pricing.yaml")
     ops = ParametricOps(vessels, inventory)
     builder = WorkflowBuilder(ops)
     
@@ -125,80 +126,111 @@ def simulate_mcb_generation(
     else:
         logs.append(f"Simulation failed: {result.summary.get('failed_reason', 'Unknown')}")
     
-    # Build lineage data for visualization
+    # Build lineage data for visualization using actual workflow steps
     lineage_data = None
-    if result.success and generated_vials:
+    if result.success and generated_vials and workflow:
         nodes = []
         edges = []
         
-        # Vendor vial node
+        # Vendor vial node (starting point)
         nodes.append({
             "id": spec.vial_id,
             "type": "Vial",
             "cells": spec.initial_cells
         })
         
-        # Expansion flask nodes (simplified - assume 2-3 expansion steps)
-        expansion_steps = min(3, result.duration_days // 3)  # Rough estimate
-        prev_id = spec.vial_id
+        # Extract actual operations from workflow
+        ops = workflow.all_ops if hasattr(workflow, 'all_ops') else workflow.steps
         
-        for i in range(expansion_steps):
-            flask_id = f"Flask_P{i+1}"
-            # Estimate cell count based on doubling
-            cells = spec.initial_cells * (2 ** (i + 2))
-            nodes.append({
-                "id": flask_id,
-                "type": "Flask",
-                "cells": cells
-            })
-            edges.append({
-                "source": prev_id,
-                "target": flask_id,
-                "op": "Passage" if i > 0 else "Thaw"
-            })
-            prev_id = flask_id
+        # Track the current vessel/container through the workflow
+        current_id = spec.vial_id
+        vessel_counter = 0
         
-        # Final harvest flask
-        harvest_flask = f"Flask_Harvest"
-        total_cells_needed = cells_per_vial * target_vials
-        nodes.append({
-            "id": harvest_flask,
-            "type": "Flask",
-            "cells": total_cells_needed
-        })
-        edges.append({
-            "source": prev_id,
-            "target": harvest_flask,
-            "op": "Passage"
-        })
-        
-        # MCB vials (show first 5 to avoid clutter)
-        vials_to_show = min(5, len(generated_vials))
-        for i in range(vials_to_show):
-            vial = generated_vials[i]
-            nodes.append({
-                "id": vial.vial_id,
-                "type": "Vial",
-                "cells": vial.cells_per_vial
-            })
-            edges.append({
-                "source": harvest_flask,
-                "target": vial.vial_id,
-                "op": "Freeze"
-            })
-        
-        # Add ellipsis node if more vials exist
-        if len(generated_vials) > vials_to_show:
-            nodes.append({
-                "id": f"... +{len(generated_vials) - vials_to_show} more",
-                "type": "Vial",
-                "cells": cells_per_vial
-            })
-            edges.append({
-                "source": harvest_flask,
-                "target": f"... +{len(generated_vials) - vials_to_show} more",
-                "op": "Freeze"
-            })
+        for i, op in enumerate(ops):
+            op_type = getattr(op, 'op_type', getattr(op, 'uo_id', 'Unknown'))
+            
+            # Format label for display
+            display_label = op_type.replace('_', ' ').title()
+            
+            # Create node for the result of this operation
+            if 'thaw' in op_type.lower():
+                # Thawing creates a flask
+                vessel_counter += 1
+                next_id = f"Flask_Thawed_{vessel_counter}"
+                nodes.append({
+                    "id": next_id,
+                    "type": "Flask",
+                    "cells": spec.initial_cells * 0.8  # Some loss on thaw
+                })
+                edges.append({
+                    "source": current_id,
+                    "target": next_id,
+                    "op": display_label
+                })
+                current_id = next_id
+                
+            elif 'seed' in op_type.lower() or 'passage' in op_type.lower():
+                # Seeding or passaging creates a new flask
+                vessel_counter += 1
+                next_id = f"Flask_P{vessel_counter}"
+                # Estimate cell growth (rough approximation)
+                cells = spec.initial_cells * (2 ** (vessel_counter + 1))
+                nodes.append({
+                    "id": next_id,
+                    "type": "Flask",
+                    "cells": cells
+                })
+                edges.append({
+                    "source": current_id,
+                    "target": next_id,
+                    "op": display_label
+                })
+                current_id = next_id
+                
+            elif 'harvest' in op_type.lower():
+                # Harvesting creates a container with final cells
+                next_id = "Harvested_Suspension"
+                total_cells_needed = cells_per_vial * target_vials
+                nodes.append({
+                    "id": next_id,
+                    "type": "Tube",
+                    "cells": total_cells_needed
+                })
+                edges.append({
+                    "source": current_id,
+                    "target": next_id,
+                    "op": display_label
+                })
+                current_id = next_id
+                
+            elif 'freeze' in op_type.lower() or 'bank' in op_type.lower():
+                # Freezing creates vials - show first 5
+                vials_to_show = min(5, len(generated_vials))
+                for j in range(vials_to_show):
+                    vial = generated_vials[j]
+                    nodes.append({
+                        "id": vial.vial_id,
+                        "type": "Vial",
+                        "cells": vial.cells_per_vial
+                    })
+                    edges.append({
+                        "source": current_id,
+                        "target": vial.vial_id,
+                        "op": display_label
+                    })
+                
+                # Add ellipsis node if more vials exist
+                if len(generated_vials) > vials_to_show:
+                    nodes.append({
+                        "id": f"... +{len(generated_vials) - vials_to_show} more",
+                        "type": "Vial",
+                        "cells": cells_per_vial
+                    })
+                    edges.append({
+                        "source": current_id,
+                        "target": f"... +{len(generated_vials) - vials_to_show} more",
+                        "op": op_type
+                    })
         
         lineage_data = {
             "nodes": nodes,

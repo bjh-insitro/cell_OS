@@ -78,6 +78,7 @@ class UnitOp:
     material_cost_usd: float = 0.0
     instrument_cost_usd: float = 0.0
     sub_steps: List['UnitOp'] = field(default_factory=list)
+    items: List = field(default_factory=list)  # List of BOMItem for resource tracking
 
 @dataclass
 class LayerScore:

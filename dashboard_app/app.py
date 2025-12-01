@@ -49,52 +49,35 @@ def render_sidebar(page_registry):
     Returns:
         str: The selected page title
     """
-    st.sidebar.header("Status")
-    
-    # Refresh button
-    if st.sidebar.button("Refresh Data", use_container_width=True):
-        st.rerun()
-    
-    st.sidebar.divider()
-    
     # Navigation
     st.sidebar.title("Navigation")
     
     # Get pages organized by category
-    pages_by_category = page_registry.get_pages_by_category()
-    
-    # Create navigation options with category headers
-    nav_options = []
-    for category in PageCategory:
-        if category in pages_by_category:
-            # Add category header as a disabled option
-            nav_options.append(f"**{category.value}**")
-            # Add pages in this category
-            for page in pages_by_category[category]:
-                nav_options.append(f"{page.emoji} {page.title}")
-    
-    # Radio selection (filtering out category headers for actual selection)
     page_titles = page_registry.get_page_titles()
     
-    # Use selectbox instead of radio for better UX with many pages
+    # Find the index of POSH Campaign Sim to set as default
+    default_index = 0
+    for i, title in enumerate(page_titles):
+        if "POSH Campaign Sim" in title:
+            default_index = i
+            break
+    
+    # Use selectbox for navigation
     selected_page = st.sidebar.selectbox(
         "Select Page",
         page_titles,
+        index=default_index,
         label_visibility="collapsed"
     )
     
     st.sidebar.divider()
     
-    # Add helpful info
-    with st.sidebar.expander("ℹ️ About"):
-        st.markdown("""
-        **cell_OS Mission Control**
-        
-        A comprehensive dashboard for managing cell culture operations,
-        simulations, and analysis.
-        
-        Navigate using the dropdown above to access different tools and views.
-        """)
+    # Status
+    st.sidebar.header("Status")
+    
+    # Refresh button
+    if st.sidebar.button("Refresh Data", use_container_width=True):
+        st.rerun()
     
     return selected_page
 

@@ -149,11 +149,14 @@ def render_resources(result, pricing, workflow_type="MCB"):
     total_cost = 0.0
     
     # Add workflow resources
-    for step in result.workflow.steps:
-        for item_id, qty in step.consumables.items():
-            if item_id not in resources:
-                resources[item_id] = 0.0
-            resources[item_id] += qty
+    for op in result.workflow.all_ops:
+        if hasattr(op, 'items') and op.items:
+            for item in op.items:
+                item_id = item.resource_id
+                qty = item.quantity
+                if item_id not in resources:
+                    resources[item_id] = 0.0
+                resources[item_id] += qty
             
     # Add fixed resources if any (from result metadata)
     if hasattr(result, "resources") and result.resources:
@@ -181,7 +184,36 @@ def render_resources(result, pricing, workflow_type="MCB"):
         })
         
     if not bom_data:
-        st.info("No resources used.")
+        st.info("Detailed itemized bill of materials not available for this workflow.")
+        st.markdown("**Cost Summary**")
+        
+        # Show aggregate costs from operations
+        total_material = sum(op.material_cost_usd for op in result.workflow.all_ops)
+        total_instrument = sum(op.instrument_cost_usd for op in result.workflow.all_ops)
+        total = total_material + total_instrument
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Cost", f"${total:.2f}")
+        with col2:
+            st.metric("Materials", f"${total_material:.2f}")
+        with col3:
+            st.metric("Instruments", f"${total_instrument:.2f}")
+        
+        # Show operations table
+        st.markdown("**Operations**")
+        ops_data = []
+        for op in result.workflow.all_ops:
+            ops_data.append({
+                "Operation": op.name,
+                "Category": op.category,
+                "Material Cost": f"${op.material_cost_usd:.2f}",
+                "Instrument Cost": f"${op.instrument_cost_usd:.2f}",
+                "Total": f"${op.material_cost_usd + op.instrument_cost_usd:.2f}"
+            })
+        
+        if ops_data:
+            st.dataframe(pd.DataFrame(ops_data), use_container_width=True)
         return
 
     df_bom = pd.DataFrame(bom_data).sort_values("_cost_val", ascending=False)

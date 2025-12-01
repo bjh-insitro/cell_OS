@@ -26,13 +26,16 @@ from dashboard_app.components.campaign_visualizers import (
 )
 
 
-def _render_simulation_resources(result, pricing, workflow_type="MCB"):
+def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_key=None):
     """
     Render resource usage and BOM based on simulation results.
     
     This function contains specific logic for MCB/WCB simulation metrics
     that is distinct from the generic BOM rendering.
     """
+    # Create a unique suffix for keys
+    key_suffix = f"_{unique_key}" if unique_key else f"_{result.cell_line}"
+    
     st.subheader("Resource & Cost Analysis 💰")
     
     # 1. Dynamic Reagent Resolution
@@ -70,8 +73,8 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
     
     # Get freezing parameters
     freezing_media_id = "cryostor_cs10"  # Default
-    vial_type_id = "cryovial_1_8ml"  # Default
-    freezing_volume_ml = 1.0  # Default
+    vial_type_id = "micronic_tube"  # Default updated to 0.75mL Micronic
+    freezing_volume_ml = 0.5  # Default updated
     
     if profile:
         if hasattr(profile, 'freezing_media') and profile.freezing_media:
@@ -142,7 +145,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
         
         fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.4)])
         fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
-        st.plotly_chart(fig_pie, use_container_width=True, key=f"cost_breakdown_{workflow_type}")
+        st.plotly_chart(fig_pie, use_container_width=True, key=f"cost_breakdown_{workflow_type}{key_suffix}")
         
     with c_col2:
         st.markdown("**Daily Labor Load**")
@@ -153,7 +156,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
             ])
             fig_bar.update_layout(barmode='group', height=300, margin=dict(t=0, b=0, l=0, r=0),
                                  legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_bar, use_container_width=True, key=f"labor_load_{workflow_type}")
+            st.plotly_chart(fig_bar, use_container_width=True, key=f"labor_load_{workflow_type}{key_suffix}")
         else:
             st.info("Daily labor data not available.")
 
@@ -163,7 +166,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
     st.subheader("Consumables Bill of Materials 📦")
     
     # View toggle
-    view_mode = st.radio("View Mode", ["Aggregate View", "Daily Breakdown"], horizontal=True, key=f"bom_view_mode_{workflow_type}_{result.cell_line}")
+    view_mode = st.radio("View Mode", ["Aggregate View", "Daily Breakdown"], horizontal=True, key=f"bom_view_mode_{workflow_type}{key_suffix}")
     
     # Calculate quantities from actual simulation data
     qty_media_bottles = math.ceil(total_media / 0.5) # 500mL bottles
@@ -637,8 +640,8 @@ def render_posh_campaign_manager(df, pricing):
     # --- Main Content ---
     
     # Initialize session state for results if not present
-    if "mcb_results" not in st.session_state:
-        st.session_state.mcb_results = {}
+    if "posh_mcb_results" not in st.session_state:
+        st.session_state.posh_mcb_results = {}
         
     if run_sim:
         with st.spinner(f"Simulating MCB generation for {cell_line}..."):
@@ -650,33 +653,16 @@ def render_posh_campaign_manager(df, pricing):
             )
             
             result = simulate_mcb_generation(spec, target_vials=target_vials)
-            st.session_state.mcb_results[cell_line] = result
+            st.session_state.posh_mcb_results[cell_line] = result
             
     # Display MCB Results
-    if cell_line in st.session_state.mcb_results:
-        result = st.session_state.mcb_results[cell_line]
+    # Display MCB Results
+    if cell_line in st.session_state.posh_mcb_results:
+        result = st.session_state.posh_mcb_results[cell_line]
         
         if result.success:
             st.success(f"✅ MCB Generated: {len(result.vials)} vials of {result.cell_line}")
-            
-            tab1, tab2, tab3 = st.tabs(["Lineage 🧬", "Resources 💰", "Quality 📉"])
-            
-            with tab1:
-                render_lineage(result)
-                
-            with tab2:
-                _render_simulation_resources(result, pricing, workflow_type="MCB")
-                
-            with tab3:
-                st.subheader("Quality Metrics")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Final Viability", f"{result.daily_metrics['avg_viability'].iloc[-1]:.1%}")
-                with col2:
-                    st.metric("Waste Fraction", f"{result.summary.get('waste_fraction', 0):.1%}")
-                    
-                if result.summary.get('failures'):
-                    st.error(f"Failures: {result.summary['failures']}")
+            _render_mcb_result(result, pricing)
         else:
             st.error(f"❌ Simulation Failed: {result.summary.get('failed_reason', 'Unknown')}")
 
@@ -686,14 +672,14 @@ def render_posh_campaign_manager(df, pricing):
     Select a generated MCB vial to expand into a Working Cell Bank.
     """)
 
-    if not st.session_state.mcb_results:
+    if not st.session_state.posh_mcb_results:
         st.info("⚠️ Please complete Phase 1 (MCB Generation) above to proceed to Phase 2.")
     else:
         # Initialize session state for WCB results and consumed vials
-        if "wcb_results" not in st.session_state:
-            st.session_state.wcb_results = {}
-        if "consumed_mcb_vials" not in st.session_state:
-            st.session_state.consumed_mcb_vials = set()
+        if "posh_wcb_results" not in st.session_state:
+            st.session_state.posh_wcb_results = {}
+        if "posh_consumed_mcb_vials" not in st.session_state:
+            st.session_state.posh_consumed_mcb_vials = set()
         
         with st.expander("WCB Configuration", expanded=True):
             wcb_col1, wcb_col2, wcb_col3 = st.columns(3)
@@ -702,10 +688,10 @@ def render_posh_campaign_manager(df, pricing):
             available_mcb_vials = []
             mcb_vial_map = {}
         
-            for res in st.session_state.mcb_results.values():
+            for res in st.session_state.posh_mcb_results.values():
                 if res.success and res.vials:
                     for v in res.vials:
-                        if v.vial_id not in st.session_state.consumed_mcb_vials:
+                        if v.vial_id not in st.session_state.posh_consumed_mcb_vials:
                             label = f"{v.vial_id} ({v.cell_line}, P{v.passage_number})"
                             available_mcb_vials.append(label)
                             mcb_vial_map[label] = v
@@ -740,22 +726,22 @@ def render_posh_campaign_manager(df, pricing):
                 )
             
                 result = simulate_wcb_generation(spec, target_vials=target_wcb_vials)
-                st.session_state.wcb_results[source_vial.vial_id] = result
+                st.session_state.posh_wcb_results[source_vial.vial_id] = result
             
                 # Mark vial as consumed
-                st.session_state.consumed_mcb_vials.add(source_vial.vial_id)
+                st.session_state.posh_consumed_mcb_vials.add(source_vial.vial_id)
             
                 st.success(f"WCB Simulation complete for {source_vial.vial_id}! (Refresh to see updated vial list)")
 
         # Display WCB Results
-        if st.session_state.wcb_results:
+        if st.session_state.posh_wcb_results:
             st.subheader("WCB Results")
-            wcb_keys = list(st.session_state.wcb_results.keys())
+            wcb_keys = list(st.session_state.posh_wcb_results.keys())
             wcb_tabs = st.tabs(wcb_keys)
         
             for i, key in enumerate(wcb_keys):
                 with wcb_tabs[i]:
-                    result = st.session_state.wcb_results[key]
+                    result = st.session_state.posh_wcb_results[key]
                     _render_wcb_result(result, pricing, unique_key=key) # PASS PRICING AND KEY
 
     
@@ -977,17 +963,7 @@ def render_posh_campaign_manager(df, pricing):
             
             
     # Display Results
-    if st.session_state.mcb_results:
-        # Tabbed view for different cell lines if multiple run
-        cell_lines_run = list(st.session_state.mcb_results.keys())
-        tabs = st.tabs(cell_lines_run)
-        
-        for i, c_line in enumerate(cell_lines_run):
-            with tabs[i]:
-                result = st.session_state.mcb_results[c_line]
-                _render_mcb_result(result, pricing) # PASS PRICING
-    else:
-        st.info("Configure settings in the sidebar and click 'Simulate MCB Generation' to start.")
+
 
 
 def _render_mcb_result(result, pricing):
@@ -1009,29 +985,27 @@ def _render_mcb_result(result, pricing):
         
     st.divider()
     
-    # Create Radio for persistent view state
-    view_selection = st.radio(
-        "Select View", 
-        ["🧬 Biology & Quality", "💰 Resources & Cost"], 
-        horizontal=True,
-        label_visibility="collapsed",
-        key=f"mcb_view_{result.cell_line}"
-    )
+    # Tabs Layout
+    tab_lineage, tab_growth, tab_resources, tab_vials, tab_quality = st.tabs([
+        "Lineage 🧬", "Growth Curve 📈", "Resources 💰", "Vials 🧪", "Quality 📉"
+    ])
     
-    if view_selection == "🧬 Biology & Quality":
-        # 2. Plots
-        st.subheader("Growth Curve")
+    with tab_lineage:
+        render_lineage(result)
+        
+    with tab_growth:
         if not result.daily_metrics.empty:
             fig = px.line(result.daily_metrics, x="day", y="avg_confluence", 
                          title=f"{result.cell_line} Confluence", markers=True)
             fig.update_yaxes(tickformat=".0%")
-            st.plotly_chart(fig, use_container_width=True, key="mcb_growth_curve")
+            st.plotly_chart(fig, use_container_width=True, key=f"mcb_growth_{result.cell_line}")
+        else:
+            st.info("No growth data available.")
             
-        # 3. Lineage
-        render_lineage(result)
-                
-        # 4. Vial Table
-        st.subheader("Generated MCB Vials")
+    with tab_resources:
+        _render_simulation_resources(result, pricing, workflow_type="MCB", unique_key=result.cell_line)
+        
+    with tab_vials:
         if result.vials:
             vial_data = [{
                 "Vial ID": v.vial_id,
@@ -1045,49 +1019,46 @@ def _render_mcb_result(result, pricing):
         else:
             st.warning("No vials generated.")
             
-    elif view_selection == "💰 Resources & Cost":
-        _render_simulation_resources(result, pricing, workflow_type="MCB") # PASS PRICING
-        
-    # 5. Logs (outside tabs)
-    with st.expander("Simulation Logs"):
-        for log in result.logs:
-            st.text(log)
+    with tab_quality:
+        # 5. Logs
+        with st.expander("Simulation Logs"):
+            for log in result.logs:
+                st.text(log)
 
-    # 6. Release QC
-    st.divider()
-    st.subheader("🛡️ Release Quality Control")
-    st.markdown("Run post-banking QC assays to certify the bank for release.")
-    
-    col_qc1, col_qc2 = st.columns([1, 2])
-    with col_qc1:
-        if st.button("Run Release QC Panel", key="run_qc_mcb"):
-            st.session_state.mcb_qc_run = True
-            
-    with col_qc2:
-        if st.session_state.get("mcb_qc_run"):
-            # Calculate QC costs
-            vessels = VesselLibrary()
-            inventory = MockInventory()
-            ops = ParametricOps(vessels, inventory)
-            builder = WorkflowBuilder(ops)
-            qc_workflow = builder.build_bank_release_qc(cell_line=result.cell_line)
-            
-            qc_data = []
-            total_qc_cost = 0.0
-            
-            for process in qc_workflow.processes:
-                for op in process.ops:
-                    cost = op.material_cost_usd + op.instrument_cost_usd
-                    total_qc_cost += cost
-                    qc_data.append({
-                        "Assay": op.name,
-                        "Type": op.category,
-                        "Cost": f"${cost:.2f}"
-                    })
-            
-            st.success("✅ QC Panel Passed")
-            st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
-            st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
+        # 6. Release QC
+        st.subheader("🛡️ Release Quality Control")
+        st.markdown("Run post-banking QC assays to certify the bank for release.")
+        
+        col_qc1, col_qc2 = st.columns([1, 2])
+        with col_qc1:
+            if st.button("Run Release QC Panel", key=f"run_qc_mcb_{result.cell_line}"):
+                st.session_state[f"mcb_qc_run_{result.cell_line}"] = True
+                
+        with col_qc2:
+            if st.session_state.get(f"mcb_qc_run_{result.cell_line}"):
+                # Calculate QC costs
+                vessels = VesselLibrary()
+                inventory = MockInventory()
+                ops = ParametricOps(vessels, inventory)
+                builder = WorkflowBuilder(ops)
+                qc_workflow = builder.build_bank_release_qc(cell_line=result.cell_line)
+                
+                qc_data = []
+                total_qc_cost = 0.0
+                
+                for process in qc_workflow.processes:
+                    for op in process.ops:
+                        cost = op.material_cost_usd + op.instrument_cost_usd
+                        total_qc_cost += cost
+                        qc_data.append({
+                            "Assay": op.name,
+                            "Type": op.category,
+                            "Cost": f"${cost:.2f}"
+                        })
+                
+                st.success("✅ QC Panel Passed")
+                st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
+                st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
 
 
 def _render_wcb_result(result, pricing, unique_key):
@@ -1110,28 +1081,24 @@ def _render_wcb_result(result, pricing, unique_key):
         
     st.divider()
     
-    # Create Radio for persistent view state
-    view_selection_wcb = st.radio(
-        "Select View", 
-        ["🧬 Biology & Quality", "💰 Resources & Cost"], 
-        horizontal=True,
-        label_visibility="collapsed",
-        key=f"wcb_view_{unique_key}"
-    )
+    # Tabs Layout
+    tab_lineage, tab_growth, tab_resources, tab_vials, tab_quality = st.tabs([
+        "Lineage 🧬", "Expansion 📈", "Resources 💰", "Vials 🧪", "Quality 📉"
+    ])
     
-    if view_selection_wcb == "🧬 Biology & Quality":
-        # 2. Plots
-        st.subheader("Expansion")
+    with tab_lineage:
+        render_lineage(result)
+        
+    with tab_growth:
         if not result.daily_metrics.empty:
             fig = px.line(result.daily_metrics, x="day", y="total_cells", 
                          title=f"{result.cell_line} WCB Expansion", markers=True)
-            st.plotly_chart(fig, use_container_width=True, key="wcb_expansion_curve")
+            st.plotly_chart(fig, use_container_width=True, key=f"wcb_expansion_{unique_key}")
             
-        # 3. Lineage
-        render_lineage(result)
-                
-        # 4. Vial Table
-        st.subheader("Generated WCB Vials")
+    with tab_resources:
+        _render_simulation_resources(result, pricing, workflow_type="WCB", unique_key=unique_key)
+        
+    with tab_vials:
         if result.vials:
             vial_data = [{
                 "Vial ID": v.vial_id,
@@ -1145,47 +1112,44 @@ def _render_wcb_result(result, pricing, unique_key):
         else:
             st.warning("No WCB vials generated.")
             
-    elif view_selection_wcb == "💰 Resources & Cost":
-        _render_simulation_resources(result, pricing, workflow_type="WCB") # PASS PRICING
+    with tab_quality:
+        # 5. Logs
+        with st.expander("Simulation Logs"):
+            for log in result.logs:
+                st.text(log)
 
-    # 5. Logs (outside tabs)
-    with st.expander("Simulation Logs"):
-        for log in result.logs:
-            st.text(log)
-
-    # 6. Release QC
-    st.divider()
-    st.subheader("🛡️ Release Quality Control")
-    st.markdown("Run post-banking QC assays to certify the bank for release.")
-    
-    col_qc1, col_qc2 = st.columns([1, 2])
-    with col_qc1:
-        qc_key = f"wcb_qc_run_{unique_key}"
-        if st.button("Run Release QC Panel", key=f"btn_qc_{unique_key}"):
-            st.session_state[qc_key] = True
-            
-    with col_qc2:
-        if st.session_state.get(qc_key):
-            # Calculate QC costs
-            vessels = VesselLibrary()
-            inventory = MockInventory()
-            ops = ParametricOps(vessels, inventory)
-            builder = WorkflowBuilder(ops)
-            qc_workflow = builder.build_bank_release_qc(cell_line=result.cell_line)
-            
-            qc_data = []
-            total_qc_cost = 0.0
-            
-            for process in qc_workflow.processes:
-                for op in process.ops:
-                    cost = op.material_cost_usd + op.instrument_cost_usd
-                    total_qc_cost += cost
-                    qc_data.append({
-                        "Assay": op.name,
-                        "Type": op.category,
-                        "Cost": f"${cost:.2f}"
-                    })
-            
-            st.success("✅ QC Panel Passed")
-            st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
-            st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
+        # 6. Release QC
+        st.subheader("🛡️ Release Quality Control")
+        st.markdown("Run post-banking QC assays to certify the bank for release.")
+        
+        col_qc1, col_qc2 = st.columns([1, 2])
+        with col_qc1:
+            qc_key = f"wcb_qc_run_{unique_key}"
+            if st.button("Run Release QC Panel", key=f"btn_qc_{unique_key}"):
+                st.session_state[qc_key] = True
+                
+        with col_qc2:
+            if st.session_state.get(f"wcb_qc_run_{unique_key}"):
+                # Calculate QC costs
+                vessels = VesselLibrary()
+                inventory = MockInventory()
+                ops = ParametricOps(vessels, inventory)
+                builder = WorkflowBuilder(ops)
+                qc_workflow = builder.build_bank_release_qc(cell_line=result.cell_line)
+                
+                qc_data = []
+                total_qc_cost = 0.0
+                
+                for process in qc_workflow.processes:
+                    for op in process.ops:
+                        cost = op.material_cost_usd + op.instrument_cost_usd
+                        total_qc_cost += cost
+                        qc_data.append({
+                            "Assay": op.name,
+                            "Type": op.category,
+                            "Cost": f"${cost:.2f}"
+                        })
+                
+                st.success("✅ QC Panel Passed")
+                st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
+                st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
