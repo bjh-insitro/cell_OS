@@ -67,6 +67,7 @@ class WorkflowExecution:
     status: ExecutionStatus = ExecutionStatus.PENDING
     steps: List[ExecutionStep] = field(default_factory=list)
     current_step_index: int = 0
+    created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None

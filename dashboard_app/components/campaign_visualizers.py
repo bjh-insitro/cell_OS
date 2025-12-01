@@ -67,17 +67,33 @@ def render_unit_ops_table(workflow):
     """Render the table of parameterized unit operations."""
     st.markdown("#### 📋 Protocol Steps")
     
+    # Get all ops from workflow (handles both Workflow and legacy structures)
+    if hasattr(workflow, 'all_ops'):
+        ops = workflow.all_ops
+    elif hasattr(workflow, 'steps'):
+        ops = workflow.steps
+    else:
+        st.warning("Workflow structure not recognized")
+        return
+    
     steps_data = []
-    for i, step in enumerate(workflow.steps):
-        # Format parameters as a readable string
-        params_str = ", ".join([f"{k}={v}" for k, v in step.parameters.items()])
+    for i, op in enumerate(ops):
+        # Handle different UnitOp structures
+        if hasattr(op, 'parameters'):
+            params_str = ", ".join([f"{k}={v}" for k, v in op.parameters.items()])
+        else:
+            params_str = ""
+        
+        op_type = getattr(op, 'op_type', getattr(op, 'uo_id', 'Unknown'))
+        duration = getattr(op, 'duration_min', getattr(op, 'time_score', 0))
+        cost = getattr(op, 'cost_usd', getattr(op, 'material_cost_usd', 0) + getattr(op, 'instrument_cost_usd', 0))
         
         steps_data.append({
             "Step": i + 1,
-            "Operation": step.op_type,
+            "Operation": op_type,
             "Parameters": params_str,
-            "Duration (min)": step.duration_min,
-            "Cost ($)": f"${step.cost_usd:.2f}"
+            "Duration (min)": duration,
+            "Cost ($)": f"${cost:.2f}"
         })
     
     st.dataframe(

@@ -33,7 +33,7 @@ class ExecutionRepository(BaseRepository):
     
     def _init_schema(self):
         """Initialize database schema."""
-        conn = self._get_connection()
+        conn = self._get_raw_connection()
         try:
             cursor = conn.cursor()
             
@@ -198,6 +198,7 @@ class ExecutionRepository(BaseRepository):
             status=ExecutionStatus(row['status']),
             steps=steps,
             current_step_index=row['current_step_index'],
+            created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
             started_at=datetime.fromisoformat(row['started_at']) if row.get('started_at') else None,
             completed_at=datetime.fromisoformat(row['completed_at']) if row.get('completed_at') else None,
             error_message=row.get('error_message'),
@@ -236,6 +237,7 @@ class ExecutionRepository(BaseRepository):
                 status=ExecutionStatus(row['status']),
                 steps=[],  # Empty for list view
                 current_step_index=row['current_step_index'],
+                created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
                 started_at=datetime.fromisoformat(row['started_at']) if row.get('started_at') else None,
                 completed_at=datetime.fromisoformat(row['completed_at']) if row.get('completed_at') else None,
                 error_message=row.get('error_message'),

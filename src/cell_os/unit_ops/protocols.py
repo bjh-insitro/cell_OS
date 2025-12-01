@@ -1,7 +1,7 @@
 """
 Protocol Operations.
 Base class for complex laboratory protocols.
-Most specific protocols have been moved to domain-specific mixins (CultureOps, CloningOps, AnalysisOps).
+Most specific protocols have been moved to domain-specific operation handlers in `src/cell_os/unit_ops/operations/`.
 This class remains as a potential integration point for future composite protocols.
 """
 

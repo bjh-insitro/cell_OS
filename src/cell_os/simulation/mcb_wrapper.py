@@ -47,6 +47,9 @@ class MCBResultBundle:
     logs: List[str]
     success: bool
     summary: Dict[str, Any]
+    workflow: Optional[Any] = None  # Workflow object for rendering
+    lineage_data: Optional[Dict[str, Any]] = None  # Lineage tree data
+    resources: Optional[Dict[str, float]] = None  # Resource usage
 
 def simulate_mcb_generation(
     spec: VendorVialSpec,
@@ -121,6 +124,86 @@ def simulate_mcb_generation(
         logs.append(f"Successfully banked {len(generated_vials)} vials on day {result.duration_days}")
     else:
         logs.append(f"Simulation failed: {result.summary.get('failed_reason', 'Unknown')}")
+    
+    # Build lineage data for visualization
+    lineage_data = None
+    if result.success and generated_vials:
+        nodes = []
+        edges = []
+        
+        # Vendor vial node
+        nodes.append({
+            "id": spec.vial_id,
+            "type": "Vial",
+            "cells": spec.initial_cells
+        })
+        
+        # Expansion flask nodes (simplified - assume 2-3 expansion steps)
+        expansion_steps = min(3, result.duration_days // 3)  # Rough estimate
+        prev_id = spec.vial_id
+        
+        for i in range(expansion_steps):
+            flask_id = f"Flask_P{i+1}"
+            # Estimate cell count based on doubling
+            cells = spec.initial_cells * (2 ** (i + 2))
+            nodes.append({
+                "id": flask_id,
+                "type": "Flask",
+                "cells": cells
+            })
+            edges.append({
+                "source": prev_id,
+                "target": flask_id,
+                "op": "Passage" if i > 0 else "Thaw"
+            })
+            prev_id = flask_id
+        
+        # Final harvest flask
+        harvest_flask = f"Flask_Harvest"
+        total_cells_needed = cells_per_vial * target_vials
+        nodes.append({
+            "id": harvest_flask,
+            "type": "Flask",
+            "cells": total_cells_needed
+        })
+        edges.append({
+            "source": prev_id,
+            "target": harvest_flask,
+            "op": "Passage"
+        })
+        
+        # MCB vials (show first 5 to avoid clutter)
+        vials_to_show = min(5, len(generated_vials))
+        for i in range(vials_to_show):
+            vial = generated_vials[i]
+            nodes.append({
+                "id": vial.vial_id,
+                "type": "Vial",
+                "cells": vial.cells_per_vial
+            })
+            edges.append({
+                "source": harvest_flask,
+                "target": vial.vial_id,
+                "op": "Freeze"
+            })
+        
+        # Add ellipsis node if more vials exist
+        if len(generated_vials) > vials_to_show:
+            nodes.append({
+                "id": f"... +{len(generated_vials) - vials_to_show} more",
+                "type": "Vial",
+                "cells": cells_per_vial
+            })
+            edges.append({
+                "source": harvest_flask,
+                "target": f"... +{len(generated_vials) - vials_to_show} more",
+                "op": "Freeze"
+            })
+        
+        lineage_data = {
+            "nodes": nodes,
+            "edges": edges
+        }
         
     return MCBResultBundle(
         cell_line=spec.cell_line,
@@ -128,5 +211,7 @@ def simulate_mcb_generation(
         daily_metrics=result.daily_metrics,
         logs=logs,
         success=result.success,
-        summary=result.summary
+        summary=result.summary,
+        workflow=workflow,  # Include workflow for rendering
+        lineage_data=lineage_data  # Include lineage graph
     )

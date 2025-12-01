@@ -142,7 +142,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
         
         fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.4)])
         fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, use_container_width=True, key=f"cost_breakdown_{workflow_type}")
         
     with c_col2:
         st.markdown("**Daily Labor Load**")
@@ -153,7 +153,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
             ])
             fig_bar.update_layout(barmode='group', height=300, margin=dict(t=0, b=0, l=0, r=0),
                                  legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, use_container_width=True, key=f"labor_load_{workflow_type}")
         else:
             st.info("Daily labor data not available.")
 
@@ -397,7 +397,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             
-            st.plotly_chart(fig_daily, use_container_width=True)
+            st.plotly_chart(fig_daily, use_container_width=True, key="daily_cost_breakdown")
             
             # --- NEW: Detailed Itemization ---
             st.markdown("### 📋 Detailed Itemization")
@@ -527,18 +527,18 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB"):
             detailed_items.append({
                 "Day": final_day,
                 "Item": "PBS (500mL)",
-                "Quantity": qty_pbs,
+                "Quantity": qty_pbs_ml,
                 "Unit Cost": f"${cost_pbs_unit:.2f}",
-                "Total Cost": f"${qty_pbs * cost_pbs_unit:.2f}"
+                "Total Cost": f"${qty_pbs_ml * cost_pbs_unit:.2f}"
             })
             
             # Dissociation
             detailed_items.append({
                 "Day": final_day,
                 "Item": dissociation_name,
-                "Quantity": qty_dissociation,
+                "Quantity": qty_dissociation_ml,
                 "Unit Cost": f"${cost_dissociation_unit:.2f}",
-                "Total Cost": f"${qty_dissociation * cost_dissociation_unit:.2f}"
+                "Total Cost": f"${qty_dissociation_ml * cost_dissociation_unit:.2f}"
             })
             
             df_detailed = pd.DataFrame(detailed_items)
@@ -861,7 +861,7 @@ def render_posh_campaign_manager(df, pricing):
                     template="plotly_white"
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="titration_results")
                 
                 # Cost Analysis
                 st.subheader("Titration Cost Analysis 💰")
@@ -1025,7 +1025,7 @@ def _render_mcb_result(result, pricing):
             fig = px.line(result.daily_metrics, x="day", y="avg_confluence", 
                          title=f"{result.cell_line} Confluence", markers=True)
             fig.update_yaxes(tickformat=".0%")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="mcb_growth_curve")
             
         # 3. Lineage
         render_lineage(result)
@@ -1125,7 +1125,7 @@ def _render_wcb_result(result, pricing, unique_key):
         if not result.daily_metrics.empty:
             fig = px.line(result.daily_metrics, x="day", y="total_cells", 
                          title=f"{result.cell_line} WCB Expansion", markers=True)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="wcb_expansion_curve")
             
         # 3. Lineage
         render_lineage(result)
