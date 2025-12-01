@@ -4,6 +4,7 @@ Harvest and freeze operations.
 from typing import List, Optional
 from cell_os.unit_ops.base import UnitOp
 from .base_operation import BaseOperation
+from cell_os.inventory import BOMItem
 
 class HarvestFreezeOps(BaseOperation):
     """Operations for harvesting and cryopreservation."""
@@ -11,6 +12,7 @@ class HarvestFreezeOps(BaseOperation):
     def harvest(self, vessel_id: str, dissociation_method: str = None, cell_line: str = None, name: str = None):
         """Harvest cells for freezing or analysis."""
         steps = []
+        items = []
         
         # Helper to get single item cost
         def get_single_cost(item_id: str):
@@ -36,6 +38,7 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("pipette_10ml") * 2,
             name="Aspirate 15.0mL from T-75 Flask"
         ))
+        items.append(BOMItem(resource_id="pipette_10ml", quantity=2))
         
         # 2. Wash with PBS
         steps.append(self.lh.op_dispense(
@@ -45,12 +48,16 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("pipette_10ml"),
             name="Dispense 5.0mL pbs into T-75 Flask"
         ))
+        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
+        items.append(BOMItem(resource_id="pbs", quantity=5.0))
+        
         steps.append(self.lh.op_aspirate(
             vessel_id=vessel_id,
             volume_ml=5.0,
             material_cost_usd=get_single_cost("pipette_10ml"),
             name="Aspirate 5.0mL from T-75 Flask"
         ))
+        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
         
         # 3. Add dissociation reagent
         steps.append(self.lh.op_dispense(
@@ -60,6 +67,8 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=0.0,
             name=f"Dispense 2.0mL {dissociation_method} into T-75 Flask"
         ))
+        items.append(BOMItem(resource_id="pipette_5ml", quantity=1))
+        items.append(BOMItem(resource_id=dissociation_method, quantity=2.0))
         
         # 4. Incubate
         steps.append(self.lh.op_incubate(
@@ -70,6 +79,7 @@ class HarvestFreezeOps(BaseOperation):
             instrument_cost_usd=0.5,
             name="Incubate 10.0 min @ 37.0C"
         ))
+        items.append(BOMItem(resource_id="incubator_usage", quantity=10.0/60.0))
         
         # 5. Quench with 5mL media
         media_cost_per_ml = 0.50 if media == "mtesr_plus_kit" else 0.05
@@ -80,6 +90,8 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("pipette_10ml") + (5.0 * media_cost_per_ml),
             name=f"Quench with 5.0mL {media}"
         ))
+        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
+        items.append(BOMItem(resource_id=media, quantity=5.0))
         
         # 6. Collect cells into 15mL tube (7mL total)
         tube_id = "tube_15ml"
@@ -89,6 +101,8 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("pipette_10ml"),
             name="Aspirate 7.0mL from T-75 Flask"
         ))
+        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
+        
         steps.append(self.lh.op_dispense(
             vessel_id=tube_id,
             volume_ml=7.0,
@@ -96,6 +110,7 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("tube_15ml_conical"),
             name="Dispense into 15mL tube"
         ))
+        items.append(BOMItem(resource_id="tube_15ml_conical", quantity=1))
         
         # 7. Count cells (sample 100uL)
         steps.append(self.lh.op_aspirate(
@@ -104,6 +119,7 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("tip_200ul_lr"),
             name="Sample 100uL for count"
         ))
+        items.append(BOMItem(resource_id="tip_200ul_lr", quantity=1))
         
         # 8. Centrifuge
         if hasattr(self.lh, 'op_centrifuge'):
@@ -115,12 +131,18 @@ class HarvestFreezeOps(BaseOperation):
                 instrument_cost_usd=0.5,
                 name="Centrifuge 5min @ 1200rpm"
             ))
+            items.append(BOMItem(resource_id="centrifuge_usage", quantity=1))
         
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        dissociation_cost = 2.0 * (2.0 if dissociation_method == "accutase" else 0.5)
-        pbs_cost = 5.0 * 0.01  # PBS is cheap
+        # Calculate total costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            total_mat = sum(s.material_cost_usd for s in steps)
+            total_inst = sum(s.instrument_cost_usd for s in steps)
+            dissociation_cost = 2.0 * (2.0 if dissociation_method == "accutase" else 0.5)
+            pbs_cost = 5.0 * 0.01  # PBS is cheap
+            mat_cost = total_mat + dissociation_cost + pbs_cost
+            inst_cost = total_inst + 3.0
         
         return UnitOp(
             uo_id=f"Harvest_{vessel_id}",
@@ -133,14 +155,16 @@ class HarvestFreezeOps(BaseOperation):
             failure_risk=2,
             staff_attention=2,
             instrument="Biosafety Cabinet + Centrifuge",
-            material_cost_usd=total_mat + dissociation_cost + pbs_cost,
-            instrument_cost_usd=total_inst + 3.0,
-            sub_steps=steps
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=steps,
+            items=items
         )
 
     def freeze(self, num_vials: int = 10, freezing_media: str = "cryostor_cs10", cell_line: str = None):
         """Freeze cells into cryovials."""
         steps = []
+        items = []
         
         # Helper to get single item cost
         def get_single_cost(item_id: str):
@@ -158,6 +182,7 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("pipette_10ml"),
             name="Aspirate supernatant"
         ))
+        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
         
         # 2. Resuspend pellet in CryoStor to achieve target concentration
         # Target: 1e6 cells per 0.35mL (or per 1.0mL for other cell types)
@@ -172,6 +197,8 @@ class HarvestFreezeOps(BaseOperation):
             material_cost_usd=get_single_cost("pipette_2ml") + (total_volume_ml * cryostor_cost_per_ml),
             name=f"Resuspend in {total_volume_ml:.2f}mL {freezing_media}"
         ))
+        items.append(BOMItem(resource_id="pipette_2ml", quantity=1))
+        items.append(BOMItem(resource_id=freezing_media, quantity=total_volume_ml))
         
         # 3. Mix by pipetting
         steps.append(self.lh.op_aspirate(
@@ -197,6 +224,9 @@ class HarvestFreezeOps(BaseOperation):
                 material_cost_usd=get_single_cost("pipette_2ml") if i == 0 else 0.0,  # First vial pays for pipette
                 name=f"Aspirate {volume_per_vial}mL for vial {i+1}"
             ))
+            if i == 0:
+                items.append(BOMItem(resource_id="pipette_2ml", quantity=1))
+                
             steps.append(self.lh.op_dispense(
                 vessel_id=vial_id,
                 volume_ml=volume_per_vial,
@@ -204,6 +234,7 @@ class HarvestFreezeOps(BaseOperation):
                 material_cost_usd=get_single_cost(vial_type),  # Each vial has a cost
                 name=f"Dispense into vial {i+1}"
             ))
+            items.append(BOMItem(resource_id=vial_type, quantity=1))
         
         # 5. Controlled rate freezing
         steps.append(self.lh.op_incubate(
@@ -214,9 +245,16 @@ class HarvestFreezeOps(BaseOperation):
             instrument_cost_usd=10.0,  # Controlled rate freezer is expensive to run
             name="Controlled rate freezing to -80C"
         ))
+        items.append(BOMItem(resource_id="controlled_rate_freezer_usage", quantity=1))
         
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
+        # Calculate total costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            total_mat = sum(s.material_cost_usd for s in steps)
+            total_inst = sum(s.instrument_cost_usd for s in steps)
+            mat_cost = total_mat
+            inst_cost = total_inst + 5.0
         
         return UnitOp(
             uo_id=f"Freeze_{num_vials}vials",
@@ -229,7 +267,8 @@ class HarvestFreezeOps(BaseOperation):
             failure_risk=1,
             staff_attention=1,
             instrument="Biosafety Cabinet + Controlled Rate Freezer",
-            material_cost_usd=total_mat,
-            instrument_cost_usd=total_inst + 5.0,
-            sub_steps=steps
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=steps,
+            items=items
         )

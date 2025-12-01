@@ -4,6 +4,7 @@ Transfection and transduction operations.
 from typing import List, Optional
 from cell_os.unit_ops.base import UnitOp
 from .base_operation import BaseOperation
+from cell_os.inventory import BOMItem
 
 class TransfectionOps(BaseOperation):
     """Operations for genetic modification (transfection, transduction)."""
@@ -11,6 +12,7 @@ class TransfectionOps(BaseOperation):
     def transduce(self, vessel_id: str, virus_vol_ul: float = 10.0, method: str = "passive"):
         """Transduce cells with viral vector."""
         steps = []
+        items = []
         
         # 1. Add virus to media
         steps.append(self.lh.op_dispense(
@@ -19,6 +21,8 @@ class TransfectionOps(BaseOperation):
             liquid_name="lentivirus",
             material_cost_usd=self.get_price("pipette_200ul")
         ))
+        items.append(BOMItem(resource_id="pipette_200ul", quantity=1))
+        items.append(BOMItem(resource_id="lentivirus", quantity=virus_vol_ul)) # Assuming resource is in uL or we need to convert? Let's assume uL for now or handle in pricing.
         
         # 2. If spinoculation, centrifuge
         if method == "spinoculation":
@@ -31,6 +35,7 @@ class TransfectionOps(BaseOperation):
                     material_cost_usd=0.0,
                     instrument_cost_usd=5.0
                 ))
+                items.append(BOMItem(resource_id="centrifuge_usage", quantity=1))
         
         # 3. Incubate
         incubation_time = 240.0 if method == "passive" else 120.0  # 4h passive, 2h spinoculation
@@ -42,12 +47,17 @@ class TransfectionOps(BaseOperation):
             material_cost_usd=0.0,
             instrument_cost_usd=2.0
         ))
+        items.append(BOMItem(resource_id="incubator_usage", quantity=incubation_time/60.0))
         
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        # Virus is expensive
-        virus_cost = virus_vol_ul * 10.0  # $10/µL estimate
+        # Calculate total costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            total_mat = sum(s.material_cost_usd for s in steps)
+            total_inst = sum(s.instrument_cost_usd for s in steps)
+            virus_cost = virus_vol_ul * 10.0  # $10/µL estimate
+            mat_cost = total_mat + virus_cost
+            inst_cost = total_inst
         
         return UnitOp(
             uo_id=f"Transduce_{vessel_id}_{method}",
@@ -60,14 +70,16 @@ class TransfectionOps(BaseOperation):
             failure_risk=3,
             staff_attention=2,
             instrument="Biosafety Cabinet" + (" + Centrifuge" if method == "spinoculation" else ""),
-            material_cost_usd=total_mat + virus_cost,
-            instrument_cost_usd=total_inst,
-            sub_steps=steps
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=steps,
+            items=items
         )
 
     def transfect(self, vessel_id: str, method: str = "pei"):
         """Transfect cells with plasmid DNA."""
         steps = []
+        items = []
         
         # 1. Prepare transfection complex
         # (simplified - real protocol has multiple steps)
@@ -77,6 +89,8 @@ class TransfectionOps(BaseOperation):
             liquid_name="opti_mem",
             material_cost_usd=self.get_price("tube_15ml_conical")
         ))
+        items.append(BOMItem(resource_id="tube_15ml_conical", quantity=1))
+        items.append(BOMItem(resource_id="opti_mem", quantity=1.0))
         
         # 2. Add DNA
         steps.append(self.lh.op_dispense(
@@ -85,6 +99,8 @@ class TransfectionOps(BaseOperation):
             liquid_name="plasmid_dna",
             material_cost_usd=self.get_price("pipette_200ul")
         ))
+        items.append(BOMItem(resource_id="pipette_200ul", quantity=1))
+        items.append(BOMItem(resource_id="plasmid_dna", quantity=10.0)) # ug?
         
         # 3. Add transfection reagent
         reagent = method.lower()  # pei, lipofectamine, etc.
@@ -94,6 +110,8 @@ class TransfectionOps(BaseOperation):
             liquid_name=reagent,
             material_cost_usd=self.get_price("pipette_200ul")
         ))
+        items.append(BOMItem(resource_id="pipette_200ul", quantity=1))
+        items.append(BOMItem(resource_id=reagent, quantity=0.05)) # mL?
         
         # 4. Incubate complex
         steps.append(self.lh.op_incubate(
@@ -111,13 +129,18 @@ class TransfectionOps(BaseOperation):
             liquid_name="transfection_complex",
             material_cost_usd=self.get_price("pipette_2ml")
         ))
+        items.append(BOMItem(resource_id="pipette_2ml", quantity=1))
         
-        total_mat = sum(s.material_cost_usd for s in steps)
-        total_inst = sum(s.instrument_cost_usd for s in steps)
-        
-        # Reagent costs
-        reagent_cost = 10.0 if method == "pei" else 50.0  # Lipofectamine is expensive
-        dna_cost = 20.0  # Plasmid prep cost
+        # Calculate total costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            total_mat = sum(s.material_cost_usd for s in steps)
+            total_inst = sum(s.instrument_cost_usd for s in steps)
+            reagent_cost = 10.0 if method == "pei" else 50.0  # Lipofectamine is expensive
+            dna_cost = 20.0  # Plasmid prep cost
+            mat_cost = total_mat + reagent_cost + dna_cost
+            inst_cost = total_inst + 2.0
         
         return UnitOp(
             uo_id=f"Transfect_{vessel_id}_{method}",
@@ -130,7 +153,8 @@ class TransfectionOps(BaseOperation):
             failure_risk=3,
             staff_attention=3,
             instrument="Biosafety Cabinet",
-            material_cost_usd=total_mat + reagent_cost + dna_cost,
-            instrument_cost_usd=total_inst + 2.0,
-            sub_steps=steps
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=steps,
+            items=items
         )

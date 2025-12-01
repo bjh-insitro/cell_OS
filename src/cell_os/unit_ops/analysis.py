@@ -4,15 +4,35 @@ Analysis and computational operations.
 
 from .base import UnitOp, VesselLibrary
 
+from cell_os.inventory import BOMItem
+
 class AnalysisOps:
     def __init__(self, vessel_lib: VesselLibrary, pricing_inv):
         self.vessels = vessel_lib
         self.inv = pricing_inv
 
     def op_count(self, vessel_id: str, method: str = "manual", material_cost_usd: float = None) -> UnitOp:
-        inst_cost = 0.5  # Quick count
+        items = []
         
-        mat_cost = material_cost_usd if material_cost_usd is not None else 0.5
+        # 1. Slide/Chamber
+        if method == "nc202":
+            items.append(BOMItem(resource_id="cell_counter_slides", quantity=1))
+            items.append(BOMItem(resource_id="nc202_usage", quantity=1))
+        else:
+            # Manual or other
+            items.append(BOMItem(resource_id="cell_counter_slides", quantity=1))
+            
+        # Calculate costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            # Fallback if mixin not available (shouldn't happen with correct inheritance)
+            mat_cost = 3.0
+            inst_cost = 0.5
+
+        # Override if provided
+        if material_cost_usd is not None:
+            mat_cost = material_cost_usd
         
         return UnitOp(
             uo_id=f"Count_{vessel_id}",
@@ -25,18 +45,27 @@ class AnalysisOps:
             failure_risk=0,
             staff_attention=1,
             instrument="Cell Counter",
-            material_cost_usd=mat_cost,  # Slide/chamber
+            material_cost_usd=mat_cost,
             instrument_cost_usd=inst_cost,
-            sub_steps=[]
+            sub_steps=[],
+            items=items
         )
 
     def op_compute_analysis(self, analysis_type: str, num_samples: int) -> UnitOp:
-        # Cloud compute cost estimate
-        cost_per_sample = 0.01
-        if analysis_type == "image_processing": cost_per_sample = 0.05
-        if analysis_type == "feature_extraction": cost_per_sample = 0.02
+        items = []
         
-        total_cost = num_samples * cost_per_sample
+        # Cloud compute usage
+        items.append(BOMItem(
+            resource_id="cloud_compute_analysis",
+            quantity=num_samples
+        ))
+        
+        # Calculate costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            mat_cost = 0.0
+            inst_cost = num_samples * 0.01
         
         return UnitOp(
             uo_id=f"Compute_{analysis_type}",
@@ -49,12 +78,28 @@ class AnalysisOps:
             failure_risk=0,
             staff_attention=0,
             instrument="Cloud Compute",
-            material_cost_usd=0.0,
-            instrument_cost_usd=total_cost,
-            sub_steps=[]
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=[],
+            items=items
         )
 
     def op_ngs_verification(self, vessel_id: str) -> UnitOp:
+        items = []
+        
+        # 1. Library Prep Kit
+        items.append(BOMItem(resource_id="ngs_library_prep_kit", quantity=1))
+        
+        # 2. Sequencer Usage
+        items.append(BOMItem(resource_id="sequencer_usage", quantity=1))
+        
+        # Calculate costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            mat_cost = 50.0
+            inst_cost = 100.0
+            
         return UnitOp(
             uo_id=f"NGS_Verify_{vessel_id}",
             name=f"NGS Verification ({vessel_id})",
@@ -66,9 +111,10 @@ class AnalysisOps:
             failure_risk=1,
             staff_attention=2,
             instrument="Sequencer",
-            material_cost_usd=50.0,
-            instrument_cost_usd=100.0,
-            sub_steps=[]
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=[],
+            items=items
         )
 
     def op_golden_gate_assembly(self, vessel_id: str, num_reactions: int = 1) -> UnitOp:
@@ -159,6 +205,33 @@ class AnalysisOps:
         )
 
     def op_flow_cytometry(self, vessel_id: str, num_samples: int = 96, name: str = None) -> UnitOp:
+        items = []
+        
+        # 1. Sheath fluid (0.5mL per sample)
+        items.append(BOMItem(
+            resource_id="flow_sheath_fluid",
+            quantity=0.5 * num_samples
+        ))
+        
+        # 2. Sample tubes or plate
+        if num_samples <= 96:
+            items.append(BOMItem(resource_id="plate_96well_u", quantity=1))
+        else:
+            items.append(BOMItem(resource_id="flow_tube_5ml", quantity=num_samples))
+            
+        # 3. Instrument usage
+        items.append(BOMItem(
+            resource_id="flow_cytometer_usage",
+            quantity=num_samples
+        ))
+        
+        # Calculate costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            mat_cost = 0.5 * num_samples
+            inst_cost = 20.0
+            
         return UnitOp(
             uo_id=f"FlowCytometry_{vessel_id}",
             name=name if name else f"Flow Cytometry ({num_samples} samples)",
@@ -170,7 +243,8 @@ class AnalysisOps:
             failure_risk=1,
             staff_attention=2,
             instrument="Flow Cytometer",
-            material_cost_usd=0.5 * num_samples, # Sheath fluid, tubes/plates
-            instrument_cost_usd=20.0,
-            sub_steps=[]
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=[],
+            items=items
         )

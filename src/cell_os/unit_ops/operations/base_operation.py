@@ -34,3 +34,22 @@ class BaseOperation:
         if CELL_LINE_DB_AVAILABLE:
             return get_cell_line_profile(cell_line)
         return None
+
+    def calculate_costs_from_items(self, items: list) -> tuple[float, float]:
+        """Calculate material and instrument costs from BOMItems."""
+        material_cost = 0.0
+        instrument_cost = 0.0
+        
+        for item in items:
+            # Determine category based on resource ID or lookup
+            # For now, assume everything is material unless it ends in '_usage'
+            is_instrument = item.resource_id.endswith('_usage')
+            
+            cost = item.quantity * self.get_price(item.resource_id)
+            
+            if is_instrument:
+                instrument_cost += cost
+            else:
+                material_cost += cost
+                
+        return material_cost, instrument_cost
