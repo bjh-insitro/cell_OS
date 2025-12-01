@@ -55,12 +55,11 @@ def render_sidebar(page_registry):
     # Get pages organized by category
     page_titles = page_registry.get_page_titles()
     
-    # Find the index of POSH Campaign Sim to set as default
+    # Default to the first page unless a shortcut set a pending selection
     default_index = 0
-    for i, title in enumerate(page_titles):
-        if "POSH Campaign Sim" in title:
-            default_index = i
-            break
+    pending = st.session_state.pop("pending_nav", None)
+    if pending and pending in page_titles:
+        default_index = page_titles.index(pending)
     
     # Use selectbox for navigation
     selected_page = st.sidebar.selectbox(

@@ -79,6 +79,7 @@ def create_page_registry() -> PageRegistry:
     To add a new page, simply add a new PageConfig here.
     """
     # Import all page renderers
+    from dashboard_app.pages.tab_home import render_home
     from dashboard_app.pages.tab_1_mission_control import render_mission_control
     from dashboard_app.pages.tab_2_science import render_science_explorer
     from dashboard_app.pages.tab_3_economics import render_economics
@@ -100,6 +101,16 @@ def create_page_registry() -> PageRegistry:
     registry = PageRegistry()
     
     # Core Pages
+    registry.register(PageConfig(
+        key="home",
+        title="Home",
+        emoji="🏠",
+        render_function=render_home,
+        category=PageCategory.CORE,
+        description="Overview, quick start, and shortcuts",
+        order=0
+    ))
+
     registry.register(PageConfig(
         key="mission_control",
         title="Mission Control",
