@@ -15,14 +15,20 @@ dependencies = [
     "scipy",
     "pyyaml",
     "streamlit",
+    "matplotlib",
+    "graphviz",
+    "altair",
+    "plotly",
+    "networkx",
+    "ortools",
+    "tqdm",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "black", "ruff", "mypy"]
 
-# Uncomment when scripts/run_loop.py exists with main() function
-# [project.scripts]
-# cell-os-loop = "cell_os.scripts.run_loop:main"
+[project.scripts]
+cell-os-run = "cell_os.cli.run_campaign:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

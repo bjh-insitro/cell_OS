@@ -212,7 +212,7 @@ class TestProtocolResolver:
         assert profile is not None
         assert profile.cell_type == "iPSC"
         assert profile.coating_required is True
-        assert profile.coating_reagent == "laminin_521"
+        assert profile.coating_reagent == "vitronectin"
         
         profile_hek = resolver.get_cell_line_profile("HEK293")
         assert profile_hek is not None
@@ -224,7 +224,7 @@ class TestProtocolResolver:
         config = resolver.get_thaw_config("iPSC", "flask_t75")
         
         assert config["coating_required"] is True
-        assert config["coating_reagent"] == "laminin_521"
+        assert config["coating_reagent"] == "vitronectin"
         assert config["media"] == "mtesr_plus_kit"
         assert config["volumes_mL"]["media_aliquot"] == 40.0
         assert config["volumes_mL"]["pre_warm"] == 15.0

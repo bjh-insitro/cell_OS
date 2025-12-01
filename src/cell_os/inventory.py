@@ -84,9 +84,20 @@ class Inventory:
         self.usage_log: List[Dict[str, Any]] = []  # Log of all consumed resources
         
         loaded = False
+
+        # If a pricing file is explicitly provided, prefer it for backwards compatibility
+        if pricing_path:
+            try:
+                self._load_pricing(pricing_path)
+                if self.resources:
+                    for resource in self.resources.values():
+                        resource.stock_level = resource.pack_size * 10.0
+                    loaded = True
+            except FileNotFoundError:
+                pass
         
-        # Try loading from DB first
-        if db_path and os.path.exists(db_path):
+        # Otherwise try loading from DB
+        if not loaded and db_path and os.path.exists(db_path):
             try:
                 self._load_from_db(db_path)
                 if self.resources:
@@ -94,14 +105,9 @@ class Inventory:
             except Exception as e:
                 print(f"Warning: Failed to load inventory from DB: {e}")
         
-        # Fallback to YAML if DB failed or empty
-        if not loaded and pricing_path:
-            self._load_pricing(pricing_path)
-            
-        # Initialize stock (default) if not loaded from DB (DB loading sets stock to 0 usually, manager handles it)
-        # But for backward compatibility with pure YAML usage:
-        if not loaded:
-             for r in self.resources.values():
+        # If nothing was loaded, ensure resources dict is populated and stock defaults make sense
+        if not loaded and self.resources:
+            for r in self.resources.values():
                 r.stock_level = r.pack_size * 10.0
 
     def _load_from_db(self, db_path: str):

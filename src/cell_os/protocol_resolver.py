@@ -14,6 +14,7 @@ from cell_os.unit_ops.base import UnitOp, VesselLibrary
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.inventory import Inventory
 from cell_os.protocol_templates import PASSAGE_T75_TEMPLATE, PASSAGE_T25_TEMPLATE
+from cell_os.cell_line_db import CellLineDatabase
 
 
 class ProtocolResolver:
@@ -30,17 +31,29 @@ class ProtocolResolver:
         self,
         cell_lines_yaml: str = "data/cell_lines.yaml",
         vessels: Optional[VesselLibrary] = None,
-        inventory: Optional[Inventory] = None
+        inventory: Optional[Inventory] = None,
+        cell_lines_db: str = "data/cell_lines.db",
     ):
         """
         Initialize protocol resolver.
         
         Args:
-            cell_lines_yaml: Path to cell line configuration YAML
+            cell_lines_yaml: Path to cell line configuration YAML (if exists)
             vessels: VesselLibrary instance (creates new if None)
             inventory: Inventory instance (creates new if None)
+            cell_lines_db: Path to SQLite database (used when YAML is absent)
         """
-        self.cell_lines = self._load_cell_lines(cell_lines_yaml)
+        self._cell_lines_source = None
+        self._db_cache: Dict[str, Dict[str, Any]] = {}
+        path = Path(cell_lines_yaml)
+        if path.exists():
+            self.cell_lines = self._load_cell_lines_from_yaml(path)
+            self._cell_lines_source = "yaml"
+            self.cell_db = None
+        else:
+            self.cell_lines = {}
+            self._cell_lines_source = "db"
+            self.cell_db = CellLineDatabase(cell_lines_db)
         self.vessels = vessels or VesselLibrary()
         self.inventory = inventory or Inventory()  # Loads from database by default
         
@@ -53,10 +66,10 @@ class ProtocolResolver:
         Get cell line profile from YAML configuration.
         Returns an object with attributes matching the profile fields.
         """
-        if cell_line not in self.cell_lines:
+        try:
+            cfg = self._get_cell_config(cell_line)
+        except ValueError:
             return None
-        
-        cfg = self.cell_lines[cell_line]
         if "profile" not in cfg:
             return None
             
@@ -109,10 +122,7 @@ class ProtocolResolver:
         Returns:
             Dictionary with thaw configuration including volumes, media, coating info
         """
-        if cell_line not in self.cell_lines:
-            raise ValueError(f"Unknown cell line: {cell_line}")
-        
-        cell_config = self.cell_lines[cell_line]
+        cell_config = self._get_cell_config(cell_line)
         profile = self.get_cell_line_profile(cell_line)
         vessel = self.vessels.get(vessel_id)
         
@@ -177,10 +187,7 @@ class ProtocolResolver:
         Returns:
             Dictionary with feed configuration including volume, media, schedule
         """
-        if cell_line not in self.cell_lines:
-            raise ValueError(f"Unknown cell line: {cell_line}")
-        
-        cell_config = self.cell_lines[cell_line]
+        cell_config = self._get_cell_config(cell_line)
         vessel = self.vessels.get(vessel_id)
         
         # Infer vessel type from vessel_id
@@ -222,16 +229,11 @@ class ProtocolResolver:
         
         return config
 
-    def _load_cell_lines(self, yaml_path: str) -> Dict[str, Any]:
+    def _load_cell_lines_from_yaml(self, path: Path) -> Dict[str, Any]:
         """Load cell line configurations from YAML."""
-        path = Path(yaml_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Cell lines config not found: {yaml_path}")
-        
-        with open(path, 'r') as f:
-            data = yaml.safe_load(f)
-        
-        return data.get('cell_lines', {})
+        with open(path, "r") as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("cell_lines", {})
     
     def resolve_passage_protocol(self, cell_line_name: str, vessel_type: str) -> List[UnitOp]:
         """
@@ -271,10 +273,7 @@ class ProtocolResolver:
     ) -> List[UnitOp]:
         """Internal helper to resolve a protocol from a template."""
         # Get cell line config
-        if cell_line_name not in self.cell_lines:
-            raise ValueError(f"Unknown cell line: {cell_line_name}")
-        
-        cell_config = self.cell_lines[cell_line_name]
+        cell_config = self._get_cell_config(cell_line_name)
         
         # Get vessel spec
         vessel = self.vessels.get(vessel_id)
@@ -416,3 +415,60 @@ class ProtocolResolver:
                 return passage_cfg["volumes_mL"][volume_key]
         
         raise KeyError(f"Volume key '{volume_key}' not found in passage config")
+
+    def _get_cell_config(self, cell_line: str) -> Dict[str, Any]:
+        """Return the config for a cell line from YAML or the SQLite DB."""
+        if self._cell_lines_source == "yaml":
+            if cell_line not in self.cell_lines:
+                raise ValueError(f"Unknown cell line: {cell_line}")
+            return self.cell_lines[cell_line]
+        
+        if self.cell_db is None:
+            raise ValueError(f"Cell line database unavailable for {cell_line}")
+        
+        if cell_line not in self._db_cache:
+            self._db_cache[cell_line] = self._build_cell_config_from_db(cell_line)
+        return self._db_cache[cell_line]
+
+    def _build_cell_config_from_db(self, cell_line: str) -> Dict[str, Any]:
+        """Construct a legacy-style config dictionary using SQLite data."""
+        cell = self.cell_db.get_cell_line(cell_line)
+        if cell is None:
+            raise ValueError(f"Unknown cell line: {cell_line}")
+        
+        characteristics = self.cell_db.get_characteristics(cell_line)
+        config: Dict[str, Any] = {
+            "growth_media": cell.growth_media,
+            "wash_buffer": cell.wash_buffer,
+            "detach_reagent": cell.detach_reagent,
+            "coating_required": cell.coating_required,
+            "coating_reagent": cell.coating_reagent,
+            "profile": {
+                **characteristics,
+                "cell_type": cell.cell_type,
+                "coating_required": cell.coating_required,
+                "coating_reagent": cell.coating_reagent or "none",
+                "media": characteristics.get("media", cell.growth_media),
+            },
+        }
+        
+        for protocol_type in ["passage", "thaw", "feed"]:
+            proto_cfg = self._load_protocols_from_db(cell_line, protocol_type)
+            if proto_cfg:
+                config[protocol_type] = proto_cfg
+        
+        return config
+
+    def _load_protocols_from_db(self, cell_line: str, protocol_type: str) -> Dict[str, Any]:
+        """Load protocol parameters from SQLite and add reference metadata."""
+        protocol_map = self.cell_db.get_protocols(cell_line, protocol_type)
+        if not protocol_map:
+            return {}
+        
+        config = {vessel: params for vessel, params in protocol_map.items()}
+        if "reference_vessel" not in config:
+            if "T75" in config:
+                config["reference_vessel"] = "T75"
+            else:
+                config["reference_vessel"] = next(iter(protocol_map.keys()))
+        return config

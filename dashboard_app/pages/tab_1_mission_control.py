@@ -81,7 +81,7 @@ def render_mission_control(df, pricing):
             st.dataframe(df_recent, use_container_width=True)
         else:
             st.info("No experiments run yet. Launch a campaign to see results!")
-            st.code("python cli/run_campaign.py --config config/campaign_example.yaml")
+            st.code("cell-os-run --config config/campaign_example.yaml")
         
         db.close()
         

@@ -21,7 +21,7 @@ source venv/bin/activate
 pip install -e .
 
 # Run an autonomous titration campaign
-python cli/run_campaign.py --config config/campaign_example.yaml
+cell-os-run --config config/campaign_example.yaml
 
 # Launch the dashboard
 streamlit run dashboard_app/dashboard.py
@@ -102,7 +102,7 @@ graph TB
 - **Query API**: Complex queries like "find all screens with D_M > 2.0"
 
 ### 🎛️ Multi-Interface
-- **CLI**: `python cli/run_campaign.py --config my_config.yaml`
+- **CLI**: `cell-os-run --config my_config.yaml`
 - **Dashboard**: Interactive Streamlit app with 8 tabs
 - **Programmatic**: Import agents as Python modules
 
@@ -110,6 +110,12 @@ graph TB
 - **HTML Reports**: Titration curves, cost breakdowns, decision manifests
 - **Budget Calculator**: Pre-flight cost estimation
 - **QC Dashboards**: Outlier detection, plate effects
+
+### 🗂️ Data Sources & CLI
+- **SQLite-first**: Cell-line protocols (`data/cell_lines.db`) and inventory/pricing (`data/inventory.db`) are loaded from SQLite by default for consistency with the automation stack.
+- **Legacy YAML fallback**: Passing explicit YAML paths (e.g., `Inventory("data/raw/pricing.yaml")`) still works and seeds the historical stock defaults, which keeps notebooks/tests reproducible.
+- **Protocol resolver**: Automatically falls back to the SQLite database when the deprecated `data/cell_lines.yaml` is absent, so fresh clones don’t need to restore archived YAML.
+- **Installable CLI**: `pip install -e .` exposes the `cell-os-run` entry point, so you can run `cell-os-run --config ...` from anywhere without relying on repo-relative Python paths.
 
 ---
 
@@ -163,7 +169,7 @@ budget:
 
 Run it:
 ```bash
-python cli/run_campaign.py --config my_campaign.yaml
+cell-os-run --config my_campaign.yaml
 ```
 
 View results:

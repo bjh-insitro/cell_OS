@@ -1,5 +1,5 @@
 # Campaign Configuration for Autonomous Titration Loop
-# Usage: python cli/run_campaign.py --config config/campaign_example.yaml
+# Usage: cell-os-run --config config/campaign_example.yaml
 
 # Experiment Metadata
 experiment_id: "TITRATION_CAMPAIGN_2025_11_27"

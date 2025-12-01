@@ -4,15 +4,25 @@ Integration tests for inventory depletion tracking.
 Tests resource consumption and availability checking.
 """
 
-import os
-
 import pytest
 from cell_os.inventory import Inventory, BOMItem, OutOfStockError
 
 
-def test_consume_success():
+@pytest.fixture
+def inventory_with_stock():
+    """Inventory seeded from the SQLite DB with test stock levels."""
+    inventory = Inventory(db_path="data/inventory.db")
+    # Seed a few key reagents for deterministic tests
+    for resource_id in ("dmem_high_glucose", "fbs"):
+        if resource_id in inventory.resources:
+            # Start with 1 L of each resource
+            inventory.resources[resource_id].stock_level = 1000.0
+    return inventory
+
+
+def test_consume_success(inventory_with_stock):
     """Test successful reagent consumption."""
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = inventory_with_stock
     
     # Check initial stock
     initial_stock = inventory.resources["dmem_high_glucose"].stock_level
@@ -24,9 +34,9 @@ def test_consume_success():
     print("✓ Consumption successful")
 
 
-def test_consume_out_of_stock():
+def test_consume_out_of_stock(inventory_with_stock):
     """Test consumption failure when out of stock."""
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = inventory_with_stock
    
     # Try to consume more than available
     resource_id = list(inventory.resources.keys())[0]
@@ -39,9 +49,9 @@ def test_consume_out_of_stock():
     print("✓ Out-of-stock handled correctly")
 
 
-def test_check_availability_all_available():
+def test_check_availability_all_available(inventory_with_stock):
     """Test availability check when all items in stock."""
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = inventory_with_stock
     
     # Small BOM that should be available
     bom = [
@@ -56,9 +66,9 @@ def test_check_availability_all_available():
     print("✓ All items available")
 
 
-def test_check_availability_partial():
+def test_check_availability_partial(inventory_with_stock):
     """Test availability check with some items unavailable."""
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = inventory_with_stock
     
     # Deplete one resource
     resource_id_1 = "dmem_high_glucose"
@@ -80,9 +90,9 @@ def test_check_availability_partial():
     print("✓ Partial availability detected")
 
 
-def test_restock():
+def test_restock(inventory_with_stock):
     """Test restocking functionality."""
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = inventory_with_stock
     
     resource_id = "dmem_high_glucose"
     initial = inventory.resources[resource_id].stock_level
@@ -98,9 +108,9 @@ def test_restock():
     print("✓ Restock working")
 
 
-def test_consume_and_restock_cycle():
+def test_consume_and_restock_cycle(inventory_with_stock):
     """Test multiple consume/restock cycles."""
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = inventory_with_stock
     
     resource_id = "fbs"
     transactions = [
