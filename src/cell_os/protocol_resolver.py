@@ -42,7 +42,7 @@ class ProtocolResolver:
         """
         self.cell_lines = self._load_cell_lines(cell_lines_yaml)
         self.vessels = vessels or VesselLibrary()
-        self.inventory = inventory or Inventory(pricing_path="data/raw/pricing.yaml")
+        self.inventory = inventory or Inventory()  # Loads from database by default
         
         # Initialize ParametricOps for consistent UnitOp creation
         self.ops = ParametricOps(self.vessels, self.inventory)

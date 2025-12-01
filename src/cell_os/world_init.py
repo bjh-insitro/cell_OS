@@ -76,25 +76,25 @@ def _default_workflows_table() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _pricing_table_from_inventory(pricing_yaml_path: str) -> pd.DataFrame:
+def _pricing_table_from_inventory() -> pd.DataFrame:
     """
-    Use Inventory + pricing.yaml to build a flat pricing table.
+    Use Inventory (from database) to build a flat pricing table.
     """
-    inv = Inventory(pricing_yaml_path)
+    inv = Inventory()  # Loads from database by default
     return inv.to_dataframe()
 
 
-def build_default_world(pricing_yaml_path: str = "data/raw/pricing.yaml") -> LabWorldModel:
+def build_default_world() -> LabWorldModel:
     """
     Construct a LabWorldModel with:
       - basic cell line metadata
       - a minimal workflows catalog
-      - pricing from pricing.yaml
+      - pricing from inventory database
       - a single Phase 0 campaign definition
     """
     cell_lines_df = _default_cell_lines_table()
     workflows_df = _default_workflows_table()
-    pricing_df = _pricing_table_from_inventory(pricing_yaml_path)
+    pricing_df = _pricing_table_from_inventory()
 
     world = LabWorldModel.from_static_tables(
         cell_lines=cell_lines_df,

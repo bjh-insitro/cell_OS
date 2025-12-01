@@ -158,10 +158,10 @@ class AnalysisOps:
             sub_steps=[]
         )
 
-    def op_flow_cytometry(self, vessel_id: str, num_samples: int = 96) -> UnitOp:
+    def op_flow_cytometry(self, vessel_id: str, num_samples: int = 96, name: str = None) -> UnitOp:
         return UnitOp(
             uo_id=f"FlowCytometry_{vessel_id}",
-            name=f"Flow Cytometry ({num_samples} samples)",
+            name=name if name else f"Flow Cytometry ({num_samples} samples)",
             layer="analysis",
             category="readout",
             time_score=60,

@@ -34,19 +34,32 @@ class YamlVesselLibrary:
         return VesselSpec(info)
 
 class YamlPricingInventory:
-    def __init__(self, path="data/raw/pricing.yaml"):
-        full_path = Path(os.getcwd()) / path
+    """Loads pricing from inventory database (formerly pricing.yaml)."""
+    def __init__(self, db_path="data/inventory.db"):
+        import sqlite3
+        import json
+        
         self.data = {}
         
-        if full_path.exists():
-            with open(full_path, 'r') as f: 
-                raw_data = yaml.safe_load(f)
-            
-            # CRITICAL FIX: Handle nested 'items' structure
-            if raw_data and 'items' in raw_data and isinstance(raw_data['items'], dict):
-                self.data = raw_data['items']
-            else:
-                self.data = raw_data
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM resources")
+                rows = cursor.fetchall()
+                col_names = [description[0] for description in cursor.description]
+                
+                for row in rows:
+                    d = dict(zip(col_names, row))
+                    self.data[d['resource_id']] = {
+                        'name': d['name'],
+                        'category': d.get('category', ''),
+                        'unit_price_usd': float(d.get('unit_price_usd', 0.0)),
+                        'logical_unit': d.get('logical_unit', '')
+                    }
+                conn.close()
+            except Exception as e:
+                print(f"Warning: Failed to load pricing from DB: {e}")
         
         self._calculate_composite_costs()
         

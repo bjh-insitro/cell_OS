@@ -73,21 +73,16 @@ def load_data():
             }
             
         except Exception as e:
-            st.warning(f"Could not load pricing data from DB: {e}")
-            yaml_path = "data/raw/pricing.yaml"
-            if os.path.exists(yaml_path):
-                 with open(yaml_path, 'r') as f:
-                     pricing = yaml.safe_load(f)
-            else:
-                 pricing = {}
+            st.error(f"Could not load pricing data from DB: {e}. Please run migration script.")
+            pricing = {}
     else:
-        st.warning(f"Inventory database not found at {DB_PATH}. Run migration script to create it.")
+        st.error(f"Inventory database not found at {DB_PATH}. Run 'python3 tools/migrate_pricing_to_db.py' to create it.")
         pricing = {}
         
     return df, pricing
 
 @st.cache_resource
-def init_automation_resources(vessel_path="data/raw/vessels.yaml", pricing_path="data/raw/pricing.yaml"):
+def init_automation_resources(vessel_path="data/raw/vessels.yaml"):
     """Initializes and caches the core automation engine resources."""
     try:
         # Check if the vessel file exists before proceeding, as this is a common point of failure
@@ -95,7 +90,7 @@ def init_automation_resources(vessel_path="data/raw/vessels.yaml", pricing_path=
              raise FileNotFoundError(f"Vessel Library not found at: {vessel_path}")
              
         vessel_lib = VesselLibrary(vessel_path)
-        inv = Inventory(pricing_path) 
+        inv = Inventory()  # Loads from database by default 
         
         # Initialize InventoryManager for persistence
         from cell_os.inventory_manager import InventoryManager

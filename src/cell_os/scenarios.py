@@ -184,7 +184,7 @@ def apply_scenario(scenario: Scenario):
     from cell_os.morphology_engine import create_morphology_engine
     
     # Create inventory with initial stock
-    inventory = Inventory("data/raw/pricing.yaml")
+    inventory = Inventory()  # Loads from database by default
     
     # Set initial stock levels
     for resource_id, quantity in scenario.initial_inventory.items():

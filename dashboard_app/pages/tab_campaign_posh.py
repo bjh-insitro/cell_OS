@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
 from datetime import datetime
 
 from cell_os.simulation.mcb_wrapper import simulate_mcb_generation, VendorVialSpec
@@ -13,6 +14,116 @@ from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.unit_ops.base import VesselLibrary
 from cell_os.simulation.utils import MockInventory
+
+def _render_unit_ops_table(workflow):
+    """Render the table of parameterized unit operations."""
+    # Column headers
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+    with col1:
+        st.markdown("**Operation**")
+    with col2:
+        st.markdown("**Time**")
+    with col3:
+        st.markdown("**Cost**")
+    with col4:
+        st.markdown("**Labor**")
+    with col5:
+        st.markdown("**Category**")
+    st.divider()
+    
+    # Extract ops with expandable sub-steps
+    for process in workflow.processes:
+        for idx, op in enumerate(process.ops):
+            # Calculate active labor time (exclude incubation)
+            labor_min = 0.0
+            if op.sub_steps:
+                for step in op.sub_steps:
+                    if step.category != "incubation":
+                        labor_min += step.time_score
+            else:
+                # If no sub-steps, assume all is labor unless category is incubation
+                if op.category != "incubation":
+                    labor_min = op.time_score
+            
+            # Labor load: staff_attention (1-5 scale) * active time in hours
+            labor_hours = (op.staff_attention * labor_min) / 60.0
+            
+            # Main operation summary
+            col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+            with col1:
+                st.markdown(f"**{idx+1}. {op.name}**")
+            with col2:
+                st.text(f"{op.time_score} min")
+            with col3:
+                st.text(f"${op.material_cost_usd + op.instrument_cost_usd:.2f}")
+            with col4:
+                st.text(f"{labor_hours:.2f}h")
+            with col5:
+                st.text(op.category)
+            
+            # Show sub-steps if they exist
+            if op.sub_steps:
+                with st.expander(f"🔍 View {len(op.sub_steps)} Atomic Steps"):
+                    sub_steps_data = []
+                    for sub_step in op.sub_steps:
+                        sub_steps_data.append({
+                            "Step": sub_step.name,
+                            "Category": sub_step.category,
+                            "Time (min)": sub_step.time_score,
+                            "Material Cost": f"${sub_step.material_cost_usd:.2f}",
+                            "Instrument Cost": f"${sub_step.instrument_cost_usd:.2f}"
+                        })
+                    st.dataframe(pd.DataFrame(sub_steps_data), use_container_width=True)
+            
+            st.divider()
+
+def _render_titration_resources(result, pricing):
+    """Render resources for titration using the workflow."""
+    if not result.workflow:
+        st.warning("No workflow data available for resource analysis.")
+        return
+
+    workflow = result.workflow
+    
+    # 1. Calculate Totals from Workflow
+    total_material_cost = 0.0
+    total_labor_min = 0.0
+    total_instrument_cost = 0.0
+    
+    # Itemized list for BOM
+    bom_items = []
+    
+    for process in workflow.processes:
+        for op in process.ops:
+            total_material_cost += op.material_cost_usd
+            total_instrument_cost += op.instrument_cost_usd
+            
+            # Labor
+            if op.category != "incubation":
+                total_labor_min += op.time_score
+            elif op.sub_steps:
+                 for step in op.sub_steps:
+                      if step.category != "incubation":
+                           total_labor_min += step.time_score
+    
+    total_labor_hours = total_labor_min / 60.0
+    labor_cost = total_labor_hours * 100.0 # $100/hr
+    
+    # 2. Display High Level Metrics
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Total Material Cost", f"${total_material_cost:.2f}")
+    with c2:
+        st.metric("Total Labor Cost", f"${labor_cost:.2f}", help=f"{total_labor_hours:.2f} hours @ $100/hr")
+    with c3:
+        st.metric("Instrument Cost", f"${total_instrument_cost:.2f}")
+        
+    st.divider()
+    
+    # 3. Parameterized Unit Ops
+    st.subheader("Parameterized Unit Operations")
+    _render_unit_ops_table(workflow)
+
 
 def _render_lineage(result):
     """Render a lineage tree using Graphviz."""
@@ -690,65 +801,8 @@ def _render_resources(result, pricing, workflow_type="MCB"):
                         cells_per_vial=1e6
                     )
                     
-                # Column headers
-                col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
-                with col1:
-                    st.markdown("**Operation**")
-                with col2:
-                    st.markdown("**Time**")
-                with col3:
-                    st.markdown("**Cost**")
-                with col4:
-                    st.markdown("**Labor**")
-                with col5:
-                    st.markdown("**Category**")
-                st.divider()
-                
-                # Extract ops with expandable sub-steps
-                for process in workflow.processes:
-                    for idx, op in enumerate(process.ops):
-                        # Calculate active labor time (exclude incubation)
-                        labor_min = 0.0
-                        if op.sub_steps:
-                            for step in op.sub_steps:
-                                if step.category != "incubation":
-                                    labor_min += step.time_score
-                        else:
-                            # If no sub-steps, assume all is labor unless category is incubation
-                            if op.category != "incubation":
-                                labor_min = op.time_score
-                        
-                        # Labor load: staff_attention (1-5 scale) * active time in hours
-                        labor_hours = (op.staff_attention * labor_min) / 60.0
-                        
-                        # Main operation summary
-                        col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
-                        with col1:
-                            st.markdown(f"**{idx+1}. {op.name}**")
-                        with col2:
-                            st.text(f"{op.time_score} min")
-                        with col3:
-                            st.text(f"${op.material_cost_usd + op.instrument_cost_usd:.2f}")
-                        with col4:
-                            st.text(f"{labor_hours:.2f}h")
-                        with col5:
-                            st.text(op.category)
-                        
-                        # Show sub-steps if they exist
-                        if op.sub_steps:
-                            with st.expander(f"🔍 View {len(op.sub_steps)} Atomic Steps"):
-                                sub_steps_data = []
-                                for sub_step in op.sub_steps:
-                                    sub_steps_data.append({
-                                        "Step": sub_step.name,
-                                        "Category": sub_step.category,
-                                        "Time (min)": sub_step.time_score,
-                                        "Material Cost": f"${sub_step.material_cost_usd:.2f}",
-                                        "Instrument Cost": f"${sub_step.instrument_cost_usd:.2f}"
-                                    })
-                                st.dataframe(pd.DataFrame(sub_steps_data), use_container_width=True)
-                        
-                        st.divider()
+                # Render table
+                _render_unit_ops_table(workflow)
                         
             except Exception as e:
                 st.warning(f"Could not render unit ops: {e}")
@@ -763,20 +817,13 @@ def render_posh_campaign_manager(df, pricing):
     
     # --- Configuration Controls ---
     with st.expander("Campaign Configuration", expanded=True):
-        col1, col2, col3 = st.columns(3)
+        st.subheader("Campaign Settings")
+        cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549", "iPSC"], key="posh_sim_cell_line")
         
-        with col1:
-            st.subheader("Campaign Settings")
-            cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549", "iPSC"], key="posh_sim_cell_line")
-            
-        with col2:
-            st.subheader("Vendor Vial Specs")
-            initial_cells = st.number_input("Initial Cells", value=1.0e6, format="%.1e", key="posh_initial_cells")
-            vendor_lot = st.text_input("Vendor Lot", value="LOT-2025-X", key="posh_vendor_lot")
-            
-        with col3:
-            st.subheader("Banking Targets")
-            target_vials = st.number_input("Target MCB Vials", value=10, min_value=10, max_value=100, key="posh_target_vials")
+        # Hardcoded defaults (UI removed per user request)
+        initial_cells = 1.0e6
+        vendor_lot = "LOT-2025-X"
+        target_vials = 10
             
         st.divider()
         run_sim = st.button("▶️ Simulate MCB Generation", type="primary", key="posh_run_mcb_sim")
@@ -828,65 +875,144 @@ def render_posh_campaign_manager(df, pricing):
             st.error(f"❌ Simulation Failed: {result.summary.get('failed_reason', 'Unknown')}")
 
     st.divider()
-    
-    # --- Phase 2: LV MOI Titration ---
     st.markdown("""
-    **Phase 2: LV MOI Titration**
-    Determine the optimal viral volume to achieve target transduction efficiency.
+    **Phase 2: Working Cell Bank (WCB) Generation**
+    Select a generated MCB vial to expand into a Working Cell Bank.
     """)
+
+    if not st.session_state.mcb_results:
+        st.info("⚠️ Please complete Phase 1 (MCB Generation) above to proceed to Phase 2.")
+    else:
+        # Initialize session state for WCB results and consumed vials
+        if "wcb_results" not in st.session_state:
+            st.session_state.wcb_results = {}
+        if "consumed_mcb_vials" not in st.session_state:
+            st.session_state.consumed_mcb_vials = set()
+        
+        with st.expander("WCB Configuration", expanded=True):
+            wcb_col1, wcb_col2, wcb_col3 = st.columns(3)
+        
+            # Get available MCB vials from results (excluding consumed ones)
+            available_mcb_vials = []
+            mcb_vial_map = {}
+        
+            for res in st.session_state.mcb_results.values():
+                if res.success and res.vials:
+                    for v in res.vials:
+                        if v.vial_id not in st.session_state.consumed_mcb_vials:
+                            label = f"{v.vial_id} ({v.cell_line}, P{v.passage_number})"
+                            available_mcb_vials.append(label)
+                            mcb_vial_map[label] = v
+        
+            with wcb_col1:
+                if available_mcb_vials:
+                    selected_mcb_label = st.selectbox("Source MCB Vial", available_mcb_vials, key="posh_wcb_source_vial")
+                else:
+                    st.warning("No available MCB vials. Run Phase 1 to generate more.")
+                    selected_mcb_label = None
+            
+            with wcb_col2:
+                target_wcb_vials = st.number_input("Target WCB Vials", value=10, min_value=10, max_value=500, key="posh_wcb_target_vials")
+            
+            with wcb_col3:
+                st.write("") # Spacer
+                st.write("")
+                run_wcb_sim = st.button("▶️ Simulate WCB Generation", type="primary", disabled=not selected_mcb_label, key="posh_run_wcb_sim")
+            
+        if run_wcb_sim and selected_mcb_label:
+            source_vial = mcb_vial_map[selected_mcb_label]
+            with st.spinner(f"Simulating WCB generation from {source_vial.vial_id}..."):
+                from cell_os.simulation.wcb_wrapper import simulate_wcb_generation, MCBVialSpec
+            
+                # Create spec from selected MCB vial
+                spec = MCBVialSpec(
+                    cell_line=source_vial.cell_line,
+                    vial_id=source_vial.vial_id,
+                    passage_number=source_vial.passage_number,
+                    cells_per_vial=source_vial.cells_per_vial,
+                    viability=source_vial.viability
+                )
+            
+                result = simulate_wcb_generation(spec, target_vials=target_wcb_vials)
+                st.session_state.wcb_results[source_vial.vial_id] = result
+            
+                # Mark vial as consumed
+                st.session_state.consumed_mcb_vials.add(source_vial.vial_id)
+            
+                st.success(f"WCB Simulation complete for {source_vial.vial_id}! (Refresh to see updated vial list)")
+
+        # Display WCB Results
+        if st.session_state.wcb_results:
+            st.subheader("WCB Results")
+            wcb_keys = list(st.session_state.wcb_results.keys())
+            wcb_tabs = st.tabs(wcb_keys)
+        
+            for i, key in enumerate(wcb_keys):
+                with wcb_tabs[i]:
+                    result = st.session_state.wcb_results[key]
+                    _render_wcb_result(result, pricing, unique_key=key) # PASS PRICING AND KEY
+
     
-    from cell_os.simulation.titration_wrapper import simulate_titration
+        # --- Phase 3: LV MOI Titration ---
+        st.markdown("""
+        **Phase 3: LV MOI Titration**
+        Determine the optimal viral volume to achieve target transduction efficiency.
+        """)
     
-    with st.expander("Titration Configuration", expanded=True):
-        t_col1, t_col2, t_col3 = st.columns(3)
-        with t_col1:
-            est_titer = st.number_input("Estimated Titer (TU/mL)", value=1.0e8, format="%.1e", key="titration_est_titer")
-        with t_col2:
-            target_eff = st.slider("Target Transduction Efficiency", 0.1, 0.9, 0.30, 0.05, key="titration_target_eff")
-        with t_col3:
-            st.caption("Experiment Design")
-            st.text("Format: 6-well plate")
-            st.text("Cells/Well: 100,000")
+        from cell_os.simulation.titration_wrapper import simulate_titration
+    
+        with st.expander("Titration Configuration", expanded=True):
+            t_col1, t_col2, t_col3, t_col4 = st.columns(4)
+            with t_col1:
+                titration_cell_line = st.selectbox("Cell Line", ["U2OS", "HepG2", "A549", "iPSC"], key="titration_cell_line")
+            with t_col2:
+                est_titer = st.number_input("Estimated Titer (TU/mL)", value=1.0e8, format="%.1e", key="titration_est_titer")
+            with t_col3:
+                target_eff = st.slider("Target Transduction Efficiency", 0.1, 0.9, 0.30, 0.05, key="titration_target_eff")
+            with t_col4:
+                st.caption("Experiment Design")
+                st.text("Format: 6-well plate")
+                st.text("Cells/Well: 100,000")
             
-        run_titration = st.button("▶️ Simulate Titration", key="run_titration_btn")
+            run_titration = st.button("▶️ Simulate Titration", key="run_titration_btn")
         
-    if "titration_results" not in st.session_state:
-        st.session_state.titration_results = {}
+        if "titration_results" not in st.session_state:
+            st.session_state.titration_results = {}
         
-    if run_titration:
-        with st.spinner("Simulating titration experiment..."):
-            # Simulate with some variance from estimated titer to be realistic
-            true_titer = est_titer * np.random.normal(1.0, 0.2) 
+        if run_titration:
+            with st.spinner("Simulating titration experiment..."):
+                # Simulate with some variance from estimated titer to be realistic
+                true_titer = est_titer * np.random.normal(1.0, 0.2) 
             
-            t_result = simulate_titration(
-                cell_line=cell_line,
-                true_titer_tu_ml=true_titer,
-                target_transduction_efficiency=target_eff,
-                cells_per_well=100000
-            )
-            st.session_state.titration_results[cell_line] = t_result
+                t_result = simulate_titration(
+                    cell_line=titration_cell_line,
+                    true_titer_tu_ml=true_titer,
+                    target_transduction_efficiency=target_eff,
+                    cells_per_well=100000
+                )
+                st.session_state.titration_results[titration_cell_line] = t_result
             
-    if cell_line in st.session_state.titration_results:
-        t_result = st.session_state.titration_results[cell_line]
+        if titration_cell_line in st.session_state.titration_results:
+            t_result = st.session_state.titration_results[titration_cell_line]
         
-        if t_result.success:
-            st.success(f"✅ Titration Complete for {cell_line}")
+            if t_result.success:
+                st.success(f"✅ Titration Complete for {titration_cell_line}")
             
-            # Metrics
-            m1, m2, m3, m4 = st.columns(4)
-            with m1:
-                st.metric("Fitted Titer (TU/mL)", f"{t_result.fitted_titer_tu_ml:.2e}")
-            with m2:
-                st.metric("Optimal Volume", f"{t_result.recommended_vol_ul:.2f} µL", help=f"For {target_eff:.0%} Efficiency")
-            with m3:
-                st.metric("Target MOI", f"{t_result.target_moi:.2f}")
-            with m4:
-                st.metric("Model Fit (R²)", f"{t_result.r_squared:.3f}")
+                # Metrics
+                m1, m2, m3, m4 = st.columns(4)
+                with m1:
+                    st.metric("Fitted Titer (TU/mL)", f"{t_result.fitted_titer_tu_ml:.2e}")
+                with m2:
+                    st.metric("Optimal Volume", f"{t_result.recommended_vol_ul:.2f} µL", help=f"For {target_eff:.0%} Efficiency")
+                with m3:
+                    st.metric("Target MOI", f"{t_result.target_moi:.2f}")
+                with m4:
+                    st.metric("Model Fit (R²)", f"{t_result.r_squared:.3f}")
                 
-            # Plot
-            # Create smooth curve for model
-            x_smooth = np.linspace(0, t_result.data['volume_ul'].max() * 1.1, 100)
-            # BFP = A * (1 - exp(-MOI)) = A * (1 - exp(-(Vol*Titer)/Cells))
+                # Plot
+                # Create smooth curve for model
+                x_smooth = np.linspace(0, t_result.data['volume_ul'].max() * 1.1, 100)
+                # BFP = A * (1 - exp(-MOI)) = A * (1 - exp(-(Vol*Titer)/Cells))
             # Titer in TU/uL = fitted_titer_tu_ml / 1000
             titer_ul = t_result.fitted_titer_tu_ml / 1000.0
             y_smooth = t_result.model.max_infectivity * (1.0 - np.exp(-(x_smooth * titer_ul) / 100000))
@@ -921,7 +1047,7 @@ def render_posh_campaign_manager(df, pricing):
             ))
             
             fig.update_layout(
-                title=f"Titration Curve: {cell_line}",
+                title=f"Titration Curve: {titration_cell_line}",
                 xaxis_title="Viral Volume (µL)",
                 yaxis_title="Transduction Efficiency (Fraction BFP)",
                 yaxis_range=[0, 1.0],
@@ -933,22 +1059,10 @@ def render_posh_campaign_manager(df, pricing):
             
             # Cost Analysis
             st.subheader("Titration Cost Analysis 💰")
-            # Estimate cost: 
-            # 1 Plate (6-well) -> $5
-            # Media: 6 wells * 2mL = 12mL -> ~$0.50
-            # Cells: Negligible cost from MCB
-            # Labor: 1 hour -> $100
-            # Virus: Sunk cost (produced previously)
-            
-            cost_labor = 100.0
-            cost_materials = 15.0 # Plate + Media + Tips
-            total_titration_cost = cost_labor + cost_materials
-            
-            st.info(f"Estimated Experiment Cost: **${total_titration_cost:.2f}** (Includes 1h labor + materials)")
+            _render_titration_resources(t_result, pricing)
             
         else:
             st.error(f"❌ Titration Failed: {t_result.error_message}")
-            st.success(f"Simulation complete for {cell_line}!")
             
     # Display Results
     if st.session_state.mcb_results:
@@ -1099,83 +1213,6 @@ def _render_mcb_result(result, pricing):
             st.success("✅ QC Panel Passed")
             st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
             st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
-
-    st.markdown("""
-    **Phase 2: Working Cell Bank (WCB) Generation**
-    Select a generated MCB vial to expand into a Working Cell Bank.
-    """)
-    
-    if not st.session_state.mcb_results:
-        st.info("⚠️ Please complete Phase 1 (MCB Generation) above to proceed to Phase 2.")
-    else:
-        # Initialize session state for WCB results and consumed vials
-        if "wcb_results" not in st.session_state:
-            st.session_state.wcb_results = {}
-        if "consumed_mcb_vials" not in st.session_state:
-            st.session_state.consumed_mcb_vials = set()
-            
-        with st.expander("WCB Configuration", expanded=True):
-            wcb_col1, wcb_col2, wcb_col3 = st.columns(3)
-            
-            # Get available MCB vials from results (excluding consumed ones)
-            available_mcb_vials = []
-            mcb_vial_map = {}
-            
-            for res in st.session_state.mcb_results.values():
-                if res.success and res.vials:
-                    for v in res.vials:
-                        if v.vial_id not in st.session_state.consumed_mcb_vials:
-                            label = f"{v.vial_id} ({v.cell_line}, P{v.passage_number})"
-                            available_mcb_vials.append(label)
-                            mcb_vial_map[label] = v
-            
-            with wcb_col1:
-                if available_mcb_vials:
-                    selected_mcb_label = st.selectbox("Source MCB Vial", available_mcb_vials, key="posh_wcb_source_vial")
-                else:
-                    st.warning("No available MCB vials. Run Phase 1 to generate more.")
-                    selected_mcb_label = None
-                
-            with wcb_col2:
-                target_wcb_vials = st.number_input("Target WCB Vials", value=10, min_value=10, max_value=500, key="posh_wcb_target_vials")
-                
-            with wcb_col3:
-                st.write("") # Spacer
-                st.write("")
-                run_wcb_sim = st.button("▶️ Simulate WCB Generation", type="primary", disabled=not selected_mcb_label, key="posh_run_wcb_sim")
-                
-        if run_wcb_sim and selected_mcb_label:
-            source_vial = mcb_vial_map[selected_mcb_label]
-            with st.spinner(f"Simulating WCB generation from {source_vial.vial_id}..."):
-                from cell_os.simulation.wcb_wrapper import simulate_wcb_generation, MCBVialSpec
-                
-                # Create spec from selected MCB vial
-                spec = MCBVialSpec(
-                    cell_line=source_vial.cell_line,
-                    vial_id=source_vial.vial_id,
-                    passage_number=source_vial.passage_number,
-                    cells_per_vial=source_vial.cells_per_vial,
-                    viability=source_vial.viability
-                )
-                
-                result = simulate_wcb_generation(spec, target_vials=target_wcb_vials)
-                st.session_state.wcb_results[source_vial.vial_id] = result
-                
-                # Mark vial as consumed
-                st.session_state.consumed_mcb_vials.add(source_vial.vial_id)
-                
-                st.success(f"WCB Simulation complete for {source_vial.vial_id}! (Refresh to see updated vial list)")
-
-        # Display WCB Results
-        if st.session_state.wcb_results:
-            st.subheader("WCB Results")
-            wcb_keys = list(st.session_state.wcb_results.keys())
-            wcb_tabs = st.tabs(wcb_keys)
-            
-            for i, key in enumerate(wcb_keys):
-                with wcb_tabs[i]:
-                    result = st.session_state.wcb_results[key]
-                    _render_wcb_result(result, pricing, unique_key=key) # PASS PRICING AND KEY
 
 def _render_wcb_result(result, pricing, unique_key):
     """Render metrics and plots for a single WCB result."""

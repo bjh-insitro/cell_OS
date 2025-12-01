@@ -78,6 +78,23 @@ class InventoryManager:
             )
         """)
         
+        # Resources catalog table (replaces pricing.yaml)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS resources (
+                resource_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT,
+                vendor TEXT,
+                catalog_number TEXT,
+                pack_size REAL,
+                pack_unit TEXT,
+                pack_price_usd REAL,
+                logical_unit TEXT,
+                unit_price_usd REAL,
+                extra_json TEXT
+            )
+        """)
+        
         conn.commit()
         conn.close()
         

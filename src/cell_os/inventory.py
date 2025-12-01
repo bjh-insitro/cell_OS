@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import yaml
 import pandas as pd
+import sqlite3
+import json
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
@@ -66,7 +69,8 @@ class UnitOpDef:
 
 class Inventory:
     """
-    Loads pricing.yaml into Resource objects.
+    Loads pricing into Resource objects.
+    Prioritizes SQLite DB, falls back to pricing.yaml.
 
     Provides:
       - price lookup
@@ -75,16 +79,72 @@ class Inventory:
       - to_dataframe() for LabWorldModel
     """
 
-    def __init__(self, pricing_path: str):
+    def __init__(self, pricing_path: str = None, db_path: str = "data/inventory.db"):
         self.resources: Dict[str, Resource] = {}
         self.usage_log: List[Dict[str, Any]] = []  # Log of all consumed resources
-        self._load_pricing(pricing_path)
+        
+        loaded = False
+        
+        # Try loading from DB first
+        if db_path and os.path.exists(db_path):
+            try:
+                self._load_from_db(db_path)
+                if self.resources:
+                    loaded = True
+            except Exception as e:
+                print(f"Warning: Failed to load inventory from DB: {e}")
+        
+        # Fallback to YAML if DB failed or empty
+        if not loaded and pricing_path:
+            self._load_pricing(pricing_path)
+            
+        # Initialize stock (default) if not loaded from DB (DB loading sets stock to 0 usually, manager handles it)
+        # But for backward compatibility with pure YAML usage:
+        if not loaded:
+             for r in self.resources.values():
+                r.stock_level = r.pack_size * 10.0
 
-        # initialize stock (e.g., 10 packs of everything)
-        for r in self.resources.values():
-            r.stock_level = r.pack_size * 10.0
+    def _load_from_db(self, db_path: str):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Check if resources table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='resources'")
+        if not cursor.fetchone():
+            conn.close()
+            return
 
-    # -----------------------------------------------------------------
+        cursor.execute("SELECT * FROM resources")
+        rows = cursor.fetchall()
+        
+        # Get column names
+        col_names = [description[0] for description in cursor.description]
+        
+        for row in rows:
+            d = dict(zip(col_names, row))
+            
+            extra = {}
+            if d.get('extra_json'):
+                try:
+                    extra = json.loads(d['extra_json'])
+                except:
+                    pass
+            
+            self.resources[d['resource_id']] = Resource(
+                resource_id=d['resource_id'],
+                name=d['name'],
+                vendor=d.get('vendor', ''),
+                catalog_number=d.get('catalog_number', ''),
+                pack_size=float(d.get('pack_size', 1.0)),
+                pack_unit=d.get('pack_unit', ''),
+                pack_price_usd=float(d.get('pack_price_usd', 0.0)),
+                logical_unit=d.get('logical_unit', ''),
+                unit_price_usd=float(d.get('unit_price_usd', 0.0)),
+                category=d.get('category', ''),
+                extra=extra
+            )
+            
+        conn.close()
 
     def _load_pricing(self, path: str):
         with open(path, 'r') as f:

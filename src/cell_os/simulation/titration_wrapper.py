@@ -18,6 +18,10 @@ from cell_os.posh_lv_moi import (
     fit_lv_transduction_model,
     LVDesignError
 )
+from cell_os.workflows import Workflow, WorkflowBuilder
+from cell_os.unit_ops.parametric import ParametricOps
+from cell_os.unit_ops.base import VesselLibrary
+from cell_os.simulation.utils import MockInventory
 
 @dataclass
 class TitrationResultBundle:
@@ -32,6 +36,7 @@ class TitrationResultBundle:
     target_moi: float
     success: bool
     error_message: str = ""
+    workflow: Optional[Workflow] = None
 
 def simulate_titration(
     cell_line: str,
@@ -59,7 +64,6 @@ def simulate_titration(
     """
     rng = np.random.default_rng(random_seed)
     
-    # 1. Define the Plan
     # 1. Define the Plan
     if vol_range_ul is None:
         # Auto-scale volumes based on expected titer to ensure we get data in the linear range
@@ -149,6 +153,19 @@ def simulate_titration(
         target_moi = -np.log(1.0 - (target_eff / model.max_infectivity))
         recommended_vol_ul = (target_moi * cells_per_well) / model.titer_tu_ul
         
+        # 5. Build Workflow for Resource Tracking
+        inv = MockInventory()
+        vessels = VesselLibrary()
+        ops = ParametricOps(vessels, inv)
+        builder = WorkflowBuilder(ops)
+        
+        num_conditions = len(vol_range_ul)
+        workflow = builder.build_titration_workflow(
+            cell_line=cell_line,
+            num_conditions=num_conditions,
+            replicates=replicates
+        )
+        
         return TitrationResultBundle(
             cell_line=cell_line,
             true_titer_tu_ml=true_titer_tu_ml,
@@ -158,7 +175,8 @@ def simulate_titration(
             model=model,
             recommended_vol_ul=recommended_vol_ul,
             target_moi=target_moi,
-            success=True
+            success=True,
+            workflow=workflow
         )
         
     except Exception as e:

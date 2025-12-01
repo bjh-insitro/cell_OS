@@ -300,6 +300,17 @@ items:
     logical_unit: mL
     unit_price_usd: 50.0
 
+  vitronectin:
+    name: "Vitronectin (Recombinant Human)"
+    category: coating
+    vendor: "Thermo"
+    catalog_number: "A14700"
+    pack_size: 2
+    pack_unit: mL
+    pack_price_usd: 1000.0
+    logical_unit: mL
+    unit_price_usd: 500.0
+
   pdl:
     name: "Poly-D-lysine"
     category: coating

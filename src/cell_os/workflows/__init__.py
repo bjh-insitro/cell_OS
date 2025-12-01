@@ -192,6 +192,103 @@ class WorkflowBuilder:
             Process("WCB Expansion", process_ops)
         ])
 
+    def build_titration_workflow(self, cell_line: str = "U2OS", num_conditions: int = 8, replicates: int = 2) -> Workflow:
+        """
+        LV Titration Experiment Workflow.
+        
+        Simplified workflow:
+        1. Thaw WCB into T75 (coat only if iPSC)
+        2. Passage into 6-well plates (coat only if iPSC)
+        3. Add virus
+        4. Feed plates (24h post-transduction to remove virus)
+        5. Harvest & Flow Cytometry
+        """
+        process_ops = []
+        
+        # Check if coating needed (only iPSC/hESC)
+        coating_needed = False
+        coating_agent = "vitronectin"
+        if cell_line.lower() in ["ipsc", "hesc"]:
+            coating_needed = True
+            try:
+                from cell_os.cell_line_database import get_cell_line_profile
+                profile = get_cell_line_profile(cell_line)
+                if profile and profile.coating:
+                    coating_agent = profile.coating
+            except:
+                pass
+
+        # 1. Thaw WCB into T75
+        if coating_needed:
+            process_ops.append(self.ops.op_coat("flask_t75", agents=[coating_agent]))
+            
+        process_ops.append(self.ops.op_thaw("flask_t75", cell_line=cell_line, skip_coating=True))
+        
+        # 2. Passage T75 into 6-well plates
+        # Calculate how many plates needed (8 conditions * 2 reps = 16 wells = 3 plates)
+        num_wells = num_conditions * replicates
+        num_plates = (num_wells + 5) // 6
+        
+        # Coat plates if needed
+        if coating_needed:
+            # Single op for coating all plates
+            process_ops.append(self.ops.op_coat("plate_6well", agents=[coating_agent], num_vessels=num_plates))
+        
+        # Harvest T75 and seed into plates (consolidated)
+        process_ops.append(self.ops.op_harvest("flask_t75", cell_line=cell_line))
+        
+        # Seed plates with detailed atomic steps
+        process_ops.append(self.ops.op_seed_plate(
+            "plate_6well",
+            num_wells=num_wells,
+            volume_per_well_ml=2.0,
+            cell_line=cell_line,
+            name=f"Seed {num_wells} wells across {num_plates} plates"
+        ))
+
+        # 3. Prepare virus dilutions & transduce
+        # Prepare dilutions (one tube per condition)
+        for i in range(num_conditions):
+            process_ops.append(self.ops.op_dispense("tube_15ml", volume_ml=1.0, liquid_name="media", name=f"Prep Dilution {i+1} (Media)"))
+            process_ops.append(self.ops.op_dispense("tube_15ml", volume_ml=0.01, liquid_name="virus", name=f"Prep Dilution {i+1} (Virus)"))
+            
+        # Add virus to wells (consolidated into single op)
+        total_virus_vol = 0.1 * num_wells
+        process_ops.append(self.ops.op_dispense(
+            "plate_6well", 
+            volume_ml=total_virus_vol, 
+            liquid_name="virus_mix", 
+            name=f"Transduce {num_wells} wells"
+        ))
+            
+        # 4. Feed plates (24h post-transduction - single consolidated op)
+        # This removes virus and provides fresh media
+        feed_volume = 2.0 * num_wells
+        process_ops.append(self.ops.op_feed(
+            "plate_6well", 
+            cell_line=cell_line, 
+            name=f"Media change {num_plates} plates (remove virus)"
+        ))
+        
+        # 5. Harvest & Flow Cytometry (48h later)
+        # Consolidated harvest operation for all plates
+        process_ops.append(self.ops.op_harvest(
+            "plate_6well", 
+            cell_line=cell_line,
+            name=f"Harvest {num_wells} wells for analysis"
+        ))
+        
+        # Flow cytometry (includes sample prep and analysis)
+        process_ops.append(self.ops.op_flow_cytometry(
+            "plate_96well_u", 
+            num_samples=num_wells,
+            name=f"Flow Cytometry Analysis ({num_wells} samples)"
+        ))
+            
+        return Workflow("LV Titration Experiment", [
+            Process("Titration Execution", process_ops)
+        ])
+
     def build_bank_release_qc(self, cell_line: str = "U2OS", sample_source: str = "flask_sample") -> Workflow:
         """
         Release QC Panel for Cell Banks.
