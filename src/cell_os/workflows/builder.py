@@ -2,6 +2,7 @@ from typing import List
 import numpy as np
 from cell_os.unit_ops import UnitOp, ParametricOps
 from .base import Workflow, Process
+from .helpers import resolve_coating, resolve_dissociation_method, infer_vessel_type
 from .zombie_posh_shopping_list import ZombiePOSHShoppingList
 
 
@@ -32,16 +33,9 @@ class WorkflowBuilder:
         process_ops: List[UnitOp] = []
 
         # 1. Coat flask if needed (Day -1, 24hr before thaw)
-        try:
-            from cell_os.cell_line_database import get_cell_line_profile
-            profile = get_cell_line_profile(cell_line)
-            if profile and profile.coating_required:
-                coating_agent = profile.coating if profile.coating else "matrigel"
-                process_ops.append(self.ops.op_coat(flask_size, agents=[coating_agent]))
-        except (ImportError, Exception):
-            # Fallback for iPSC/hESC
-            if cell_line.lower() in ["ipsc", "hesc"]:
-                process_ops.append(self.ops.op_coat(flask_size, agents=["vitronectin"]))
+        coating_needed, coating_agent = resolve_coating(cell_line)
+        if coating_needed:
+            process_ops.append(self.ops.op_coat(flask_size, agents=[coating_agent]))
 
         # 2. Thaw and seed from vendor vial (coating already done)
         process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line, skip_coating=True))
@@ -51,15 +45,9 @@ class WorkflowBuilder:
 
         # 4. Final Harvest and Freeze
         use_resolver = False
-        if hasattr(self.ops, 'resolver') and self.ops.resolver:
+        if hasattr(self.ops, "resolver") and self.ops.resolver:
             try:
-                # Infer vessel type
-                parts = flask_size.split('_')
-                if len(parts) > 1 and parts[0] == "flask":
-                     vessel_type = parts[1].upper()
-                else:
-                     vessel_type = parts[-1].upper()
-                
+                vessel_type = infer_vessel_type(flask_size)
                 ops = self.ops.resolver.resolve_passage_protocol(cell_line, vessel_type)
                 process_ops.extend(ops)
                 use_resolver = True
@@ -67,18 +55,7 @@ class WorkflowBuilder:
                 pass
         
         if not use_resolver:
-            # Legacy fallback - use cell line database if available
-            dissociation = "trypsin"  # Default
-            try:
-                from cell_os.cell_line_database import get_cell_line_profile
-                profile = get_cell_line_profile(cell_line)
-                if profile and profile.dissociation_method:
-                    dissociation = profile.dissociation_method
-            except (ImportError, Exception):
-                # Fallback to hardcoded logic
-                if cell_line.lower() in ["ipsc", "hesc"]:
-                    dissociation = "accutase"
-            
+            dissociation = resolve_dissociation_method(cell_line)
             process_ops.append(
                 self.ops.op_harvest(flask_size, dissociation_method=dissociation, cell_line=cell_line)
             )
@@ -117,16 +94,7 @@ class WorkflowBuilder:
         process_ops.append(self.ops.op_feed(flask_size))
         
         # 3. Harvest
-        dissociation = "trypsin"
-        try:
-            from cell_os.cell_line_database import get_cell_line_profile
-            profile = get_cell_line_profile(cell_line)
-            if profile and profile.dissociation_method:
-                dissociation = profile.dissociation_method
-        except (ImportError, Exception):
-            if cell_line.lower() in ["ipsc", "hesc"]:
-                dissociation = "accutase"
-        
+        dissociation = resolve_dissociation_method(cell_line)
         process_ops.append(self.ops.op_harvest(flask_size, dissociation_method=dissociation, cell_line=cell_line))
 
         # 4. Freeze
@@ -150,17 +118,7 @@ class WorkflowBuilder:
         process_ops = []
         
         # Check if coating needed (only iPSC/hESC)
-        coating_needed = False
-        coating_agent = "vitronectin"
-        if cell_line.lower() in ["ipsc", "hesc"]:
-            coating_needed = True
-            try:
-                from cell_os.cell_line_database import get_cell_line_profile
-                profile = get_cell_line_profile(cell_line)
-                if profile and profile.coating:
-                    coating_agent = profile.coating
-            except:
-                pass
+        coating_needed, coating_agent = resolve_coating(cell_line)
 
         # 1. Thaw WCB into T75
         if coating_needed:
@@ -264,17 +222,7 @@ class WorkflowBuilder:
         transduction_cells_needed = library_size * representation
         
         # Check if coating needed
-        coating_needed = False
-        coating_agent = "vitronectin"
-        if cell_line.lower() in ["ipsc", "hesc"]:
-            coating_needed = True
-            try:
-                from cell_os.cell_line_database import get_cell_line_profile
-                profile = get_cell_line_profile(cell_line)
-                if profile and profile.coating:
-                    coating_agent = profile.coating
-            except:
-                pass
+        coating_needed, coating_agent = resolve_coating(cell_line)
         
         # 1. Thaw WCB vials into T75 flasks
         # Estimate vials needed: ~1M cells/vial, need transduction_cells_needed
