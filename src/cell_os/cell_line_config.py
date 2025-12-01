@@ -26,14 +26,22 @@ class CellLineConfigStore:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._yaml_data: Optional[Dict[str, Any]] = None
         self._db: Optional[CellLineRepository] = None
-        path = Path(yaml_path)
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
+
+        yaml_file = Path(yaml_path)
+        if yaml_file.exists():
+            with open(yaml_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             self._yaml_data = data.get("cell_lines", {})
+
+        # Always initialize the DB repository so we can fall back to SQLite when
+        # a cell line is missing from the legacy YAML fixtures.
+        self._db = CellLineRepository(db_path)
+
+        if self._yaml_data and self._db:
+            self._source = "hybrid"
+        elif self._yaml_data:
             self._source = "yaml"
         else:
-            self._db = CellLineRepository(db_path)
             self._source = "db"
 
     def get_config(self, cell_line: str) -> Dict[str, Any]:
@@ -41,19 +49,24 @@ class CellLineConfigStore:
         key = self._resolve_cell_line_key(cell_line)
         cache_key = key.lower()
         if cache_key not in self._cache:
-            if self._source == "yaml":
+            if self._yaml_data and key in self._yaml_data:
                 config = self._get_yaml_config(key)
-            else:
+            elif self._db:
                 config = self._build_config_from_db(key)
+            else:
+                raise ValueError(f"Unknown cell line: {cell_line}")
             self._cache[cache_key] = config
         return copy.deepcopy(self._cache[cache_key])
 
     def list_cell_lines(self) -> Dict[str, str]:
         """Return mapping from uppercase names to canonical IDs."""
-        if self._source == "yaml":
-            return {name.upper(): name for name in self._yaml_data or {}}
-        assert self._db is not None
-        return {name.upper(): name for name in self._db.get_all_cell_lines()}
+        mapping: Dict[str, str] = {}
+        if self._yaml_data is not None:
+            mapping.update({name.upper(): name for name in self._yaml_data})
+        if self._db:
+            for name in self._db.get_all_cell_lines():
+                mapping.setdefault(name.upper(), name)
+        return mapping
 
     # Internal helpers -------------------------------------------------
 

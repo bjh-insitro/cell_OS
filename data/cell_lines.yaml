@@ -1,0 +1,256 @@
+cell_lines:
+  iPSC:
+    growth_media: mtesr_plus_kit
+    wash_buffer: dpbs_ca_mg_free
+    detach_reagent: accutase
+    coating_required: true
+    coating_reagent: vitronectin
+    profile:
+      cell_type: iPSC
+      dissociation_method: accutase
+      transfection_method: nucleofection
+      transduction_method: spinoculation
+      freezing_media: cryostor_cs10
+      vial_type: tube_micronic_075
+      freezing_volume_ml: 0.35
+      cells_per_vial: 1000000
+      coating_required: true
+      coating_reagent: vitronectin
+      media: mtesr_plus_kit
+    thaw:
+      reference_vessel: T75
+      T75:
+        coating_required: true
+        coating_reagent: vitronectin
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+      # T25 will scale from T75 reference
+    feed:
+      T75:
+        media: mtesr_plus_kit
+        volume_ml: 15.0
+        schedule:
+          interval_days: 1
+    passage:
+      reference_vessel: T75
+      T75:
+        volumes_mL_reference:
+          wash_1: 10.0
+          wash_2: 5.0
+          detach: 5.0
+          quench: 10.0
+          collect_1: 15.0
+          collect_2: 15.0
+          resuspend: 5.0
+          count_sample: 0.1
+        reagents:
+          wash_buffer: dpbs_ca_mg_free
+          detach_reagent: accutase
+          growth_media: mtesr_plus_kit
+        incubation:
+          detach:
+            temperature_c: 37.0
+            minutes: 5.0
+      T25:
+        volumes_mL_reference:
+          wash_1: 3.0
+          wash_2: 1.5
+          detach: 1.5
+          quench: 3.0
+          collect_1: 5.0
+          collect_2: 5.0
+          resuspend: 2.0
+          count_sample: 0.1
+        reagents:
+          wash_buffer: dpbs_ca_mg_free
+          detach_reagent: accutase
+          growth_media: mtesr_plus_kit
+        incubation:
+          detach:
+            temperature_c: 37.0
+            minutes: 5.0
+
+  HEK293:
+    growth_media: dmem_high_glucose
+    wash_buffer: dpbs_ca_mg_free
+    detach_reagent: trypsin_edta
+    coating_required: false
+    coating_reagent: none
+    profile:
+      cell_type: HEK293
+      dissociation_method: trypsin
+      transfection_method: lipofection
+      transduction_method: spinoculation
+      freezing_media: cryostor_cs10
+      vial_type: tube_micronic_075
+      freezing_volume_ml: 0.35
+      cells_per_vial: 1000000
+      coating_required: false
+      coating_reagent: none
+      media: dmem_high_glucose
+    thaw:
+      reference_vessel: T75
+      T75:
+        coating_required: false
+        coating_reagent: none
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+      # T25 will scale from T75 reference
+    feed:
+      T75:
+        media: dmem_high_glucose
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+    passage:
+      reference_vessel: T75
+      T75:
+        volumes_mL_reference:
+          wash_1: 10.0
+          wash_2: 5.0
+          detach: 5.0
+          quench: 10.0
+          collect_1: 15.0
+          collect_2: 15.0
+          resuspend: 5.0
+          count_sample: 0.1
+        reagents:
+          wash_buffer: dpbs_ca_mg_free
+          detach_reagent: trypsin_edta
+          growth_media: dmem_high_glucose
+        incubation:
+          detach:
+            temperature_c: 37.0
+            minutes: 5.0
+      T25:
+        volumes_mL_reference:
+          wash_1: 3.0
+          wash_2: 1.5
+          detach: 1.5
+          quench: 3.0
+          collect_1: 5.0
+          collect_2: 5.0
+          resuspend: 2.0
+          count_sample: 0.1
+        reagents:
+          wash_buffer: dpbs_ca_mg_free
+          detach_reagent: trypsin_edta
+          growth_media: dmem_high_glucose
+        incubation:
+          detach:
+            temperature_c: 37.0
+            minutes: 5.0
+
+  A549:
+    growth_media: dmem_high_glucose
+    wash_buffer: dpbs_ca_mg_free
+    detach_reagent: trypsin_edta
+    coating_required: false
+    coating_reagent: none
+    profile:
+      cell_type: epithelial
+      coating_required: false
+      coating_reagent: none
+      media: dmem_high_glucose
+    thaw:
+      reference_vessel: T75
+      T75:
+        coating_required: false
+        coating_reagent: none
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    feed:
+      T75:
+        media: dmem_high_glucose
+        volume_ml: 12.0
+        schedule:
+          interval_days: 2
+
+  HepG2:
+    growth_media: emem
+    wash_buffer: dpbs_ca_mg_free
+    detach_reagent: trypsin_edta
+    coating_required: False
+    coating_reagent: none
+    profile:
+      cell_type: hepatic
+      coating_required: false
+      coating_reagent: none
+      media: emem
+    thaw:
+      reference_vessel: T75
+      T75:
+        coating_required: false
+        coating_reagent: none
+        volumes_mL:
+          media_aliquot: 40.0
+          pre_warm: 15.0
+          wash_aliquot: 5.0
+          wash_vial: 1.0
+          resuspend: 1.0
+          transfer: 1.0
+    feed:
+      T75:
+        media: emem
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+    feed:
+      T75:
+        media: dmem_high_glucose
+        volume_ml: 15.0
+        schedule:
+          interval_days: 2
+    passage:
+      reference_vessel: T75
+      T75:
+        volumes_mL_reference:
+          wash_1: 10.0
+          wash_2: 5.0
+          detach: 5.0
+          quench: 10.0
+          collect_1: 15.0
+          collect_2: 15.0
+          resuspend: 5.0
+          count_sample: 0.1
+        reagents:
+          wash_buffer: dpbs_ca_mg_free
+          detach_reagent: trypsin_edta
+          growth_media: dmem_high_glucose
+        incubation:
+          detach:
+            temperature_c: 37.0
+            minutes: 5.0
+      T25:
+        volumes_mL_reference:
+          wash_1: 3.0
+          wash_2: 1.5
+          detach: 1.5
+          quench: 3.0
+          collect_1: 5.0
+          collect_2: 5.0
+          resuspend: 2.0
+          count_sample: 0.1
+        reagents:
+          wash_buffer: dpbs_ca_mg_free
+          detach_reagent: trypsin_edta
+          growth_media: dmem_high_glucose
+        incubation:
+          detach:
+            temperature_c: 37.0
+            minutes: 5.0
