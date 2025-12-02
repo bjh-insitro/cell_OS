@@ -85,7 +85,7 @@ def render_analytics(df, pricing):
         )
         st.plotly_chart(
             fig_status,
-            use_container_width=True,
+            width="stretch",
             key="analytics_status_distribution"
         )
         
@@ -95,7 +95,7 @@ def render_analytics(df, pricing):
         fig_timeline = px.bar(daily_counts, x='date', y='Count', title="Daily Execution Volume")
         st.plotly_chart(
             fig_timeline,
-            use_container_width=True,
+            width="stretch",
             key="analytics_execution_timeline"
         )
         
@@ -115,7 +115,7 @@ def render_analytics(df, pricing):
     
     st.dataframe(
         op_stats, 
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Success Rate (%)": st.column_config.ProgressColumn(
                 "Success Rate",
@@ -140,6 +140,6 @@ def render_analytics(df, pricing):
     )
     st.plotly_chart(
         fig_cells,
-        use_container_width=True,
+        width="stretch",
         key="analytics_cell_line_activity"
     )

@@ -77,7 +77,13 @@ def render_sidebar(page_registry):
     
     page_titles = [f"{p.emoji} {p.title}" for p in filtered_pages]
     
-    default_index = 0
+    # Default to POSH Campaign Sim for landing
+    default_target = "🧬 POSH Campaign Sim"
+    if default_target in page_titles:
+        default_index = page_titles.index(default_target)
+    else:
+        default_index = 0
+
     pending = st.session_state.pop("pending_nav", None)
     if pending and pending in page_titles:
         default_index = page_titles.index(pending)
@@ -95,7 +101,7 @@ def render_sidebar(page_registry):
     st.sidebar.header("Status")
     
     # Refresh button
-    if st.sidebar.button("Refresh Data", use_container_width=True):
+    if st.sidebar.button("Refresh Data", width="stretch"):
         st.rerun()
     
     st.sidebar.subheader("Recent Tabs")
@@ -169,7 +175,7 @@ def render_economics_fallback(df: pd.DataFrame, pricing: dict):
         })
     
     if items:
-        st.dataframe(pd.DataFrame(items), use_container_width=True)
+        st.dataframe(pd.DataFrame(items), width="stretch")
     
     st.info("Inventory data unavailable; run a campaign or seed the database to view live levels.")
 

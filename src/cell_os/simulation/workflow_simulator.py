@@ -145,8 +145,9 @@ class WorkflowSimulator:
                 total_cells = self._get_total_cells()
                 avg_conf = self._get_avg_confluence()
                 
-                # Stop if we have enough cells (with 10% buffer) OR if confluence is ready for harvest
-                if total_cells >= target_total_cells * 1.1 or (total_cells >= target_total_cells * 0.8 and avg_conf >= 0.75):
+                # Stop ONLY if we have enough cells AND confluence is ready for harvest (approx 80%)
+                # User requirement: "stop at ~80% ... true for all cell lines"
+                if total_cells >= target_total_cells and avg_conf >= 0.75:
                     break
                 
                 self.day += 1
@@ -314,6 +315,7 @@ class WorkflowSimulator:
         self._track_resources(op)
         
         self.frozen_vials = num_vials
+        self.active_flasks = []  # Clear flasks to reflect harvest
     
     def _get_total_cells(self):
         total = 0

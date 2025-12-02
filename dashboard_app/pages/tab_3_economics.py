@@ -46,11 +46,11 @@ def render_economics(df, pricing):
         else:
             st.dataframe(
                 inventory_df.sort_values("Total Value (USD)", ascending=False),
-                use_container_width=True,
+                width="stretch",
             )
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Save Inventory Snapshot", use_container_width=True):
+                if st.button("Save Inventory Snapshot", width="stretch"):
                     snapshot_path = Path("results/inventory_snapshot.csv")
                     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
                     inventory_df.to_csv(snapshot_path, index=False)
@@ -61,7 +61,7 @@ def render_economics(df, pricing):
                     inventory_df.to_csv(index=False),
                     file_name="inventory_snapshot.csv",
                     mime="text/csv",
-                    use_container_width=True,
+                    width="stretch",
                 )
     else:
         st.warning("Inventory database unavailable. Run `make bootstrap-data` to seed resources.")

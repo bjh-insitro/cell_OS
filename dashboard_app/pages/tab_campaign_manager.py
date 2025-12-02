@@ -131,7 +131,7 @@ def render_create_campaign(manager, vessel_lib):
                     "Status": job.status
                 })
             
-            st.dataframe(pd.DataFrame(data), use_container_width=True)
+            st.dataframe(pd.DataFrame(data), width="stretch")
             
             if st.button("🚀 Submit Campaign to Queue", type="primary"):
                 with st.spinner("Submitting jobs..."):
@@ -172,4 +172,4 @@ def render_active_campaigns(manager):
                         "Status": job.status,
                         "Job ID": job.job_id[:8] + "..." if job.job_id else "—"
                     })
-                st.dataframe(pd.DataFrame(data), use_container_width=True)
+                st.dataframe(pd.DataFrame(data), width="stretch")

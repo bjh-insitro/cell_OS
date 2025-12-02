@@ -182,7 +182,9 @@ class SimulationParamsRepository(BaseRepository):
             )
         
         if row:
-            row = {k: v for k, v in row.items() if k not in ['id', 'created_at']}
+            # DEBUG: Print row keys to debug sensitivity_id issue
+            # print(f"DEBUG: Row keys: {row.keys()}")
+            row = {k: v for k, v in row.items() if k not in ['id', 'sensitivity_id', 'created_at']}
             return CompoundSensitivity(**row)
         return None
     
@@ -195,7 +197,7 @@ class SimulationParamsRepository(BaseRepository):
         
         sensitivities = []
         for row in rows:
-            row = {k: v for k, v in row.items() if k not in ['id', 'created_at']}
+            row = {k: v for k, v in row.items() if k not in ['id', 'sensitivity_id', 'created_at']}
             sensitivities.append(CompoundSensitivity(**row))
         return sensitivities
     

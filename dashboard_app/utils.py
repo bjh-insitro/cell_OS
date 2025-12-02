@@ -138,5 +138,5 @@ def download_button(df: pd.DataFrame, label: str, filename: str, file_format: st
         data=data,
         file_name=filename,
         mime=mime,
-        use_container_width=True,
+        width="stretch",
     )

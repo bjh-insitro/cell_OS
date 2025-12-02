@@ -57,7 +57,7 @@ def render_resource_chart(df, metric_col, capacity, title, color):
         title=f"{title} (Capacity: {capacity})"
     ).interactive()
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_violations(df):
     """Render a table of capacity violations."""
@@ -78,7 +78,7 @@ def render_violations(df):
             st.error(f"Incubator Overload: {len(incubator_violations)} days")
             st.dataframe(
                 incubator_violations[["day", "incubator_usage", "active_campaigns"]].style.format({"incubator_usage": "{:.0f}"}),
-                use_container_width=True
+                width="stretch"
             )
             
     with col2:
@@ -86,7 +86,7 @@ def render_violations(df):
             st.error(f"BSC Overload: {len(bsc_violations)} days")
             st.dataframe(
                 bsc_violations[["day", "bsc_hours", "active_campaigns"]].style.format({"bsc_hours": "{:.1f}"}),
-                use_container_width=True
+                width="stretch"
             )
 
 def main():

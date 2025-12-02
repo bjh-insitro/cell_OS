@@ -87,7 +87,7 @@ def render_workflow_visualizer(df, pricing):
                         sanitized_name = selected_option_name.replace(' ', '_')
                         st.plotly_chart(
                             fig,
-                            use_container_width=True,
+                            width="stretch",
                             key=f"workflow_plot_{sanitized_name}"
                         )
                     else:

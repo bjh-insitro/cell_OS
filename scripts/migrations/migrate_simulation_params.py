@@ -17,8 +17,8 @@ import sys
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from cell_os.simulation_params_db import (
-    SimulationParamsDatabase,
+from cell_os.database.repositories.simulation_params import (
+    SimulationParamsRepository,
     CellLineSimParams,
     CompoundSensitivity
 )
@@ -30,7 +30,7 @@ def load_yaml_data(yaml_path: str = "data/simulation_parameters.yaml"):
         return yaml.safe_load(f)
 
 
-def migrate_cell_line_params(db: SimulationParamsDatabase, yaml_data: dict):
+def migrate_cell_line_params(db: SimulationParamsRepository, yaml_data: dict):
     """Migrate cell line parameters to database."""
     print("\n📊 Migrating cell line parameters...")
     
@@ -64,7 +64,7 @@ def migrate_cell_line_params(db: SimulationParamsDatabase, yaml_data: dict):
     return count
 
 
-def migrate_compound_sensitivity(db: SimulationParamsDatabase, yaml_data: dict):
+def migrate_compound_sensitivity(db: SimulationParamsRepository, yaml_data: dict):
     """Migrate compound sensitivity data to database."""
     print("\n🧪 Migrating compound sensitivity data...")
     
@@ -106,7 +106,7 @@ def migrate_compound_sensitivity(db: SimulationParamsDatabase, yaml_data: dict):
     return count
 
 
-def migrate_defaults(db: SimulationParamsDatabase, yaml_data: dict):
+def migrate_defaults(db: SimulationParamsRepository, yaml_data: dict):
     """Migrate default parameters to database."""
     print("\n⚙️  Migrating default parameters...")
     
@@ -122,7 +122,7 @@ def migrate_defaults(db: SimulationParamsDatabase, yaml_data: dict):
     return count
 
 
-def validate_migration(db: SimulationParamsDatabase, yaml_data: dict):
+def validate_migration(db: SimulationParamsRepository, yaml_data: dict):
     """Validate that migration was successful."""
     print("\n🔍 Validating migration...")
     
@@ -195,7 +195,7 @@ def validate_migration(db: SimulationParamsDatabase, yaml_data: dict):
         return True
 
 
-def print_summary(db: SimulationParamsDatabase):
+def print_summary(db: SimulationParamsRepository):
     """Print summary of migrated data."""
     print("\n" + "="*60)
     print("📊 MIGRATION SUMMARY")
@@ -244,7 +244,7 @@ def main():
         Path(db_path).rename(backup_path)
         print(f"⚠️  Backed up existing database to {backup_path}")
     
-    db = SimulationParamsDatabase(db_path)
+    db = SimulationParamsRepository(db_path)
     print(f"✅ Created {db_path}")
     
     # Migrate data

@@ -125,7 +125,7 @@ def render_stock_levels(inv_manager):
     # Display table
     st.dataframe(
         filtered_df,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Stock Level": st.column_config.NumberColumn(
                 "Stock Level",
@@ -148,7 +148,7 @@ def render_stock_levels(inv_manager):
         lots = inv_manager.get_lots(selected_resource)
         if lots:
             df_lots = pd.DataFrame(lots)
-            st.dataframe(df_lots, use_container_width=True)
+            st.dataframe(df_lots, width="stretch")
         else:
             st.info("No active lots found for this resource.")
 
@@ -261,4 +261,4 @@ def render_transaction_history(inv_manager):
     cols = ["timestamp", "type", "Resource Name", "change", "lot_id", "metadata"]
     df_trans = df_trans[cols]
     
-    st.dataframe(df_trans, use_container_width=True)
+    st.dataframe(df_trans, width="stretch")

@@ -207,7 +207,7 @@ def render_cell_line_inspector(df, pricing):
                 # Rename columns for display
                 display_df.columns = ['#', 'Step Description', 'Reagent', 'Volume', 'Cost']
                 
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                st.dataframe(display_df, width="stretch", hide_index=True)
                 
                 # Calculate and display cost summary
                 total_cost = df_steps['cost_usd'].sum()
@@ -236,7 +236,7 @@ def render_cell_line_inspector(df, pricing):
                         'Total Cost': reagent_costs.values
                     })
                     reagent_df['Total Cost'] = reagent_df['Total Cost'].apply(lambda x: f"${x:.2f}")
-                    st.dataframe(reagent_df, use_container_width=True, hide_index=True)
+                    st.dataframe(reagent_df, width="stretch", hide_index=True)
                 
                 # Store resolved protocol in session state for execution
                 st.session_state['last_resolved_protocol'] = {
@@ -262,7 +262,7 @@ def render_cell_line_inspector(df, pricing):
                     )
                 
                 with col_exec2:
-                    if st.button("🚀 Execute Now", type="secondary", use_container_width=True):
+                    if st.button("🚀 Execute Now", type="secondary", width="stretch"):
                         # Import executor
                         from cell_os.workflow_executor import WorkflowExecutor, ExecutionStatus, StepStatus
                         

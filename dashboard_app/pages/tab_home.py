@@ -80,7 +80,7 @@ def render_home(df: pd.DataFrame, pricing: Dict[str, Any]):
         preview_cols = [col for col in ["experiment_id", "cell_line", "status", ts_col] if col and col in recent_df.columns]
         st.dataframe(
             recent_df[preview_cols].head(5) if preview_cols else recent_df.head(5),
-            use_container_width=True,
+            width="stretch",
         )
 
     st.divider()
@@ -98,7 +98,7 @@ def render_home(df: pd.DataFrame, pricing: Dict[str, Any]):
         with col:
             st.markdown(f"**{title}**")
             st.caption(description)
-            if st.button("Open", key=f"shortcut_{tab_name}", use_container_width=True):
+            if st.button("Open", key=f"shortcut_{tab_name}", width="stretch"):
                 st.session_state.pending_nav = tab_name
                 st.experimental_rerun()
 

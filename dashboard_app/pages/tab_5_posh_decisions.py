@@ -149,4 +149,4 @@ def render_posh_decisions(df, pricing):
             })
         
         df_comparison = pd.DataFrame(comparison_data)
-        st.dataframe(df_comparison, use_container_width=True, hide_index=True)
+        st.dataframe(df_comparison, width="stretch", hide_index=True)

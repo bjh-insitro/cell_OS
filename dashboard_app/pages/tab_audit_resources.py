@@ -58,7 +58,7 @@ def render_resource_audit(df, pricing):
         # Apply the new order
         df_items = df_items[column_order]
         
-        st.dataframe(df_items, use_container_width=True)
+        st.dataframe(df_items, width="stretch")
     else:
         st.info("Pricing data failed to load or is empty.")
 
@@ -96,7 +96,7 @@ def render_resource_audit(df, pricing):
         
         df_vessels = df_vessels[column_order]
         
-        st.dataframe(df_vessels, use_container_width=True)
+        st.dataframe(df_vessels, width="stretch")
     except Exception as e:
         st.warning(f"Could not introspect VesselLibrary structure. Error: {e}")
 

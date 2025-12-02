@@ -145,7 +145,7 @@ def render_posh_designer(df, pricing):
         st.subheader("Library Composition")
         try:
             chart = plot_library_composition(result.library)
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         except Exception as e:
             st.error(f"Visualization error: {e}")
         
@@ -217,7 +217,7 @@ def render_posh_designer(df, pricing):
             st.subheader("Titration Curve")
             try:
                 chart = plot_titration_curve(model, data, target_moi=result.scenario.moi_target)
-                st.altair_chart(chart, use_container_width=True)
+                st.altair_chart(chart, width="stretch")
             except Exception as e:
                 st.error(f"Visualization error: {e}")
             
@@ -227,7 +227,7 @@ def render_posh_designer(df, pricing):
                 try:
                     chart = plot_titer_posterior(model)
                     if chart:
-                        st.altair_chart(chart, use_container_width=True)
+                        st.altair_chart(chart, width="stretch")
                         
                         ci_low, ci_high = model.posterior.ci_95
                         st.info(f"95% Credible Interval: [{ci_low:,.0f}, {ci_high:,.0f}] TU/µL")
@@ -274,7 +274,7 @@ def render_posh_designer(df, pricing):
                 
                 try:
                     chart = plot_risk_assessment(simulator, n_sims=n_sims)
-                    st.altair_chart(chart, use_container_width=True)
+                    st.altair_chart(chart, width="stretch")
                 except Exception as e:
                     st.error(f"Visualization error: {e}")
         
@@ -307,7 +307,7 @@ def render_posh_designer(df, pricing):
             tooltip=["Category", alt.Tooltip("Cost:Q", format="$,.2f")]
         )
         
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
         
         # Export budget config
         st.divider()

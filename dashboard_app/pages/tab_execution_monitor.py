@@ -215,7 +215,7 @@ def render_job_queue(queue):
         })
         
     df_jobs = pd.DataFrame(data)
-    st.dataframe(df_jobs, use_container_width=True, hide_index=True)
+    st.dataframe(df_jobs, width="stretch", hide_index=True)
 
 
 def render_active_executions(executor):
@@ -315,7 +315,7 @@ def render_execution_history(executor):
         return ""
     
     styled_df = df_history.style.applymap(color_status, subset=["Status"])
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(styled_df, width="stretch", hide_index=True)
     
     # Detailed view
     st.divider()

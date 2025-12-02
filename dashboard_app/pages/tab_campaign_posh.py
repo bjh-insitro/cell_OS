@@ -190,7 +190,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
     # Standard items
     cost_vial_unit = get_item_cost(pricing, vial_type_id, 5.0)
     vial_name = get_item_name(pricing, vial_type_id, vial_type_id)
-    cost_flask_unit = get_item_cost(pricing, "flask_t75", 10.0)
+    cost_flask_unit = get_item_cost(pricing, "t75_flask", 4.24)
     cost_pbs_unit = get_item_cost(pricing, "pbs", 25.0)
     cost_pipette_unit = get_item_cost(pricing, "pipette_10ml", 0.50)
     cost_tip_unit = get_item_cost(pricing, "tip_1000ul_lr", 0.10)
@@ -242,7 +242,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
         
         fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.4)])
         fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
-        st.plotly_chart(fig_pie, use_container_width=True, key=f"cost_breakdown_{workflow_type}{key_suffix}")
+        st.plotly_chart(fig_pie, width="stretch", key=f"cost_breakdown_{workflow_type}{key_suffix}")
         
     with c_col2:
         st.markdown("**Daily Labor Load**")
@@ -253,7 +253,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             ])
             fig_bar.update_layout(barmode='group', height=300, margin=dict(t=0, b=0, l=0, r=0),
                                  legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_bar, use_container_width=True, key=f"labor_load_{workflow_type}{key_suffix}")
+            st.plotly_chart(fig_bar, width="stretch", key=f"labor_load_{workflow_type}{key_suffix}")
         else:
             st.info("Daily labor data not available.")
 
@@ -307,7 +307,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
     pbs_unit_price = get_item_cost(pricing, "dpbs", 0.0364)  # $/mL
     dissociation_unit_price = get_item_cost(pricing, dissociation_id, 0.22)  # $/mL
     vial_unit_price = get_item_cost(pricing, vial_type_id, 0.5)  # $/unit
-    flask_unit_price = get_item_cost(pricing, "t75_flask", 1.32)  # $/unit
+    flask_unit_price = get_item_cost(pricing, "t75_flask", 4.24)  # $/unit
     pipette_unit_price = get_item_cost(pricing, "serological_pipette_10ml", 0.3)  # $/unit
     tip_unit_price = get_item_cost(pricing, "pipette_tip_1000ul_filter", 0.143)  # $/unit
     coating_unit_price = get_item_cost(pricing, coating_id, 50.0) if coating_id else 0  # $/mL
@@ -327,11 +327,11 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
         # Build consumables list with actual volumes and costs
         consumables_data = [
             {"Item": f"{media_name} ({total_media_ml:.0f}mL)", "Quantity": f"{total_media_ml:.0f} mL", "Unit Cost": f"${media_unit_price:.3f}/mL", "Total Cost": f"${cost_media_total:.2f}"},
-            {"Item": vial_name, "Quantity": qty_vials, "Unit Cost": f"${vial_unit_price:.2f}", "Total Cost": f"${cost_vials_total:.2f}"},
+            {"Item": vial_name, "Quantity": str(qty_vials), "Unit Cost": f"${vial_unit_price:.2f}", "Total Cost": f"${cost_vials_total:.2f}"},
             {"Item": f"{freezing_media_name} ({qty_freezing_media_ml:.1f}mL)", "Quantity": f"{qty_freezing_media_ml:.1f} mL", "Unit Cost": f"${freezing_media_unit_price:.2f}/mL", "Total Cost": f"${cost_freezing_media_total:.2f}"},
-            {"Item": "T75 Flasks", "Quantity": qty_flasks, "Unit Cost": f"${flask_unit_price:.2f}", "Total Cost": f"${cost_flasks_total:.2f}"},
-            {"Item": "Serological Pipettes (10mL)", "Quantity": qty_pipettes_10ml, "Unit Cost": f"${pipette_unit_price:.2f}", "Total Cost": f"${cost_pipettes_total:.2f}"},
-            {"Item": "Pipette Tips (1000uL)", "Quantity": qty_tips_1000ul, "Unit Cost": f"${tip_unit_price:.3f}", "Total Cost": f"${cost_tips_total:.2f}"},
+            {"Item": "T75 Flasks", "Quantity": str(qty_flasks), "Unit Cost": f"${flask_unit_price:.2f}", "Total Cost": f"${cost_flasks_total:.2f}"},
+            {"Item": "Serological Pipettes (10mL)", "Quantity": str(qty_pipettes_10ml), "Unit Cost": f"${pipette_unit_price:.2f}", "Total Cost": f"${cost_pipettes_total:.2f}"},
+            {"Item": "Pipette Tips (1000uL)", "Quantity": str(qty_tips_1000ul), "Unit Cost": f"${tip_unit_price:.3f}", "Total Cost": f"${cost_tips_total:.2f}"},
             {"Item": f"PBS ({qty_pbs_ml:.0f}mL)", "Quantity": f"{qty_pbs_ml:.0f} mL", "Unit Cost": f"${pbs_unit_price:.3f}/mL", "Total Cost": f"${cost_pbs_total:.2f}"},
             {"Item": f"{dissociation_name} ({qty_dissociation_ml:.0f}mL)", "Quantity": f"{qty_dissociation_ml:.0f} mL", "Unit Cost": f"${dissociation_unit_price:.3f}/mL", "Total Cost": f"${cost_dissociation_total:.2f}"}
         ]
@@ -341,7 +341,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                 {"Item": f"{coating_name} ({qty_coating_ml:.0f}mL)", "Quantity": f"{qty_coating_ml:.0f} mL", "Unit Cost": f"${coating_unit_price:.2f}/mL", "Total Cost": f"${cost_coating_total:.2f}"}
             )
         
-        st.dataframe(pd.DataFrame(consumables_data), use_container_width=True)
+        st.dataframe(pd.DataFrame(consumables_data), width="stretch")
         
     else:  # Daily Breakdown
         if not result.daily_metrics.empty:
@@ -398,7 +398,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             })
             
             df_daily = pd.DataFrame(daily_breakdown)
-            st.dataframe(df_daily, use_container_width=True)
+            st.dataframe(df_daily, width="stretch")
             
             # Daily cost visualization
             st.markdown("**Daily Cost Breakdown**")
@@ -497,7 +497,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             
-            st.plotly_chart(fig_daily, use_container_width=True, key="daily_cost_breakdown")
+            st.plotly_chart(fig_daily, width="stretch", key="daily_cost_breakdown")
             
             # --- NEW: Detailed Itemization ---
             st.markdown("### 📋 Detailed Itemization")
@@ -643,7 +643,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             
             df_detailed = pd.DataFrame(detailed_items)
             df_detailed["Quantity"] = df_detailed["Quantity"].astype(str)
-            st.dataframe(df_detailed, use_container_width=True)
+            st.dataframe(df_detailed, width="stretch")
             
             # --- NEW: Daily Usage Matrix (Pivot) ---
             st.markdown("### 📊 Daily Usage Matrix ($)")
@@ -678,7 +678,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                 # Sort by Total Cost descending
                 pivot = pivot.sort_values("Total", ascending=False)
                 
-                st.dataframe(pivot.style.format("${:.2f}"), use_container_width=True)
+                st.dataframe(pivot.style.format("${:.2f}"), width="stretch")
             
             # --- NEW: Parameterized Unit Ops ---
             st.markdown("### 🔬 Parameterized Unit Operations")
@@ -958,7 +958,7 @@ def render_posh_campaign_manager(df, pricing):
                     template="plotly_white"
                 )
                 
-                st.plotly_chart(fig, use_container_width=True, key="titration_results")
+                st.plotly_chart(fig, width="stretch", key="titration_results")
                 
                 # Cost Analysis
                 st.subheader("Titration Cost Analysis 💰")
@@ -1069,7 +1069,7 @@ def render_posh_campaign_manager(df, pricing):
                             })
                             step_num += 1
                     
-                    st.dataframe(pd.DataFrame(workflow_steps), use_container_width=True)
+                    st.dataframe(pd.DataFrame(workflow_steps), width="stretch")
                     
                     # Total cost
                     total_mat = sum(op.material_cost_usd for process in lb_result.workflow.processes for op in process.ops)
@@ -1118,7 +1118,7 @@ def _render_mcb_result(result, pricing):
             fig = px.line(result.daily_metrics, x="day", y="avg_confluence", 
                          title=f"{result.cell_line} Confluence", markers=True)
             fig.update_yaxes(tickformat=".0%")
-            st.plotly_chart(fig, use_container_width=True, key=f"mcb_growth_{result.cell_line}")
+            st.plotly_chart(fig, width="stretch", key=f"mcb_growth_{result.cell_line}")
         else:
             st.info("No growth data available.")
             
@@ -1135,7 +1135,7 @@ def _render_mcb_result(result, pricing):
                 "Source Vendor": v.source_vendor_vial_id,
                 "Location": v.location
             } for v in result.vials]
-            st.dataframe(pd.DataFrame(vial_data), use_container_width=True)
+            st.dataframe(pd.DataFrame(vial_data), width="stretch")
         else:
             st.warning("No vials generated.")
             
@@ -1177,7 +1177,7 @@ def _render_mcb_result(result, pricing):
                         })
                 
                 st.success("✅ QC Panel Passed")
-                st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
+                st.dataframe(pd.DataFrame(qc_data), width="stretch")
                 st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
 
 
@@ -1213,7 +1213,7 @@ def _render_wcb_result(result, pricing, unique_key):
         if not result.daily_metrics.empty:
             fig = px.line(result.daily_metrics, x="day", y="total_cells", 
                          title=f"{result.cell_line} WCB Expansion", markers=True)
-            st.plotly_chart(fig, use_container_width=True, key=f"wcb_expansion_{unique_key}")
+            st.plotly_chart(fig, width="stretch", key=f"wcb_expansion_{unique_key}")
             
     with tab_resources:
         _render_simulation_resources(result, pricing, workflow_type="WCB", unique_key=unique_key)
@@ -1228,7 +1228,7 @@ def _render_wcb_result(result, pricing, unique_key):
                 "Source MCB": v.source_mcb_vial_id,
                 "Location": v.location
             } for v in result.vials]
-            st.dataframe(pd.DataFrame(vial_data), use_container_width=True)
+            st.dataframe(pd.DataFrame(vial_data), width="stretch")
         else:
             st.warning("No WCB vials generated.")
             
@@ -1271,5 +1271,5 @@ def _render_wcb_result(result, pricing, unique_key):
                         })
                 
                 st.success("✅ QC Panel Passed")
-                st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
+                st.dataframe(pd.DataFrame(qc_data), width="stretch")
                 st.metric("Total QC Cost", f"${total_qc_cost:.2f}")

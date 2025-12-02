@@ -93,7 +93,7 @@ def render_phenotype_clustering(df, pricing):
             st.subheader("Hit List")
             st.dataframe(
                 hits.style.background_gradient(subset=['d_m', 'z_score'], cmap='Reds'),
-                use_container_width=True
+                width="stretch"
             )
             
             # Export hits
@@ -163,7 +163,7 @@ def render_phenotype_clustering(df, pricing):
                     title='Phenotype Clustering'
                 )
             
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
             
             # Export reduced data
             csv = reduced_df.to_csv(index=False)

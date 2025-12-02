@@ -298,10 +298,10 @@ class InventoryManager:
         conn.close()
         
         return [{
-            "lot_id": r[0],
-            "quantity": r[2],
-            "initial": r[3],
-            "expiration": r[4],
-            "received": r[5],
-            "status": r[6]
+            "lot_id": str(r[0]),
+            "quantity": float(r[2]) if r[2] is not None else 0.0,
+            "initial": float(r[3]) if r[3] is not None else 0.0,
+            "expiration": str(r[4]) if r[4] else None,
+            "received": str(r[5]) if r[5] else None,
+            "status": str(r[6]) if r[6] else "unknown"
         } for r in rows]

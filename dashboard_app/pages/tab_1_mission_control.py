@@ -78,7 +78,7 @@ def render_mission_control(df, pricing):
                 'BFP%', 'Cost ($)', 'Timestamp'
             ])
             df_recent['BFP%'] = (df_recent['BFP%'] * 100).round(1)
-            st.dataframe(df_recent, use_container_width=True)
+            st.dataframe(df_recent, width="stretch")
         else:
             st.info("No experiments run yet. Launch a campaign to see results!")
             st.code("cell-os-run --config config/campaign_example.yaml")
@@ -92,7 +92,7 @@ def render_mission_control(df, pricing):
         # Fallback to CSV if DB fails
         if os.path.exists("results/experiment_history.csv"):
             df_fallback = pd.read_csv("results/experiment_history.csv", on_bad_lines='skip')
-            st.dataframe(df_fallback.tail(10), use_container_width=True)
+            st.dataframe(df_fallback.tail(10), width="stretch")
     
     st.subheader("Mission Log")
     log_path = "results/mission_log.md"

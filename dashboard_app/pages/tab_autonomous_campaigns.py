@@ -182,7 +182,7 @@ def render_optimization_trajectory(all_results):
         title="Measurement vs. Iteration (Red dashed line = Best so far)"
     ).interactive()
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_dose_response_surface(all_results):
     """Render dose-response surface."""
@@ -205,7 +205,7 @@ def render_dose_response_surface(all_results):
         height=300
     ).interactive()
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_exploration_vs_exploitation(iterations):
     """Render exploration vs exploitation over time."""
@@ -254,7 +254,7 @@ def render_exploration_vs_exploitation(iterations):
             title="Mean Measurement (Exploitation)",
             height=250
         )
-        st.altair_chart(chart1, use_container_width=True)
+        st.altair_chart(chart1, width="stretch")
     
     with col2:
         # Std measurement (exploration)
@@ -266,7 +266,7 @@ def render_exploration_vs_exploitation(iterations):
             title="Std Measurement (Exploration)",
             height=250
         )
-        st.altair_chart(chart2, use_container_width=True)
+        st.altair_chart(chart2, width="stretch")
 
 def render_compound_comparison(all_results):
     """Compare performance across compounds."""
@@ -287,7 +287,7 @@ def render_compound_comparison(all_results):
         height=300
     )
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_cell_line_comparison(all_results):
     """Compare performance across cell lines."""
@@ -308,7 +308,7 @@ def render_cell_line_comparison(all_results):
         height=300
     )
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_raw_data(all_results, campaign_id):
     """Render raw experimental data."""
@@ -325,7 +325,7 @@ def render_raw_data(all_results, campaign_id):
     display_cols = [c for c in cols if c in df.columns]
     df_display = df[display_cols]
     
-    st.dataframe(df_display, use_container_width=True)
+    st.dataframe(df_display, width="stretch")
     
     # Download button
     csv = df_display.to_csv(index=False)

@@ -61,14 +61,14 @@ def render_science_explorer(df, pricing):
                         y2=alt.Y2("upper")
                     )
                     
-                    st.altair_chart(chart + line + band, use_container_width=True)
+                    st.altair_chart(chart + line + band, width="stretch")
                 else:
-                    st.altair_chart(chart, use_container_width=True)
+                    st.altair_chart(chart, width="stretch")
                     st.warning("Not enough positive dose data to fit GP.")
                     
             except Exception as e:
                 st.error(f"GP Fit Failed: {e}")
-                st.altair_chart(chart, use_container_width=True)
+                st.altair_chart(chart, width="stretch")
         else:
             st.info("No data for this selection.")
     else:

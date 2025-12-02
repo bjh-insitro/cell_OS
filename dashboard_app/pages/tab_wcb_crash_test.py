@@ -97,7 +97,7 @@ def render_vial_distribution(df):
         height=300
     ).interactive()
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_growth_curves(daily_df, run_results_df):
     """Render growth curves."""
@@ -123,7 +123,7 @@ def render_growth_curves(daily_df, run_results_df):
         height=400
     ).interactive()
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def render_failure_analysis(df):
     """Render failure analysis."""
@@ -137,7 +137,7 @@ def render_failure_analysis(df):
         
     st.dataframe(
         failed_df[["run_id", "failed_reason", "duration_days", "waste_cells"]],
-        use_container_width=True
+        width="stretch"
     )
     
     # Failure reason breakdown
@@ -153,7 +153,7 @@ def render_failure_analysis(df):
         height=200
     )
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 def main():
     st.title("WCB Crash Test Analysis 🧬")
