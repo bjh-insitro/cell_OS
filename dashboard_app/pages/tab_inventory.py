@@ -9,6 +9,9 @@ import pandas as pd
 from datetime import datetime
 from dashboard_app.utils import init_automation_resources
 
+LOW_STOCK_PERCENT = 0.2
+MIN_LOW_STOCK_ABS = 5.0
+
 def render_inventory_manager(df, pricing):
     """Render the Inventory Manager tab."""
     st.header("📦 Inventory Manager")
@@ -22,11 +25,15 @@ def render_inventory_manager(df, pricing):
     if inv_manager is None:
         st.error("Cannot load inventory manager.")
         return
-        
+    
+    summary = _compute_inventory_summary(inv_manager)
+    _render_summary_metrics(summary)
+    
     # Create tabs
-    tab_stock, tab_restock, tab_history = st.tabs([
+    tab_stock, tab_restock, tab_consume, tab_history = st.tabs([
         "📊 Stock Levels",
         "➕ Restock",
+        "➖ Consume",
         "📜 Transaction History"
     ])
     
@@ -35,9 +42,43 @@ def render_inventory_manager(df, pricing):
         
     with tab_restock:
         render_restock_form(inv_manager)
+    
+    with tab_consume:
+        render_consume_form(inv_manager)
         
     with tab_history:
         render_transaction_history(inv_manager)
+
+def _compute_inventory_summary(inv_manager):
+    resources = inv_manager.inventory.resources.values()
+    total = len(resources)
+    low_stock = []
+    for res in resources:
+        threshold = max(res.pack_size * LOW_STOCK_PERCENT if res.pack_size else 0, MIN_LOW_STOCK_ABS)
+        if res.stock_level <= threshold:
+            low_stock.append(res)
+    last_tx = inv_manager.get_transactions(limit=1)
+    last_timestamp = last_tx[0]["timestamp"] if last_tx else None
+    total_value = sum((res.unit_price_usd or 0) * (res.stock_level or 0) for res in resources)
+    return {
+        "total_resources": total,
+        "low_stock_count": len(low_stock),
+        "last_sync": last_timestamp,
+        "total_value": total_value,
+    }
+
+def _render_summary_metrics(summary):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Tracked Resources", summary["total_resources"])
+    with col2:
+        st.metric("Low Stock Alerts", summary["low_stock_count"])
+    with col3:
+        if summary["last_sync"]:
+            st.metric("Last Inventory Update", summary["last_sync"].split("T")[0])
+        else:
+            st.metric("Last Inventory Update", "No history")
+    st.caption(f"Total catalog value (book): ${summary['total_value']:,.0f}")
 
 def render_stock_levels(inv_manager):
     """Render current stock levels."""
@@ -46,6 +87,8 @@ def render_stock_levels(inv_manager):
     # Get all resources
     resources = []
     for res_id, res in inv_manager.inventory.resources.items():
+        threshold = max(res.pack_size * LOW_STOCK_PERCENT if res.pack_size else 0, MIN_LOW_STOCK_ABS)
+        low_flag = res.stock_level <= threshold
         resources.append({
             "ID": res_id,
             "Name": res.name,
@@ -53,7 +96,8 @@ def render_stock_levels(inv_manager):
             "Stock Level": res.stock_level,
             "Unit": res.logical_unit,
             "Vendor": res.vendor,
-            "Catalog #": res.catalog_number
+            "Catalog #": res.catalog_number,
+            "Status": "⚠️ Low" if low_flag else "✅ OK"
         })
         
     df_res = pd.DataFrame(resources)
@@ -156,6 +200,45 @@ def render_restock_form(inv_manager):
             
         except Exception as e:
             st.error(f"Error adding stock: {e}")
+
+def render_consume_form(inv_manager):
+    """Render form to consume stock."""
+    st.subheader("Consume Inventory")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        resource_ids = list(inv_manager.inventory.resources.keys())
+        selected_id = st.selectbox(
+            "Select Resource",
+            options=resource_ids,
+            format_func=lambda x: f"{x} - {inv_manager.inventory.resources[x].name}"
+        )
+        resource = inv_manager.inventory.resources[selected_id]
+        st.info(f"Current Stock: {resource.stock_level} {resource.logical_unit}")
+    
+    with col2:
+        quantity = st.number_input(
+            f"Quantity to Consume ({resource.logical_unit})",
+            min_value=0.0,
+            step=1.0
+        )
+        meta_reason = st.text_input("Reason / Usage Notes", help="e.g., POSH Screen 2025-01")
+    
+    if st.button("➖ Consume Stock", type="secondary"):
+        if quantity <= 0:
+            st.error("Quantity must be greater than 0")
+            return
+        try:
+            inv_manager.consume_stock(
+                resource_id=selected_id,
+                quantity=quantity,
+                transaction_meta={"reason": meta_reason} if meta_reason else {}
+            )
+            st.success(f"Consumed {quantity} {resource.logical_unit} of {resource.name}")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error consuming stock: {e}")
 
 def render_transaction_history(inv_manager):
     """Render transaction history."""

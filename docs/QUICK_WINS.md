@@ -61,19 +61,8 @@ NEXT_STEPS.md            → docs/archive/status/2025-11-28-next-steps.md
 - Add to `.gitignore`: `*.out`, `*.log`
 
 #### 2.2 Implement Persistent Inventory Tracking ⚡ (2-3 hours)
-**Current State**: TODOs in code about inventory persistence
-```python
-# dashboard_app/app.py, line 73
-st.info("Live inventory tracking requires persisting the Inventory state to a file (TODO).")
-```
-
-**Solution**:
-- Already have `InventoryManager` with SQLite
-- Update `Inventory` class to sync with `InventoryManager`
-- Remove TODO messages
-- Add "Save Inventory" button in Economics tab
-
-**Impact**: Key feature completion, removes technical debt warnings from UI
+**Status**: ✅ `InventoryManager` now powers the dashboard: stock levels sync to SQLite, the Economics tab saves/exports snapshots, and the Inventory tab provides summary metrics plus restock/consume flows (lots + transaction history).
+- **Impact**: Live inventory data persists across sessions with clear UX.
 
 #### 2.3 Fix pylint Warnings ⚡ (1 hour)
 **Current**: `make lint` shows some warnings
