@@ -1,55 +1,37 @@
-# cell_OS Documentation
+# cell_OS Documentation Index
 
-Welcome to the cell_OS documentation! This directory contains all project documentation organized by category.
+Welcome! This directory hosts all written artifacts for the platform. Use this index to jump to the right area and to understand how we separate active docs from archives.
 
-## 📚 Documentation Structure
+## Core Index Files
+- **[README.md](README.md)** *(this file)* – Documentation map.
+- **[MIGRATION_HISTORY.md](MIGRATION_HISTORY.md)** – Consolidated history of migrations, validation packets, and implementation summaries.
+- **[REFACTORING_OPPORTUNITIES.md](REFACTORING_OPPORTUNITIES.md)** – Active engineering backlog for structural work.
+- **[../STATUS.md](../STATUS.md)** – Cross-cutting program status and next steps.
 
-### 🏗️ [Architecture](architecture/)
-System design and structure documentation:
-- **[ARCHITECTURE.md](architecture/ARCHITECTURE.md)** - System architecture and design patterns
-- **[ONTOLOGY.md](architecture/ONTOLOGY.md)** - Semantic framework (Campaign → Workflow → Process → Unit Operation)
-- **[PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md)** - Complete directory guide and file catalog
+## Active Categories
+- **Architecture (`architecture/`)** – System design, ontology, and directory overviews. Start with `ARCHITECTURE.md`, `ONTOLOGY.md`, and `PROJECT_STRUCTURE.md`.
+- **Guides (`guides/`)** – User and operator guides. See `guides/README.md` for the per-guide index (POSH overview, cost-aware decision support, cleanup recommendations, etc.).
+- **Protocols (`protocols/`)** – Wet-lab SOPs such as `upstream_protocol.md`.
+- **Refactor Plans (`refactor_plans/`)** – Active technical plans (e.g., `BOM_TRACKING_REFACTOR.md`).
+- **System Docs (`system/`)** – Lab world model and acquisition system references.
+- **Meta (`meta/`)** – Todos, planning notes, and historical artifacts not yet archived.
 
-### 📖 [Guides](guides/)
-User guides and system documentation:
-- **[POSH_SYSTEM_OVERVIEW.md](guides/POSH_SYSTEM_OVERVIEW.md)** - Overview of POSH variants (Zombie vs Vanilla)
-- **[COST_AWARE_DECISION_SUPPORT.md](guides/COST_AWARE_DECISION_SUPPORT.md)** - Cost-aware decision making
-- **[AUTOMATION_SUMMARY.md](guides/AUTOMATION_SUMMARY.md)** - Automation scoring and recommendations
-- **[REAGENT_PRICING_SUMMARY.md](guides/REAGENT_PRICING_SUMMARY.md)** - Pricing database documentation
-- **[CLEANUP_RECOMMENDATIONS.md](guides/CLEANUP_RECOMMENDATIONS.md)** - Codebase cleanup and organization plan
+## Archive Layout
+All completed or historical docs now live under `archive/`:
+- `archive/sessions/` – Session summaries renamed with `YYYY-MM-DD-*.md`.
+- `archive/migrations/` – Legacy migration + validation packets referenced by `MIGRATION_HISTORY.md`.
+- `archive/refactorings/` – Completed refactor logs and summaries.
+- `archive/status/` – Prior status, progress, and next-step reports (see `STATUS.md` for the latest).
 
-### 🧪 [Protocols](protocols/)
-Laboratory protocols and procedures:
-- **[upstream_protocol.md](protocols/upstream_protocol.md)** - Upstream workflow (library design → virus production)
+## Getting Started
+1. Read the root [README](../README.md) for the project overview.
+2. Skim [`MIGRATION_HISTORY.md`](MIGRATION_HISTORY.md) to understand the latest platform upgrades.
+3. Consult [`../STATUS.md`](../STATUS.md) for current priorities.
+4. Dive into [`architecture/`](architecture/) or [`guides/`](guides/) depending on whether you need system internals or usage guides.
 
-## 🚀 Quick Start
+## Contributing Docs
+- Keep active plans or references in the category directories above.
+- When a document becomes historical, move it into the appropriate `archive/` subdirectory with a `YYYY-MM-DD` prefix.
+- Update both this index and any relevant sub-index (e.g., `guides/README.md`) when you add or relocate files.
 
-### For New Users
-1. Start with [../README.md](../README.md) - Project overview
-2. Read [architecture/ONTOLOGY.md](architecture/ONTOLOGY.md) - Understand system structure
-3. Review [guides/POSH_SYSTEM_OVERVIEW.md](guides/POSH_SYSTEM_OVERVIEW.md) - Learn about POSH protocols
-
-### For Developers
-1. Check [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) - Design patterns
-2. Review [architecture/PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md) - Codebase navigation
-3. See [guides/CLEANUP_RECOMMENDATIONS.md](guides/CLEANUP_RECOMMENDATIONS.md) - Development guidelines
-
-### For Protocol Users
-1. Use the dashboard: `streamlit run dashboard.py`
-2. Navigate to "POSH Screen Designer" or "POSH Decision Assistant" tabs
-3. Export protocols for lab use
-
-## 📝 Contributing
-
-When adding new documentation:
-- Place architecture docs in `architecture/`
-- Place user guides in `guides/`
-- Place lab protocols in `protocols/`
-- Update this README with links to new docs
-
-## 🔗 External Resources
-
-- **Main README**: [../README.md](../README.md)
-- **Source Code**: [../src/](../src/)
-- **Tests**: [../tests/](../tests/)
-- **Data**: [../data/](../data/)
+Need help finding something? Search within `docs/archive/` for the original artifact and check `MIGRATION_HISTORY.md` for the digest before reading the full report.
