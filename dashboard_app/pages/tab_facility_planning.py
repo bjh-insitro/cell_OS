@@ -17,6 +17,7 @@ CSV_PATH = ASSETS_DIR / "facility_load.csv"
 INCUBATOR_CAPACITY = 20
 BSC_CAPACITY = 2.0
 
+@st.cache_data(show_spinner=False)
 def load_data():
     if not CSV_PATH.exists():
         st.error(f"Data file not found: {CSV_PATH}")

@@ -8,6 +8,7 @@ import py_compile
 import subprocess
 import tempfile
 from pathlib import Path
+import sys
 
 import pytest
 import os
@@ -80,7 +81,7 @@ class TestStaticAnalysis:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(Path.cwd())
             result = subprocess.run(
-                ["python3", "-c", f"import {module_name}"],
+                [sys.executable, "-c", f"import {module_name}"],
                 capture_output=True,
                 text=True,
                 env=env

@@ -8,6 +8,9 @@ from datetime import datetime
 import graphviz
 
 from cell_os.simulation.mcb_wrapper import simulate_mcb_generation, VendorVialSpec
+from cell_os.simulation.wcb_wrapper import simulate_wcb_generation, MCBVialSpec
+from cell_os.simulation.titration_wrapper import simulate_titration
+from cell_os.simulation.library_banking_wrapper import simulate_library_banking
 from cell_os.cell_line_database import get_cell_line_profile
 from cell_os.workflows import WorkflowBuilder
 from cell_os.unit_ops.parametric import ParametricOps
@@ -24,6 +27,99 @@ from dashboard_app.components.campaign_visualizers import (
     get_item_name,
     PricingInventory
 )
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_mcb_simulation(
+    cell_line: str,
+    vendor_name: str,
+    initial_cells: float,
+    lot_number: str,
+    vial_id: str,
+    target_vials: int,
+    cells_per_vial: float,
+    random_seed: int,
+):
+    spec = VendorVialSpec(
+        cell_line=cell_line,
+        vendor_name=vendor_name,
+        initial_cells=initial_cells,
+        lot_number=lot_number,
+        vial_id=vial_id,
+    )
+    return simulate_mcb_generation(
+        spec,
+        target_vials=target_vials,
+        cells_per_vial=cells_per_vial,
+        random_seed=random_seed,
+    )
+
+
+@st.cache_resource(show_spinner=False)
+def _cached_wcb_simulation(
+    cell_line: str,
+    vial_id: str,
+    passage_number: int,
+    cells_per_vial: float,
+    viability: float,
+    target_vials: int,
+    random_seed: int,
+):
+    spec = MCBVialSpec(
+        cell_line=cell_line,
+        vial_id=vial_id,
+        passage_number=passage_number,
+        cells_per_vial=cells_per_vial,
+        viability=viability,
+    )
+    return simulate_wcb_generation(
+        spec,
+        target_vials=target_vials,
+        cells_per_vial=cells_per_vial,
+        random_seed=random_seed,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_titration_simulation(
+    cell_line: str,
+    true_titer_tu_ml: float,
+    target_transduction_efficiency: float,
+    cells_per_well: int,
+    replicates: int,
+    random_seed: int,
+):
+    return simulate_titration(
+        cell_line=cell_line,
+        true_titer_tu_ml=true_titer_tu_ml,
+        target_transduction_efficiency=target_transduction_efficiency,
+        cells_per_well=cells_per_well,
+        replicates=replicates,
+        random_seed=random_seed,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_library_banking_simulation(
+    cell_line: str,
+    library_size: int,
+    fitted_titer_tu_ml: float,
+    optimal_moi: float,
+    representation: int,
+    target_cells_per_grna: int,
+    num_screens: int,
+    random_seed: int,
+):
+    return simulate_library_banking(
+        cell_line=cell_line,
+        library_size=library_size,
+        fitted_titer_tu_ml=fitted_titer_tu_ml,
+        optimal_moi=optimal_moi,
+        representation=representation,
+        target_cells_per_grna=target_cells_per_grna,
+        num_screens=num_screens,
+        random_seed=random_seed,
+    )
 
 
 def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_key=None):
@@ -645,14 +741,18 @@ def render_posh_campaign_manager(df, pricing):
         
     if run_sim:
         with st.spinner(f"Simulating MCB generation for {cell_line}..."):
-            spec = VendorVialSpec(
+            seed = st.session_state.get("posh_mcb_seed", 0) + 1
+            st.session_state["posh_mcb_seed"] = seed
+            result = _cached_mcb_simulation(
                 cell_line=cell_line,
+                vendor_name="ATCC",
                 initial_cells=initial_cells,
                 lot_number=vendor_lot,
-                vial_id=f"VENDOR-{cell_line}-001"
+                vial_id=f"VENDOR-{cell_line}-001",
+                target_vials=target_vials,
+                cells_per_vial=1e6,
+                random_seed=seed,
             )
-            
-            result = simulate_mcb_generation(spec, target_vials=target_vials)
             st.session_state.posh_mcb_results[cell_line] = result
             
     # Display MCB Results
@@ -714,18 +814,17 @@ def render_posh_campaign_manager(df, pricing):
         if run_wcb_sim and selected_mcb_label:
             source_vial = mcb_vial_map[selected_mcb_label]
             with st.spinner(f"Simulating WCB generation from {source_vial.vial_id}..."):
-                from cell_os.simulation.wcb_wrapper import simulate_wcb_generation, MCBVialSpec
-            
-                # Create spec from selected MCB vial
-                spec = MCBVialSpec(
+                seed = st.session_state.get("posh_wcb_seed", 0) + 1
+                st.session_state["posh_wcb_seed"] = seed
+                result = _cached_wcb_simulation(
                     cell_line=source_vial.cell_line,
                     vial_id=source_vial.vial_id,
                     passage_number=source_vial.passage_number,
                     cells_per_vial=source_vial.cells_per_vial,
-                    viability=source_vial.viability
+                    viability=source_vial.viability,
+                    target_vials=target_wcb_vials,
+                    random_seed=seed,
                 )
-            
-                result = simulate_wcb_generation(spec, target_vials=target_wcb_vials)
                 st.session_state.posh_wcb_results[source_vial.vial_id] = result
             
                 # Mark vial as consumed
@@ -773,14 +872,15 @@ def render_posh_campaign_manager(df, pricing):
         
         if run_titration:
             with st.spinner("Simulating titration experiment..."):
-                # Simulate with some variance from estimated titer to be realistic
-                true_titer = est_titer * np.random.normal(1.0, 0.2) 
-            
-                t_result = simulate_titration(
+                seed = st.session_state.get("titration_seed_counter", 0) + 1
+                st.session_state["titration_seed_counter"] = seed
+                t_result = _cached_titration_simulation(
                     cell_line=titration_cell_line,
-                    true_titer_tu_ml=true_titer,
+                    true_titer_tu_ml=est_titer,
                     target_transduction_efficiency=target_eff,
-                    cells_per_well=100000
+                    cells_per_well=100000,
+                    replicates=2,
+                    random_seed=seed,
                 )
                 st.session_state.titration_results[titration_cell_line] = t_result
             
@@ -894,13 +994,17 @@ def render_posh_campaign_manager(df, pricing):
         
         if run_library_banking:
             with st.spinner("Simulating library banking workflow..."):
-                lb_result = simulate_library_banking(
+                seed = st.session_state.get("library_banking_seed_counter", 0) + 1
+                st.session_state["library_banking_seed_counter"] = seed
+                lb_result = _cached_library_banking_simulation(
                     cell_line=lb_cell_line,
                     library_size=library_size,
                     fitted_titer_tu_ml=fitted_titer,
                     optimal_moi=optimal_moi,
                     representation=representation,
-                    target_cells_per_grna=target_cells_per_grna
+                    target_cells_per_grna=target_cells_per_grna,
+                    num_screens=4,
+                    random_seed=seed,
                 )
                 st.session_state.library_banking_results[lb_cell_line] = lb_result
         

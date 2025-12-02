@@ -166,12 +166,7 @@ st.info("Live inventory tracking requires persisting the Inventory state to a fi
 ### 📈 Priority 6: Performance & Reliability (2-3 hours)
 
 #### 6.1 Add Caching to Dashboard ⚡ (1 hour)
-**Problem**: Simulations rerun on every page refresh
-**Fix**:
-- Add `@st.cache_data` to simulation functions
-- Cache pricing lookups
-- Cache database queries
-**Impact**: 10x faster page loads
+**Status**: ✅ `dashboard_app/pages/tab_campaign_posh.py` now wraps the MCB/WCB/titration/library simulations in `st.cache_resource` / `st.cache_data` helpers with deterministic seeds, and data-heavy tabs (home, facility planning) run off cached loaders. Result: no more repeated reruns on every Streamlit refresh.
 
 #### 6.2 Add Error Handling ⚡ (1.5 hours)
 **Current**: Dashboard crashes show raw Python errors
