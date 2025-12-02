@@ -66,8 +66,10 @@ def render_sidebar(page_registry):
     for page in all_pages:
         if selected_category != "All" and page.category.value != selected_category:
             continue
-        if search_term and search_term.lower() not in page.title.lower():
-            continue
+        if search_term:
+            tokens = [page.title, page.description or "", page.category.value, page.key]
+            if not any(search_term.lower() in token.lower() for token in tokens if token):
+                continue
         filtered_pages.append(page)
     
     if not filtered_pages:

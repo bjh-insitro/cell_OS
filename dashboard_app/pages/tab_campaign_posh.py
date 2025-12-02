@@ -18,6 +18,7 @@ from cell_os.unit_ops.base import VesselLibrary
 from cell_os.simulation.utils import MockInventory
 
 # Import reusable components
+from dashboard_app.utils import download_button
 from dashboard_app.components.campaign_visualizers import (
     render_lineage,
     render_unit_ops_table,
@@ -761,8 +762,13 @@ def render_posh_campaign_manager(df, pricing):
         result = st.session_state.posh_mcb_results[cell_line]
         
         if result.success:
-            st.success(f"✅ MCB Generated: {len(result.vials)} vials of {result.cell_line}")
-            _render_mcb_result(result, pricing)
+                st.success(f"✅ MCB Generated: {len(result.vials)} vials of {result.cell_line}")
+                _render_mcb_result(result, pricing)
+                download_button(
+                    pd.DataFrame([v.__dict__ for v in result.vials]),
+                    "⬇️ Download MCB Vials (CSV)",
+                    f"{cell_line.lower()}_mcb_vials.csv",
+                )
         else:
             st.error(f"❌ Simulation Failed: {result.summary.get('failed_reason', 'Unknown')}")
 
@@ -842,6 +848,11 @@ def render_posh_campaign_manager(df, pricing):
                 with wcb_tabs[i]:
                     result = st.session_state.posh_wcb_results[key]
                     _render_wcb_result(result, pricing, unique_key=key) # PASS PRICING AND KEY
+                    download_button(
+                        pd.DataFrame([v.__dict__ for v in result.vials]),
+                        "⬇️ Download WCB Vials (CSV)",
+                        f"{key.lower()}_wcb_vials.csv",
+                    )
 
     
         # --- Phase 3: LV MOI Titration ---
@@ -952,6 +963,11 @@ def render_posh_campaign_manager(df, pricing):
                 # Cost Analysis
                 st.subheader("Titration Cost Analysis 💰")
                 render_titration_resources(t_result, pricing)
+                download_button(
+                    t_result.data,
+                    "⬇️ Download Titration Data (CSV)",
+                    f"{titration_cell_line.lower()}_titration.csv",
+                )
                 
             else:
                 st.error(f"❌ Titration Failed: {t_result.error_message}")

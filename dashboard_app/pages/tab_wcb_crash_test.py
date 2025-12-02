@@ -7,6 +7,8 @@ from pathlib import Path
 import io
 from PIL import Image
 
+from dashboard_app.utils import download_button
+
 st.set_page_config(
     page_title="WCB Crash Test Analysis",
     page_icon="🧬",
@@ -183,10 +185,22 @@ def main():
         st.subheader("Run Results")
         if "run_results" in assets:
             st.dataframe(assets["run_results"])
+            download_button(
+                assets["run_results"],
+                "⬇️ Download Run Results (CSV)",
+                "wcb_run_results.csv",
+                file_format="csv",
+            )
             
         st.subheader("Daily Metrics")
         if "daily_metrics" in assets:
             st.dataframe(assets["daily_metrics"])
+            download_button(
+                assets["daily_metrics"],
+                "⬇️ Download Daily Metrics (CSV)",
+                "wcb_daily_metrics.csv",
+                file_format="csv",
+            )
 
 if __name__ == "__main__":
     main()

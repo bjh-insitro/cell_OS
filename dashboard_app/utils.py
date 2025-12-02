@@ -107,3 +107,36 @@ def render_error(error: Exception, context: str = "Error"):
     st.error(f"❌ {context}: {str(error)}")
     with st.expander("Error Details"):
         st.code(traceback.format_exc())
+
+
+def download_button(df: pd.DataFrame, label: str, filename: str, file_format: str = "csv"):
+    """
+    Render a download button for a DataFrame.
+    
+    Args:
+        df: DataFrame to export
+        label: Button label
+        filename: Output filename
+        file_format: One of {"csv", "excel"}
+    """
+    if df.empty:
+        st.info("No data to export.")
+        return
+    
+    if file_format == "excel":
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False)
+        data = buffer.getvalue()
+        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        data = df.to_csv(index=False).encode("utf-8")
+        mime = "text/csv"
+    
+    st.download_button(
+        label=label,
+        data=data,
+        file_name=filename,
+        mime=mime,
+        use_container_width=True,
+    )
