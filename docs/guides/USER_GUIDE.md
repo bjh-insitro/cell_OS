@@ -111,8 +111,45 @@ streamlit run dashboard_app/dashboard.py
 6. **🧪 POSH Screen Designer** - Design libraries and titrations
 7. **📊 Campaign Reports** - View generated HTML reports
 8. **🧮 Budget Calculator** - Estimate costs before running
+9. **🔍 Workflow BOM Audit** - Detailed bill of materials for workflows
+
+### Bill of Materials (BOM) Tracking
+
+The **Workflow BOM Audit** tab provides detailed resource tracking for all operations:
+
+**Features:**
+- **Itemized resource lists**: Every operation tracks specific consumables, reagents, and instrument usage
+- **Dynamic cost calculation**: Costs are calculated from the pricing database in real-time
+- **Three-tier auditing**: Audit individual operations, process blocks, or full campaign workflows
+- **Detailed vs. Grouped views**: See all sub-steps or group by parametric operation
+
+**Example Usage:**
+```python
+# All operations now populate BOM items automatically
+from cell_os.unit_ops.operations.cell_culture import CellCultureOps
+
+ops = CellCultureOps(vessel_lib, inv, lh)
+thaw_op = ops.thaw("flask_t75", "HeLa")
+
+# Access BOM items
+for item in thaw_op.items:
+    print(f"{item.resource_id}: {item.quantity}")
+# Output:
+# flask_T75: 1
+# dmem_high_glucose: 15.0
+# pipette_10ml: 2
+# incubator_usage: 24.0
+```
+
+**Dashboard Audit:**
+1. Navigate to **Workflow BOM Audit** tab
+2. Select workflow level (Parametric Operation, Process Block, or Campaign)
+3. Choose specific workflow to audit
+4. Click "Generate Step-by-Step BOM Audit"
+5. View detailed breakdown with consumable IDs, costs, and timing
 
 ### Key Features
+
 
 - **Real-time monitoring**: Dashboard updates as campaigns run
 - **Interactive plots**: Click, zoom, pan on all visualizations

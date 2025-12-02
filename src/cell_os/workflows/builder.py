@@ -40,8 +40,9 @@ class WorkflowBuilder:
         # 2. Thaw and seed from vendor vial (coating already done)
         process_ops.append(self.ops.op_thaw(flask_size, cell_line=cell_line, skip_coating=True))
 
-        # 3. Feed (Simulate one feed during expansion)
-        process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
+        # 3. Feed (only iPSC/hESC require daily feeding during expansion)
+        if cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+            process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
 
         # 4. Final Harvest and Freeze
         use_resolver = False
@@ -89,9 +90,12 @@ class WorkflowBuilder:
         
         # 2. Expand (simplified - assume 1 passage for now)
         # In reality, might need multiple passages to reach 100 vials
-        process_ops.append(self.ops.op_feed(flask_size))
-        process_ops.append(self.ops.op_passage(flask_size, ratio=5))
-        process_ops.append(self.ops.op_feed(flask_size))
+        # Only iPSC/hESC require daily feeding
+        if cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+            process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
+        process_ops.append(self.ops.op_passage(flask_size, ratio=5, cell_line=cell_line))
+        if cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+            process_ops.append(self.ops.op_feed(flask_size, cell_line=cell_line))
         
         # 3. Harvest
         dissociation = resolve_dissociation_method(cell_line)
@@ -235,9 +239,12 @@ class WorkflowBuilder:
             process_ops.append(self.ops.op_thaw("flask_t75", cell_line=cell_line, skip_coating=True))
         
         # 2. Expand to transduction scale (2-3 passages)
-        process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+        # Only iPSC/hESC require daily feeding
+        if cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+            process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
         process_ops.append(self.ops.op_passage("flask_t75", cell_line=cell_line))
-        process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+        if cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+            process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
         
         # 3. Harvest and seed into transduction flasks
         process_ops.append(self.ops.op_harvest("flask_t75", cell_line=cell_line))
@@ -282,7 +289,9 @@ class WorkflowBuilder:
                 "flask_t75",
                 cell_line=cell_line
             ))
-            process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+            # Only iPSC/hESC require daily feeding between passages
+            if cell_line and cell_line.lower() in ["ipsc", "hesc"]:
+                process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
         
         # 7. Harvest and freeze for banking
         process_ops.append(self.ops.op_harvest("flask_t75", cell_line=cell_line))
