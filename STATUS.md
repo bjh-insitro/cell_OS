@@ -14,6 +14,8 @@
    MCB/WCB crash tests, facility planning simulator, and Streamlit dashboards deliver validated KPIs plus downloadable assets for U2OS and iPSC campaigns.
 4. **Costing & Automation Intelligence**  
    Updated reagent pricing catalog and automation feasibility analysis highlight high-ROI protocol tweaks (e.g., eliminating hemocytometer bottlenecks and optimizing dissociation media choices).
+5. **Documentation Housekeeping**  
+   All historical summaries now live under `docs/archive/` with an accompanying index (`docs/archive/README.md`) and digest (`docs/MIGRATION_HISTORY.md`), while `STATUS.md` replaces the previous nine root-level status files.
 
 ## Validation Snapshot
 | Area | Result | Notes |

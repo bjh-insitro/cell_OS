@@ -20,8 +20,8 @@ All notable changes to the cell_OS project will be documented in this file.
 - **Documentation**:
     - `ARCHITECTURE.md`: High-level system overview and data flow.
     - `COST_AWARE_DECISION_SUPPORT.md`: Detailed guide to the new optimization tools.
-    - `AUTOMATION_SUMMARY.md`: Report on automation feasibility.
-    - `REAGENT_PRICING_SUMMARY.md`: Comprehensive list of reagent costs.
+    - `docs/archive/migrations/2025-11-27-automation-parameterization-summary.md` (formerly `AUTOMATION_SUMMARY.md`): Report on automation feasibility.
+    - `docs/archive/migrations/2025-11-27-reagent-pricing-summary.md` (formerly `REAGENT_PRICING_SUMMARY.md`): Comprehensive list of reagent costs.
 - **Zombie POSH protocol implementation**, including decross‑linking, T7 IVT operations, and a complete recipe function.
 - **Zombie POSH shopping list generator** (`src/zombie_posh_shopping_list.py`).
 - **QC checkpoints** for Zombie POSH (`zombie_posh_qc_checkpoints.md`).

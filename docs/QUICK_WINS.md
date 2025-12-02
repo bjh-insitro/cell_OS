@@ -26,22 +26,21 @@ Estimated Total Time: **15-25 hours** (2-3 days)
 - **Impact**: Reduces onboarding friction by 80%
 
 #### 1.3 Consolidate Documentation 📚 (1.5 hours)
-**Problem**: 9 different status/summary markdown files in root:
+**Status**: ✅ Done — `STATUS.md` now captures the live summary, while every legacy report listed below lives under `docs/archive/` with date-prefixed names.
 ```
-COMPREHENSIVE_STATUS.md
-FINAL_REFACTORING_SUMMARY.md
-HOUSEKEEPING_SUMMARY.md
-PROJECT_STATUS.md
-REFACTORING_PROGRESS.md
-REFACTORING_QUICK_REF.md
-SESSION_SUMMARY.md
-SIMULATION_PROGRESS.md
-NEXT_STEPS.md
+COMPREHENSIVE_STATUS.md  → docs/archive/status/2025-11-28-comprehensive-status.md
+FINAL_REFACTORING_SUMMARY.md → docs/archive/refactorings/2025-12-01-final-refactoring-summary.md
+HOUSEKEEPING_SUMMARY.md  → docs/archive/migrations/2025-11-25-post-housekeeping-summary.md
+PROJECT_STATUS.md        → docs/archive/status/2025-11-28-project-status.md
+REFACTORING_PROGRESS.md  → docs/archive/refactorings/2025-11-30-refactoring-progress.md
+REFACTORING_QUICK_REF.md → docs/archive/refactorings/2025-11-27-refactoring-quick-reference.md
+SESSION_SUMMARY.md (and variants) → docs/archive/sessions/2025-11-2*-*.md
+SIMULATION_PROGRESS.md   → docs/archive/status/2025-11-28-simulation-progress.md
+NEXT_STEPS.md            → docs/archive/status/2025-11-28-next-steps.md
 ```
-- **Fix**: Merge into single `STATUS.md` in `docs/`
-- **Keep**: README.md, CHANGELOG.md, NEXT_STEPS.md in root
-- **Move to** `docs/archive/`: older summaries
-- **Impact**: Clean root directory, easier to find current status
+- **Keep**: `README.md`, `CHANGELOG.md`, `STATUS.md` (and `Documentation_Housekeeping_Plan.md`) in root.
+- **Ongoing Action**: When new summaries land, archive them immediately and update `docs/MIGRATION_HISTORY.md` so the digest stays accurate.
+- **Impact**: Clean root directory, easier to find current status.
 
 #### 1.4 Fix Broken Links in README ⚡ (15 min)
 **Issues**:

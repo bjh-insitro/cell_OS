@@ -20,8 +20,9 @@ This document provides a comprehensive overview of the cell_OS codebase structur
 - **`ONTOLOGY.md`** - Semantic framework (Campaign → Workflow → Process → Unit Operation)
 - **`POSH_SYSTEM_OVERVIEW.md`** - Overview of POSH variants (Zombie, Vanilla)
 - **`COST_AWARE_DECISION_SUPPORT.md`** - Cost-aware decision making documentation
-- **`AUTOMATION_SUMMARY.md`** - Automation scoring and recommendations
-- **`REAGENT_PRICING_SUMMARY.md`** - Pricing database documentation
+- **`docs/archive/migrations/2025-11-27-automation-parameterization-summary.md`** *(archived, formerly `AUTOMATION_SUMMARY.md`)* - Automation scoring and recommendations
+- **`docs/archive/migrations/2025-11-27-reagent-pricing-summary.md`** *(archived, formerly `REAGENT_PRICING_SUMMARY.md`)* - Pricing database documentation
+- **`STATUS.md`** - Consolidated program status and next steps
 - **`upstream_protocol.md`** - Upstream workflow (library design → virus production)
 - **`CHANGELOG.md`** - Version history and changes
 - **`phase0_task.md`** - Task tracking (copied from artifacts)

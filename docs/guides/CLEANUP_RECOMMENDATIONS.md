@@ -33,8 +33,12 @@ docs/
 ├── guides/
 │   ├── POSH_SYSTEM_OVERVIEW.md
 │   ├── COST_AWARE_DECISION_SUPPORT.md
-│   ├── AUTOMATION_SUMMARY.md
-│   └── REAGENT_PRICING_SUMMARY.md
+│   ├── USER_GUIDE.md
+│   ├── campaign.md
+│   └── README.md (index)
+├── archive/migrations/
+│   ├── 2025-11-27-automation-parameterization-summary.md  # replaces AUTOMATION_SUMMARY.md
+│   └── 2025-11-27-reagent-pricing-summary.md              # replaces REAGENT_PRICING_SUMMARY.md
 └── README.md (keep in root)
 ```
 

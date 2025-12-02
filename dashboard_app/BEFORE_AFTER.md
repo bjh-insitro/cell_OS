@@ -35,12 +35,13 @@ dashboard_app/
 ├── README.md ✅ Architecture docs
 ├── MIGRATION.md ✅ Migration guide
 ├── ARCHITECTURE.txt ✅ Visual diagram
-├── REFACTORING_SUMMARY.md ✅ Summary
 └── pages/
     ├── tab_1_mission_control.py
     ├── tab_2_science.py
     ├── ... (19 more page files)
 ```
+
+> Historical `REFACTORING_SUMMARY.md` now resides in `docs/archive/refactorings/2025-11-30-dashboard-refactoring-summary.md`.
 
 ---
 

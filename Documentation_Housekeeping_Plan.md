@@ -3,6 +3,8 @@
 ## Overview
 The project currently has more than 101 Markdown files scattered across multiple directories. This plan organizes them into logical categories and proposes consolidation to improve maintainability and discoverability.
 
+> **Status (2025-12-01):** ✅ Plan executed. Historical docs have been moved into `docs/archive/`, `docs/MIGRATION_HISTORY.md` summarizes the migrations, and `STATUS.md` is now the sole active status file in the repo root. The sections below capture the original intent and remain as reference for future cleanups.
+
 ## Current State Analysis
 
 ### File Distribution

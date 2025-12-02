@@ -70,11 +70,12 @@ dashboard_app/
 ├── README.md                   # Architecture docs
 ├── MIGRATION.md                # Migration guide
 ├── BEFORE_AFTER.md             # Comparison
-├── REFACTORING_SUMMARY.md      # Summary
 └── pages/                      # Page modules
     ├── tab_*.py                # Individual pages
     └── *.py                    # Other pages
 ```
+
+> Historical `REFACTORING_SUMMARY.md` now lives at `docs/archive/refactorings/2025-11-30-dashboard-refactoring-summary.md`.
 
 ---
 
@@ -224,7 +225,7 @@ Should show:
 | `README.md` | Architecture overview and how-to guides |
 | `MIGRATION.md` | Migration guide and before/after |
 | `BEFORE_AFTER.md` | Detailed comparison |
-| `REFACTORING_SUMMARY.md` | Executive summary |
+| `docs/archive/refactorings/2025-11-30-dashboard-refactoring-summary.md` | Executive summary (archived) |
 | `ARCHITECTURE.txt` | Visual architecture diagram |
 | `QUICK_REFERENCE.md` | This file! |
 

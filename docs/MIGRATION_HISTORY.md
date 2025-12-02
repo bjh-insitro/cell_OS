@@ -34,6 +34,13 @@ This document consolidates the prior standalone migration, validation, and imple
 - **Source:** [`2025-11-29-cell-line-db-migration`](archive/migrations/2025-11-29-cell-line-db-migration.md)
 - Replaced the 614-line `cell_lines.yaml` with `cell_lines.db`, rewrote the loader to be SQLite-first, and archived the YAML backup. The new schema tracks metadata, characteristics, protocols, inventory, and usage while remaining backward compatible with existing APIs.
 
+## Archive Navigation
+- Use [`archive/README.md`](archive/README.md) for a directory-by-directory map and naming conventions.
+- Session summaries: `archive/sessions/`
+- Migration + validation packets: `archive/migrations/`
+- Refactor retrospectives: `archive/refactorings/`
+- Legacy status reports: `archive/status/`
+
 ## How to Use This History
 - Treat this file as the canonical digest when you need to understand **what** was migrated and **why** it matters.
 - Jump into any linked archive document for implementation specifics, scripts, and validation artifacts.
