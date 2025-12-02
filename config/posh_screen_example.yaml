@@ -1,0 +1,22 @@
+screen_id: "POSH_SCREEN_DEMO"
+description: "Example POSH screen showing configuration layout."
+
+cell_lines:
+  primary: "iPSC"
+  backup: "HEK293T"
+
+library:
+  type: "multi-guide"
+  guides_per_gene: 4
+  control_guides: 200
+  plate_layout: "384"
+
+simulation:
+  total_rounds: 4
+  exploration_fraction: 0.35
+  acquisition_profile: "ambitious_postdoc"
+  random_seed: 42
+
+reporting:
+  export_dir: "results/posh_demo"
+  include_library_stats: true

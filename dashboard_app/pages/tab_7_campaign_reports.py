@@ -1,6 +1,18 @@
 # dashboard_app/pages/tab_7_campaign_reports.py
-import streamlit as st
 import os
+import streamlit as st
+
+
+def _html_to_pdf_bytes(html_content: str):
+    """Convert HTML content to PDF bytes using pdfkit if available."""
+    try:
+        import pdfkit
+    except ImportError:
+        return None
+    try:
+        return pdfkit.from_string(html_content, False)
+    except Exception:
+        return None
 
 def render_campaign_reports(df, pricing):
     st.header("📊 Campaign Reports")
@@ -27,6 +39,16 @@ def render_campaign_reports(df, pricing):
                         html_content = f.read()
                     
                     st.components.v1.html(html_content, height=800, scrolling=True)
+                    pdf_bytes = _html_to_pdf_bytes(html_content)
+                    if pdf_bytes:
+                        st.download_button(
+                            "Download PDF",
+                            data=pdf_bytes,
+                            file_name=selected_report.replace(".html", ".pdf"),
+                            mime="application/pdf",
+                        )
+                    else:
+                        st.caption("Install `pdfkit` + wkhtmltopdf to enable PDF exports.")
                 except Exception as e:
                     st.error(f"Could not read report file: {e}")
         else:

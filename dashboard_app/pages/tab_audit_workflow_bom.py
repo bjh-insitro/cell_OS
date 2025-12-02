@@ -231,6 +231,14 @@ def render_workflow_bom_audit(df, pricing):
 
                     df_audit = pd.DataFrame(all_steps)
                     st.dataframe(df_audit, use_container_width=True)
+                    csv_bytes = df_audit.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "Download BOM CSV",
+                        data=csv_bytes,
+                        file_name="workflow_bom.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
                     
                     # Summary statistics
                     st.subheader("📊 Cost Summary")

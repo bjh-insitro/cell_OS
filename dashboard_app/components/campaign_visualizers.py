@@ -133,11 +133,51 @@ def render_lineage(result):
             
         dot.node(node['id'], label, fillcolor=fillcolor)
         
-    for edge in result.lineage_data.get("edges", []):
+    def edge_color(label: str) -> str:
+        label_lower = label.lower()
+        if "freeze" in label_lower or "bank" in label_lower:
+            return "#f28e2b"
+        if "passage" in label_lower or "expand" in label_lower:
+            return "#59a14f"
+        if "seed" in label_lower:
+            return "#4e79a7"
+        return "#9c755f"
+
+    timeline = []
+    for idx, edge in enumerate(result.lineage_data.get("edges", []), start=1):
         label = edge.get("op", "")
-        dot.edge(edge['source'], edge['target'], label=label)
+        color = edge_color(label)
+        dot.edge(edge['source'], edge['target'], label=label, color=color, fontcolor=color)
+        timeline.append({"Step": idx, "Source": edge["source"], "Target": edge["target"], "Operation": label})
         
     st.graphviz_chart(dot)
+
+    # Export options
+    try:
+        svg_bytes = dot.pipe(format="svg")
+        png_bytes = dot.pipe(format="png")
+        col_svg, col_png = st.columns(2)
+        with col_svg:
+            st.download_button(
+                "Download Lineage (SVG)",
+                data=svg_bytes,
+                file_name="lineage.svg",
+                mime="image/svg+xml",
+            )
+        with col_png:
+            st.download_button(
+                "Download Lineage (PNG)",
+                data=png_bytes,
+                file_name="lineage.png",
+                mime="image/png",
+            )
+    except graphviz.backend.ExecutableNotFound:
+        st.warning("Graphviz binaries not found; export buttons disabled.")
+
+    if timeline:
+        st.markdown("#### 📅 Lineage Timeline")
+        timeline_df = pd.DataFrame(timeline)
+        st.dataframe(timeline_df, use_container_width=True, hide_index=True)
 
 
 def render_resources(result, pricing, workflow_type="MCB"):

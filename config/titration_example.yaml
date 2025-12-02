@@ -1,0 +1,21 @@
+titration_id: "U2OS_TITRATION_DEMO"
+cell_line: "U2OS"
+virus:
+  library: "LV_POSH"
+  moi_targets: [0.05, 0.15, 0.35]
+  max_rounds: 7
+  allow_backtracking: true
+
+readouts:
+  - name: "BFP% Viable"
+    type: "flow"
+  - name: "Cell Count"
+    type: "brightfield"
+
+stopping_rules:
+  go_no_go_threshold: 0.30
+  max_budget_usd: 1200
+
+inventory:
+  use_database: true
+  reserve_media_ml: 250

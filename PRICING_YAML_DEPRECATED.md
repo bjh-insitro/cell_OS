@@ -16,6 +16,19 @@ To re-run the migration (if you've updated pricing.yaml):
 python3 tools/migrate_pricing_to_db.py
 ```
 
+## Recommended Workflow
+
+```bash
+# 1. Bootstrap cell lines + simulation params
+make bootstrap-data
+
+# 2. Seed inventory catalog entries (replaces pricing.yaml editing)
+python3 scripts/seed_inventory_resources.py --db data/inventory.db
+
+# 3. Launch the dashboard/agents
+streamlit run dashboard_app/app.py
+```
+
 ## What Changed
 
 ### Before (YAML-based)
@@ -61,6 +74,7 @@ The following files still reference `pricing.yaml` but are **non-critical** (exa
 - `README.md` - Documentation
 
 These can be updated incrementally or left as-is for backward compatibility examples.
+See `docs/data/YAML_SOURCES.md` for the current catalog of YAML fixtures vs. database-backed sources.
 
 ## Database Schema
 

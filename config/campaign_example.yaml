@@ -1,42 +1,24 @@
-# Campaign Configuration for Autonomous Titration Loop
-# Usage: cell-os-run --config config/campaign_example.yaml
+experiment_id: "EXAMPLE_CAMPAIGN_001"
+experiment_name: "Demo Autonomous Campaign"
 
-# Experiment Metadata
-experiment_id: "TITRATION_CAMPAIGN_2025_11_27"
-experiment_name: "3-Line LV Titration Test"
-
-# Target Cell Lines (Ground Truth for Simulation)
 cell_lines:
   - name: "U2OS"
-    true_titer: 150000   # TU/uL
+    true_titer: 150000
     true_alpha: 0.92
   - name: "HEK293T"
     true_titer: 200000
     true_alpha: 0.88
-  - name: "A549"
-    true_titer: 80000
-    true_alpha: 0.85
 
-# Screen Configuration
 screen_config:
   max_titration_rounds: 5
-  num_guides: 1000
-  coverage_target: 500
   target_bfp: 0.30
   bfp_tolerance: [0.25, 0.35]
-  cell_counting_error: 0.05
-  pipetting_error: 0.05
+  decision_metric: "default"
 
-# Budget Configuration
 budget:
   max_titration_budget_usd: 5000.0
-  reagent_cost_per_well: 2.50
-  mins_per_sample_flow: 3.0
-  flow_rate_per_hour: 120.0
-  virus_price: 0.15  # $/uL
+  max_autonomous_runtime_hr: 8
 
-# Output Settings
-output:
-  results_dir: "results/campaigns"
-  generate_html_report: true
-  save_csv: true
+reporting:
+  generate_html: true
+  output_dir: "results/campaigns"

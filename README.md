@@ -4,7 +4,7 @@
 
 `cell_OS` is a production-ready platform for autonomous scientific discovery. It designs experiments, executes them (via simulation or real hardware), fits models, makes decisions, and generates reports—all without human intervention.
 
-[![Tests](https://img.shields.io/badge/tests-379%20passing-brightgreen)]() 
+[![Tests](https://img.shields.io/badge/tests-432%20passing-brightgreen)]() 
 [![CI](https://github.com/brighart/cell_OS/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/brighart/cell_OS/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.9+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
@@ -27,6 +27,11 @@ cell-os-run --config config/campaign_example.yaml
 # Launch the dashboard
 streamlit run dashboard_app/app.py
 ```
+
+Example configs:
+- `config/campaign_example.yaml` – end-to-end autonomous campaign.
+- `config/titration_example.yaml` – LV titration loop template.
+- `config/posh_screen_example.yaml` – POSH screen planning skeleton.
 
 **That's it!** The agent will autonomously titrate lentiviral vectors, fit models, make GO/NO-GO decisions, and generate an interactive report.
 
@@ -224,6 +229,9 @@ Fresh clones need the SQLite fixtures seeded from the authoritative YAML files. 
 ```bash
 make bootstrap-data
 # or: python3 scripts/bootstrap_data.py
+
+# Populate the inventory catalog with common reagents/consumables
+python3 scripts/seed_inventory_resources.py
 ```
 
 The helper script runs both seeding utilities:

@@ -1,7 +1,9 @@
 # dashboard_app/pages/tab_3_economics.py
-import streamlit as st
-import pandas as pd
+import io
 from pathlib import Path
+
+import pandas as pd
+import streamlit as st
 
 def render_economics(df, pricing):
     """Renders the content for the Economics dashboard tab."""
@@ -10,7 +12,19 @@ def render_economics(df, pricing):
     if not df.empty and "cost_usd" in df.columns:
         # Cumulative Spend
         df["cumulative_cost"] = df["cost_usd"].cumsum()
-        st.line_chart(df.reset_index(), x="index", y="cumulative_cost")
+        cost_chart_data = df.reset_index()
+        st.line_chart(cost_chart_data, x="index", y="cumulative_cost")
+
+        cost_export = cost_chart_data[["index", "cost_usd", "cumulative_cost"]].rename(columns={"index": "step"})
+        excel_buf = io.BytesIO()
+        with pd.ExcelWriter(excel_buf, engine="xlsxwriter") as writer:
+            cost_export.to_excel(writer, index=False, sheet_name="financials")
+        st.download_button(
+            "Download Cost Breakdown (Excel)",
+            data=excel_buf.getvalue(),
+            file_name="cost_breakdown.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     
     st.header("Inventory Levels")
     

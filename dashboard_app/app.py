@@ -5,11 +5,16 @@ Main entry point for the Streamlit dashboard. This orchestrates the navigation
 and rendering of all dashboard pages through a centralized page registry.
 """
 
-import streamlit as st
-import pandas as pd
-import sys
 import os
+import sys
+import traceback
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote_plus
+
+import pandas as pd
+import streamlit as st
+import traceback
 
 # ---------------------------------------------------------------------------------
 # FIX: Explicitly add package paths to sys.path to resolve absolute imports.
@@ -27,6 +32,8 @@ if current_dir not in sys.path:
 
 from dashboard_app.utils import load_data, get_inventory_handles
 from dashboard_app.config import create_page_registry, PageCategory
+
+LOG_PATH = Path("logs/dashboard_errors.log")
 
 
 def setup_page():
@@ -49,23 +56,34 @@ def render_sidebar(page_registry):
     Returns:
         str: The selected page title
     """
-    # Navigation
     st.sidebar.title("Navigation")
+    search_term = st.sidebar.text_input("Filter tabs", placeholder="Type to search…")
+    category_options = ["All"] + [cat.value for cat in PageCategory]
+    selected_category = st.sidebar.selectbox("Category", category_options)
     
-    # Get pages organized by category
-    page_titles = page_registry.get_page_titles()
+    all_pages = page_registry.get_all_pages()
+    filtered_pages = []
+    for page in all_pages:
+        if selected_category != "All" and page.category.value != selected_category:
+            continue
+        if search_term and search_term.lower() not in page.title.lower():
+            continue
+        filtered_pages.append(page)
     
-    # Default to the first page unless a shortcut set a pending selection
+    if not filtered_pages:
+        filtered_pages = all_pages
+    
+    page_titles = [f"{p.emoji} {p.title}" for p in filtered_pages]
+    
     default_index = 0
     pending = st.session_state.pop("pending_nav", None)
     if pending and pending in page_titles:
         default_index = page_titles.index(pending)
     
-    # Use selectbox for navigation
     selected_page = st.sidebar.selectbox(
         "Select Page",
         page_titles,
-        index=default_index,
+        index=min(default_index, len(page_titles) - 1),
         label_visibility="collapsed"
     )
     
@@ -78,7 +96,25 @@ def render_sidebar(page_registry):
     if st.sidebar.button("Refresh Data", use_container_width=True):
         st.rerun()
     
+    st.sidebar.subheader("Recent Tabs")
+    recent_tabs = st.session_state.setdefault("recent_tabs", [])
+    for entry in recent_tabs[:5]:
+        st.sidebar.caption(entry)
+    
     return selected_page
+
+
+def log_dashboard_error(page_config, exception, stack_trace: str) -> str:
+    """Persist dashboard errors and provide a GitHub issue link."""
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().isoformat()
+    with LOG_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(f"[{timestamp}] {page_config.title}\n{stack_trace}\n{'-'*60}\n")
+    title = quote_plus(f"Dashboard error on {page_config.title}")
+    body = quote_plus(
+        f"### Context\n- Page: {page_config.title}\n- Timestamp: {timestamp}\n\n```\n{stack_trace}\n```"
+    )
+    return f"https://github.com/brighart/cell_OS/issues/new?title={title}&body={body}"
 
 
 def render_page(page_title: str, page_registry, df: pd.DataFrame, pricing: dict):
@@ -102,10 +138,13 @@ def render_page(page_title: str, page_registry, df: pd.DataFrame, pricing: dict)
     try:
         page_config.render_function(df, pricing)
     except Exception as e:
+        stack = traceback.format_exc()
+        issue_url = log_dashboard_error(page_config, e, stack)
         st.error(f"Error rendering page: {page_config.title}")
-        st.exception(e)
+        st.caption(f"Details recorded in {LOG_PATH}")
+        st.markdown(f"[Report Issue]({issue_url})")
+        st.code(stack, language="python")
         
-        # Provide fallback content for Economics page (legacy compatibility)
         if page_config.key == "economics":
             render_economics_fallback(df, pricing)
 
@@ -162,6 +201,12 @@ def main():
     # Render sidebar and get selected page
     selected_page = render_sidebar(page_registry)
     
+    recent = st.session_state.setdefault("recent_tabs", [])
+    if selected_page in recent:
+        recent.remove(selected_page)
+    recent.insert(0, selected_page)
+    st.session_state["recent_tabs"] = recent[:5]
+
     # Render the selected page
     render_page(selected_page, page_registry, df, pricing)
 

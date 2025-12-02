@@ -82,6 +82,7 @@ def get_inventory_handles(db_path: str = "data/inventory.db") -> Tuple[Inventory
     return inventory, manager
 
 @st.cache_resource
+@st.cache_resource
 def init_automation_resources(vessel_path="data/raw/vessels.yaml"):
     """Initializes and caches the core automation engine resources."""
     try:
