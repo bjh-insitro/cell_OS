@@ -336,7 +336,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             
             # Estimate daily pipettes and tips based on flask count
             # Only if media was consumed (feed/passage) or flasks changed (passage)
-            if media_used_ml > 0 or new_flasks > 0:
+            if media_used_ml > 0.1 or new_flasks > 0:
                 daily_pipettes = current_flasks
                 daily_tips = current_flasks * 2  # 2 tips per operation
             else:
@@ -415,7 +415,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                 media_used_ml = current_media_ml - prev_row.get('media_consumed', 0.0)
                 new_flasks = max(0, current_flasks - int(prev_row.get('flask_count', 0)))
             
-            if media_used_ml > 0 or new_flasks > 0:
+            if media_used_ml > 0.1 or new_flasks > 0:
                 daily_pipettes = current_flasks
                 daily_tips = current_flasks * 2
             else:
@@ -542,7 +542,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             new_flasks = max(0, current_flasks - prev_flasks)
             
             # Daily consumables inference
-            if media_used_ml > 0 or new_flasks > 0:
+            if media_used_ml > 0.1 or new_flasks > 0:
                 daily_pipettes = current_flasks
                 daily_tips = current_flasks * 2
             else:
