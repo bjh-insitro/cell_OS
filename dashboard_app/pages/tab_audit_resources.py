@@ -58,7 +58,7 @@ def render_resource_audit(df, pricing):
         # Apply the new order
         df_items = df_items[column_order]
         
-        st.dataframe(df_items, width="stretch")
+        st.dataframe(df_items, use_container_width=True)
     else:
         st.info("Pricing data failed to load or is empty.")
 

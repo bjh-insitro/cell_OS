@@ -85,7 +85,7 @@ def render_analytics(df, pricing):
         )
         st.plotly_chart(
             fig_status,
-            width="stretch",
+        use_container_width=True,
             key="analytics_status_distribution"
         )
         
@@ -95,7 +95,7 @@ def render_analytics(df, pricing):
         fig_timeline = px.bar(daily_counts, x='date', y='Count', title="Daily Execution Volume")
         st.plotly_chart(
             fig_timeline,
-            width="stretch",
+        use_container_width=True,
             key="analytics_execution_timeline"
         )
         

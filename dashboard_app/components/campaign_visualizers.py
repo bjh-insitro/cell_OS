@@ -98,7 +98,7 @@ def render_unit_ops_table(workflow):
     
     st.dataframe(
         pd.DataFrame(steps_data),
-        width="stretch",
+        use_container_width=True,
         hide_index=True
     )
 
@@ -177,7 +177,7 @@ def render_lineage(result):
     if timeline:
         st.markdown("#### 📅 Lineage Timeline")
         timeline_df = pd.DataFrame(timeline)
-        st.dataframe(timeline_df, width="stretch", hide_index=True)
+        st.dataframe(timeline_df, use_container_width=True, hide_index=True)
 
 
 def render_resources(result, pricing, workflow_type="MCB"):
@@ -253,7 +253,7 @@ def render_resources(result, pricing, workflow_type="MCB"):
             })
         
         if ops_data:
-            st.dataframe(pd.DataFrame(ops_data), width="stretch")
+            st.dataframe(pd.DataFrame(ops_data), use_container_width=True)
         return
 
     df_bom = pd.DataFrame(bom_data).sort_values("_cost_val", ascending=False)
@@ -272,7 +272,7 @@ def render_resources(result, pricing, workflow_type="MCB"):
             st.metric("Top Cost Driver", top_item["Name"])
             
     # 4. Display table
-    st.dataframe(df_display, width="stretch", hide_index=True)
+    st.dataframe(df_display, use_container_width=True, hide_index=True)
     
     # 5. Cost breakdown chart
     if total_cost > 0:
@@ -286,7 +286,7 @@ def render_resources(result, pricing, workflow_type="MCB"):
         normalized_type = workflow_type.lower()
         st.plotly_chart(
             fig,
-            width="stretch",
+            use_container_width=True,
             key=f"campaign_cost_breakdown_{normalized_type}"
         )
 

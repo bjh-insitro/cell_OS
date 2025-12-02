@@ -76,6 +76,12 @@ def render_assay_development(df, pricing):
                     # Display Result
                     if result.status == "success":
                         st.success(f"✅ Optimal Dose Found: **{result.optimal_dose_uM:.1f} µM**")
+                        
+                        # Store in session state for other tabs
+                        if "optimal_dose_results" not in st.session_state:
+                            st.session_state.optimal_dose_results = {}
+                        st.session_state.optimal_dose_results[selected_cell_line] = result.optimal_dose_uM
+                        
                     elif result.status == "suboptimal":
                         st.warning(f"⚠️ Suboptimal Dose Found: **{result.optimal_dose_uM:.1f} µM** (Signal target not fully met)")
                     else:
@@ -131,7 +137,7 @@ def render_assay_development(df, pricing):
                     # Add optimal dose rule
                     rule = alt.Chart(pd.DataFrame({'x': [result.optimal_dose_uM]})).mark_rule(color='black', strokeDash=[5, 5]).encode(x='x')
                     
-                    st.altair_chart(chart + rule, width="stretch")
+                    st.altair_chart(chart + rule, use_container_width=True)
                     
                     # Data Table
                     with st.expander("View Raw Data"):

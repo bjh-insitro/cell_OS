@@ -61,7 +61,7 @@ def render_science_explorer(df, pricing):
                         y2=alt.Y2("upper")
                     )
                     
-                    st.altair_chart(chart + line + band, width="stretch")
+                    st.altair_chart(chart + line + band, use_container_width=True)
                 else:
                     st.altair_chart(chart, width="stretch")
                     st.warning("Not enough positive dose data to fit GP.")

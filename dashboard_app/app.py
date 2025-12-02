@@ -101,7 +101,7 @@ def render_sidebar(page_registry):
     st.sidebar.header("Status")
     
     # Refresh button
-    if st.sidebar.button("Refresh Data", width="stretch"):
+    if st.sidebar.button("Refresh Data", use_container_width=True):
         st.rerun()
     
     st.sidebar.subheader("Recent Tabs")
@@ -175,7 +175,7 @@ def render_economics_fallback(df: pd.DataFrame, pricing: dict):
         })
     
     if items:
-        st.dataframe(pd.DataFrame(items), width="stretch")
+        st.dataframe(pd.DataFrame(items), use_container_width=True)
     
     st.info("Inventory data unavailable; run a campaign or seed the database to view live levels.")
 

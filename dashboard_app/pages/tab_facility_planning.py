@@ -57,7 +57,7 @@ def render_resource_chart(df, metric_col, capacity, title, color):
         title=f"{title} (Capacity: {capacity})"
     ).interactive()
     
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, use_container_width=True)
 
 def render_violations(df):
     """Render a table of capacity violations."""

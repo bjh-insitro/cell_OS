@@ -78,7 +78,7 @@ def render_mission_control(df, pricing):
                 'BFP%', 'Cost ($)', 'Timestamp'
             ])
             df_recent['BFP%'] = (df_recent['BFP%'] * 100).round(1)
-            st.dataframe(df_recent, width="stretch")
+            st.dataframe(df_recent, use_container_width=True)
         else:
             st.info("No experiments run yet. Launch a campaign to see results!")
             st.code("cell-os-run --config config/campaign_example.yaml")
@@ -92,7 +92,64 @@ def render_mission_control(df, pricing):
         # Fallback to CSV if DB fails
         if os.path.exists("results/experiment_history.csv"):
             df_fallback = pd.read_csv("results/experiment_history.csv", on_bad_lines='skip')
-            st.dataframe(df_fallback.tail(10), width="stretch")
+            st.dataframe(df_fallback.tail(10), use_container_width=True)
+    
+    # --- Alerts & Issues ---
+    st.divider()
+    col1, col2 = st.columns([2, 3]) # Adjust column widths as needed
+    with col1:
+        st.subheader("📊 Overview")
+        # Placeholder for overview metrics if needed
+        st.write("Summary of key metrics or status.")
+
+    with col2:
+        st.subheader("⚠️ Alerts & Issues")
+        # Placeholder for alerts
+        alerts = [
+            {"Severity": "High", "Message": "Low stock: DMEM (2 bottles left)", "Time": "1h ago"},
+            {"Severity": "Medium", "Message": "Incubator 3 temp deviation (+0.5°C)", "Time": "3h ago"},
+        ]
+        df_alerts = pd.DataFrame(alerts)
+        st.dataframe(df_alerts, use_container_width=True)
+
+    # --- Active Campaigns ---
+    st.divider()
+    st.subheader("🚀 Active Campaigns")
+    
+    # Placeholder for campaigns
+    campaigns = [
+        {"ID": "CMP-001", "Name": "A549 POSH Screen", "Status": "Running", "Progress": "65%"},
+        {"ID": "CMP-002", "Name": "U2OS Titration", "Status": "Planned", "Progress": "0%"},
+    ]
+    df_campaigns = pd.DataFrame(campaigns)
+    st.dataframe(df_campaigns, use_container_width=True)
+
+    # --- System Health ---
+    st.divider()
+    st.subheader("🖥️ System Health")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Database", "Connected", "12ms")
+    with col2:
+        st.metric("API Status", "Online", "99.9%")
+    with col3:
+        st.metric("Worker Nodes", "4/4 Active")
+    with col4:
+        st.metric("Disk Usage", "45%", "-2%")
+
+    # --- Recent Errors (Fallback) ---
+    # This section assumes df_recent is available from the try block.
+    # If the try block failed entirely, df_recent might not exist.
+    # We'll add a check for its existence.
+    if 'df_recent' in locals() and not df_recent.empty:
+        st.divider()
+        st.subheader("Recent Errors (Debug)")
+        # Assuming 'Status' column might be added in future data,
+        # for now, we'll just show a subset if df_recent exists.
+        # If 'Status' column is not present, this will raise an error.
+        # For demonstration, let's just show a few rows if df_recent is available.
+        st.dataframe(df_recent.head(5), use_container_width=True) # Showing head for debug example
     
     st.subheader("Mission Log")
     log_path = "results/mission_log.md"

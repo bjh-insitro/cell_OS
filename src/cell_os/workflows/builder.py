@@ -360,6 +360,81 @@ class WorkflowBuilder:
             Process("LV Titer Assay Protocol", process_ops)
         ])
     
+    def build_posh_screen_from_bank(
+        self,
+        cell_line: str = "A549",
+        treatment: str = "tBHP",
+        dose_uM: float = 100.0,
+        num_replicates: int = 3,
+        library_size: int = 1000,
+        coverage: int = 500
+    ) -> Workflow:
+        """
+        POSH Screen Execution from Bank.
+        
+        Workflow:
+        1. Thaw Library Bank Vials
+        2. Expand to screening scale
+        3. Seed 96-well plates
+        4. Treat with compound
+        5. Fix, Stain, Image
+        """
+        process_ops = []
+        
+        # 1. Thaw Library Bank
+        # Calculate cells needed: library_size * coverage * replicates
+        cells_needed = library_size * coverage * num_replicates
+        # Assume 5M cells/vial bank
+        vials_to_thaw = max(1, int(np.ceil(cells_needed / 5e6)))
+        
+        coating_needed, coating_agent = resolve_coating(cell_line)
+        
+        for i in range(vials_to_thaw):
+            if coating_needed:
+                process_ops.append(self.ops.op_coat("flask_t75", agents=[coating_agent]))
+            process_ops.append(self.ops.op_thaw("flask_t75", cell_line=cell_line, skip_coating=True))
+            
+        # 2. Expand (1 passage to recover)
+        if cell_line.lower() in ["ipsc", "hesc"]:
+            process_ops.append(self.ops.op_feed("flask_t75", cell_line=cell_line))
+            
+        process_ops.append(self.ops.op_passage("flask_t75", cell_line=cell_line))
+        
+        # 3. Seed Plates
+        # Calculate plates needed (96-well)
+        # Cells per well ~10k
+        cells_per_well = 10000
+        wells_needed = int(np.ceil(cells_needed / cells_per_well))
+        plates_needed = int(np.ceil(wells_needed / 96))
+        
+        if coating_needed:
+            process_ops.append(self.ops.op_coat("plate_96well_tc", agents=[coating_agent], num_vessels=plates_needed))
+            
+        process_ops.append(self.ops.op_seed_plate(
+            "plate_96well_tc",
+            num_wells=wells_needed,
+            volume_per_well_ml=0.1,
+            cell_line=cell_line,
+            name=f"Seed {plates_needed} plates for screen"
+        ))
+        
+        # 4. Treat
+        process_ops.append(self.ops.op_dispense(
+            "plate_96well_tc",
+            volume_ml=0.001, # 1uL spike
+            liquid_name=treatment,
+            name=f"Treat with {treatment} ({dose_uM}uM)"
+        ))
+        
+        # 5. Readout
+        process_ops.append(self.ops.op_fix_cells("plate_96well_tc"))
+        process_ops.append(self.ops.op_cell_painting("plate_96well_tc"))
+        process_ops.append(self.ops.op_imaging("plate_96well_tc"))
+        
+        return Workflow("POSH Screen Execution", [
+            Process("Screening", process_ops)
+        ])
+
     # --- END NEW PROCESS BLOCK METHODS ---
 
     # --- CAMPAIGN WORKFLOW METHODS (Tier 1) ---

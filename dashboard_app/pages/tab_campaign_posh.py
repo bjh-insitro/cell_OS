@@ -242,7 +242,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
         
         fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.4)])
         fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
-        st.plotly_chart(fig_pie, width="stretch", key=f"cost_breakdown_{workflow_type}{key_suffix}")
+        st.plotly_chart(fig_pie, use_container_width=True, key=f"cost_breakdown_{workflow_type}{key_suffix}")
         
     with c_col2:
         st.markdown("**Daily Labor Load**")
@@ -253,7 +253,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             ])
             fig_bar.update_layout(barmode='group', height=300, margin=dict(t=0, b=0, l=0, r=0),
                                  legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_bar, width="stretch", key=f"labor_load_{workflow_type}{key_suffix}")
+            st.plotly_chart(fig_bar, use_container_width=True, key=f"labor_load_{workflow_type}{key_suffix}")
         else:
             st.info("Daily labor data not available.")
 
@@ -379,7 +379,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
         })
         
         df_daily = pd.DataFrame(daily_breakdown)
-        st.dataframe(df_daily, width="stretch")
+        st.dataframe(df_daily, use_container_width=True)
         
         # Daily cost visualization
         st.markdown("**Daily Cost Breakdown**")
@@ -488,7 +488,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
-        st.plotly_chart(fig_daily, width="stretch", key="daily_cost_breakdown")
+        st.plotly_chart(fig_daily, use_container_width=True, key="daily_cost_breakdown")
         
         # --- NEW: Detailed Itemization ---
         st.markdown("### 📋 Detailed Itemization")
@@ -638,7 +638,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
         
         df_detailed = pd.DataFrame(detailed_items)
         df_detailed["Quantity"] = df_detailed["Quantity"].astype(str)
-        st.dataframe(df_detailed, width="stretch")
+        st.dataframe(df_detailed, use_container_width=True)
         
         # --- NEW: Daily Usage Matrix (Pivot) ---
         st.markdown("### 📊 Daily Usage Matrix ($)")
@@ -673,7 +673,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             # Sort by Total Cost descending
             pivot = pivot.sort_values("Total", ascending=False)
             
-            st.dataframe(pivot.style.format("${:.2f}"), width="stretch")
+            st.dataframe(pivot.style.format("${:.2f}"), use_container_width=True)
         
     # Store workflow and cell_line in result for later use in tabs
     result._workflow_type = workflow_type
@@ -926,7 +926,7 @@ def render_posh_campaign_manager(df, pricing):
                     template="plotly_white"
                 )
                 
-                st.plotly_chart(fig, width="stretch", key="titration_results")
+                st.plotly_chart(fig, use_container_width=True, key="titration_results")
                 
                 # Cost Analysis
                 st.subheader("Titration Cost Analysis 💰")
@@ -1037,7 +1037,7 @@ def render_posh_campaign_manager(df, pricing):
                             })
                             step_num += 1
                     
-                    st.dataframe(pd.DataFrame(workflow_steps), width="stretch")
+                    st.dataframe(pd.DataFrame(workflow_steps), use_container_width=True)
                     
                     # Total cost
                     total_mat = sum(op.material_cost_usd for process in lb_result.workflow.processes for op in process.ops)
@@ -1050,7 +1050,314 @@ def render_posh_campaign_manager(df, pricing):
                 st.error(f"❌ Library Banking Failed: {lb_result.error_message}")
             
             
+            
+            
     # Display Results
+
+
+    # --- Phase 5: Assay Development (tBHP Dose Finding) ---
+    st.divider()
+    st.markdown("""
+    **Phase 5: Assay Development (tBHP Dose Finding)**
+    Determine the optimal tBHP dose for oxidative stress assays.
+    """)
+    
+    from cell_os.tbhp_dose_finder import TBHPDoseFinder, TBHPOptimizationCriteria
+    from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+    
+    with st.expander("Assay Development Configuration", expanded=True):
+        ad_col1, ad_col2, ad_col3 = st.columns(3)
+        
+        with ad_col1:
+            ad_cell_line = st.selectbox("Cell Line", ["A549", "U2OS", "HepG2", "iPSC"], key="ad_cell_line")
+        with ad_col2:
+            min_viability = st.slider("Min Viability", 0.0, 1.0, 0.70, 0.05, key="ad_min_viability")
+        with ad_col3:
+            target_signal = st.number_input("Target Signal (RFU)", value=200.0, key="ad_target_signal")
+        
+        run_assay_dev = st.button("▶️ Run Dose Finding", key="run_assay_dev_btn")
+    
+    if "assay_dev_results" not in st.session_state:
+        st.session_state.assay_dev_results = {}
+    
+    if run_assay_dev:
+        with st.spinner(f"Finding optimal tBHP dose for {ad_cell_line}..."):
+            vm = BiologicalVirtualMachine()
+            criteria = TBHPOptimizationCriteria(
+                min_viability=min_viability,
+                target_cellrox_signal=target_signal,
+                min_segmentation_quality=0.80
+            )
+            finder = TBHPDoseFinder(vm, criteria)
+            
+            result = finder.run_dose_finding(
+                cell_line=ad_cell_line,
+                dose_range=(0.0, 500.0),
+                n_doses=12
+            )
+            
+            st.session_state.assay_dev_results[ad_cell_line] = result
+            
+            # Store optimal dose for Phase 6
+            if "optimal_dose_results" not in st.session_state:
+                st.session_state.optimal_dose_results = {}
+            st.session_state.optimal_dose_results[ad_cell_line] = result.optimal_dose_uM
+    
+    if ad_cell_line in st.session_state.assay_dev_results:
+        result = st.session_state.assay_dev_results[ad_cell_line]
+        
+        if result.status == "success":
+            st.success(f"✅ Optimal Dose Found: **{result.optimal_dose_uM:.1f} µM**")
+        elif result.status == "suboptimal":
+            st.warning(f"⚠️ Suboptimal Dose: **{result.optimal_dose_uM:.1f} µM**")
+        else:
+            st.error(f"❌ Failed: {result.status}")
+        
+        # Metrics
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Viability", f"{result.viability_at_optimal:.1%}")
+        m2.metric("CellROX Signal", f"{result.cellrox_signal_at_optimal:.1f}")
+        m3.metric("Segmentation", f"{result.segmentation_quality_at_optimal:.1%}")
+        
+        # Plot
+        import altair as alt
+        df_res = result.dose_response_curve
+        df_res["Signal (Norm)"] = df_res["cellrox_signal"] / df_res["cellrox_signal"].max()
+        
+        df_plot = df_res.melt(
+            id_vars=["dose_uM"],
+            value_vars=["viability", "segmentation_quality", "Signal (Norm)"],
+            var_name="Metric",
+            value_name="Value"
+        )
+        
+        chart = alt.Chart(df_plot).mark_line(point=True).encode(
+            x=alt.X("dose_uM", title="tBHP Dose (µM)"),
+            y=alt.Y("Value", title="Normalized Value (0-1)"),
+            color=alt.Color("Metric", scale={
+                "domain": ["viability", "segmentation_quality", "Signal (Norm)"],
+                "range": ["#4CAF50", "#2196F3", "#FF5722"]
+            }),
+            tooltip=["dose_uM", "Metric", "Value"]
+        ).properties(height=300).interactive()
+        
+        rule = alt.Chart(pd.DataFrame({'x': [result.optimal_dose_uM]})).mark_rule(
+            color='black', strokeDash=[5, 5]
+        ).encode(x='x')
+        
+        st.altair_chart(chart + rule, use_container_width=True, key="assay_dev_dose_curve")
+
+
+    # --- Phase 6: POSH Screen Execution ---
+    st.divider()
+    st.markdown("""
+    **Phase 6: POSH Screen Execution**
+    Thaw library bank, treat with compound, and image for phenotypic readout.
+    """)
+    
+    from cell_os.simulation.posh_screen_wrapper import simulate_posh_screen, CELL_PAINTING_FEATURES
+    
+    with st.expander("Screen Configuration", expanded=True):
+        s_col1, s_col2, s_col3, s_col4 = st.columns(4)
+        with s_col1:
+            screen_cell_line = st.selectbox("Cell Line", ["A549", "U2OS", "HepG2", "iPSC"], key="screen_cell_line")
+        with s_col2:
+            treatment = st.selectbox("Treatment", ["tBHP", "Staurosporine", "Tunicamycin"], key="screen_treatment")
+        with s_col3:
+            # Get optimal dose from Assay Development
+            if "optimal_dose_results" in st.session_state and screen_cell_line in st.session_state.optimal_dose_results:
+                dose = st.session_state.optimal_dose_results[screen_cell_line]
+                st.metric("Dose (µM)", f"{dose:.1f}", help=f"Optimal dose from Assay Development for {screen_cell_line}")
+            else:
+                dose = 100.0
+                st.metric("Dose (µM)", f"{dose:.1f}", help="Default dose (run Assay Development to optimize)")
+                st.warning(f"⚠️ No optimal dose found for {screen_cell_line}. Run Assay Development first.")
+        with s_col4:
+            # Check if library banking results exist to pre-fill
+            default_lib_size = 1000
+            if screen_cell_line in st.session_state.get("library_banking_results", {}):
+                res = st.session_state.library_banking_results[screen_cell_line]
+                if res.success:
+                    default_lib_size = res.library_size
+                    st.success(f"✓ Linked to {screen_cell_line} Bank ({default_lib_size} genes)")
+            
+            screen_lib_size = st.number_input("Library Size", value=default_lib_size, key="screen_lib_size")
+        
+        # Feature selection row
+        st.markdown("**Cell Painting Feature to Analyze:**")
+        feature_options = {k: v["name"] for k, v in CELL_PAINTING_FEATURES.items()}
+        selected_feature_name = st.selectbox(
+            "Morphological Feature",
+            options=list(feature_options.values()),
+            key="screen_feature",
+            help="Select which Cell Painting morphological feature to analyze"
+        )
+        # Reverse lookup to get feature key
+        selected_feature = [k for k, v in feature_options.items() if v == selected_feature_name][0]
+            
+        run_screen = st.button("▶️ Run POSH Screen", key="run_screen_btn")
+        
+    if "screen_results" not in st.session_state:
+        st.session_state.screen_results = {}
+        
+    if run_screen:
+        with st.spinner(f"Running POSH Screen on {screen_cell_line} with {treatment}..."):
+            seed = st.session_state.get("screen_seed_counter", 0) + 1
+            st.session_state["screen_seed_counter"] = seed
+            
+            s_result = simulate_posh_screen(
+                cell_line=screen_cell_line,
+                treatment=treatment,
+                dose_uM=dose,
+                library_size=screen_lib_size,
+                feature=selected_feature,
+                random_seed=seed
+            )
+            st.session_state.screen_results[screen_cell_line] = s_result
+            
+    if screen_cell_line in st.session_state.screen_results:
+        s_result = st.session_state.screen_results[screen_cell_line]
+        
+        if s_result.success:
+            st.success(f"✅ Screen Complete: {len(s_result.hit_list)} hits identified")
+            
+            # Tabs for results
+            tab_volcano, tab_hits, tab_raw, tab_ops = st.tabs(["Volcano Plot 🌋", "Hit List 🎯", "Raw Measurements 📊", "Operations ⚙️"])
+            
+            with tab_volcano:
+                # Volcano Plot
+                feature_info = CELL_PAINTING_FEATURES[s_result.selected_feature]
+                fig_vol = px.scatter(
+                    s_result.volcano_data,
+                    x="Log2FoldChange",
+                    y="NegLog10P",
+                    color="Category",
+                    hover_data=["Gene"],
+                    title=f"Cell Painting POSH Screen: {screen_cell_line} + {treatment} ({dose}µM)<br><sub>Feature: {feature_info['name']}</sub>",
+                    color_discrete_map={
+                        "Non-targeting": "lightgrey",
+                        "Enhancer": "#FF5722",
+                        "Suppressor": "#2196F3"
+                    },
+                    opacity=0.7,
+                    labels={"Log2FoldChange": f"{feature_info['name']} Effect ({feature_info['unit']})"}
+                )
+                fig_vol.add_hline(y=-np.log10(0.05), line_dash="dash", line_color="grey", annotation_text="p=0.05")
+                
+                st.plotly_chart(fig_vol, use_container_width=True, key="volcano_plot")
+                
+                # Add interpretation
+                st.info(f"""**Interpretation:** 
+                - 🔴 **Enhancers** (right): Genes that increase {feature_info['name'].lower()} when knocked out
+                - 🔵 **Suppressors** (left): Genes that decrease {feature_info['name'].lower()} when knocked out
+                - ⚪ **Non-targeting**: Genes with no significant effect on this phenotype
+                """)
+                
+            with tab_hits:
+                st.dataframe(s_result.hit_list, use_container_width=True)
+                download_button(
+                    s_result.hit_list,
+                    "⬇️ Download Hits (CSV)",
+                    f"{screen_cell_line}_hits.csv"
+                )
+            
+            with tab_raw:
+                st.subheader("🔬 Raw Imaging Measurements")
+                st.markdown(f"""Showing raw fluorescence measurements from MitoTracker channel.  
+                **Treatment:** {treatment} ({dose}µM)""")
+                
+                # Display raw data table
+                with st.expander("View Raw Data Table", expanded=False):
+                    st.dataframe(s_result.raw_measurements, use_container_width=True)
+                
+                # Summary statistics
+                st.markdown("### Summary Statistics")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric(
+                        "Mean Intensity",
+                        f"{s_result.raw_measurements['Mito_Mean_Intensity'].mean():.0f}",
+                        help="Average MitoTracker fluorescence intensity"
+                    )
+                with col2:
+                    st.metric(
+                        "Avg Object Count",
+                        f"{s_result.raw_measurements['Mito_Object_Count'].mean():.1f}",
+                        help="Average number of mitochondrial objects per cell"
+                    )
+                with col3:
+                    st.metric(
+                        "Avg Total Area",
+                        f"{s_result.raw_measurements['Mito_Total_Area'].mean():.0f}",
+                        help="Average total mitochondrial area (pixels)"
+                    )
+                with col4:
+                    if "Fragmentation_Index" in s_result.raw_measurements.columns:
+                        st.metric(
+                            "Avg Fragmentation",
+                            f"{s_result.raw_measurements['Fragmentation_Index'].mean():.2f}",
+                            help="Calculated from: Object Count / (Total Area / 100)"
+                        )
+                
+                # Scatter plots showing relationships
+                st.markdown("### Raw Measurement Relationships")
+                
+                # Fragmentation calculation visualization
+                if "Fragmentation_Index" in s_result.raw_measurements.columns:
+                    fig_scatter = px.scatter(
+                        s_result.raw_measurements,
+                        x="Mito_Total_Area",
+                        y="Mito_Object_Count",
+                        color="Fragmentation_Index",
+                        hover_data=["Gene"],
+                        title="Fragmentation Calculation: Object Count vs Total Area",
+                        labels={
+                            "Mito_Total_Area": "Total Mitochondrial Area (pixels)",
+                            "Mito_Object_Count": "Number of Mito Objects",
+                            "Fragmentation_Index": "Fragmentation"
+                        },
+                        color_continuous_scale="RdYlBu_r"
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True, key="raw_scatter_frag")
+                    
+                    st.info("💡 **How Fragmentation is Calculated:** Higher object count + lower total area = higher fragmentation (red). Healthy tubular networks have fewer objects spread over larger area (blue).")
+                
+                # Intensity vs Fragmentation
+                if "Fragmentation_Index" in s_result.raw_measurements.columns:
+                    fig_intensity = px.scatter(
+                        s_result.raw_measurements,
+                        x="Fragmentation_Index",
+                        y="Mito_Mean_Intensity",
+                        hover_data=["Gene"],
+                        title="Mitochondrial Health: Fragmentation vs Intensity",
+                        labels={
+                            "Fragmentation_Index": "Fragmentation Index",
+                            "Mito_Mean_Intensity": "Mean Intensity (MitoTracker)"
+                        },
+                        opacity=0.6
+                    )
+                    st.plotly_chart(fig_intensity, use_container_width=True, key="raw_scatter_intensity")
+                    
+                    st.info("💡 **Biological Interpretation:** Fragmented mitochondria (high fragmentation) often show reduced membrane potential (low intensity), indicating dysfunction.")
+                
+            with tab_ops:
+                if s_result.workflow:
+                    ops_data = []
+                    total_cost = 0.0
+                    for process in s_result.workflow.processes:
+                        for op in process.ops:
+                            cost = op.material_cost_usd + op.instrument_cost_usd
+                            total_cost += cost
+                            ops_data.append({
+                                "Operation": op.name,
+                                "Category": op.category,
+                                "Cost": f"${cost:.2f}"
+                            })
+                    
+                    st.dataframe(pd.DataFrame(ops_data), use_container_width=True)
+                    st.metric("Total Screen Cost", f"${total_cost:,.2f}")
+        else:
+            st.error(f"❌ Screen Failed: {s_result.error_message}")
 
 
 
@@ -1086,7 +1393,7 @@ def _render_mcb_result(result, pricing):
             fig = px.line(result.daily_metrics, x="day", y="avg_confluence", 
                          title=f"{result.cell_line} Confluence", markers=True)
             fig.update_yaxes(tickformat=".0%")
-            st.plotly_chart(fig, width="stretch", key=f"mcb_growth_{result.cell_line}")
+            st.plotly_chart(fig, use_container_width=True, key=f"mcb_growth_{result.cell_line}")
         else:
             st.info("No growth data available.")
             
@@ -1103,7 +1410,7 @@ def _render_mcb_result(result, pricing):
                 "Source Vendor": v.source_vendor_vial_id,
                 "Location": v.location
             } for v in result.vials]
-            st.dataframe(pd.DataFrame(vial_data), width="stretch")
+            st.dataframe(pd.DataFrame(vial_data), use_container_width=True)
         else:
             st.warning("No vials generated.")
             
@@ -1180,7 +1487,7 @@ def _render_mcb_result(result, pricing):
                         })
                 
                 st.success("✅ QC Panel Passed")
-                st.dataframe(pd.DataFrame(qc_data), width="stretch")
+                st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
                 st.metric("Total QC Cost", f"${total_qc_cost:.2f}")
 
 
@@ -1216,7 +1523,7 @@ def _render_wcb_result(result, pricing, unique_key):
         if not result.daily_metrics.empty:
             fig = px.line(result.daily_metrics, x="day", y="total_cells", 
                          title=f"{result.cell_line} WCB Expansion", markers=True)
-            st.plotly_chart(fig, width="stretch", key=f"wcb_expansion_{unique_key}")
+            st.plotly_chart(fig, use_container_width=True, key=f"wcb_expansion_{unique_key}")
             
     with tab_resources:
         _render_simulation_resources(result, pricing, workflow_type="WCB", unique_key=unique_key)
@@ -1231,7 +1538,7 @@ def _render_wcb_result(result, pricing, unique_key):
                 "Source MCB": v.source_mcb_vial_id,
                 "Location": v.location
             } for v in result.vials]
-            st.dataframe(pd.DataFrame(vial_data), width="stretch")
+            st.dataframe(pd.DataFrame(vial_data), use_container_width=True)
         else:
             st.warning("No WCB vials generated.")
             
@@ -1274,5 +1581,5 @@ def _render_wcb_result(result, pricing, unique_key):
                         })
                 
                 st.success("✅ QC Panel Passed")
-                st.dataframe(pd.DataFrame(qc_data), width="stretch")
+                st.dataframe(pd.DataFrame(qc_data), use_container_width=True)
                 st.metric("Total QC Cost", f"${total_qc_cost:.2f}")

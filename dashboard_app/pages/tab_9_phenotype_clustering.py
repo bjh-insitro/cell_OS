@@ -93,7 +93,7 @@ def render_phenotype_clustering(df, pricing):
             st.subheader("Hit List")
             st.dataframe(
                 hits.style.background_gradient(subset=['d_m', 'z_score'], cmap='Reds'),
-                width="stretch"
+                use_container_width=True
             )
             
             # Export hits

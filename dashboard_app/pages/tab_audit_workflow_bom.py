@@ -174,7 +174,7 @@ def render_workflow_bom_audit(df, pricing):
                     })
                 
                 df_audit = pd.DataFrame(all_steps)
-                st.dataframe(df_audit, width="stretch")
+                st.dataframe(df_audit, use_container_width=True)
                 
                 # Summary statistics
                 st.subheader("📊 Operation Summary")
@@ -230,14 +230,13 @@ def render_workflow_bom_audit(df, pricing):
                                 })
 
                     df_audit = pd.DataFrame(all_steps)
-                    st.dataframe(df_audit, width="stretch")
+                    st.dataframe(df_audit, use_container_width=True)
                     csv_bytes = df_audit.to_csv(index=False).encode("utf-8")
                     st.download_button(
                         "Download BOM CSV",
                         data=csv_bytes,
                         file_name="workflow_bom.csv",
                         mime="text/csv",
-                        width="stretch",
                     )
                     
                     # Summary statistics
@@ -290,7 +289,7 @@ def render_workflow_bom_audit(df, pricing):
                                     })
                                 
                                 df_sub = pd.DataFrame(sub_step_data)
-                                st.dataframe(df_sub, width="stretch")
+                                st.dataframe(df_sub, use_container_width=True)
                                 
                                 # Show operation summary
                                 st.caption(f"**Operation Summary:** Material: ${total_mat:.4f} | Instrument: ${total_inst:.4f} | Total: ${total_op_cost:.4f}")

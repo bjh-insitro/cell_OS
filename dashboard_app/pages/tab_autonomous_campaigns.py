@@ -182,7 +182,7 @@ def render_optimization_trajectory(all_results):
         title="Measurement vs. Iteration (Red dashed line = Best so far)"
     ).interactive()
     
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, use_container_width=True)
 
 def render_dose_response_surface(all_results):
     """Render dose-response surface."""
@@ -205,7 +205,7 @@ def render_dose_response_surface(all_results):
         height=300
     ).interactive()
     
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, use_container_width=True)
 
 def render_exploration_vs_exploitation(iterations):
     """Render exploration vs exploitation over time."""
@@ -287,7 +287,7 @@ def render_compound_comparison(all_results):
         height=300
     )
     
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, use_container_width=True)
 
 def render_cell_line_comparison(all_results):
     """Compare performance across cell lines."""
@@ -308,7 +308,7 @@ def render_cell_line_comparison(all_results):
         height=300
     )
     
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, use_container_width=True)
 
 def render_raw_data(all_results, campaign_id):
     """Render raw experimental data."""

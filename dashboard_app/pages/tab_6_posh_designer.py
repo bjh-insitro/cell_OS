@@ -145,7 +145,7 @@ def render_posh_designer(df, pricing):
         st.subheader("Library Composition")
         try:
             chart = plot_library_composition(result.library)
-            st.altair_chart(chart, width="stretch")
+            st.altair_chart(chart, use_container_width=True)
         except Exception as e:
             st.error(f"Visualization error: {e}")
         
@@ -217,7 +217,7 @@ def render_posh_designer(df, pricing):
             st.subheader("Titration Curve")
             try:
                 chart = plot_titration_curve(model, data, target_moi=result.scenario.moi_target)
-                st.altair_chart(chart, width="stretch")
+                st.altair_chart(chart, use_container_width=True)
             except Exception as e:
                 st.error(f"Visualization error: {e}")
             
