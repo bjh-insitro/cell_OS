@@ -17,12 +17,7 @@ Estimated Total Time: **15-25 hours** (2-3 days)
 - **Impact**: Eliminates confusion for new users
 
 #### 1.2 Add Dashboard Home Page ⚡ (2 hours)
-**Current**: 21 tabs with no landing page or quick-start guide
-- **Add**: `tab_home.py` as the default page with:
-  - Quick start guide
-  - Recent activity feed
-  - Key metrics overview
-  - Link-out to most-used tabs
+**Status**: ✅ `dashboard_app/pages/tab_home.py` ships the landing experience with quick-start steps, live metrics, and shortcuts.
 - **Impact**: Reduces onboarding friction by 80%
 
 #### 1.3 Consolidate Documentation 📚 (1.5 hours)
@@ -119,23 +114,12 @@ st.info("Live inventory tracking requires persisting the Inventory state to a fi
 ### 📊 Priority 4: Data & Configuration (2-3 hours)
 
 #### 4.1 Populate Missing Inventory Resources ⚡ (1.5 hours)
-**Issue**: BOM rendering shows "No resources" because many resources missing from `inventory.db`
-**Action**:
-- Create `scripts/seed_inventory_resources.py`
-- Add ~50 common resources from Phase 1 of BOM Refactor Plan:
-  - Flow cytometry consumables
-  - NGS reagents
-  - Cell counting supplies
-  - Instrument usage rates
+**Status**: ✅ `scripts/update_inventory_bom.py` adds the initial batch of flow cytometry, NGS, counting, and consumable resources—run `python3 scripts/update_inventory_bom.py` whenever you need to reseed `data/inventory.db`.
 - **Impact**: Immediate BOM functionality improvement
 
 #### 4.2 Add Example Configs ⚡ (30 min)
-**Missing**: `config/campaign_example.yaml` doesn't exist (referenced in README:25)
-**Add**:
-- `config/campaign_example.yaml`
-- `config/titration_example.yaml`
-- `config/posh_screen_example.yaml`
-**Impact**: Users can actually run examples
+**Status**: ✅ `config/campaign_example.yaml`, `config/guide_design_template.yaml`, and `config/sgRNA_repositories.yaml` provide runnable examples; add more variants (titration, POSH screen) as needed.
+- **Impact**: Users can actually run examples
 
 #### 4.3 Consolidate YAML Files ⚡ (1 hour)
 **Current**: Data scattered across:

@@ -20,6 +20,8 @@ cd cell_OS
 python -m venv venv
 source venv/bin/activate
 pip install -e .
+# Dashboard UI dependencies (Streamlit, pandas, etc.)
+pip install -e .[dashboard]
 
 # Run an autonomous titration campaign
 cell-os-run --config config/campaign_example.yaml

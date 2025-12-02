@@ -17,6 +17,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -e .
+# Optional: dashboard extras (Streamlit, pandas, Altair, Plotly, Graphviz)
+pip install -e .[dashboard]
 ```
 
 ### Running Your First Campaign
