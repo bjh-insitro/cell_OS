@@ -315,6 +315,7 @@ class WorkflowSimulator:
         
         op = self.ops.op_freeze(num_vials=num_vials)
         self._track_resources(op)
+        self.daily_ops.append(op)
         
         self.frozen_vials = num_vials
         self.active_flasks = []  # Clear flasks to reflect harvest
@@ -347,7 +348,9 @@ class WorkflowSimulator:
         # Estimate Labor/BSC hours for this day
         current_ops_load = self._calculate_daily_load()
         bsc_hours = current_ops_load['bsc']
-        staff_hours = 0.1 + current_ops_load['staff']  # Daily check + ops
+        # Only add daily check time if there are active flasks and operations
+        daily_check = 0.1 if (self.active_flasks and len(self.daily_ops) > 0) else 0.0
+        staff_hours = daily_check + current_ops_load['staff']
         
         # Calculate average confluence and viability
         confluences = []

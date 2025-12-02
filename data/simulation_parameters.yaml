@@ -159,6 +159,7 @@ compound_sensitivity:
     U2OS: 100.0
     HepG2: 150.0  # More resistant (hepatocytes handle oxidative stress better)
     A549: 80.0    # More sensitive (lung cells vulnerable to ROS)
+    iPSC: 60.0    # Sensitive stem cells
     HEK293T: 120.0
     HeLa: 90.0
     hill_slope: 2.0
@@ -178,8 +179,14 @@ compound_sensitivity:
       A549:
         ec50_uM: 40.0      # Lower EC50 (more sensitive)
         max_fold: 6.0      # Higher max fold (amplified ROS response)
-        baseline: 90.0
+        baseline: 110.0
         hill_slope: 2.0
+      iPSC:
+        ec50_uM: 30.0      # Very sensitive
+        max_fold: 5.0
+        baseline: 100.0
+        hill_slope: 1.8
+
     
     # Segmentation quality degradation (high dose causes cell rounding/death)
     segmentation_params:
@@ -190,6 +197,10 @@ compound_sensitivity:
       HepG2:
         degradation_ic50_uM: 250.0  # More resistant to morphology changes
         min_quality: 0.4
+      iPSC:
+        degradation_ic50_uM: 80.0   # Sensitive morphology
+        min_quality: 0.2
+        hill_slope: 3.0
         hill_slope: 2.2
       A549:
         degradation_ic50_uM: 150.0  # More sensitive

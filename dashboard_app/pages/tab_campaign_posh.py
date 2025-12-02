@@ -191,9 +191,9 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
     cost_vial_unit = get_item_cost(pricing, vial_type_id, 5.0)
     vial_name = get_item_name(pricing, vial_type_id, vial_type_id)
     cost_flask_unit = get_item_cost(pricing, "t75_flask", 4.24)
-    cost_pbs_unit = get_item_cost(pricing, "pbs", 25.0)
-    cost_pipette_unit = get_item_cost(pricing, "pipette_10ml", 0.50)
-    cost_tip_unit = get_item_cost(pricing, "tip_1000ul_lr", 0.10)
+    cost_pbs_unit = get_item_cost(pricing, "dpbs", 0.0364)
+    cost_pipette_unit = get_item_cost(pricing, "pipette_10ml", 1.26)
+    cost_tip_unit = get_item_cost(pricing, "pipette_tip_1000ul_filter", 0.143)
     
     COST_STAFF_HR = 100.0
     COST_BSC_HR = 50.0
@@ -304,7 +304,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
     dissociation_unit_price = get_item_cost(pricing, dissociation_id, 0.22)  # $/mL
     vial_unit_price = get_item_cost(pricing, vial_type_id, 0.5)  # $/unit
     flask_unit_price = get_item_cost(pricing, "t75_flask", 4.24)  # $/unit
-    pipette_unit_price = get_item_cost(pricing, "serological_pipette_10ml", 0.3)  # $/unit
+    pipette_unit_price = get_item_cost(pricing, "serological_pipette_10ml", 1.26)  # $/unit
     tip_unit_price = get_item_cost(pricing, "pipette_tip_1000ul_filter", 0.143)  # $/unit
     coating_unit_price = get_item_cost(pricing, coating_id, 50.0) if coating_id else 0  # $/mL
     
@@ -435,15 +435,20 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                 "Tips": cost_tips_day
             })
         
-        # Add final day with vials
+        # Add final day with harvest/freeze consumables
         final_day = result.summary.get("duration_days", len(result.daily_metrics))
+        
+        # Calculate harvest/freeze consumables
         chart_data.append({
             "Day": final_day,
             "Media": 0.0,
             "Flasks": 0.0,
             "Pipettes": 0.0,
             "Tips": 0.0,
-            "Vials": qty_vials * cost_vial_unit
+            "Vials": qty_vials * cost_vial_unit,
+            "Freezing Media": cost_freezing_media_total,
+            "PBS": cost_pbs_total,
+            "Dissociation": cost_dissociation_total
         })
         
         df_chart = pd.DataFrame(chart_data)
@@ -451,9 +456,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
         # Create stacked bar chart
         fig_daily = go.Figure()
         
-        categories = ["Coating", "Media", "Flasks", "Pipettes", "Tips"]
-        if "Vials" in df_chart.columns:
-            categories.append("Vials")
+        categories = ["Coating", "Media", "Flasks", "Pipettes", "Tips", "Vials", "Freezing Media", "PBS", "Dissociation"]
         
         colors = {
             "Coating": "#795548",
@@ -461,7 +464,10 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             "Flasks": "#2196F3",
             "Pipettes": "#FF9800",
             "Tips": "#9C27B0",
-            "Vials": "#F44336"
+            "Vials": "#F44336",
+            "Freezing Media": "#E91E63",
+            "PBS": "#00BCD4",
+            "Dissociation": "#FFC107"
         }
         
         for category in categories:
@@ -566,7 +572,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                     "Day": day,
                     "Item": "T75 Flasks",
                     "Quantity": new_flasks,
-                    "Unit Cost": f"${cost_flask_unit:.2f}",
+                    "Unit Cost": f"${cost_flask_unit:.2f}/flask",
                     "Total Cost": f"${new_flasks * cost_flask_unit:.2f}"
                 })
                 
@@ -576,7 +582,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                     "Day": day,
                     "Item": "Serological Pipettes (10mL)",
                     "Quantity": daily_pipettes,
-                    "Unit Cost": f"${cost_pipette_unit:.2f}",
+                    "Unit Cost": f"${cost_pipette_unit:.2f}/pipette",
                     "Total Cost": f"${daily_pipettes * cost_pipette_unit:.2f}"
                 })
             if daily_tips > 0:
@@ -584,7 +590,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
                     "Day": day,
                     "Item": "Pipette Tips (1000uL)",
                     "Quantity": daily_tips,
-                    "Unit Cost": f"${cost_tip_unit:.2f}",
+                    "Unit Cost": f"${cost_tip_unit:.2f}/tip",
                     "Total Cost": f"${daily_tips * cost_tip_unit:.2f}"
                 })
             
@@ -599,7 +605,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             "Day": final_day,
             "Item": vial_name,
             "Quantity": qty_vials,
-            "Unit Cost": f"${cost_vial_unit:.2f}",
+            "Unit Cost": f"${cost_vial_unit:.2f}/vial",
             "Total Cost": f"${qty_vials * cost_vial_unit:.2f}"
         })
         
@@ -608,17 +614,17 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             "Day": final_day,
             "Item": f"{freezing_media_name}",
             "Quantity": f"{qty_freezing_media_ml:.1f} mL",
-            "Unit Cost": f"${cost_freezing_media:.2f}",
-            "Total Cost": f"${cost_freezing_media:.2f}"
+            "Unit Cost": f"${freezing_media_unit_price:.2f}/mL",
+            "Total Cost": f"${cost_freezing_media_total:.2f}"
         })
         
         # PBS
         detailed_items.append({
             "Day": final_day,
-            "Item": "PBS (500mL)",
-            "Quantity": qty_pbs_ml,
-            "Unit Cost": f"${cost_pbs_unit:.2f}",
-            "Total Cost": f"${qty_pbs_ml * cost_pbs_unit:.2f}"
+            "Item": f"PBS ({qty_pbs_ml:.0f}mL)",
+            "Quantity": f"{qty_pbs_ml:.0f} mL",
+            "Unit Cost": f"${pbs_unit_price * 500:.2f}/500mL",
+            "Total Cost": f"${cost_pbs_total:.2f}"
         })
         
         # Dissociation
@@ -626,7 +632,7 @@ def _render_simulation_resources(result, pricing, workflow_type="MCB", unique_ke
             "Day": final_day,
             "Item": dissociation_name,
             "Quantity": qty_dissociation_ml,
-            "Unit Cost": f"${cost_dissociation_unit:.2f}",
+            "Unit Cost": f"${dissociation_unit_price:.3f}/mL",
             "Total Cost": f"${qty_dissociation_ml * cost_dissociation_unit:.2f}"
         })
         

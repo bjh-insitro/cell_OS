@@ -97,6 +97,7 @@ def create_page_registry() -> PageRegistry:
     from dashboard_app.pages.tab_7_campaign_reports import render_campaign_reports
     from dashboard_app.pages.tab_8_budget_calculator import render_budget_calculator
     from dashboard_app.pages.tab_9_phenotype_clustering import render_phenotype_clustering
+    from dashboard_app.pages.tab_10_assay_development import render_assay_development
     
     registry = PageRegistry()
     
@@ -283,6 +284,16 @@ def create_page_registry() -> PageRegistry:
         category=PageCategory.ANALYSIS,
         description="Cluster and analyze phenotype data",
         order=3
+    ))
+    
+    registry.register(PageConfig(
+        key="assay_development",
+        title="Assay Development",
+        emoji="🧪",
+        render_function=render_assay_development,
+        category=PageCategory.SIMULATION,
+        description="Design and optimize assays (e.g., oxidative stress)",
+        order=25
     ))
     
     return registry

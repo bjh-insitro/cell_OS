@@ -65,6 +65,7 @@ def load_data():
         pricing["items"][resource_id] = {
             "name": resource.name,
             "unit_price_usd": resource.unit_price_usd,
+            "pack_price_usd": resource.pack_price_usd,
             "logical_unit": resource.logical_unit,
             "category": resource.category,
             "stock_level": resource.stock_level,
