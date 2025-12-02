@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # Constants
-ASSETS_DIR = Path("dashboard_assets_facility")
+ASSETS_DIR = Path("data/dashboard_assets/facility")
 CSV_PATH = ASSETS_DIR / "facility_load.csv"
 
 # Hardcoded capacities from the stress test script (ideally these would be in a config file)

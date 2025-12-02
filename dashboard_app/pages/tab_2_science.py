@@ -2,8 +2,9 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import numpy as np
 # Import necessary components from utils
-from dashboard_app.utils import DoseResponseGP, np
+from dashboard_app.utils import DoseResponseGP
 
 def render_science_explorer(df, pricing):
     """Renders the content for the Dose-Response Explorer tab."""

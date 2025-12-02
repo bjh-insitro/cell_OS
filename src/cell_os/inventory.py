@@ -19,7 +19,7 @@ import sqlite3
 import json
 import os
 from dataclasses import dataclass, asdict, replace
-from typing import Dict, List, Optional, Any, Iterable
+from typing import Dict, List, Optional, Any, Iterable, Callable
 
 
 # ---------------------------------------------------------------------
@@ -176,6 +176,7 @@ class Inventory:
     ):
         self.resources: Dict[str, Resource] = {}
         self.usage_log: List[Dict[str, Any]] = []  # Log of all consumed resources
+        self._stock_sync_callback: Optional[Callable[[str, float], None]] = None
 
         if resources:
             self.resources = {rid: replace(res) for rid, res in resources.items()}
@@ -200,6 +201,18 @@ class Inventory:
             for r in self.resources.values():
                 if r.stock_level == 0.0:
                     r.stock_level = r.pack_size * 10.0
+
+    def register_stock_sync(self, callback: Callable[[str, float], None]) -> None:
+        """Register a callback for persisting stock level changes."""
+        self._stock_sync_callback = callback
+
+    def _notify_stock_change(self, resource_id: str) -> None:
+        if not self._stock_sync_callback:
+            return
+        resource = self.resources.get(resource_id)
+        if resource is None:
+            return
+        self._stock_sync_callback(resource_id, resource.stock_level)
 
     def _load_from_db(self, db_path: str):
         conn = sqlite3.connect(db_path)
@@ -297,6 +310,7 @@ class Inventory:
                 f"Required: {quantity}, Available: {res.stock_level}"
             )
         res.stock_level -= quantity
+        self._notify_stock_change(resource_id)
     
     def get_resource(self, resource_id: str) -> Resource:
         """
@@ -373,6 +387,7 @@ class Inventory:
             )
         
         resource.stock_level += quantity
+        self._notify_stock_change(resource_id)
 
     def consume(self, resource_id: str, quantity: float, unit: str) -> None:
         """Consume stock from inventory.
@@ -409,6 +424,7 @@ class Inventory:
             )
         
         resource.stock_level -= quantity
+        self._notify_stock_change(resource_id)
         
         # Log usage
         self.usage_log.append({

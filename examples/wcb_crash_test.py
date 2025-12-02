@@ -17,7 +17,7 @@ def main():
         cells_per_vial=1e6,
         random_seed=None,
         enable_failures=True,
-        output_dir="dashboard_assets_wcb",
+        output_dir="data/dashboard_assets/wcb",
         cell_line="U2OS",
         starting_mcb_passage=3,
         include_qc=True

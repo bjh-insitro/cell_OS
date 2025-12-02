@@ -17,7 +17,7 @@ def main():
         cells_per_vial=1e6,
         random_seed=None,  # Allow variability for exploratory runs
         enable_failures=True,
-        output_dir="dashboard_assets",
+        output_dir="data/dashboard_assets/mcb",
         cell_line="U2OS",
         starting_vials=3,
     )

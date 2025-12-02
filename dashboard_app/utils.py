@@ -2,19 +2,18 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
-import yaml
 import os
 import altair as alt
-import sqlite3 
 from datetime import datetime
-import traceback # NEW IMPORT for error handling
+from typing import Any, Dict, Tuple
+import traceback  # NEW IMPORT for error handling
 
 # --- CORE EXTERNAL IMPORTS ---
 from cell_os.modeling import DoseResponseGP, DoseResponseGPConfig
 from cell_os.rendering import render_workflow_graph, render_workflow_plotly 
 from cell_os.unit_ops import ParametricOps, VesselLibrary
 from cell_os.inventory import Inventory
+from cell_os.inventory_manager import InventoryManager
 from cell_os.workflows import WorkflowBuilder, Workflow
 from cell_os.posh_decision_engine import (
     POSHDecisionEngine, 
@@ -46,7 +45,7 @@ from cell_os.dino_analysis import load_dino_embeddings_from_csv
 
 @st.cache_data(ttl=60)  # Refresh cache every 60 seconds
 def load_data():
-    """Loads experiment history and pricing data from CSV and the SQLite inventory database."""
+    """Loads experiment history and catalog pricing data from disk + SQLite."""
     
     # 1. Load Experiment History 
     history_path = "results/experiment_history.csv"
@@ -59,27 +58,28 @@ def load_data():
     else:
         df = pd.DataFrame()
         
-    # 2. Load Pricing Data from SQLite DB
-    DB_PATH = "data/cell_os_inventory.db"
-    
-    if os.path.exists(DB_PATH):
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            pricing_df = pd.read_sql("SELECT * FROM inventory_items", conn)
-            conn.close()
-            
-            pricing = {
-                'items': pricing_df.set_index('item_id').T.to_dict()
-            }
-            
-        except Exception as e:
-            st.error(f"Could not load pricing data from DB: {e}. Please run migration script.")
-            pricing = {}
-    else:
-        st.error(f"Inventory database not found at {DB_PATH}. Run 'python3 tools/migrate_pricing_to_db.py' to create it.")
-        pricing = {}
+    # 2. Load catalog data from persistent inventory
+    pricing: Dict[str, Any] = {"items": {}}
+    inventory, _ = get_inventory_handles()
+    for resource_id, resource in inventory.resources.items():
+        pricing["items"][resource_id] = {
+            "name": resource.name,
+            "unit_price_usd": resource.unit_price_usd,
+            "logical_unit": resource.logical_unit,
+            "category": resource.category,
+            "stock_level": resource.stock_level,
+        }
+    pricing["stock_levels"] = {rid: res.stock_level for rid, res in inventory.resources.items()}
         
     return df, pricing
+
+
+@st.cache_resource
+def get_inventory_handles(db_path: str = "data/inventory.db") -> Tuple[Inventory, InventoryManager]:
+    """Return shared Inventory + InventoryManager handles."""
+    inventory = Inventory(db_path=db_path)
+    manager = InventoryManager(inventory, db_path=db_path)
+    return inventory, manager
 
 @st.cache_resource
 def init_automation_resources(vessel_path="data/raw/vessels.yaml"):
@@ -93,9 +93,7 @@ def init_automation_resources(vessel_path="data/raw/vessels.yaml"):
         inv = Inventory()  # Loads from database by default 
         
         # Initialize InventoryManager for persistence
-        from cell_os.inventory_manager import InventoryManager
         inv_manager = InventoryManager(inv)
-        
         ops = ParametricOps(vessel_lib, inv)
         builder = WorkflowBuilder(ops)
         return vessel_lib, inv, ops, builder, inv_manager

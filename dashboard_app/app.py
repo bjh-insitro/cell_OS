@@ -25,7 +25,7 @@ if current_dir not in sys.path:
     sys.path.append(current_dir)
 # ---------------------------------------------------------------------------------
 
-from dashboard_app.utils import load_data
+from dashboard_app.utils import load_data, get_inventory_handles
 from dashboard_app.config import create_page_registry, PageCategory
 
 
@@ -130,7 +130,7 @@ def render_economics_fallback(df: pd.DataFrame, pricing: dict):
     if items:
         st.dataframe(pd.DataFrame(items), use_container_width=True)
     
-    st.info("Live inventory tracking requires persisting the Inventory state to a file (TODO).")
+    st.info("Inventory data unavailable; run a campaign or seed the database to view live levels.")
 
 
 def main():
@@ -149,7 +149,15 @@ def main():
     page_registry = create_page_registry()
     
     # Load data
-    df, pricing = load_data()
+    df, pricing_data = load_data()
+    pricing = {
+        "items": dict(pricing_data.get("items", {})),
+        "stock_levels": dict(pricing_data.get("stock_levels", {})),
+    }
+    inventory, inventory_manager = get_inventory_handles()
+    pricing["inventory"] = inventory
+    pricing["inventory_manager"] = inventory_manager
+    pricing["stock_levels"] = {rid: res.stock_level for rid, res in inventory.resources.items()}
     
     # Render sidebar and get selected page
     selected_page = render_sidebar(page_registry)

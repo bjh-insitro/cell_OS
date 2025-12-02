@@ -207,7 +207,7 @@ CREATE TABLE simulation_runs (
 
 ### **3. Experimental Results Database** ⭐⭐⭐⭐⭐
 
-**Current State**: CSV files scattered across `dashboard_assets/`, `results/`
+**Current State**: CSV files scattered across `data/dashboard_assets/`, `results/`
 
 **Problem**:
 - **33+ CSV files** with experimental data

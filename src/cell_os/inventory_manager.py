@@ -38,6 +38,7 @@ class InventoryManager:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._sync_from_db()
+        self.inventory.register_stock_sync(self.update_stock_level)
         
     def _init_db(self):
         """Initialize the inventory database."""
@@ -121,6 +122,10 @@ class InventoryManager:
                 
         conn.close()
         
+    def update_stock_level(self, resource_id: str, new_level: float):
+        """Public helper to upsert stock levels; used by Inventory callbacks."""
+        self._update_stock_level(resource_id, new_level)
+
     def _update_stock_level(self, resource_id: str, new_level: float):
         """Update stock level in DB."""
         conn = sqlite3.connect(self.db_path)

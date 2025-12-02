@@ -70,7 +70,7 @@ def run_stress_test():
         print("\n✅ No capacity violations detected.")
         
     # Save Results
-    output_dir = Path("dashboard_assets_facility")
+    output_dir = Path("data/dashboard_assets/facility")
     output_dir.mkdir(exist_ok=True)
     df.to_csv(output_dir / "facility_load.csv", index=False)
     print(f"\nDetailed load profile saved to {output_dir}/facility_load.csv")

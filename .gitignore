@@ -28,6 +28,7 @@ build/
 
 # Logs and temporary files
 *.log
+*.out
 *.tmp
 *.bak
 nohup.out

@@ -306,7 +306,7 @@ class InventoryRepository(BaseRepository):
 ---
 
 ### 8. **Dashboard Assets Cleanup**
-**Location**: `dashboard_assets/`, `dashboard_assets_*/`  
+**Location**: `data/dashboard_assets/` (mcb, wcb, facility, multi)  
 **Current State**: Multiple asset directories  
 **Proposed**: Consolidate into single organized structure
 

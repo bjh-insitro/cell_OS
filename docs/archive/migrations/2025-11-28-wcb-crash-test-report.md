@@ -43,7 +43,7 @@ The Working Cell Bank (WCB) simulation has been successfully implemented and val
 
 - `src/cell_os/wcb_crash.py`: Core simulation library (uses `WorkflowBuilder`)
 - `examples/wcb_crash_test.py`: Runner script
-- `dashboard_assets_wcb/`: Output directory for assets
+- `data/dashboard_assets/wcb/`: Output directory for assets
 
 ## Next Steps
 

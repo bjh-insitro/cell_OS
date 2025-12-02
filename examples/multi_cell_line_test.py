@@ -20,7 +20,7 @@ def run_comparison():
     u2os_config = MCBTestConfig(
         num_simulations=50,
         cell_line="U2OS",
-        output_dir="dashboard_assets_multi/u2os_mcb"
+        output_dir="data/dashboard_assets/multi/u2os_mcb"
     )
     u2os_res = run_mcb_crash_test(u2os_config)
     
@@ -29,7 +29,7 @@ def run_comparison():
     ipsc_config = MCBTestConfig(
         num_simulations=50,
         cell_line="iPSC",
-        output_dir="dashboard_assets_multi/ipsc_mcb"
+        output_dir="data/dashboard_assets/multi/ipsc_mcb"
     )
     ipsc_res = run_mcb_crash_test(ipsc_config)
     
@@ -50,7 +50,7 @@ def run_comparison():
         num_simulations=50,
         cell_line="U2OS",
         target_wcb_vials=10,
-        output_dir="dashboard_assets_multi/u2os_wcb"
+        output_dir="data/dashboard_assets/multi/u2os_wcb"
     )
     u2os_wcb_res = run_wcb_crash_test(u2os_wcb_config)
     
@@ -60,7 +60,7 @@ def run_comparison():
         num_simulations=50,
         cell_line="iPSC",
         target_wcb_vials=10,
-        output_dir="dashboard_assets_multi/ipsc_wcb"
+        output_dir="data/dashboard_assets/multi/ipsc_wcb"
     )
     ipsc_wcb_res = run_wcb_crash_test(ipsc_wcb_config)
     

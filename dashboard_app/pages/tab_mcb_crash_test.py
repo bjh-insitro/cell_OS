@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # Constants
-ASSETS_DIR = Path("dashboard_assets")
+ASSETS_DIR = Path("data/dashboard_assets/mcb")
 
 def load_assets():
     """Load all dashboard assets from the output directory."""

@@ -294,13 +294,13 @@ The dashboard is currently running at **http://localhost:8501** with three main 
 - `dashboard_app/pages/3_Facility_Planning.py` - Facility planning
 
 ### Data Assets
-- `dashboard_assets/` - MCB simulation outputs
-- `dashboard_assets_wcb/` - WCB simulation outputs
-- `dashboard_assets_facility/` - Facility simulation outputs
+- `data/dashboard_assets/mcb/` - MCB simulation outputs
+- `data/dashboard_assets/wcb/` - WCB simulation outputs
+- `data/dashboard_assets/facility/` - Facility simulation outputs
 
 ### Documentation
 - `SIMULATION_PROGRESS.md` - Detailed simulation progress
-- `dashboard_assets/VALIDATION_REPORT.md` - MCB validation report
+- `data/dashboard_assets/mcb/VALIDATION_REPORT.md` - MCB validation report
 - `NEXT_STEPS.md` - Platform-wide next steps
 
 ---
