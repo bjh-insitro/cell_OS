@@ -43,3 +43,4 @@
 - Migration history digest: `docs/MIGRATION_HISTORY.md`
 - Active refactor plan: `docs/REFACTORING_OPPORTUNITIES.md`
 - Live guides index (new): `docs/guides/README.md`
+- Archived status snapshots: `docs/archive/status/`

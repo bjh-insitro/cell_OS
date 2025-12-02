@@ -35,6 +35,8 @@ Example configs:
 - `config/titration_example.yaml` – LV titration loop template.
 - `config/posh_screen_example.yaml` – POSH screen planning skeleton.
 
+📌 Need the latest roadmap? Check `docs/STATUS.md` for the consolidated status + next steps digest. Historical summaries now live under `docs/archive/status/`.
+
 **That's it!** The agent will autonomously titrate lentiviral vectors, fit models, make GO/NO-GO decisions, and generate an interactive report.
 
 📖 **[Read the Full User Guide →](docs/guides/USER_GUIDE.md)**
