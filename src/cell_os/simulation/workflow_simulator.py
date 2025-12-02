@@ -238,9 +238,11 @@ class WorkflowSimulator:
             elif state["confluence"] < 0.1 and self.day > 5:
                 self.violations.append(f"Stagnation in {flask_id}")
             else:
-                op = self.ops.op_feed(flask_id, cell_line=self.config.cell_line)
-                self._track_resources(op)
-                self.daily_ops.append(op)
+                # Only feed if cell line requires daily feeding (iPSC/hESC)
+                if self.config.cell_line.lower() in ["ipsc", "hesc"]:
+                    op = self.ops.op_feed(flask_id, cell_line=self.config.cell_line)
+                    self._track_resources(op)
+                    self.daily_ops.append(op)
         
         self.active_flasks = surviving_flasks
         
