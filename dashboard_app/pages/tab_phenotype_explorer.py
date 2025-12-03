@@ -22,7 +22,7 @@ from cell_os.simulation.posh_screen_wrapper import (
 )
 
 
-def render_phenotype_explorer():
+def render_phenotype_explorer(*args, **kwargs):
     """Render the Interactive Phenotype Explorer page."""
     
     st.title("🔬 Interactive Phenotype Explorer")
@@ -318,7 +318,7 @@ def render_volcano_tab(result, params):
         line_color="grey"
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="explorer_volcano_plot")
     
     # Interpretation
     st.info(f"""
@@ -359,7 +359,7 @@ def render_umap_tab(result, params):
         height=600
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="explorer_umap_plot")
     
     st.info("""
     **What is UMAP?**
@@ -464,7 +464,7 @@ def render_stats_tab(result, params):
             title=f"Distribution of {feature_info['name']}",
             labels={col_name: feature_info['name']}
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="explorer_stats_dist_plot")
 
 
 def render_data_tab(result, params):
@@ -514,7 +514,7 @@ def render_multi_tab(result, params):
                 labels={"Phenotypic_Activity_Score": "Distance from Median (Activity)"},
                 color_discrete_sequence=["#9C27B0"]
             )
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, use_container_width=True, key="explorer_multi_hist_plot")
             
             st.info("""
             **Phenotypic Activity Score**:
@@ -570,6 +570,6 @@ def render_multi_tab(result, params):
                 title="Phenotypic Fingerprint (Z-scores relative to population)"
             )
             
-            st.plotly_chart(fig_radar, use_container_width=True)
+            st.plotly_chart(fig_radar, use_container_width=True, key="explorer_multi_radar_plot")
         else:
             st.warning("No hits identified to visualize fingerprints.")
