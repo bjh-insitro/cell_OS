@@ -19,6 +19,64 @@ from cell_os.inventory import Inventory
 from cell_os.cellpaint_panels import get_posh_cellpaint_panel, CellPaintPanel
 
 
+# ===================================================================
+# SIMULATION CONFIGURATION
+# ===================================================================
+
+# Channel normalization values for visualization (typical saturation points in AFU)
+CHANNEL_MAX_VALUES = {
+    "Hoechst": 45000,      # Nuclear DNA staining saturation
+    "ConA": 25000,         # ER marker saturation  
+    "Phalloidin": 20000,   # Actin staining saturation
+    "WGA": 18000,          # Golgi/membrane marker saturation
+    "MitoProbe": 50000,    # Mitochondrial probe saturation
+}
+
+# Cell line-specific nuclear size ranges (µm²)
+# Based on literature values for typical morphology
+NUCLEAR_SIZE_RANGES = {
+    "U2OS": (120, 200),    # Osteosarcoma cells - large nuclei
+    "A549": (90, 150),     # Lung carcinoma - medium nuclei
+    "HepG2": (80, 130),    # Hepatocellular carcinoma - compact nuclei
+    "iPSC": (60, 110),     # Induced pluripotent stem cells - small, dense nuclei
+}
+
+# Nuclear size baselines (center of range, µm²)
+NUCLEAR_SIZE_BASELINES = {
+    "U2OS": 160,
+    "A549": 120,
+    "HepG2": 105,
+    "iPSC": 85,
+}
+
+# Embedding configuration
+EMBEDDING_DIMENSIONS = 128                    # High-dimensional embedding space
+EMBEDDING_PROJECTION_METHOD = "random_projection"  # Simulates neural network
+PCA_COMPONENTS = 2                            # For 2D visualization (UMAP-like)
+
+# MoA classification thresholds
+MOA_ALIGNMENT_THRESHOLD = 0.3                 # Cosine similarity threshold for classification
+
+# Hit injection parameters
+HIT_RATE = 0.05                               # 5% of library are hits
+SUPPRESSOR_PROBABILITY = 0.5                  # 50% of hits are suppressors, 50% enhancers
+
+# Biological noise levels (coefficient of variation)
+CHANNEL_NOISE_CV = {
+    "Hoechst": 0.10,       # 10% CV for nuclear staining
+    "ConA": 0.12,          # 12% CV for ER marker
+    "Phalloidin": 0.10,    # 10% CV for actin
+    "WGA": 0.12,           # 12% CV for Golgi
+    "MitoProbe": 0.15,     # 15% CV for mitochondria (more variable)
+}
+
+# Statistical thresholds
+P_VALUE_THRESHOLD = 0.05                      # Significance threshold for hit calling
+LOG2FC_THRESHOLD = 1.0                        # Fold-change threshold for hit calling
+
+# ===================================================================
+
+
 @dataclass
 class POSHScreenResult:
     """Result of a POSH screen simulation."""
@@ -183,13 +241,7 @@ def _segment_nucleus_from_hoechst(hoechst_intensity: float, cell_line: str) -> d
         Dict with nuclear measurements
     """
     # Get baseline nuclear size for this cell line
-    baseline_areas = {
-        "U2OS": 160,
-        "A549": 120,
-        "HepG2": 105,
-        "iPSC": 85
-    }
-    baseline_area = baseline_areas.get(cell_line, 160)
+    baseline_area = NUCLEAR_SIZE_BASELINES.get(cell_line, NUCLEAR_SIZE_BASELINES["U2OS"])
     
     # Higher Hoechst intensity suggests condensation → smaller area
     # Lower intensity suggests decondensation → larger area
@@ -259,7 +311,7 @@ def _segment_mitochondria_from_mitoprobe(mitoprobe_intensity: float, cell_line: 
     }
 
 
-def _generate_embeddings(df_raw: pd.DataFrame, n_components: int = 128, random_seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _generate_embeddings(df_raw: pd.DataFrame, n_components: int = EMBEDDING_DIMENSIONS, random_seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate synthetic deep learning embeddings from raw measurements.
     
@@ -314,7 +366,7 @@ def _generate_embeddings(df_raw: pd.DataFrame, n_components: int = 128, random_s
     # 4. Compute 2D projection (PCA) for visualization
     # In real life we'd use UMAP, but PCA is faster and robust for this simulation
     # It will naturally separate the clusters we created
-    pca = PCA(n_components=2)
+    pca = PCA(n_components=PCA_COMPONENTS)
     coords = pca.fit_transform(embeddings)
     
     df_proj = pd.DataFrame(coords, columns=["UMAP_1", "UMAP_2"]) # Label as UMAP for familiarity
@@ -439,11 +491,11 @@ def simulate_posh_screen(
         
         for gene in genes:
             # Simulate channel intensities (with biological noise)
-            hoechst = np.random.normal(treated_channels["Hoechst"], treated_channels["Hoechst"] * 0.1)
-            cona = np.random.normal(treated_channels["ConA"], treated_channels["ConA"] * 0.12)
-            phalloidin = np.random.normal(treated_channels["Phalloidin"], treated_channels["Phalloidin"] * 0.1)
-            wga = np.random.normal(treated_channels["WGA"], treated_channels["WGA"] * 0.12)
-            mitoprobe = np.random.normal(treated_channels["MitoProbe"], treated_channels["MitoProbe"] * 0.15)
+            hoechst = np.random.normal(treated_channels["Hoechst"], treated_channels["Hoechst"] * CHANNEL_NOISE_CV["Hoechst"])
+            cona = np.random.normal(treated_channels["ConA"], treated_channels["ConA"] * CHANNEL_NOISE_CV["ConA"])
+            phalloidin = np.random.normal(treated_channels["Phalloidin"], treated_channels["Phalloidin"] * CHANNEL_NOISE_CV["Phalloidin"])
+            wga = np.random.normal(treated_channels["WGA"], treated_channels["WGA"] * CHANNEL_NOISE_CV["WGA"])
+            mitoprobe = np.random.normal(treated_channels["MitoProbe"], treated_channels["MitoProbe"] * CHANNEL_NOISE_CV["MitoProbe"])
             
             channel_data.append({
                 "Gene": gene,
@@ -480,11 +532,11 @@ def simulate_posh_screen(
         baseline_metrics = {**baseline_nuc, **baseline_mito}
         
         # Inject gene-specific modulators (hits)
-        num_hits = int(library_size * 0.05)  # 5% hits
+        num_hits = int(library_size * HIT_RATE)
         hit_indices = np.random.choice(library_size, num_hits, replace=False)
         
         for idx in hit_indices:
-            if np.random.random() < 0.5:
+            if np.random.random() < SUPPRESSOR_PROBABILITY:
                 # Suppressor: reduces stress phenotypes
                 # Mitochondria: less fragmentation
                 df_raw.loc[idx, "Mito_Object_Count"] *= 0.5
