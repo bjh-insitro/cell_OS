@@ -364,13 +364,27 @@ def generate_embeddings(df_raw: pd.DataFrame, n_components: int = EMBEDDING_DIME
     df_embeddings = pd.DataFrame(embeddings, columns=embed_cols)
     df_embeddings.insert(0, "Gene", df_raw["Gene"])
     
-    # 4. Compute 2D projection (PCA) for visualization
-    # In real life we'd use UMAP, but PCA is faster and robust for this simulation
-    # It will naturally separate the clusters we created
-    pca = PCA(n_components=PCA_COMPONENTS)
-    coords = pca.fit_transform(embeddings)
+    # 4. Compute 2D projection using UMAP for visualization
+    # UMAP preserves both local and global structure better than PCA
+    # This creates more biologically meaningful clusters
+    try:
+        from umap import UMAP
+        reducer = UMAP(
+            n_neighbors=15,
+            min_dist=0.1,
+            n_components=2,
+            metric='cosine',
+            random_state=random_seed,
+            verbose=False
+        )
+        coords = reducer.fit_transform(embeddings)
+    except Exception as e:
+        # Fallback to PCA if UMAP fails (e.g., too few samples)
+        print(f"UMAP failed ({e}), falling back to PCA")
+        pca = PCA(n_components=PCA_COMPONENTS)
+        coords = pca.fit_transform(embeddings)
     
-    df_proj = pd.DataFrame(coords, columns=["UMAP_1", "UMAP_2"]) # Label as UMAP for familiarity
+    df_proj = pd.DataFrame(coords, columns=["UMAP_1", "UMAP_2"])
     df_proj.insert(0, "Gene", df_raw["Gene"])
     
     return df_embeddings, df_proj

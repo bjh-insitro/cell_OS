@@ -98,6 +98,7 @@ def create_page_registry() -> PageRegistry:
     from dashboard_app.pages.tab_8_budget_calculator import render_budget_calculator
     from dashboard_app.pages.tab_9_phenotype_clustering import render_phenotype_clustering
     from dashboard_app.pages.tab_10_assay_development import render_assay_development
+    from dashboard_app.pages.tab_phenotype_explorer import render_phenotype_explorer
     
     registry = PageRegistry()
     
@@ -161,6 +162,16 @@ def create_page_registry() -> PageRegistry:
         category=PageCategory.SIMULATION,
         description="Visualize workflow execution graphs",
         order=2
+    ))
+    
+    registry.register(PageConfig(
+        key="phenotype_explorer",
+        title="Phenotype Explorer",
+        emoji="🔬",
+        render_function=render_phenotype_explorer,
+        category=PageCategory.SIMULATION,
+        description="Interactive tool for exploring simulation parameters",
+        order=3
     ))
     
     # Audit & Inspection Pages
