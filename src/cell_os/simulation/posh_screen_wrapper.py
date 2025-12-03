@@ -587,6 +587,35 @@ def analyze_screen_results(
         df_raw["ER_Stress_Score"] = (df_raw["ER_Mean_Intensity"] / 20000) * (df_raw["ER_Texture_Entropy"] / 6.0)
         df_raw["ER_Stress_Score"] = df_raw["ER_Stress_Score"].clip(0, 1)
         
+        # --- NEW: Calculate Phenotypic Activity Score (Multivariate Distance) ---
+        # 1. Get embedding columns
+        embed_cols = [c for c in df_embeddings.columns if c.startswith("DIM_")]
+        if embed_cols:
+            X_embed = df_embeddings[embed_cols].values
+            # 2. Calculate robust centroid (median of all samples)
+            # Assuming most samples are wild-type/negative, the median represents "normal"
+            centroid = np.median(X_embed, axis=0)
+            # 3. Calculate Euclidean distance from centroid
+            distances = np.linalg.norm(X_embed - centroid, axis=1)
+            # 4. Add to results
+            df_raw["Phenotypic_Activity_Score"] = distances
+        else:
+            df_raw["Phenotypic_Activity_Score"] = 0.0
+
+        # --- NEW: Calculate Z-scores for Radar Plots ---
+        # Standardize key features for "fingerprint" visualization
+        fingerprint_features = [
+            "Nucleus_Area", "Mitochondrial_Fragmentation", "ER_Stress_Score", 
+            "Cell_Area", "Nuclear_Condensation", "Nuclear_Shape_Irregularity"
+        ]
+        for col in fingerprint_features:
+            if col in df_raw.columns:
+                median_val = df_raw[col].median()
+                std_val = df_raw[col].std()
+                # Avoid division by zero
+                if std_val == 0: std_val = 1.0
+                df_raw[f"{col}_Z"] = (df_raw[col] - median_val) / std_val
+        
         # 6. Identify Hits (Volcano Plot Logic)
         # Map friendly feature name to column name
         feature_map = {
@@ -625,7 +654,8 @@ def analyze_screen_results(
                 "P_Value": p_val,
                 "NegLog10P": -np.log10(p_val + 1e-10),
                 "Z_Score": z_score,
-                "Category": category
+                "Category": category,
+                "Phenotypic_Activity_Score": row.get("Phenotypic_Activity_Score", 0.0)
             })
             
         df_volcano = pd.DataFrame(volcano_data)

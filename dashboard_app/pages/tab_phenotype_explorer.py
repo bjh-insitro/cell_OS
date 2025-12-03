@@ -249,9 +249,10 @@ def render_phenotype_explorer():
         st.divider()
         
         # Tabs for different views
-        tab_volcano, tab_umap, tab_stats, tab_data = st.tabs([
+        tab_volcano, tab_umap, tab_multi, tab_stats, tab_data = st.tabs([
             "🌋 Volcano Plot",
             "🗺️ UMAP Clustering",
+            "🎯 Multivariate Analysis",
             "📊 Statistical Diagnostics",
             "📋 Raw Data"
         ])
@@ -261,6 +262,9 @@ def render_phenotype_explorer():
         
         with tab_umap:
             render_umap_tab(result, params)
+            
+        with tab_multi:
+            render_multi_tab(result, params)
         
         with tab_stats:
             render_stats_tab(result, params)
@@ -490,3 +494,82 @@ def render_data_tab(result, params):
         st.markdown(f"**Raw measurements for {len(result.raw_measurements)} genes**")
         st.dataframe(result.raw_measurements.head(100), use_container_width=True)
         st.caption("Showing first 100 rows")
+
+
+def render_multi_tab(result, params):
+    """Render multivariate analysis tab."""
+    st.markdown("### Multivariate Phenotypic Analysis")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("#### Activity Score Distribution")
+        # Histogram of Phenotypic Activity Score
+        if "Phenotypic_Activity_Score" in result.raw_measurements.columns:
+            fig_hist = px.histogram(
+                result.raw_measurements,
+                x="Phenotypic_Activity_Score",
+                nbins=50,
+                title="Distribution of Phenotypic Activity",
+                labels={"Phenotypic_Activity_Score": "Distance from Median (Activity)"},
+                color_discrete_sequence=["#9C27B0"]
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+            
+            st.info("""
+            **Phenotypic Activity Score**:
+            Euclidean distance of each gene's embedding from the population median.
+            Higher score = Stronger overall morphological change.
+            """)
+    
+    with col2:
+        st.markdown("#### Phenotypic Fingerprints (Top Hits)")
+        
+        if len(result.hit_list) > 0:
+            # Sort by activity score if available, otherwise by p-value
+            if "Phenotypic_Activity_Score" in result.hit_list.columns:
+                top_hits = result.hit_list.sort_values("Phenotypic_Activity_Score", ascending=False).head(3)
+            else:
+                top_hits = result.hit_list.sort_values("P_Value", ascending=True).head(3)
+            
+            fingerprint_features = [
+                "Nucleus_Area", "Mitochondrial_Fragmentation", "ER_Stress_Score", 
+                "Cell_Area", "Nuclear_Condensation", "Nuclear_Shape_Irregularity"
+            ]
+            z_cols = [f"{c}_Z" for c in fingerprint_features]
+            
+            # Create radar chart
+            fig_radar = go.Figure()
+            
+            for _, hit in top_hits.iterrows():
+                gene = hit["Gene"]
+                # Find row in raw_measurements
+                raw_rows = result.raw_measurements[result.raw_measurements["Gene"] == gene]
+                if not raw_rows.empty:
+                    raw_row = raw_rows.iloc[0]
+                    
+                    values = [raw_row.get(c, 0) for c in z_cols]
+                    # Close the loop
+                    values.append(values[0])
+                    theta = fingerprint_features + [fingerprint_features[0]]
+                    
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=values,
+                        theta=theta,
+                        fill='toself',
+                        name=gene
+                    ))
+                
+            fig_radar.update_layout(
+                polar=dict(
+                    radialaxis=dict(
+                        visible=True,
+                        range=[-4, 4] # Z-score range
+                    )),
+                showlegend=True,
+                title="Phenotypic Fingerprint (Z-scores relative to population)"
+            )
+            
+            st.plotly_chart(fig_radar, use_container_width=True)
+        else:
+            st.warning("No hits identified to visualize fingerprints.")
