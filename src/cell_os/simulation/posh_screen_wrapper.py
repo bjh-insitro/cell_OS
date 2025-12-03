@@ -311,7 +311,7 @@ def _segment_mitochondria_from_mitoprobe(mitoprobe_intensity: float, cell_line: 
     }
 
 
-def _generate_embeddings(df_raw: pd.DataFrame, n_components: int = EMBEDDING_DIMENSIONS, random_seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame]:
+def generate_embeddings(df_raw: pd.DataFrame, n_components: int = EMBEDDING_DIMENSIONS, random_seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate synthetic deep learning embeddings from raw measurements.
     
@@ -373,6 +373,304 @@ def _generate_embeddings(df_raw: pd.DataFrame, n_components: int = EMBEDDING_DIM
     df_proj.insert(0, "Gene", df_raw["Gene"])
     
     return df_embeddings, df_proj
+
+
+def simulate_screen_data(
+    cell_line: str,
+    treatment: str,
+    dose_uM: float,
+    library_size: int = 1000,
+    random_seed: int = 42
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Simulate raw screen data (channels and segmentation).
+    
+    Args:
+        cell_line: Cell line name
+        treatment: Treatment name
+        dose_uM: Dose in uM
+        library_size: Number of genes
+        random_seed: Random seed
+        
+    Returns:
+        Tuple of (df_raw, df_channels)
+    """
+    np.random.seed(random_seed)
+    
+    # 1. Setup Library
+    genes = [f"GENE_{i:04d}" for i in range(1, library_size + 1)]
+    
+    # 2. Simulate Channel Intensities (Microscopy)
+    # Get baseline for this cell line
+    baseline_channels = _get_channel_baseline_intensities(cell_line)
+    
+    # Apply treatment effects to channels
+    treated_channels = _apply_treatment_to_channels(baseline_channels, treatment, dose_uM)
+    
+    channel_data = []
+    raw_data = []
+    
+    for gene in genes:
+        # Simulate channel intensities (with biological noise)
+        hoechst = np.random.normal(treated_channels["Hoechst"], treated_channels["Hoechst"] * CHANNEL_NOISE_CV["Hoechst"])
+        cona = np.random.normal(treated_channels["ConA"], treated_channels["ConA"] * CHANNEL_NOISE_CV["ConA"])
+        phalloidin = np.random.normal(treated_channels["Phalloidin"], treated_channels["Phalloidin"] * CHANNEL_NOISE_CV["Phalloidin"])
+        wga = np.random.normal(treated_channels["WGA"], treated_channels["WGA"] * CHANNEL_NOISE_CV["WGA"])
+        mitoprobe = np.random.normal(treated_channels["MitoProbe"], treated_channels["MitoProbe"] * CHANNEL_NOISE_CV["MitoProbe"])
+        
+        channel_data.append({
+            "Gene": gene,
+            "Hoechst": max(0, hoechst),
+            "ConA": max(0, cona),
+            "Phalloidin": max(0, phalloidin),
+            "WGA": max(0, wga),
+            "MitoProbe": max(0, mitoprobe)
+        })
+        
+        # 3. Derive segmentation outputs from channels
+        # Segment nucleus from Hoechst
+        nuclear_metrics = _segment_nucleus_from_hoechst(hoechst, cell_line)
+        
+        # Segment mitochondria from MitoProbe
+        mito_metrics = _segment_mitochondria_from_mitoprobe(mitoprobe, cell_line)
+        
+        # Combine all measurements
+        raw_data.append({
+            "Gene": gene,
+            # Nuclear (from Hoechst)
+            **nuclear_metrics,
+            # Mitochondria (from MitoProbe)
+            **mito_metrics,
+            # ER (from ConA) - simplified proxy
+            "ER_Mean_Intensity": cona,
+            "ER_Texture_Entropy": np.random.normal(5.0, 0.5) * (cona / 15000),
+            # Actin (from Phalloidin) - simplified proxy
+            "Actin_Mean_Intensity": phalloidin,
+            "Cell_Area": nuclear_metrics["Nucleus_Area"] * np.random.normal(3.0, 0.3),
+            # Golgi (from WGA) - simplified proxy
+            "Golgi_Mean_Intensity": wga,
+        })
+    
+    df_channels = pd.DataFrame(channel_data)
+    df_raw = pd.DataFrame(raw_data)
+    
+    # Inject gene-specific modulators (hits)
+    num_hits = int(library_size * HIT_RATE)
+    hit_indices = np.random.choice(library_size, num_hits, replace=False)
+    
+    for idx in hit_indices:
+        if np.random.random() < SUPPRESSOR_PROBABILITY:
+            # Suppressor: reduces stress phenotypes
+            # Mitochondria: less fragmentation
+            df_raw.loc[idx, "Mito_Object_Count"] *= 0.5
+            df_raw.loc[idx, "Mito_Total_Area"] *= 1.3
+            df_raw.loc[idx, "Mito_Mean_Intensity"] *= 1.2
+            # Nucleus: less condensation/irregularity
+            df_raw.loc[idx, "Nucleus_Mean_Intensity"] *= 0.85
+            df_raw.loc[idx, "Nucleus_Form_Factor"] *= 1.1
+            df_raw.loc[idx, "Nucleus_Eccentricity"] *= 0.8
+        else:
+            # Enhancer: amplifies stress phenotypes
+            # Mitochondria: more fragmentation
+            df_raw.loc[idx, "Mito_Object_Count"] *= 1.8
+            df_raw.loc[idx, "Mito_Total_Area"] *= 0.7
+            df_raw.loc[idx, "Mito_Mean_Intensity"] *= 0.8
+            # Nucleus: more condensation/irregularity
+            df_raw.loc[idx, "Nucleus_Mean_Intensity"] *= 1.15
+            df_raw.loc[idx, "Nucleus_Form_Factor"] *= 0.85
+            df_raw.loc[idx, "Nucleus_Eccentricity"] *= 1.2
+            
+    return df_raw, df_channels
+
+
+def analyze_screen_results(
+    df_raw: pd.DataFrame,
+    df_channels: pd.DataFrame,
+    df_embeddings: pd.DataFrame,
+    df_proj: pd.DataFrame,
+    cell_line: str,
+    treatment: str,
+    dose_uM: float,
+    library_size: int,
+    feature: str
+) -> POSHScreenResult:
+    """
+    Analyze screen data to identify hits and package results.
+    
+    Args:
+        df_raw: Raw measurements
+        df_channels: Channel intensities
+        df_embeddings: Embeddings
+        df_proj: 2D projection
+        cell_line: Cell line name
+        treatment: Treatment name
+        dose_uM: Dose
+        library_size: Library size
+        feature: Selected feature for hit calling
+        
+    Returns:
+        POSHScreenResult object
+    """
+    try:
+        # 5. Calculate Derived Features
+        # Mitochondrial Fragmentation
+        df_raw["Mitochondrial_Fragmentation"] = df_raw.apply(
+            lambda row: _calculate_fragmentation_from_raw(row["Mito_Object_Count"], row["Mito_Total_Area"]), 
+            axis=1
+        )
+        
+        # Nuclear Condensation
+        df_raw["Nuclear_Condensation"] = df_raw.apply(
+            lambda row: _calculate_nuclear_condensation(row["Nucleus_Mean_Intensity"], row["Nucleus_Form_Factor"]),
+            axis=1
+        )
+        
+        # Nuclear Shape Irregularity
+        df_raw["Nuclear_Shape_Irregularity"] = df_raw.apply(
+            lambda row: _calculate_nuclear_shape_irregularity(row["Nucleus_Form_Factor"], row["Nucleus_Eccentricity"]),
+            axis=1
+        )
+        
+        # ER Stress Score (derived from intensity and texture)
+        df_raw["ER_Stress_Score"] = (df_raw["ER_Mean_Intensity"] / 20000) * (df_raw["ER_Texture_Entropy"] / 6.0)
+        df_raw["ER_Stress_Score"] = df_raw["ER_Stress_Score"].clip(0, 1)
+        
+        # 6. Identify Hits (Volcano Plot Logic)
+        # Map friendly feature name to column name
+        feature_map = {
+            "mitochondrial_fragmentation": "Mitochondrial_Fragmentation",
+            "nuclear_size": "Nucleus_Area",
+            "er_stress_score": "ER_Stress_Score",
+            "cell_count": "Cell_Area" # Proxy
+        }
+        col_name = feature_map.get(feature, "Mitochondrial_Fragmentation")
+        
+        # Calculate Z-scores or Log2FC relative to median
+        median_val = df_raw[col_name].median()
+        std_val = df_raw[col_name].std()
+        
+        volcano_data = []
+        for _, row in df_raw.iterrows():
+            val = row[col_name]
+            # Simulated p-value based on distance from median (Z-score approach)
+            z_score = (val - median_val) / (std_val + 1e-9)
+            p_val = 2 * (1 - pd.Series([abs(z_score)]).apply(lambda x: 0.5 * (1 + np.math.erf(x/np.sqrt(2)))).iloc[0])
+            # Log2 Fold Change
+            log2fc = np.log2((val + 1e-9) / (median_val + 1e-9))
+            
+            # Determine category
+            category = "Non-targeting"
+            if p_val < P_VALUE_THRESHOLD:
+                if log2fc > LOG2FC_THRESHOLD:
+                    category = "Enhancer"
+                elif log2fc < -LOG2FC_THRESHOLD:
+                    category = "Suppressor"
+            
+            volcano_data.append({
+                "Gene": row["Gene"],
+                "Value": val,
+                "Log2FoldChange": log2fc,
+                "P_Value": p_val,
+                "NegLog10P": -np.log10(p_val + 1e-10),
+                "Z_Score": z_score,
+                "Category": category
+            })
+            
+        df_volcano = pd.DataFrame(volcano_data)
+        
+        # Define hits
+        hits = df_volcano[
+            (df_volcano["P_Value"] < P_VALUE_THRESHOLD) & 
+            (abs(df_volcano["Log2FoldChange"]) > LOG2FC_THRESHOLD)
+        ]
+        
+        return POSHScreenResult(
+            cell_line=cell_line,
+            treatment=treatment,
+            dose_uM=dose_uM,
+            library_size=library_size,
+            selected_feature=feature,
+            hit_list=hits,
+            volcano_data=df_volcano,
+            raw_measurements=df_raw,
+            channel_intensities=df_channels,
+            embeddings=df_embeddings,
+            projection_2d=df_proj,
+            success=True
+        )
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return POSHScreenResult(
+            cell_line=cell_line,
+            treatment=treatment,
+            dose_uM=dose_uM,
+            library_size=library_size,
+            selected_feature=feature,
+            hit_list=pd.DataFrame(),
+            volcano_data=pd.DataFrame(),
+            raw_measurements=pd.DataFrame(),
+            channel_intensities=pd.DataFrame(),
+            embeddings=pd.DataFrame(),
+            projection_2d=pd.DataFrame(),
+            success=False,
+            error_message=str(e)
+        )
+
+
+def simulate_posh_screen(
+    cell_line: str,
+    treatment: str,
+    dose_uM: float,
+    library_size: int = 1000,
+    coverage: int = 500,
+    num_replicates: int = 3,
+    feature: str = "mitochondrial_fragmentation",
+    random_seed: int = 42
+) -> POSHScreenResult:
+    """
+    Simulate a POSH screen execution with Cell Painting phenotyping.
+    
+    Args:
+        cell_line: Cell line name (e.g., "A549")
+        treatment: Treatment name (e.g., "tBHP")
+        dose_uM: Treatment dose in uM
+        library_size: Number of genes in library
+        coverage: Sequencing coverage (not used in phenotypic sim)
+        num_replicates: Number of replicates (not used in simplified sim)
+        feature: Feature to analyze for hit calling
+        random_seed: Random seed for reproducibility
+        
+    Returns:
+        POSHScreenResult object containing all data and analysis
+    """
+    # 1. Generate Raw Data
+    df_raw, df_channels = simulate_screen_data(
+        cell_line=cell_line,
+        treatment=treatment,
+        dose_uM=dose_uM,
+        library_size=library_size,
+        random_seed=random_seed
+    )
+    
+    # 2. Generate Embeddings
+    # Combine channels and raw measurements for embedding generation
+    df_combined = pd.merge(df_channels, df_raw, on="Gene")
+    df_embeddings, df_proj = generate_embeddings(df_combined, random_seed=random_seed)
+    
+    # 3. Analyze Results
+    return analyze_screen_results(
+        df_raw=df_raw,
+        df_channels=df_channels,
+        df_embeddings=df_embeddings,
+        df_proj=df_proj,
+        cell_line=cell_line,
+        treatment=treatment,
+        dose_uM=dose_uM,
+        library_size=library_size,
+        feature=feature
+    )
 
 
 def _calculate_fragmentation_from_raw(mito_object_count: float, mito_total_area: float) -> float:
