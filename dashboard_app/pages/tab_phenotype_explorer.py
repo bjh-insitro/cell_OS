@@ -133,6 +133,19 @@ def render_phenotype_explorer():
                 step=0.1,
                 help="Minimum effect size for hit calling"
             )
+            
+            st.divider()
+            st.markdown("**Technical Artifacts**")
+            add_batch_effects = st.checkbox(
+                "Simulate Batch Effects",
+                value=False,
+                help="Add plate-to-plate variation (10% random bias)"
+            )
+            add_edge_effects = st.checkbox(
+                "Simulate Edge Effects",
+                value=False,
+                help="Add edge well artifacts (increased intensity)"
+            )
         
         st.divider()
         
@@ -178,7 +191,9 @@ def render_phenotype_explorer():
                 dose_uM=dose,
                 library_size=library_size,
                 feature=feature,
-                random_seed=random_seed
+                random_seed=random_seed,
+                add_batch_effects=add_batch_effects,
+                add_edge_effects=add_edge_effects
             )
             
             # Store in session state
@@ -194,7 +209,9 @@ def render_phenotype_explorer():
                 "noise_level": noise_level,
                 "p_threshold": p_threshold,
                 "fc_threshold": fc_threshold,
-                "random_seed": random_seed
+                "random_seed": random_seed,
+                "add_batch_effects": add_batch_effects,
+                "add_edge_effects": add_edge_effects
             }
             st.rerun()
     

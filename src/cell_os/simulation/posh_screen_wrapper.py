@@ -395,7 +395,9 @@ def simulate_screen_data(
     treatment: str,
     dose_uM: float,
     library_size: int = 1000,
-    random_seed: int = 42
+    random_seed: int = 42,
+    add_batch_effects: bool = False,
+    add_edge_effects: bool = False
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Simulate raw screen data (channels and segmentation).
@@ -406,6 +408,8 @@ def simulate_screen_data(
         dose_uM: Dose in uM
         library_size: Number of genes
         random_seed: Random seed
+        add_batch_effects: If True, adds plate-to-plate variation
+        add_edge_effects: If True, adds edge well artifacts
         
     Returns:
         Tuple of (df_raw, df_channels)
@@ -414,6 +418,19 @@ def simulate_screen_data(
     
     # 1. Setup Library
     genes = [f"GENE_{i:04d}" for i in range(1, library_size + 1)]
+    
+    # Plate layout constants
+    WELLS_PER_PLATE = 384
+    ROWS = 16
+    COLS = 24
+    
+    # Generate plate biases if needed
+    num_plates = (library_size + WELLS_PER_PLATE - 1) // WELLS_PER_PLATE
+    plate_biases = {}
+    if add_batch_effects:
+        for p in range(num_plates):
+            # Random bias between 0.9 and 1.1 (10% variation)
+            plate_biases[p] = np.random.uniform(0.9, 1.1)
     
     # 2. Simulate Channel Intensities (Microscopy)
     # Get baseline for this cell line
@@ -425,13 +442,33 @@ def simulate_screen_data(
     channel_data = []
     raw_data = []
     
-    for gene in genes:
-        # Simulate channel intensities (with biological noise)
-        hoechst = np.random.normal(treated_channels["Hoechst"], treated_channels["Hoechst"] * CHANNEL_NOISE_CV["Hoechst"])
-        cona = np.random.normal(treated_channels["ConA"], treated_channels["ConA"] * CHANNEL_NOISE_CV["ConA"])
-        phalloidin = np.random.normal(treated_channels["Phalloidin"], treated_channels["Phalloidin"] * CHANNEL_NOISE_CV["Phalloidin"])
-        wga = np.random.normal(treated_channels["WGA"], treated_channels["WGA"] * CHANNEL_NOISE_CV["WGA"])
-        mitoprobe = np.random.normal(treated_channels["MitoProbe"], treated_channels["MitoProbe"] * CHANNEL_NOISE_CV["MitoProbe"])
+    for i, gene in enumerate(genes):
+        # Calculate plate position
+        plate = i // WELLS_PER_PLATE
+        well = i % WELLS_PER_PLATE
+        row = well // COLS
+        col = well % COLS
+        
+        # Calculate technical multiplier
+        multiplier = 1.0
+        
+        # Batch effect (plate-level)
+        if add_batch_effects:
+            multiplier *= plate_biases.get(plate, 1.0)
+            
+        # Edge effect (well-level)
+        if add_edge_effects:
+            is_edge = (row == 0 or row == ROWS - 1 or col == 0 or col == COLS - 1)
+            if is_edge:
+                # Edge wells often have higher evaporation / concentration -> higher intensity
+                multiplier *= 1.15
+        
+        # Simulate channel intensities (with biological noise + technical artifacts)
+        hoechst = np.random.normal(treated_channels["Hoechst"], treated_channels["Hoechst"] * CHANNEL_NOISE_CV["Hoechst"]) * multiplier
+        cona = np.random.normal(treated_channels["ConA"], treated_channels["ConA"] * CHANNEL_NOISE_CV["ConA"]) * multiplier
+        phalloidin = np.random.normal(treated_channels["Phalloidin"], treated_channels["Phalloidin"] * CHANNEL_NOISE_CV["Phalloidin"]) * multiplier
+        wga = np.random.normal(treated_channels["WGA"], treated_channels["WGA"] * CHANNEL_NOISE_CV["WGA"]) * multiplier
+        mitoprobe = np.random.normal(treated_channels["MitoProbe"], treated_channels["MitoProbe"] * CHANNEL_NOISE_CV["MitoProbe"]) * multiplier
         
         channel_data.append({
             "Gene": gene,
@@ -642,7 +679,9 @@ def simulate_posh_screen(
     coverage: int = 500,
     num_replicates: int = 3,
     feature: str = "mitochondrial_fragmentation",
-    random_seed: int = 42
+    random_seed: int = 42,
+    add_batch_effects: bool = False,
+    add_edge_effects: bool = False
 ) -> POSHScreenResult:
     """
     Simulate a POSH screen execution with Cell Painting phenotyping.
@@ -652,10 +691,12 @@ def simulate_posh_screen(
         treatment: Treatment name (e.g., "tBHP")
         dose_uM: Treatment dose in uM
         library_size: Number of genes in library
-        coverage: Sequencing coverage (not used in phenotypic sim)
-        num_replicates: Number of replicates (not used in simplified sim)
-        feature: Feature to analyze for hit calling
-        random_seed: Random seed for reproducibility
+        coverage: Cells per gene per replicate
+        num_replicates: Number of biological replicates
+        feature: Morphological feature to analyze
+        random_seed: Random seed
+        add_batch_effects: If True, adds plate-to-plate variation
+        add_edge_effects: If True, adds edge well artifacts
         
     Returns:
         POSHScreenResult object containing all data and analysis
@@ -666,7 +707,9 @@ def simulate_posh_screen(
         treatment=treatment,
         dose_uM=dose_uM,
         library_size=library_size,
-        random_seed=random_seed
+        random_seed=random_seed,
+        add_batch_effects=add_batch_effects,
+        add_edge_effects=add_edge_effects
     )
     
     # 2. Generate Embeddings
