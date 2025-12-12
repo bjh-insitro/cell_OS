@@ -19,6 +19,31 @@ def render_tab_6():
     st.header("Plate Viewer")
     st.markdown("Spatial heatmaps to identify edge effects and plate patterns")
 
+    with st.expander("ℹ️ Understanding Plate Heatmaps", expanded=False):
+        st.markdown("""
+        **What is this showing?**
+        - Heatmap of a 96-well plate (8 rows × 12 columns)
+        - Color intensity = metric value (ATP signal or morphology channel)
+        - Each cell = one well
+
+        **Spatial patterns to look for:**
+
+        **🔴 Edge effects** (common artifact):
+        - Wells on edges (row A/H, column 1/12) often differ from center
+        - Caused by: evaporation, temperature gradients, uneven gas exchange
+        - **Good assay**: <10% difference between edge and center
+        - **Bad assay**: >10% difference = plate handling issues
+
+        **Common patterns:**
+        - **Gradient**: Color changes smoothly across plate (temperature issue)
+        - **Striping**: Alternating rows/columns (pipetting error)
+        - **Hotspot**: One region differs (bubble, plate defect)
+        - **Random**: No pattern (good! Just biological variation)
+
+        **Why this matters:**
+        Spatial patterns indicate technical problems. If you see strong plate position effects, the experimental design needs modification (better plate randomization, different plate type, environmental controls).
+        """)
+
     # Get design ID
     design_id = st.session_state.get('latest_design_id')
 

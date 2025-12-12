@@ -20,6 +20,27 @@ def render_tab_3():
     st.header("Dose-Response Curves")
     st.markdown("Explore compound effects on morphology and ATP viability")
 
+    with st.expander("ℹ️ Interpreting Dose-Response Curves", expanded=False):
+        st.markdown("""
+        **What is this showing?**
+        - X-axis: Compound dose (log scale)
+        - Y-axis: Response (ATP signal or morphology channel intensity)
+        - Blue line: Mean response across replicates
+        - Shaded area: Standard error of the mean (SEM)
+        - Gray dots: Individual well measurements
+
+        **Key metrics:**
+        - **EC50/IC50**: Dose that produces 50% effect (inflection point)
+        - **Dynamic range**: Difference between baseline and maximum effect
+        - **Hill slope**: Steepness of the curve (cooperativity)
+
+        **What to look for:**
+        - **Monotonic response**: Does the curve go consistently up or down?
+        - **Saturation**: Does the response plateau at high doses?
+        - **Variability**: Are error bars small (good reproducibility)?
+        - **ATP vs morphology**: Do they agree or show different patterns?
+        """)
+
     # Get design ID
     design_id = st.session_state.get('latest_design_id')
 

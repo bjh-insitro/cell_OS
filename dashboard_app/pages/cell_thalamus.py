@@ -40,6 +40,35 @@ st.markdown("""
 Cell Thalamus validates the measurement layer *before* scaling to the Printed Tensor.
 """)
 
+# Add glossary in sidebar
+with st.sidebar:
+    st.markdown("---")
+    with st.expander("📖 Glossary", expanded=False):
+        st.markdown("""
+        **Readouts:**
+        - **ATP**: Luminescent viability assay (scalar anchor)
+        - **ER**: Endoplasmic reticulum morphology
+        - **Mito**: Mitochondrial morphology
+        - **Nucleus**: Nuclear morphology
+        - **Actin**: Cytoskeleton morphology
+        - **RNA**: Translation site morphology
+
+        **Stress Axes:**
+        - **Oxidative**: ROS production (tBHQ, H₂O₂)
+        - **ER Stress**: Protein folding (tunicamycin, thapsigargin)
+        - **Mitochondrial**: Energy dysfunction (CCCP, oligomycin)
+        - **DNA Damage**: Replication stress (etoposide)
+        - **Proteasome**: Protein degradation (MG132)
+        - **Microtubule**: Cytoskeleton (nocodazole)
+
+        **Key Concepts:**
+        - **Sentinel**: QC well with fixed conditions
+        - **SPC**: Statistical Process Control
+        - **Edge Effect**: Spatial artifact on plate edges
+        - **PCA**: Principal Component Analysis (dimensionality reduction)
+        - **Manifold**: Low-dimensional structure in high-dimensional data
+        """)
+
 # Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "▶️ Run Simulation",

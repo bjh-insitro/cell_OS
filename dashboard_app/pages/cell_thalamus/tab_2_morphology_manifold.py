@@ -22,6 +22,26 @@ def render_tab_2():
     st.header("Morphology Manifold Exploration")
     st.markdown("Interactive PCA visualization of 5-channel Cell Painting features")
 
+    with st.expander("ℹ️ Understanding the Morphology Manifold", expanded=False):
+        st.markdown("""
+        **What is this showing?**
+        - Each point = one well with 5 morphology measurements (ER, Mito, Nucleus, Actin, RNA)
+        - PCA reduces 5 dimensions → 2 or 3 dimensions for visualization
+        - Points close together = similar morphology
+        - Points far apart = different morphology
+
+        **What to look for:**
+        - **Stress axis clustering**: Do compounds from the same stress axis (e.g., oxidative) cluster together?
+        - **Dose-response gradients**: Do higher doses move along consistent directions?
+        - **Cell line separation**: Do different cell lines occupy distinct regions?
+        - **Outliers**: Are there any wells with unusual morphology?
+
+        **Good manifold properties:**
+        - Biological factors dominate the structure
+        - Stress axes are separable
+        - Technical replicates cluster tightly
+        """)
+
     # Get design ID
     design_id = get_design_id()
 

@@ -19,6 +19,33 @@ def render_tab_4():
     st.header("Variance Component Analysis")
     st.markdown("Partition variance into biological vs technical sources")
 
+    with st.expander("ℹ️ Understanding Variance Analysis", expanded=False):
+        st.markdown("""
+        **Why variance matters:**
+        Cell Thalamus validates that **biological factors dominate technical noise** before scaling experiments.
+
+        **Variance components explained:**
+
+        **🧬 Biological Variance (GOOD - want this high):**
+        - **Cell line**: Different cell types respond differently
+        - **Compound**: Different stressors produce different phenotypes
+        - **Dose**: Higher doses = stronger effects
+        - **Timepoint**: Effects change over time
+
+        **🔧 Technical Variance (BAD - want this low):**
+        - **Plate**: Variation between physical plates
+        - **Day**: Day-to-day experimental variation
+        - **Operator**: Different people handling samples
+
+        **Success criteria:**
+        - ✅ **Biological >70%**: Real biology is the dominant signal
+        - ✅ **Technical <30%**: Measurement noise is controlled
+        - ✅ **Sentinels stable**: Quality control wells are reproducible
+
+        **What this means:**
+        If biological variance dominates, the measurements are trustworthy and differences you see are real biology, not experimental artifacts.
+        """)
+
     # Get design ID
     design_id = st.session_state.get('latest_design_id')
 

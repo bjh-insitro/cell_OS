@@ -17,6 +17,22 @@ def render_tab_1():
 
     st.header("Configure and Run Phase 0 Simulation")
 
+    with st.expander("ℹ️ What is Phase 0?", expanded=False):
+        st.markdown("""
+        **Phase 0** validates the measurement layer before scaling to whole-genome screens.
+
+        **Goals:**
+        - Prove that biological variance dominates technical noise
+        - Validate that stress axes are real and consistent
+        - Establish SPC monitoring with sentinels
+        - Generate a stable morphological manifold
+
+        **Success Criteria:**
+        - ✅ Biological variance >70% of total
+        - ✅ Technical variance <30% (plate, day, operator effects)
+        - ✅ Sentinels within 3σ control limits
+        """)
+
     col1, col2 = st.columns([2, 1])
 
     with col1:
@@ -26,7 +42,8 @@ def render_tab_1():
         cell_lines = st.multiselect(
             "Cell Lines",
             options=["A549", "HepG2", "U2OS"],
-            default=["A549", "HepG2"]
+            default=["A549", "HepG2"],
+            help="A549: lung carcinoma, HepG2: hepatocellular carcinoma, U2OS: osteosarcoma. Different lineages test stress axis conservation."
         )
 
         # Compound selection
@@ -39,7 +56,8 @@ def render_tab_1():
         run_mode = st.radio(
             "Run Mode",
             options=["Demo Mode (~7 wells, 30 sec)", "Quick Test (3 compounds, ~20 min)", "Full Panel (10 compounds)"],
-            horizontal=False
+            horizontal=False,
+            help="Demo Mode: instant results for testing. Quick Test: 3 compounds, good for validation. Full Panel: complete stress axis coverage."
         )
 
         if run_mode == "Demo Mode (~7 wells, 30 sec)":

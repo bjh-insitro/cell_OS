@@ -19,6 +19,30 @@ def render_tab_5():
     st.header("Sentinel Monitor (SPC)")
     st.markdown("Statistical Process Control for sentinel wells")
 
+    with st.expander("ℹ️ What are Sentinels and SPC?", expanded=False):
+        st.markdown("""
+        **Sentinel wells** are fixed control conditions placed on every plate to monitor assay quality.
+
+        **Three sentinel types:**
+        - **DMSO (vehicle)**: Baseline - cells with no treatment
+        - **Mild stress (tBHQ)**: Moderate response - should be consistent
+        - **Strong stress (tunicamycin)**: Large response - tests dynamic range
+
+        **SPC (Statistical Process Control):**
+        - Monitors whether sentinels stay within expected ranges
+        - **Mean**: Average signal across all sentinel measurements
+        - **UCL/LCL**: Upper/Lower Control Limits (mean ± 3σ)
+        - **Out of Control**: Points outside 3σ limits indicate assay problems
+
+        **What to look for:**
+        - ✅ All points within UCL/LCL = stable assay
+        - ❌ Points outside limits = investigate (plate quality, reagent issues, equipment drift)
+        - Trends over time = systematic drift
+
+        **Why sentinels matter:**
+        They distinguish biological variation from measurement failure. If sentinels drift, you can't trust the experimental data.
+        """)
+
     # Get design ID
     design_id = st.session_state.get('latest_design_id')
 
