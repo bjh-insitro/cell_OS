@@ -110,13 +110,46 @@ const LandingPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="mt-8 flex justify-center">
+                    <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
                         <button
                             onClick={handleEnter}
                             className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-full shadow-lg hover:shadow-blue-500/25 transition-all transform hover:scale-105 active:scale-95"
                         >
                             View Status Dashboard
                         </button>
+                        <button
+                            onClick={() => navigate('/cell-thalamus')}
+                            className="px-8 py-3 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-full shadow-lg hover:shadow-violet-500/25 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 justify-center"
+                        >
+                            <span>🧬</span>
+                            <span>Cell Thalamus v1</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Cell Thalamus Info Card */}
+                <div className="mt-8 bg-violet-900/20 backdrop-blur-sm border border-violet-500/30 rounded-xl p-6">
+                    <h3 className="text-xl font-bold text-violet-300 mb-2 flex items-center gap-2">
+                        <span>🧬</span>
+                        <span>Cell Thalamus v1 - Phase 0</span>
+                    </h3>
+                    <p className="text-slate-300 text-sm">
+                        Variance-aware measurement validation dashboard. Run Phase 0 simulations to validate
+                        that biological variance dominates technical noise before scaling to the Printed Tensor.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-xs font-semibold">
+                            Cell Painting
+                        </span>
+                        <span className="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-xs font-semibold">
+                            ATP Viability
+                        </span>
+                        <span className="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-xs font-semibold">
+                            Variance Analysis
+                        </span>
+                        <span className="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-xs font-semibold">
+                            SPC Monitoring
+                        </span>
                     </div>
                 </div>
             </div>

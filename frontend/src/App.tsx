@@ -3,6 +3,7 @@ import PoshA549StatusPage from './pages/PoshA549StatusPage';
 import GlobalDependencyMapPage from './pages/GlobalDependencyMapPage';
 import LandingPage from './pages/LandingPage';
 import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
+import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
 
 function App() {
     return (
@@ -11,6 +12,7 @@ function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/dashboard" element={<PoshA549StatusPage />} />
                 <Route path="/map" element={<GlobalDependencyMapPage />} />
+                <Route path="/cell-thalamus" element={<CellThalamusPage />} />
                 <Route path="/under-development" element={<UnderDevelopmentPage />} />
             </Routes>
         </Router>

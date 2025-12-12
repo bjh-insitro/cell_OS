@@ -1,0 +1,882 @@
+[
+  {
+    "row": "A",
+    "col": 1,
+    "wellId": "A01",
+    "cellLine": "A549",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "A",
+    "col": 2,
+    "wellId": "A02",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "100"
+  },
+  {
+    "row": "A",
+    "col": 3,
+    "wellId": "A03",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "1"
+  },
+  {
+    "row": "A",
+    "col": 4,
+    "wellId": "A04",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "0.1"
+  },
+  {
+    "row": "A",
+    "col": 5,
+    "wellId": "A05",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "10"
+  },
+  {
+    "row": "A",
+    "col": 6,
+    "wellId": "A06",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "100"
+  },
+  {
+    "row": "A",
+    "col": 7,
+    "wellId": "A07",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "1"
+  },
+  {
+    "row": "A",
+    "col": 8,
+    "wellId": "A08",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "10"
+  },
+  {
+    "row": "A",
+    "col": 9,
+    "wellId": "A09",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "1"
+  },
+  {
+    "row": "A",
+    "col": 10,
+    "wellId": "A10",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "1"
+  },
+  {
+    "row": "A",
+    "col": 11,
+    "wellId": "A11",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "100"
+  },
+  {
+    "row": "A",
+    "col": 12,
+    "wellId": "A12",
+    "cellLine": "A549",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "B",
+    "col": 1,
+    "wellId": "B01",
+    "cellLine": "A549",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "B",
+    "col": 2,
+    "wellId": "B02",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "100"
+  },
+  {
+    "row": "B",
+    "col": 3,
+    "wellId": "B03",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "0.1"
+  },
+  {
+    "row": "B",
+    "col": 4,
+    "wellId": "B04",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "10"
+  },
+  {
+    "row": "B",
+    "col": 5,
+    "wellId": "B05",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "10"
+  },
+  {
+    "row": "B",
+    "col": 6,
+    "wellId": "B06",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "10"
+  },
+  {
+    "row": "B",
+    "col": 7,
+    "wellId": "B07",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "0.1"
+  },
+  {
+    "row": "B",
+    "col": 8,
+    "wellId": "B08",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "1"
+  },
+  {
+    "row": "B",
+    "col": 9,
+    "wellId": "B09",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "1"
+  },
+  {
+    "row": "B",
+    "col": 10,
+    "wellId": "B10",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "0.1"
+  },
+  {
+    "row": "B",
+    "col": 11,
+    "wellId": "B11",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "100"
+  },
+  {
+    "row": "B",
+    "col": 12,
+    "wellId": "B12",
+    "cellLine": "A549",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "C",
+    "col": 1,
+    "wellId": "C01",
+    "cellLine": "A549",
+    "type": "sentinel",
+    "compound": "tBHQ",
+    "dose": "1",
+    "sentinelType": "mild"
+  },
+  {
+    "row": "C",
+    "col": 2,
+    "wellId": "C02",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "1"
+  },
+  {
+    "row": "C",
+    "col": 3,
+    "wellId": "C03",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "0.1"
+  },
+  {
+    "row": "C",
+    "col": 4,
+    "wellId": "C04",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "10"
+  },
+  {
+    "row": "C",
+    "col": 5,
+    "wellId": "C05",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "0.1"
+  },
+  {
+    "row": "C",
+    "col": 6,
+    "wellId": "C06",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "10"
+  },
+  {
+    "row": "C",
+    "col": 7,
+    "wellId": "C07",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "10"
+  },
+  {
+    "row": "C",
+    "col": 8,
+    "wellId": "C08",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "100"
+  },
+  {
+    "row": "C",
+    "col": 9,
+    "wellId": "C09",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "100"
+  },
+  {
+    "row": "C",
+    "col": 10,
+    "wellId": "C10",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "0.1"
+  },
+  {
+    "row": "C",
+    "col": 11,
+    "wellId": "C11",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "10"
+  },
+  {
+    "row": "C",
+    "col": 12,
+    "wellId": "C12",
+    "cellLine": "A549",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "reference"
+  },
+  {
+    "row": "D",
+    "col": 1,
+    "wellId": "D01",
+    "cellLine": "A549",
+    "type": "sentinel",
+    "compound": "tBHQ",
+    "dose": "100",
+    "sentinelType": "strong"
+  },
+  {
+    "row": "D",
+    "col": 2,
+    "wellId": "D02",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "0.1"
+  },
+  {
+    "row": "D",
+    "col": 3,
+    "wellId": "D03",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "100"
+  },
+  {
+    "row": "D",
+    "col": 4,
+    "wellId": "D04",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "100"
+  },
+  {
+    "row": "D",
+    "col": 5,
+    "wellId": "D05",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "100"
+  },
+  {
+    "row": "D",
+    "col": 6,
+    "wellId": "D06",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "1"
+  },
+  {
+    "row": "D",
+    "col": 7,
+    "wellId": "D07",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "1"
+  },
+  {
+    "row": "D",
+    "col": 8,
+    "wellId": "D08",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "1"
+  },
+  {
+    "row": "D",
+    "col": 9,
+    "wellId": "D09",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "0.1"
+  },
+  {
+    "row": "D",
+    "col": 10,
+    "wellId": "D10",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "0.1"
+  },
+  {
+    "row": "D",
+    "col": 11,
+    "wellId": "D11",
+    "cellLine": "A549",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "10"
+  },
+  {
+    "row": "D",
+    "col": 12,
+    "wellId": "D12",
+    "cellLine": "A549",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "reference"
+  },
+  {
+    "row": "E",
+    "col": 1,
+    "wellId": "E01",
+    "cellLine": "HepG2",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "E",
+    "col": 2,
+    "wellId": "E02",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "100"
+  },
+  {
+    "row": "E",
+    "col": 3,
+    "wellId": "E03",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "1"
+  },
+  {
+    "row": "E",
+    "col": 4,
+    "wellId": "E04",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "100"
+  },
+  {
+    "row": "E",
+    "col": 5,
+    "wellId": "E05",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "100"
+  },
+  {
+    "row": "E",
+    "col": 6,
+    "wellId": "E06",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "100"
+  },
+  {
+    "row": "E",
+    "col": 7,
+    "wellId": "E07",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "1"
+  },
+  {
+    "row": "E",
+    "col": 8,
+    "wellId": "E08",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "10"
+  },
+  {
+    "row": "E",
+    "col": 9,
+    "wellId": "E09",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "10"
+  },
+  {
+    "row": "E",
+    "col": 10,
+    "wellId": "E10",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "10"
+  },
+  {
+    "row": "E",
+    "col": 11,
+    "wellId": "E11",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "0.1"
+  },
+  {
+    "row": "E",
+    "col": 12,
+    "wellId": "E12",
+    "cellLine": "HepG2",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "F",
+    "col": 1,
+    "wellId": "F01",
+    "cellLine": "HepG2",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "F",
+    "col": 2,
+    "wellId": "F02",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "10"
+  },
+  {
+    "row": "F",
+    "col": 3,
+    "wellId": "F03",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "0.1"
+  },
+  {
+    "row": "F",
+    "col": 4,
+    "wellId": "F04",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "100"
+  },
+  {
+    "row": "F",
+    "col": 5,
+    "wellId": "F05",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "0.1"
+  },
+  {
+    "row": "F",
+    "col": 6,
+    "wellId": "F06",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "10"
+  },
+  {
+    "row": "F",
+    "col": 7,
+    "wellId": "F07",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "10"
+  },
+  {
+    "row": "F",
+    "col": 8,
+    "wellId": "F08",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "1"
+  },
+  {
+    "row": "F",
+    "col": 9,
+    "wellId": "F09",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "100"
+  },
+  {
+    "row": "F",
+    "col": 10,
+    "wellId": "F10",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "0.1"
+  },
+  {
+    "row": "F",
+    "col": 11,
+    "wellId": "F11",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "100"
+  },
+  {
+    "row": "F",
+    "col": 12,
+    "wellId": "F12",
+    "cellLine": "HepG2",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "dmso"
+  },
+  {
+    "row": "G",
+    "col": 1,
+    "wellId": "G01",
+    "cellLine": "HepG2",
+    "type": "sentinel",
+    "compound": "tBHQ",
+    "dose": "1",
+    "sentinelType": "mild"
+  },
+  {
+    "row": "G",
+    "col": 2,
+    "wellId": "G02",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "1"
+  },
+  {
+    "row": "G",
+    "col": 3,
+    "wellId": "G03",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "10"
+  },
+  {
+    "row": "G",
+    "col": 4,
+    "wellId": "G04",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "0.1"
+  },
+  {
+    "row": "G",
+    "col": 5,
+    "wellId": "G05",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "100"
+  },
+  {
+    "row": "G",
+    "col": 6,
+    "wellId": "G06",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "0.1"
+  },
+  {
+    "row": "G",
+    "col": 7,
+    "wellId": "G07",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "1"
+  },
+  {
+    "row": "G",
+    "col": 8,
+    "wellId": "G08",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "H2O2",
+    "dose": "0.1"
+  },
+  {
+    "row": "G",
+    "col": 9,
+    "wellId": "G09",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "etoposide",
+    "dose": "1"
+  },
+  {
+    "row": "G",
+    "col": 10,
+    "wellId": "G10",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "100"
+  },
+  {
+    "row": "G",
+    "col": 11,
+    "wellId": "G11",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "10"
+  },
+  {
+    "row": "G",
+    "col": 12,
+    "wellId": "G12",
+    "cellLine": "HepG2",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "reference"
+  },
+  {
+    "row": "H",
+    "col": 1,
+    "wellId": "H01",
+    "cellLine": "HepG2",
+    "type": "sentinel",
+    "compound": "tBHQ",
+    "dose": "100",
+    "sentinelType": "strong"
+  },
+  {
+    "row": "H",
+    "col": 2,
+    "wellId": "H02",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "nocodazole",
+    "dose": "0.1"
+  },
+  {
+    "row": "H",
+    "col": 3,
+    "wellId": "H03",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tunicamycin",
+    "dose": "0.1"
+  },
+  {
+    "row": "H",
+    "col": 4,
+    "wellId": "H04",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "oligomycin",
+    "dose": "1"
+  },
+  {
+    "row": "H",
+    "col": 5,
+    "wellId": "H05",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "tBHQ",
+    "dose": "1"
+  },
+  {
+    "row": "H",
+    "col": 6,
+    "wellId": "H06",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "1"
+  },
+  {
+    "row": "H",
+    "col": 7,
+    "wellId": "H07",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "1"
+  },
+  {
+    "row": "H",
+    "col": 8,
+    "wellId": "H08",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "MG132",
+    "dose": "100"
+  },
+  {
+    "row": "H",
+    "col": 9,
+    "wellId": "H09",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "paclitaxel",
+    "dose": "10"
+  },
+  {
+    "row": "H",
+    "col": 10,
+    "wellId": "H10",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "thapsigargin",
+    "dose": "10"
+  },
+  {
+    "row": "H",
+    "col": 11,
+    "wellId": "H11",
+    "cellLine": "HepG2",
+    "type": "experimental",
+    "compound": "CCCP",
+    "dose": "0.1"
+  },
+  {
+    "row": "H",
+    "col": 12,
+    "wellId": "H12",
+    "cellLine": "HepG2",
+    "type": "dmso",
+    "compound": "DMSO",
+    "dose": "0",
+    "sentinelType": "reference"
+  }
+]
