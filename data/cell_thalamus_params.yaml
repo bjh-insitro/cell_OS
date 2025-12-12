@@ -175,17 +175,17 @@ sentinels:
   dmso:
     compound: "DMSO"
     dose_uM: 0.0
-    well_positions: ["A1", "A24", "P1", "P24"]  # Corners of 384-well plate
+    well_positions: ["A1", "A12", "H1", "H12"]  # Corners of 96-well plate
 
   mild_stress:
     compound: "tBHQ"
     dose_uM: 10.0
-    well_positions: ["A12", "P12"]  # Middle edges
+    well_positions: ["A6", "H6"]  # Middle edges
 
   strong_stress:
     compound: "tunicamycin"
     dose_uM: 2.0
-    well_positions: ["H12", "I12"]  # Middle of plate
+    well_positions: ["D6", "E6"]  # Middle of plate
 
 # Dose grid for Phase 0
 dose_grid:
@@ -200,5 +200,5 @@ timepoints:
   late: 48
 
 # Plate layout
-plate_format: 384  # 384-well plates
+plate_format: 96  # 96-well plates
 wells_per_condition: 3  # Technical replicates per plate

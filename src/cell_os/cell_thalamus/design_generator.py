@@ -35,6 +35,7 @@ class Phase0Design:
     - 4 doses (vehicle, low, mid, high)
     - 2 timepoints (12h, 48h)
     - 3 plates × 2 days × 2 operators = 12 replicates per condition
+    - 96-well plate format (8 rows × 12 columns)
     - Sentinels: DMSO, mild stress, strong stress (fixed positions)
     """
 
@@ -95,9 +96,9 @@ class Phase0Design:
         ):
             dose_uM = self._calculate_dose(compound, dose_level)
 
-            # Generate well ID (384-well format: A01-P24)
-            row = chr(65 + (well_counter % 16))  # A-P (16 rows)
-            col = (well_counter // 16) % 24 + 1   # 1-24 (24 columns)
+            # Generate well ID (96-well format: A01-H12)
+            row = chr(65 + (well_counter % 8))   # A-H (8 rows)
+            col = (well_counter // 8) % 12 + 1   # 1-12 (12 columns)
             well_id = f"{row}{col:02d}"
 
             plate_id = f"Plate_{plate}_Day{day}_{operator}_T{timepoint}h"

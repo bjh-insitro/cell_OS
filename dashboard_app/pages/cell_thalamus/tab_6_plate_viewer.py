@@ -1,4 +1,4 @@
-"""Tab 6: Plate Viewer - Spatial heatmaps for quality control"""
+"""Tab 6: Plate Viewer - Spatial heatmaps for quality control (96-well format)"""
 
 import streamlit as st
 import pandas as pd
@@ -65,8 +65,8 @@ def render_tab_6():
 
     df_plate['row'], df_plate['col'] = zip(*df_plate['well_id'].apply(parse_well))
 
-    # Create 384-well plate grid (16 rows × 24 columns)
-    plate_grid = np.full((16, 24), np.nan)
+    # Create 96-well plate grid (8 rows × 12 columns)
+    plate_grid = np.full((8, 12), np.nan)
 
     for _, row_data in df_plate.iterrows():
         plate_grid[row_data['row'], row_data['col']] = row_data[metric]
@@ -74,8 +74,8 @@ def render_tab_6():
     # Create heatmap
     fig = go.Figure(data=go.Heatmap(
         z=plate_grid,
-        x=[f"{i+1:02d}" for i in range(24)],
-        y=[chr(65 + i) for i in range(16)],
+        x=[f"{i+1:02d}" for i in range(12)],
+        y=[chr(65 + i) for i in range(8)],
         colorscale='Viridis',
         hovertemplate='Row: %{y}<br>Col: %{x}<br>Value: %{z:.1f}<extra></extra>',
         colorbar=dict(title=metric.replace('morph_', '').replace('_', ' ').title())
@@ -94,9 +94,9 @@ def render_tab_6():
     # Edge effect analysis
     st.subheader("Edge Effect Analysis")
 
-    # Define edge wells (row A, H or column 1, 24 for 96-well equivalent)
-    edge_rows = [0, 15]  # A and P for 384-well
-    edge_cols = [0, 23]  # 1 and 24
+    # Define edge wells (row A, H or column 1, 12 for 96-well)
+    edge_rows = [0, 7]   # A and H for 96-well
+    edge_cols = [0, 11]  # 1 and 12
 
     df_plate['is_edge'] = df_plate.apply(
         lambda row: row['row'] in edge_rows or row['col'] in edge_cols,
