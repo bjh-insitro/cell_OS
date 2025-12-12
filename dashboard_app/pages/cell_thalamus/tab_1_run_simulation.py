@@ -38,11 +38,14 @@ def render_tab_1():
 
         run_mode = st.radio(
             "Run Mode",
-            options=["Quick Test (3 compounds)", "Full Panel (10 compounds)"],
-            horizontal=True
+            options=["Demo Mode (~7 wells, 30 sec)", "Quick Test (3 compounds, ~20 min)", "Full Panel (10 compounds)"],
+            horizontal=False
         )
 
-        if run_mode == "Quick Test (3 compounds)":
+        if run_mode == "Demo Mode (~7 wells, 30 sec)":
+            compounds = ["tBHQ", "tunicamycin"]
+            st.info("⚡ Ultra-fast demo: 2 compounds, 2 doses, ~7 wells total")
+        elif run_mode.startswith("Quick Test"):
             compounds = st.multiselect(
                 "Compounds",
                 options=all_compounds,
@@ -95,10 +98,11 @@ def render_tab_1():
             elif not compounds:
                 st.error("Please select at least one compound")
             else:
-                run_simulation(cell_lines, compounds, db_path)
+                # Pass the run_mode to the function
+                run_simulation(cell_lines, compounds, db_path, run_mode)
 
 
-def run_simulation(cell_lines, compounds, db_path):
+def run_simulation(cell_lines, compounds, db_path, run_mode):
     """Execute the Phase 0 simulation."""
 
     with st.status("Running Phase 0 simulation...", expanded=True) as status:
@@ -109,10 +113,14 @@ def run_simulation(cell_lines, compounds, db_path):
         db = CellThalamusDB(db_path=db_path)
         agent = CellThalamusAgent(phase=0, hardware=hardware, db=db)
 
-        st.write(f"Generating experimental design for {len(cell_lines)} cell lines and {len(compounds)} compounds...")
-
-        # Run campaign
-        design_id = agent.run_phase_0(cell_lines=cell_lines, compounds=compounds)
+        # Choose mode
+        if run_mode == "Demo Mode (~7 wells, 30 sec)":
+            st.write("Running DEMO MODE (ultra-fast)...")
+            design_id = agent.run_demo_mode()
+        else:
+            st.write(f"Generating experimental design for {len(cell_lines)} cell lines and {len(compounds)} compounds...")
+            # Run campaign
+            design_id = agent.run_phase_0(cell_lines=cell_lines, compounds=compounds)
 
         st.write(f"Campaign complete! Design ID: {design_id}")
 

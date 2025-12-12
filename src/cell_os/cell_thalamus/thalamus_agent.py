@@ -186,3 +186,110 @@ class CellThalamusAgent:
         test_compounds = ['tBHQ', 'tunicamycin', 'etoposide']
 
         return self.run_phase_0(cell_lines=test_cell_lines, compounds=test_compounds)
+
+    def run_demo_mode(self) -> str:
+        """
+        Run ultra-quick demo (1 cell line, 2 compounds, minimal replication).
+
+        Ultra-fast mode for dashboard testing:
+        - 1 cell line (A549)
+        - 2 compounds
+        - 2 doses (vehicle + high)
+        - 1 timepoint
+        - 1 plate, 1 day, 1 operator
+        - Total: ~10 wells (experimental + sentinels)
+        - Runtime: ~30 seconds
+        """
+        logger.info("Running DEMO MODE (ultra-fast)...")
+
+        # Generate minimal design
+        from cell_os.cell_thalamus.design_generator import WellAssignment
+
+        cell_line = 'A549'
+        compounds = ['tBHQ', 'tunicamycin']
+        doses = [0.0, 10.0]  # vehicle and high dose
+        timepoint = 12.0
+        plate = 1
+        day = 1
+        operator = 'Demo_Operator'
+
+        # Save minimal design
+        self.db.save_design(
+            design_id=self.design_id,
+            phase=self.phase,
+            cell_lines=[cell_line],
+            compounds=compounds,
+            doses=doses,
+            timepoints=[timepoint],
+            metadata={'mode': 'demo', 'wells': 'minimal'}
+        )
+
+        # Generate wells manually
+        wells = []
+        well_counter = 0
+
+        for compound in compounds:
+            for dose in doses:
+                row = chr(65 + (well_counter % 8))
+                col = (well_counter // 8) % 12 + 1
+                well_id = f"{row}{col:02d}"
+
+                wells.append(WellAssignment(
+                    well_id=well_id,
+                    cell_line=cell_line,
+                    compound=compound,
+                    dose_uM=dose,
+                    timepoint_h=timepoint,
+                    plate_id=f"Demo_Plate_{plate}",
+                    day=day,
+                    operator=operator,
+                    is_sentinel=False
+                ))
+                well_counter += 1
+
+        # Add 3 sentinels
+        wells.append(WellAssignment(
+            well_id="A5",
+            cell_line=cell_line,
+            compound='DMSO',
+            dose_uM=0.0,
+            timepoint_h=timepoint,
+            plate_id=f"Demo_Plate_{plate}",
+            day=day,
+            operator=operator,
+            is_sentinel=True
+        ))
+
+        wells.append(WellAssignment(
+            well_id="A6",
+            cell_line=cell_line,
+            compound='tBHQ',
+            dose_uM=10.0,
+            timepoint_h=timepoint,
+            plate_id=f"Demo_Plate_{plate}",
+            day=day,
+            operator=operator,
+            is_sentinel=True
+        ))
+
+        wells.append(WellAssignment(
+            well_id="A7",
+            cell_line=cell_line,
+            compound='tunicamycin',
+            dose_uM=2.0,
+            timepoint_h=timepoint,
+            plate_id=f"Demo_Plate_{plate}",
+            day=day,
+            operator=operator,
+            is_sentinel=True
+        ))
+
+        logger.info(f"Demo mode: {len(wells)} wells total")
+
+        # Execute wells
+        for well in tqdm(wells, desc="Demo wells"):
+            self._execute_well(well)
+
+        logger.info(f"\n✓ Demo complete! Design ID: {self.design_id}")
+
+        return self.design_id
