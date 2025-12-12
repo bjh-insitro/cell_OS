@@ -549,11 +549,206 @@ class BiologicalVirtualMachine(VirtualMachine):
         """Load raw YAML data to access nested parameters."""
         if params_file is None:
             params_file = "data/simulation_parameters.yaml"
-        
+
         yaml_path = Path(params_file)
         if not yaml_path.exists():
             logger.warning(f"YAML file not found: {params_file}")
             return
-        
+
         with open(yaml_path, 'r') as f:
             self.raw_yaml_data = yaml.safe_load(f)
+
+    def _load_cell_thalamus_params(self):
+        """Load Cell Thalamus parameters for morphology simulation."""
+        thalamus_params_file = Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_params.yaml"
+
+        if not thalamus_params_file.exists():
+            logger.warning(f"Cell Thalamus params not found: {thalamus_params_file}")
+            self.thalamus_params = None
+            return
+
+        with open(thalamus_params_file, 'r') as f:
+            self.thalamus_params = yaml.safe_load(f)
+
+        logger.info("Loaded Cell Thalamus parameters")
+
+    def cell_painting_assay(self, vessel_id: str, **kwargs) -> Dict[str, Any]:
+        """
+        Simulate Cell Painting morphology assay.
+
+        Returns 5-channel morphology features:
+        - ER (endoplasmic reticulum)
+        - Mito (mitochondria)
+        - Nucleus (nuclear morphology)
+        - Actin (cytoskeleton)
+        - RNA (translation sites)
+
+        Args:
+            vessel_id: Vessel identifier
+            **kwargs: Additional parameters (plate_id, day, operator for technical noise)
+
+        Returns:
+            Dict with channel values and metadata
+        """
+        # Lazy load thalamus params
+        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+            self._load_cell_thalamus_params()
+
+        if vessel_id not in self.vessel_states:
+            logger.warning(f"Vessel {vessel_id} not found")
+            return {"status": "error", "message": "Vessel not found"}
+
+        vessel = self.vessel_states[vessel_id]
+        cell_line = vessel.cell_line
+
+        # Get baseline morphology for this cell line
+        baseline = self.thalamus_params['baseline_morphology'].get(cell_line, {})
+        if not baseline:
+            logger.warning(f"No baseline morphology for {cell_line}, using A549")
+            baseline = self.thalamus_params['baseline_morphology']['A549']
+
+        # Start with baseline
+        morph = {
+            'er': baseline['er'],
+            'mito': baseline['mito'],
+            'nucleus': baseline['nucleus'],
+            'actin': baseline['actin'],
+            'rna': baseline['rna']
+        }
+
+        # Apply compound effects via stress axes
+        for compound_name, dose_uM in vessel.compounds.items():
+            if dose_uM == 0:
+                continue
+
+            # Look up compound params
+            compound_params = self.thalamus_params['compounds'].get(compound_name, {})
+            if not compound_params:
+                logger.warning(f"Unknown compound for morphology: {compound_name}")
+                continue
+
+            stress_axis = compound_params['stress_axis']
+            intensity = compound_params['intensity']
+            ec50 = compound_params['ec50_uM']
+            hill_slope = compound_params['hill_slope']
+
+            # Get stress axis channel effects
+            axis_effects = self.thalamus_params['stress_axes'][stress_axis]['channels']
+
+            # Calculate dose response (Hill equation)
+            # Effect ranges from 0 (no dose) to intensity (saturating dose)
+            dose_effect = intensity * (dose_uM ** hill_slope) / (ec50 ** hill_slope + dose_uM ** hill_slope)
+
+            # Apply to each channel
+            for channel, axis_strength in axis_effects.items():
+                # Channel response = baseline * (1 + dose_effect * axis_strength)
+                # Positive axis_strength increases signal, negative decreases
+                morph[channel] *= (1.0 + dose_effect * axis_strength)
+
+        # Apply viability effect (dead cells have reduced signal)
+        viability_factor = 0.3 + 0.7 * vessel.viability  # Dead cells retain 30% signal
+        for channel in morph:
+            morph[channel] *= viability_factor
+
+        # Add biological noise
+        bio_cv = self.thalamus_params['biological_noise']['cell_line_cv']
+        for channel in morph:
+            morph[channel] *= np.random.normal(1.0, bio_cv)
+
+        # Add technical noise (plate, day, operator effects)
+        tech_noise = self.thalamus_params['technical_noise']
+        plate_cv = tech_noise['plate_cv']
+        day_cv = tech_noise['day_cv']
+        operator_cv = tech_noise['operator_cv']
+        well_cv = tech_noise['well_cv']
+
+        # Apply technical factors
+        plate_factor = np.random.normal(1.0, plate_cv)
+        day_factor = np.random.normal(1.0, day_cv)
+        operator_factor = np.random.normal(1.0, operator_cv)
+        well_factor = np.random.normal(1.0, well_cv)
+
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor
+
+        for channel in morph:
+            morph[channel] *= total_tech_factor
+            morph[channel] = max(0.0, morph[channel])  # No negative signals
+
+        self._simulate_delay(2.0)  # Imaging takes time
+
+        return {
+            "status": "success",
+            "action": "cell_painting",
+            "vessel_id": vessel_id,
+            "cell_line": cell_line,
+            "morphology": morph,
+            "viability": vessel.viability,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def atp_viability_assay(self, vessel_id: str, **kwargs) -> Dict[str, Any]:
+        """
+        Simulate ATP-based viability assay (orthogonal scalar readout).
+
+        ATP luminescence provides a scalar anchor that's independent of
+        morphology but correlated with cell viability.
+
+        Args:
+            vessel_id: Vessel identifier
+            **kwargs: Additional parameters (plate_id, day, operator for technical noise)
+
+        Returns:
+            Dict with ATP signal and metadata
+        """
+        # Lazy load thalamus params
+        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+            self._load_cell_thalamus_params()
+
+        if vessel_id not in self.vessel_states:
+            logger.warning(f"Vessel {vessel_id} not found")
+            return {"status": "error", "message": "Vessel not found"}
+
+        vessel = self.vessel_states[vessel_id]
+        cell_line = vessel.cell_line
+
+        # Get baseline ATP for this cell line
+        baseline_atp = self.thalamus_params['baseline_atp'].get(cell_line, 50000.0)
+
+        # ATP scales with cell count and viability
+        cell_count_factor = vessel.cell_count / 1e6  # Normalize to 1M cells
+        viability_factor = vessel.viability
+
+        atp_signal = baseline_atp * cell_count_factor * viability_factor
+
+        # Add biological noise
+        bio_cv = self.thalamus_params['biological_noise']['cell_line_cv']
+        atp_signal *= np.random.normal(1.0, bio_cv)
+
+        # Add technical noise
+        tech_noise = self.thalamus_params['technical_noise']
+        plate_cv = tech_noise['plate_cv']
+        day_cv = tech_noise['day_cv']
+        operator_cv = tech_noise['operator_cv']
+        well_cv = tech_noise['well_cv']
+
+        plate_factor = np.random.normal(1.0, plate_cv)
+        day_factor = np.random.normal(1.0, day_cv)
+        operator_factor = np.random.normal(1.0, operator_cv)
+        well_factor = np.random.normal(1.0, well_cv)
+
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor
+        atp_signal *= total_tech_factor
+        atp_signal = max(0.0, atp_signal)
+
+        self._simulate_delay(0.5)  # ATP assay is quick
+
+        return {
+            "status": "success",
+            "action": "atp_viability",
+            "vessel_id": vessel_id,
+            "cell_line": cell_line,
+            "atp_signal": atp_signal,
+            "viability": vessel.viability,
+            "cell_count": vessel.cell_count,
+            "timestamp": datetime.now().isoformat()
+        }

@@ -1,0 +1,204 @@
+# Cell Thalamus v1 Phase 0 Parameters
+# Defines stress axes, compound mappings, and morphology channel responses
+
+# Stress axes and their effects on Cell Painting channels
+stress_axes:
+  oxidative:
+    description: "Oxidative stress (ROS production)"
+    channels:
+      er: 0.3        # ER stress secondary to oxidative damage
+      mito: 1.5      # Strong mitochondrial response
+      nucleus: 0.2   # Nuclear condensation
+      actin: -0.4    # Cytoskeleton disruption
+      rna: 0.1       # Translation stress
+
+  er_stress:
+    description: "Endoplasmic reticulum stress (protein folding)"
+    channels:
+      er: 2.0        # Primary ER response
+      mito: 0.5      # Secondary mitochondrial stress
+      nucleus: 0.3   # Nuclear stress response
+      actin: 0.0     # Minimal cytoskeleton change
+      rna: 0.8       # UPR activation
+
+  mitochondrial:
+    description: "Mitochondrial dysfunction"
+    channels:
+      er: 0.4        # ER-mito crosstalk
+      mito: 2.5      # Primary mitochondrial response
+      nucleus: 0.5   # Metabolic stress signaling
+      actin: -0.3    # Energy-dependent structure loss
+      rna: 0.2       # Metabolic adaptation
+
+  dna_damage:
+    description: "DNA damage and cell cycle arrest"
+    channels:
+      er: 0.1        # Minimal ER stress
+      mito: 0.3      # Apoptotic priming
+      nucleus: 1.8   # Primary nuclear response
+      actin: -0.2    # Cell cycle arrest morphology
+      rna: 0.6       # DNA damage response genes
+
+  proteasome:
+    description: "Proteasome inhibition (protein aggregation)"
+    channels:
+      er: 1.2        # Protein accumulation in ER
+      mito: 0.4      # Secondary stress
+      nucleus: 0.7   # Nuclear protein aggregates
+      actin: -0.5    # Aggresome formation
+      rna: 1.0       # Stress response transcription
+
+  microtubule:
+    description: "Microtubule disruption"
+    channels:
+      er: 0.2        # Minimal ER stress
+      mito: 0.3      # Mitotic arrest
+      nucleus: 1.0   # Mitotic catastrophe
+      actin: 0.8     # Cytoskeletal reorganization
+      rna: 0.1       # Minimal transcriptional change
+
+# Compound panel - maps to stress axes
+compounds:
+  tBHQ:
+    name: "tert-Butylhydroquinone"
+    stress_axis: "oxidative"
+    intensity: 1.0
+    ec50_uM: 50.0
+    hill_slope: 1.5
+
+  hydrogen_peroxide:
+    name: "Hydrogen Peroxide"
+    stress_axis: "oxidative"
+    intensity: 1.2
+    ec50_uM: 100.0
+    hill_slope: 2.0
+
+  tunicamycin:
+    name: "Tunicamycin"
+    stress_axis: "er_stress"
+    intensity: 1.0
+    ec50_uM: 1.0
+    hill_slope: 1.8
+
+  thapsigargin:
+    name: "Thapsigargin"
+    stress_axis: "er_stress"
+    intensity: 1.1
+    ec50_uM: 0.5
+    hill_slope: 2.2
+
+  etoposide:
+    name: "Etoposide"
+    stress_axis: "dna_damage"
+    intensity: 1.0
+    ec50_uM: 10.0
+    hill_slope: 1.6
+
+  cccp:
+    name: "CCCP"
+    stress_axis: "mitochondrial"
+    intensity: 1.0
+    ec50_uM: 5.0
+    hill_slope: 2.0
+
+  oligomycin_a:
+    name: "Oligomycin A"
+    stress_axis: "mitochondrial"
+    intensity: 0.9
+    ec50_uM: 1.0
+    hill_slope: 1.7
+
+  two_deoxy_d_glucose:
+    name: "2-Deoxy-D-Glucose"
+    stress_axis: "mitochondrial"
+    intensity: 0.7
+    ec50_uM: 1000.0
+    hill_slope: 1.2
+
+  mg132:
+    name: "MG132"
+    stress_axis: "proteasome"
+    intensity: 1.0
+    ec50_uM: 1.0
+    hill_slope: 1.9
+
+  nocodazole:
+    name: "Nocodazole"
+    stress_axis: "microtubule"
+    intensity: 1.0
+    ec50_uM: 0.5
+    hill_slope: 2.1
+
+# Baseline morphology per cell line (arbitrary units)
+baseline_morphology:
+  A549:
+    er: 100.0
+    mito: 150.0
+    nucleus: 200.0
+    actin: 120.0
+    rna: 180.0
+
+  HepG2:
+    er: 130.0      # Hepatocytes have high ER
+    mito: 180.0    # High metabolic activity
+    nucleus: 190.0
+    actin: 110.0
+    rna: 200.0     # High protein synthesis
+
+  U2OS:
+    er: 95.0
+    mito: 140.0
+    nucleus: 210.0  # Large nuclei
+    actin: 130.0
+    rna: 170.0
+
+# ATP viability baseline (luminescence units)
+baseline_atp:
+  A549: 50000.0
+  HepG2: 60000.0  # Higher metabolic activity
+  U2OS: 45000.0
+
+# Technical variance parameters (coefficient of variation)
+technical_noise:
+  plate_cv: 0.08      # 8% plate-to-plate variation
+  day_cv: 0.10        # 10% day-to-day variation
+  operator_cv: 0.05   # 5% operator-to-operator variation
+  well_cv: 0.12       # 12% well-to-well (measurement noise)
+
+# Biological variance
+biological_noise:
+  cell_line_cv: 0.15  # 15% biological variation
+  dose_response_cv: 0.10  # 10% dose-response variability
+
+# Sentinel definitions (fixed control wells on every plate)
+sentinels:
+  dmso:
+    compound: "DMSO"
+    dose_uM: 0.0
+    well_positions: ["A1", "A24", "P1", "P24"]  # Corners of 384-well plate
+
+  mild_stress:
+    compound: "tBHQ"
+    dose_uM: 10.0
+    well_positions: ["A12", "P12"]  # Middle edges
+
+  strong_stress:
+    compound: "tunicamycin"
+    dose_uM: 2.0
+    well_positions: ["H12", "I12"]  # Middle of plate
+
+# Dose grid for Phase 0
+dose_grid:
+  vehicle: 0.0
+  low: 0.1      # Fraction of EC50
+  mid: 1.0      # At EC50
+  high: 10.0    # 10x EC50
+
+# Timepoints (hours post-treatment)
+timepoints:
+  early: 12
+  late: 48
+
+# Plate layout
+plate_format: 384  # 384-well plates
+wells_per_condition: 3  # Technical replicates per plate
