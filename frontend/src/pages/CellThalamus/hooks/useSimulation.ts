@@ -13,6 +13,13 @@ interface UseSimulationResult {
   loading: boolean;
   error: string | null;
   isPolling: boolean;
+  progress: {
+    completed: number;
+    total: number;
+    percentage: number;
+    last_well: string | null;
+    completed_wells?: string[];
+  } | null;
 }
 
 /**
@@ -24,6 +31,13 @@ export function useSimulation(): UseSimulationResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [progress, setProgress] = useState<{
+    completed: number;
+    total: number;
+    percentage: number;
+    last_well: string | null;
+    completed_wells?: string[];
+  } | null>(null);
 
   const runSimulation = async (request: RunSimulationRequest) => {
     try {
@@ -31,20 +45,46 @@ export function useSimulation(): UseSimulationResult {
       setError(null);
       setDesign(null);
       setStatus(null);
+      setProgress(null);
 
       // Start the simulation
       const newDesign = await cellThalamusService.runSimulation(request);
       setDesign(newDesign);
 
-      // Start polling for completion
+      // Start polling for completion with progress updates
       setIsPolling(true);
-      const finalStatus = await cellThalamusService.pollSimulationStatus(
-        newDesign.design_id,
-        2000, // Poll every 2 seconds
-        300000 // Timeout after 5 minutes
-      );
 
-      setStatus(finalStatus);
+      // Custom polling with progress tracking
+      const pollWithProgress = async () => {
+        const startTime = Date.now();
+        const timeout = 10800000; // 3 hours (safe buffer for Full mode)
+
+        while (true) {
+          const currentStatus = await cellThalamusService.getSimulationStatus(newDesign.design_id);
+
+          // Update progress if available
+          if (currentStatus.progress) {
+            setProgress(currentStatus.progress);
+          }
+
+          // Update status
+          setStatus(currentStatus);
+
+          if (currentStatus.status === 'completed' || currentStatus.status === 'failed') {
+            return currentStatus;
+          }
+
+          if (Date.now() - startTime > timeout) {
+            throw new Error('Polling timeout exceeded (2 hours)');
+          }
+
+          // Poll every 500ms for smooth progress updates
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      };
+
+      const finalStatus = await pollWithProgress();
+
       setIsPolling(false);
 
       if (finalStatus.status === 'failed') {
@@ -65,5 +105,6 @@ export function useSimulation(): UseSimulationResult {
     loading,
     error,
     isPolling,
+    progress,
   };
 }

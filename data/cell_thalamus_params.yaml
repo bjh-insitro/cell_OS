@@ -62,9 +62,16 @@ compounds:
   tBHQ:
     name: "tert-Butylhydroquinone"
     stress_axis: "oxidative"
-    intensity: 1.0
-    ec50_uM: 50.0
-    hill_slope: 1.5
+    intensity: 0.8  # Moderate morphology effect
+    ec50_uM: 30.0   # EC50 at 30 µM gives gentler viability curve
+    hill_slope: 1.2  # Gentle curve so middle doses show clear effects
+
+  H2O2:
+    name: "Hydrogen Peroxide"
+    stress_axis: "oxidative"
+    intensity: 1.2
+    ec50_uM: 100.0
+    hill_slope: 2.0
 
   hydrogen_peroxide:
     name: "Hydrogen Peroxide"
@@ -101,7 +108,21 @@ compounds:
     ec50_uM: 5.0
     hill_slope: 2.0
 
+  CCCP:
+    name: "CCCP"
+    stress_axis: "mitochondrial"
+    intensity: 1.0
+    ec50_uM: 5.0
+    hill_slope: 2.0
+
   oligomycin_a:
+    name: "Oligomycin A"
+    stress_axis: "mitochondrial"
+    intensity: 0.9
+    ec50_uM: 1.0
+    hill_slope: 1.7
+
+  oligomycin:
     name: "Oligomycin A"
     stress_axis: "mitochondrial"
     intensity: 0.9
@@ -122,12 +143,54 @@ compounds:
     ec50_uM: 1.0
     hill_slope: 1.9
 
+  MG132:
+    name: "MG132"
+    stress_axis: "proteasome"
+    intensity: 1.0
+    ec50_uM: 1.0
+    hill_slope: 1.9
+
   nocodazole:
     name: "Nocodazole"
     stress_axis: "microtubule"
     intensity: 1.0
     ec50_uM: 0.5
     hill_slope: 2.1
+
+  paclitaxel:
+    name: "Paclitaxel"
+    stress_axis: "microtubule"
+    intensity: 1.1
+    ec50_uM: 0.01
+    hill_slope: 2.0
+
+  cisplatin:
+    name: "Cisplatin"
+    stress_axis: "dna_damage"
+    intensity: 1.2
+    ec50_uM: 5.0
+    hill_slope: 1.8
+
+  doxorubicin:
+    name: "Doxorubicin"
+    stress_axis: "dna_damage"
+    intensity: 1.3
+    ec50_uM: 0.5
+    hill_slope: 2.0
+
+  staurosporine:
+    name: "Staurosporine"
+    stress_axis: "dna_damage"
+    intensity: 1.5
+    ec50_uM: 0.1
+    hill_slope: 2.5
+
+  tbhp:
+    name: "tert-Butyl hydroperoxide"
+    stress_axis: "oxidative"
+    intensity: 1.0
+    ec50_uM: 80.0
+    hill_slope: 2.0
 
 # Baseline morphology per cell line (arbitrary units)
 baseline_morphology:

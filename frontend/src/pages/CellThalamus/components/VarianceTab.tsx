@@ -15,9 +15,34 @@ interface VarianceTabProps {
 
 const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignChange }) => {
   const { data: designs } = useDesigns();
-  const { data: analysis, loading, error } = useVarianceAnalysis(selectedDesignId);
+  const { data: analysis, loading, error, refetch: refetchAnalysis } = useVarianceAnalysis(selectedDesignId);
+  const [isLiveMode, setIsLiveMode] = React.useState<boolean>(false);
 
+  const allDesigns = React.useMemo(() => designs || [], [designs]);
   const completedDesigns = designs?.filter((d) => d.status === 'completed') || [];
+
+  // Check if selected design is currently running
+  const isDesignRunning = React.useMemo(() => {
+    if (!selectedDesignId || !designs) return false;
+    const design = designs.find(d => d.design_id === selectedDesignId);
+    return design?.status === 'running';
+  }, [selectedDesignId, designs]);
+
+  // Live polling: refetch analysis every 5 seconds when design is running
+  React.useEffect(() => {
+    if (isDesignRunning && selectedDesignId) {
+      setIsLiveMode(true);
+      refetchAnalysis();
+
+      const intervalId = setInterval(() => {
+        refetchAnalysis();
+      }, 5000);
+
+      return () => clearInterval(intervalId);
+    } else {
+      setIsLiveMode(false);
+    }
+  }, [isDesignRunning, selectedDesignId, refetchAnalysis]);
 
   // Prepare chart data
   const chartData = analysis?.components.map((comp) => ({
@@ -26,14 +51,15 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
     fraction: comp.fraction * 100,
   })) || [];
 
-  // Color code: biological = green, technical = orange
+  // Color code: biological = green, technical = orange, residual = gray
   const getColor = (source: string) => {
     const biologicalSources = ['cell_line', 'compound', 'dose', 'timepoint'];
     const technicalSources = ['plate', 'day', 'operator'];
 
     if (biologicalSources.includes(source)) return '#10b981'; // green
     if (technicalSources.includes(source)) return '#f59e0b'; // orange
-    return '#64748b'; // gray
+    if (source === 'residual') return '#64748b'; // gray (unexplained)
+    return '#64748b'; // gray default
   };
 
   return (
@@ -45,6 +71,26 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
           Mixed model decomposition: biological signal vs technical noise
         </p>
       </div>
+
+      {/* Live Mode Indicator */}
+      {isLiveMode && analysis && (
+        <div className="bg-gradient-to-r from-red-900/30 to-orange-900/30 border-2 border-red-500/50 rounded-xl p-4 animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-ping absolute"></div>
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-white">🔴 LIVE DATA</div>
+                <div className="text-sm text-red-300">
+                  Variance analysis updating every 5 seconds as data arrives
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
@@ -58,12 +104,16 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
               onChange={(e) => onDesignChange(e.target.value || null)}
               className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
-              <option value="">-- Select a completed design --</option>
-              {completedDesigns.map((design) => (
-                <option key={design.design_id} value={design.design_id}>
-                  {design.design_id.slice(0, 8)}... ({design.cell_lines.join(', ')})
-                </option>
-              ))}
+              <option value="">-- Select design --</option>
+              {allDesigns.map((design, index) => {
+                const date = design.created_at ? new Date(design.created_at).toLocaleString() : '';
+                const statusLabel = design.status === 'running' ? ' 🔴 LIVE' : design.status === 'completed' ? ' ✓' : '';
+                return (
+                  <option key={design.design_id} value={design.design_id}>
+                    Run #{index + 1} - {date} ({design.design_id.slice(0, 8)}){statusLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -178,8 +228,19 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
           <div className="text-red-300">Error: {error}</div>
         </div>
       ) : (
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Variance Component Breakdown</h3>
+        <div className={`bg-slate-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all ${
+          isLiveMode
+            ? 'border-red-500/50 shadow-lg shadow-red-500/20 animate-pulse'
+            : 'border-slate-700'
+        }`}>
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            Variance Component Breakdown
+            {isLiveMode && (
+              <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full border border-red-500/50 animate-pulse">
+                LIVE
+              </span>
+            )}
+          </h3>
 
           <ResponsiveContainer width="100%" height={400}>
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
@@ -231,6 +292,10 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
               <div className="w-4 h-4 bg-orange-500 rounded"></div>
               <span className="text-slate-300">Technical Sources</span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-slate-500 rounded"></div>
+              <span className="text-slate-300">Residual (Unexplained)</span>
+            </div>
           </div>
 
           {/* Help Text */}
@@ -239,7 +304,9 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
             <strong className="text-green-400"> Biological sources</strong> (cell_line, compound, dose, timepoint)
             represent real biology - this is signal we want to detect.
             <strong className="text-orange-400"> Technical sources</strong> (plate, day, operator) represent
-            measurement noise - this should be minimized. Goal: {'>'}70% biological, {'<'}30% technical.
+            measurement noise - this should be minimized.
+            <strong className="text-slate-300"> Residual</strong> is unexplained variance not captured by measured factors.
+            Goal: {'>'}70% biological, {'<'}30% technical. All components sum to 100%.
           </div>
 
           {/* Detailed Table */}
@@ -275,12 +342,16 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
                               ${
                                 ['cell_line', 'compound', 'dose', 'timepoint'].includes(comp.source)
                                   ? 'bg-green-500/20 text-green-400'
+                                  : comp.source === 'residual'
+                                  ? 'bg-slate-500/20 text-slate-400'
                                   : 'bg-orange-500/20 text-orange-400'
                               }
                             `}
                           >
                             {['cell_line', 'compound', 'dose', 'timepoint'].includes(comp.source)
                               ? 'Biological'
+                              : comp.source === 'residual'
+                              ? 'Residual'
                               : 'Technical'}
                           </span>
                         </td>

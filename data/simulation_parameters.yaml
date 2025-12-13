@@ -119,7 +119,90 @@ compound_sensitivity:
     Jurkat: 0.40
     U2OS: 0.30
     CHO: 0.70
-    hill_slope: 1.0
+    A549: 1.0
+    HepG2: 1.0
+    iPSC: 0.5
+    hill_slope: 1.8
+
+  thapsigargin:
+    description: "ER stress (SERCA pump inhibitor)"
+    HEK293T: 0.5
+    HeLa: 0.4
+    A549: 0.5
+    HepG2: 0.6
+    U2OS: 0.5
+    iPSC: 0.3
+    hill_slope: 2.2
+
+  etoposide:
+    description: "DNA damage (topoisomerase II inhibitor)"
+    HEK293T: 10.0
+    HeLa: 8.0
+    A549: 10.0
+    HepG2: 12.0
+    U2OS: 10.0
+    iPSC: 5.0
+    hill_slope: 1.6
+
+  cccp:
+    description: "Mitochondrial uncoupler"
+    HEK293T: 5.0
+    HeLa: 4.0
+    A549: 5.0
+    HepG2: 6.0
+    U2OS: 5.0
+    iPSC: 3.0
+    hill_slope: 2.0
+
+  oligomycin_a:
+    description: "ATP synthase inhibitor"
+    HEK293T: 1.0
+    HeLa: 0.8
+    A549: 1.0
+    HepG2: 1.2
+    U2OS: 1.0
+    iPSC: 0.5
+    hill_slope: 1.7
+
+  mg132:
+    description: "Proteasome inhibitor"
+    HEK293T: 1.0
+    HeLa: 0.8
+    A549: 1.0
+    HepG2: 1.2
+    U2OS: 1.0
+    iPSC: 0.5
+    hill_slope: 1.9
+
+  nocodazole:
+    description: "Microtubule depolymerizer"
+    HEK293T: 0.5
+    HeLa: 0.4
+    A549: 0.5
+    HepG2: 0.6
+    U2OS: 0.5
+    iPSC: 0.3
+    hill_slope: 2.1
+
+  two_deoxy_d_glucose:
+    description: "Glycolysis inhibitor"
+    HEK293T: 1000.0
+    HeLa: 800.0
+    A549: 1000.0
+    HepG2: 1200.0
+    U2OS: 1000.0
+    iPSC: 500.0
+    hill_slope: 1.2
+
+  hydrogen_peroxide:
+    description: "Oxidative stress (H2O2 alternative name)"
+    HEK293T: 150.0
+    HeLa: 120.0
+    A549: 100.0
+    HepG2: 150.0
+    U2OS: 250.0
+    iPSC: 60.0
+    hill_slope: 2.0
     
   doxorubicin:
     HEK293T: 0.25
@@ -152,6 +235,15 @@ compound_sensitivity:
     U2OS: 250.0
     CHO: 180.0
     hill_slope: 1.5
+
+  tBHQ:
+    description: "tert-Butylhydroquinone (oxidative stress inducer for demo)"
+    # Viability IC50 (tuned for realistic dose-response curve)
+    # Target: 0.1µM→100%, 1µM→90%, 10µM→70%, 100µM→20%
+    A549: 35.0     # IC50 = 35 µM with shallow slope gives gentler curve
+    HepG2: 35.0
+    U2OS: 35.0
+    hill_slope: 0.8  # Shallow slope to spread out the response
 
   tbhp:
     description: "tert-Butyl hydroperoxide (oxidative stress inducer)"
@@ -219,7 +311,7 @@ defaults:
   cell_count_cv: 0.10
   viability_cv: 0.02
   biological_cv: 0.05
-  default_ic50: 1.0
-  default_hill_slope: 1.0
+  default_ic50: 40.0  # IC50 for viability (use higher value for gentler dose-response)
+  default_hill_slope: 1.5  # Hill slope for viability curve
   lag_duration_h: 12.0
   edge_penalty: 0.15

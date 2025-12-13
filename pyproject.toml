@@ -22,6 +22,8 @@ dependencies = [
     "networkx",
     "ortools",
     "tqdm",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]

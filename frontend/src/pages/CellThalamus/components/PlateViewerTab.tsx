@@ -14,14 +14,45 @@ interface PlateViewerTabProps {
 
 const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDesignChange }) => {
   const { data: designs } = useDesigns();
-  const { data: results } = useResults(selectedDesignId);
+  const { data: results, refetch: refetchResults } = useResults(selectedDesignId);
 
   const [selectedPlate, setSelectedPlate] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<string>('atp_signal');
+  const [isLiveMode, setIsLiveMode] = useState<boolean>(false);
 
-  const { data: plateData, loading, error } = usePlateData(selectedDesignId, selectedPlate);
+  const { data: plateData, loading, error, refetch: refetchPlateData } = usePlateData(selectedDesignId, selectedPlate);
 
+  const allDesigns = useMemo(() => designs || [], [designs]);
   const completedDesigns = designs?.filter((d) => d.status === 'completed') || [];
+
+  // Check if selected design is currently running
+  const isDesignRunning = useMemo(() => {
+    if (!selectedDesignId || !designs) return false;
+    const design = designs.find(d => d.design_id === selectedDesignId);
+    return design?.status === 'running';
+  }, [selectedDesignId, designs]);
+
+  // Live polling: refetch data every 5 seconds when design is running
+  React.useEffect(() => {
+    if (isDesignRunning && selectedDesignId) {
+      setIsLiveMode(true);
+      refetchResults();
+      if (selectedPlate) {
+        refetchPlateData();
+      }
+
+      const intervalId = setInterval(() => {
+        refetchResults();
+        if (selectedPlate) {
+          refetchPlateData();
+        }
+      }, 5000);
+
+      return () => clearInterval(intervalId);
+    } else {
+      setIsLiveMode(false);
+    }
+  }, [isDesignRunning, selectedDesignId, selectedPlate, refetchResults, refetchPlateData]);
 
   // Extract unique plate IDs
   const plateIds = Array.from(new Set(results?.map((r) => r.plate_id) || [])).sort();
@@ -125,6 +156,30 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
         </p>
       </div>
 
+      {/* Live Mode Indicator */}
+      {isLiveMode && results && results.length > 0 && (
+        <div className="bg-gradient-to-r from-red-900/30 to-orange-900/30 border-2 border-red-500/50 rounded-xl p-4 animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-ping absolute"></div>
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-white">🔴 LIVE DATA</div>
+                <div className="text-sm text-red-300">
+                  Plate data updating every 5 seconds as wells complete
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-red-400">{results.length}</div>
+              <div className="text-xs text-red-300 uppercase tracking-wider">Wells Completed</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -142,11 +197,15 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
               className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
               <option value="">-- Select design --</option>
-              {completedDesigns.map((design) => (
-                <option key={design.design_id} value={design.design_id}>
-                  {design.design_id.slice(0, 8)}...
-                </option>
-              ))}
+              {allDesigns.map((design, index) => {
+                const date = design.created_at ? new Date(design.created_at).toLocaleString() : '';
+                const statusLabel = design.status === 'running' ? ' 🔴 LIVE' : design.status === 'completed' ? ' ✓' : '';
+                return (
+                  <option key={design.design_id} value={design.design_id}>
+                    Run #{index + 1} - {date} ({design.design_id.slice(0, 8)}){statusLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -251,11 +310,20 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
           <div className="text-red-300">Error: {error}</div>
         </div>
       ) : (
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+        <div className={`bg-slate-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all ${
+          isLiveMode
+            ? 'border-red-500/50 shadow-lg shadow-red-500/20 animate-pulse'
+            : 'border-slate-700'
+        }`}>
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                 {selectedPlate} - {metrics.find((m) => m.value === selectedMetric)?.label}
+                {isLiveMode && (
+                  <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full border border-red-500/50 animate-pulse">
+                    LIVE
+                  </span>
+                )}
               </h3>
               <p className="text-sm text-slate-400 mt-1">
                 96-well plate (8 rows × 12 columns)

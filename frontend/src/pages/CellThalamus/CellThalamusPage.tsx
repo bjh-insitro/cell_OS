@@ -23,8 +23,8 @@ const CellThalamusPage: React.FC = () => {
 
   const tabs = [
     { id: 'run', label: 'Run Simulation', icon: '▶️' },
-    { id: 'morphology', label: 'Morphology Manifold', icon: '🎨' },
     { id: 'dose', label: 'Dose-Response', icon: '📈' },
+    { id: 'morphology', label: 'Morphology Manifold', icon: '🎨' },
     { id: 'variance', label: 'Variance Analysis', icon: '📊' },
     { id: 'sentinel', label: 'Sentinel Monitor', icon: '🎯' },
     { id: 'plate', label: 'Plate Viewer', icon: '🗺️' },
@@ -86,7 +86,7 @@ const CellThalamusPage: React.FC = () => {
           <RunSimulationTab
             onSimulationComplete={(designId) => {
               setSelectedDesignId(designId);
-              setActiveTab('morphology');
+              setActiveTab('dose');
             }}
           />
         )}

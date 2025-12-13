@@ -15,12 +15,37 @@ interface SentinelTabProps {
 
 const SentinelTab: React.FC<SentinelTabProps> = ({ selectedDesignId, onDesignChange }) => {
   const { data: designs } = useDesigns();
-  const { data: sentinelData, loading, error } = useSentinelData(selectedDesignId);
+  const { data: sentinelData, loading, error, refetch: refetchSentinels } = useSentinelData(selectedDesignId);
 
   const [selectedSentinel, setSelectedSentinel] = useState<number>(0);
   const [selectedMetric, setSelectedMetric] = useState<string>('atp_signal');
+  const [isLiveMode, setIsLiveMode] = React.useState<boolean>(false);
 
+  const allDesigns = React.useMemo(() => designs || [], [designs]);
   const completedDesigns = designs?.filter((d) => d.status === 'completed') || [];
+
+  // Check if selected design is currently running
+  const isDesignRunning = React.useMemo(() => {
+    if (!selectedDesignId || !designs) return false;
+    const design = designs.find(d => d.design_id === selectedDesignId);
+    return design?.status === 'running';
+  }, [selectedDesignId, designs]);
+
+  // Live polling
+  React.useEffect(() => {
+    if (isDesignRunning && selectedDesignId) {
+      setIsLiveMode(true);
+      refetchSentinels();
+
+      const intervalId = setInterval(() => {
+        refetchSentinels();
+      }, 5000);
+
+      return () => clearInterval(intervalId);
+    } else {
+      setIsLiveMode(false);
+    }
+  }, [isDesignRunning, selectedDesignId, refetchSentinels]);
 
   const metrics = [
     { value: 'atp_signal', label: 'ATP Viability' },
@@ -55,6 +80,26 @@ const SentinelTab: React.FC<SentinelTabProps> = ({ selectedDesignId, onDesignCha
         </p>
       </div>
 
+      {/* Live Mode Indicator */}
+      {isLiveMode && sentinelData && sentinelData.length > 0 && (
+        <div className="bg-gradient-to-r from-red-900/30 to-orange-900/30 border-2 border-red-500/50 rounded-xl p-4 animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-ping absolute"></div>
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-white">🔴 LIVE DATA</div>
+                <div className="text-sm text-red-300">
+                  Sentinel data updating every 5 seconds as wells complete
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -72,11 +117,15 @@ const SentinelTab: React.FC<SentinelTabProps> = ({ selectedDesignId, onDesignCha
               className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
               <option value="">-- Select design --</option>
-              {completedDesigns.map((design) => (
-                <option key={design.design_id} value={design.design_id}>
-                  {design.design_id.slice(0, 8)}...
-                </option>
-              ))}
+              {allDesigns.map((design, index) => {
+                const date = design.created_at ? new Date(design.created_at).toLocaleString() : '';
+                const statusLabel = design.status === 'running' ? ' 🔴 LIVE' : design.status === 'completed' ? ' ✓' : '';
+                return (
+                  <option key={design.design_id} value={design.design_id}>
+                    Run #{index + 1} - {date} ({design.design_id.slice(0, 8)}){statusLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -185,14 +234,25 @@ const SentinelTab: React.FC<SentinelTabProps> = ({ selectedDesignId, onDesignCha
           </div>
         </div>
       ) : (
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-white">
-              {currentSentinel?.sentinel_type} - {metrics.find((m) => m.value === selectedMetric)?.label}
-            </h3>
-            <p className="text-sm text-slate-400 mt-1">
-              Control limits: mean ± 3σ (99.7% confidence interval)
-            </p>
+        <div className={`bg-slate-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all ${
+          isLiveMode
+            ? 'border-red-500/50 shadow-lg shadow-red-500/20 animate-pulse'
+            : 'border-slate-700'
+        }`}>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                {currentSentinel?.sentinel_type} - {metrics.find((m) => m.value === selectedMetric)?.label}
+                {isLiveMode && (
+                  <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full border border-red-500/50 animate-pulse">
+                    LIVE
+                  </span>
+                )}
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">
+                Control limits: mean ± 3σ (99.7% confidence interval)
+              </p>
+            </div>
           </div>
 
           <ResponsiveContainer width="100%" height={400}>

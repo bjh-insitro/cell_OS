@@ -8,17 +8,18 @@ import React, { useState, useEffect } from 'react';
 import { useSimulation } from '../hooks/useSimulation';
 import { useDesigns } from '../hooks/useCellThalamusData';
 import PlateMapPreview from './PlateMapPreview';
+import SimulationProgress from './SimulationProgress';
 
 interface RunSimulationTabProps {
   onSimulationComplete: (designId: string) => void;
 }
 
 const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplete }) => {
-  const [mode, setMode] = useState<'demo' | 'quick' | 'full' | 'custom'>('demo');
+  const [mode, setMode] = useState<'demo' | 'benchmark' | 'full'>('demo');
   const [cellLines, setCellLines] = useState<string[]>(['A549']);
   const [compounds, setCompounds] = useState<string[]>([]);
 
-  const { runSimulation, design, status, loading, error, isPolling } = useSimulation();
+  const { runSimulation, design, status, loading, error, isPolling, progress } = useSimulation();
   const { data: designs, loading: loadingDesigns, refetch: refetchDesigns } = useDesigns();
 
   const availableCellLines = ['A549', 'HepG2', 'U2OS'];
@@ -35,10 +36,15 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
     'paclitaxel',
   ];
 
-  // Auto-select all compounds when switching to full mode
+  // Auto-select all compounds and both cell lines when switching to full mode
   useEffect(() => {
-    if (mode === 'full' && compounds.length === 0) {
-      setCompounds(availableCompounds);
+    if (mode === 'full') {
+      if (compounds.length === 0) {
+        setCompounds(availableCompounds);
+      }
+      if (cellLines.length < 2) {
+        setCellLines(['A549', 'HepG2']);
+      }
     }
   }, [mode]);
 
@@ -48,38 +54,69 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
       compounds: compounds.length > 0 ? compounds : undefined,
       mode,
     });
+  };
 
-    if (status?.status === 'completed' && design) {
+  // Watch for completion and auto-navigate
+  React.useEffect(() => {
+    if (status?.status === 'completed' && design && !isPolling) {
       refetchDesigns();
       onSimulationComplete(design.design_id);
     }
-  };
+  }, [status, design, isPolling, refetchDesigns, onSimulationComplete]);
 
   const getModeDescription = (m: string) => {
     switch (m) {
       case 'demo':
-        return '7 wells, ~30 seconds - Fast test for UI exploration';
-      case 'quick':
-        return '3 compounds, ~20 minutes - Quick validation';
+        return '8 wells, ~30 seconds - tBHQ dose-response with realistic curve (0.1→100%, 1→90%, 10→70%, 100→20%)';
+      case 'benchmark':
+        return '96 wells, ~10 seconds - Full 96-well plate (2 cell lines, 10 compounds, 4 doses, 16 DMSO controls)';
       case 'full':
-        return '10 compounds, full panel - Complete Phase 0 campaign';
-      case 'custom':
-        return 'User-selected compounds - Flexible custom design';
+        return '10 compounds, 2 cell lines - Complete Phase 0 campaign (576 total wells)';
       default:
         return '';
     }
   };
 
-  const getEstimatedWells = () => {
-    if (mode === 'demo') return 7;
-    if (mode === 'quick') return 480;
-    if (mode === 'custom') {
-      const numCompounds = compounds.length || 0;
-      if (numCompounds === 0) return 0;
-      return cellLines.length * numCompounds * 4 * 2 * 3 * 2 * 2; // doses × timepoints × plates × days × operators
+  const getWellBreakdown = () => {
+    if (mode === 'demo') {
+      return {
+        total: 8,
+        experimental: 5,
+        sentinels: 3,
+        show: false // Don't show breakdown for demo
+      };
     }
+
+    if (mode === 'benchmark') {
+      // 1 plate mode: 2 cell lines × (10 compounds × 4 doses + 8 DMSO controls)
+      return {
+        total: 96,
+        experimental: 80,
+        sentinels: 16,
+        show: true
+      };
+    }
+
+    // Full mode: use actual selected cell lines and compounds
+    const numCellLines = cellLines.length || 2;
     const numCompounds = compounds.length || 10;
-    return cellLines.length * numCompounds * 4 * 2 * 3 * 2 * 2; // doses × timepoints × plates × days × operators
+
+    // Experimental wells: cell_lines × compounds × doses × timepoints × plates × days × operators
+    const experimental = numCellLines * numCompounds * 4 * 2 * 3 * 2 * 2;
+
+    // Sentinel wells: 8 sentinels per (cell_line × timepoint × plate × day × operator)
+    const sentinels = numCellLines * 2 * 3 * 2 * 2 * 8;
+
+    return {
+      total: experimental + sentinels,
+      experimental,
+      sentinels,
+      show: true
+    };
+  };
+
+  const getEstimatedWells = () => {
+    return getWellBreakdown().total;
   };
 
   return (
@@ -99,8 +136,8 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
           <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-3">
             Run Mode
           </label>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            {(['demo', 'quick', 'full', 'custom'] as const).map((m) => (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {(['demo', 'benchmark', 'full'] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
@@ -115,87 +152,24 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
                   ${loading || isPolling ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                 `}
               >
-                <div className="font-semibold text-white mb-1 capitalize">{m} Mode</div>
+                <div className="font-semibold text-white mb-1 capitalize">
+                  {m === 'benchmark' ? '1 Plate' : m} Mode
+                </div>
                 <div className="text-xs text-slate-400">{getModeDescription(m)}</div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Cell Lines */}
-        <div>
-          <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-3">
-            Cell Lines
-          </label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {availableCellLines.map((line) => (
-              <label
-                key={line}
-                className={`
-                  flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all
-                  ${
-                    cellLines.includes(line)
-                      ? 'border-violet-500 bg-violet-500/10'
-                      : 'border-slate-700 hover:border-slate-600'
-                  }
-                  ${loading || isPolling ? 'opacity-50 cursor-not-allowed' : ''}
-                `}
-              >
-                <input
-                  type="checkbox"
-                  checked={cellLines.includes(line)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setCellLines([...cellLines, line]);
-                    } else {
-                      setCellLines(cellLines.filter((l) => l !== line));
-                    }
-                  }}
-                  disabled={loading || isPolling}
-                  className="rounded text-violet-500 focus:ring-violet-500"
-                />
-                <span className="text-sm">{line}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Compounds (for full and custom modes) */}
-        {(mode === 'full' || mode === 'custom') && (
-          <div>
-            <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-3">
-              Compounds (optional - defaults to all 10)
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              {availableCompounds.map((compound) => (
-                <label
-                  key={compound}
-                  className={`
-                    flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all text-xs
-                    ${
-                      compounds.includes(compound)
-                        ? 'border-violet-500 bg-violet-500/10'
-                        : 'border-slate-700 hover:border-slate-600'
-                    }
-                    ${loading || isPolling ? 'opacity-50 cursor-not-allowed' : ''}
-                  `}
-                >
-                  <input
-                    type="checkbox"
-                    checked={compounds.includes(compound)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setCompounds([...compounds, compound]);
-                      } else {
-                        setCompounds(compounds.filter((c) => c !== compound));
-                      }
-                    }}
-                    disabled={loading || isPolling}
-                    className="rounded text-violet-500 focus:ring-violet-500"
-                  />
-                  <span>{compound}</span>
-                </label>
-              ))}
+        {/* Compounds info (full mode uses all 10 compounds) */}
+        {mode === 'full' && (
+          <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+            <div className="text-sm font-semibold text-violet-400 uppercase tracking-wider mb-2">
+              Compounds
+            </div>
+            <div className="text-xs text-slate-400">
+              Full mode uses all 10 compounds across 6 stress axes: tBHQ, H₂O₂, tunicamycin, thapsigargin,
+              etoposide, CCCP, oligomycin, MG132, nocodazole, paclitaxel
             </div>
           </div>
         )}
@@ -208,22 +182,69 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
               <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Wells</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-violet-400">{cellLines.length}</div>
+              <div className="text-2xl font-bold text-violet-400">
+                {mode === 'demo' ? 1 : 2}
+              </div>
               <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Cell Lines</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-violet-400">
-                {mode === 'demo' ? 2 : mode === 'quick' ? 3 : compounds.length || 10}
+                {mode === 'demo' ? '1' : 10}
               </div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Compounds</div>
+              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">
+                {mode === 'demo' ? 'Compound (tBHQ)' : 'Compounds'}
+              </div>
             </div>
             <div>
               <div className="text-2xl font-bold text-violet-400">
-                {mode === 'demo' ? '~30s' : mode === 'quick' ? '~20m' : '~1h'}
+                {mode === 'demo' ? '~30s' : mode === 'benchmark' ? '~5min' : '~1.5h'}
               </div>
               <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Duration</div>
             </div>
           </div>
+
+          {/* Well Calculation Breakdown */}
+          {getWellBreakdown().show && (
+            <div className="mt-3 pt-3 border-t border-slate-700">
+              <div className="text-xs text-slate-400 space-y-1">
+                {mode === 'benchmark' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Experimental wells:</span>
+                      <span className="font-mono text-slate-300">
+                        2 cell lines × 10 compounds × 4 doses = {getWellBreakdown().experimental}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>DMSO sentinel wells (QC):</span>
+                      <span className="font-mono text-slate-300">
+                        8 DMSO/cell line × 2 cell lines = {getWellBreakdown().sentinels}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Experimental wells:</span>
+                      <span className="font-mono text-slate-300">
+                        2 cell lines × 10 compounds × 4 doses × 2 timepoints × 3 plates × 2 days × 2 operators = {getWellBreakdown().experimental}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Sentinel wells (QC):</span>
+                      <span className="font-mono text-slate-300">
+                        2 cell lines × 2 timepoints × 3 plates × 2 days × 2 operators × 8 sentinels/plate = {getWellBreakdown().sentinels}
+                      </span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between pt-1 border-t border-slate-700/50 font-semibold">
+                  <span>Total:</span>
+                  <span className="font-mono text-violet-400">{getWellBreakdown().total} wells</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Run Button */}
@@ -278,8 +299,13 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
         )}
       </div>
 
+      {/* Live Progress Visualization */}
+      {isPolling && progress && (
+        <SimulationProgress progress={progress} mode={mode} />
+      )}
+
       {/* Plate Map Preview */}
-      <PlateMapPreview cellLines={cellLines} compounds={compounds} mode={mode} />
+      {!isPolling && <PlateMapPreview cellLines={cellLines} compounds={compounds} mode={mode} />}
 
       {/* Recent Designs */}
       <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">

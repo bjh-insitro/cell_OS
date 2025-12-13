@@ -151,6 +151,62 @@ class CellThalamusDB:
 
         self.conn.commit()
 
+    def insert_results_batch(self, results: List[Dict[str, Any]]):
+        """
+        Insert multiple experimental results in a single transaction.
+
+        Args:
+            results: List of result dicts with keys:
+                design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
+                plate_id, day, operator, is_sentinel, morphology (dict),
+                atp_signal, genotype (optional)
+        """
+        if not results:
+            return
+
+        cursor = self.conn.cursor()
+        timestamp = datetime.now().isoformat()
+
+        # Prepare data tuples
+        data = []
+        for result in results:
+            morphology = result['morphology']
+            genotype = result.get('genotype', 'WT')
+
+            data.append((
+                result['design_id'],
+                result['well_id'],
+                result['cell_line'],
+                result['compound'],
+                result['dose_uM'],
+                result['timepoint_h'],
+                result['plate_id'],
+                result['day'],
+                result['operator'],
+                result['is_sentinel'],
+                morphology['er'],
+                morphology['mito'],
+                morphology['nucleus'],
+                morphology['actin'],
+                morphology['rna'],
+                result['atp_signal'],
+                genotype,
+                timestamp
+            ))
+
+        # Batch insert
+        cursor.executemany("""
+            INSERT INTO thalamus_results
+            (design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
+             plate_id, day, operator, is_sentinel,
+             morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna,
+             atp_signal, genotype, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, data)
+
+        self.conn.commit()
+        logger.info(f"Batch inserted {len(results)} results")
+
     def get_results(self, design_id: str, filters: Optional[Dict] = None) -> List[Dict]:
         """
         Retrieve results for a design with optional filters.
@@ -207,13 +263,13 @@ class CellThalamusDB:
         return matrix, well_ids
 
     def get_designs(self, phase: Optional[int] = None) -> List[Dict]:
-        """Get all designs, optionally filtered by phase."""
+        """Get all designs, optionally filtered by phase, ordered by most recent first."""
         cursor = self.conn.cursor()
 
         if phase is not None:
-            cursor.execute("SELECT * FROM thalamus_designs WHERE phase = ?", (phase,))
+            cursor.execute("SELECT * FROM thalamus_designs WHERE phase = ? ORDER BY created_at DESC", (phase,))
         else:
-            cursor.execute("SELECT * FROM thalamus_designs")
+            cursor.execute("SELECT * FROM thalamus_designs ORDER BY created_at DESC")
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -227,7 +283,7 @@ class CellThalamusDB:
             design_id: Design ID
             compound: Compound name
             cell_line: Cell line name
-            metric: Metric to plot ('atp_signal' or channel name like 'morph_er')
+            metric: Metric to plot ('atp_signal', 'viability_pct', or channel name like 'morph_er')
 
         Returns:
             List of (dose, value) tuples
@@ -243,12 +299,36 @@ class CellThalamusDB:
             'rna': 'morph_rna'
         }
 
+        # Handle normalized viability percentage
+        if metric == 'viability_pct':
+            # Get DMSO control mean for this cell line (prefer sentinels, fallback to non-sentinels)
+            cursor.execute("""
+                SELECT AVG(atp_signal)
+                FROM thalamus_results
+                WHERE design_id = ? AND compound = 'DMSO' AND cell_line = ?
+            """, (design_id, cell_line))
+            dmso_mean = cursor.fetchone()[0]
+
+            if not dmso_mean or dmso_mean == 0:
+                return []  # Can't normalize without DMSO control
+
+            # Get compound data and normalize
+            cursor.execute("""
+                SELECT dose_uM, (atp_signal / ?) * 100 as viability_pct
+                FROM thalamus_results
+                WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
+                ORDER BY dose_uM
+            """, (dmso_mean, design_id, compound, cell_line))
+            rows = cursor.fetchall()
+            return [(row[0], row[1]) for row in rows]
+
+        # Handle regular metrics
         column = morph_map.get(metric, metric)
 
         query = f"""
             SELECT dose_uM, {column}
             FROM thalamus_results
-            WHERE design_id = ? AND compound = ? AND cell_line = ?
+            WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
             ORDER BY dose_uM
         """
 
