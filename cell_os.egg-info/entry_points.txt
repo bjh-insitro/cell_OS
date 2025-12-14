@@ -1,0 +1,2 @@
+[console_scripts]
+cell-os-loop = scripts.run_loop:main

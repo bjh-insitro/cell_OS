@@ -1,0 +1,129 @@
+[2025-12-02T19:03:48.450410] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 734, in render_posh_campaign_manager
+    _render_mcb_result(result, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 1082, in _render_mcb_result
+    render_lineage(result)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/components/campaign_visualizers.py", line 180, in render_lineage
+    st.dataframe(timeline_df, width="stretch", hide_index=True)
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/elements/arrow.py", line 571, in dataframe
+    proto.width = width
+    ^^^^^^^^^^^
+TypeError: 'str' object cannot be interpreted as an integer
+
+------------------------------------------------------------
+[2025-12-02T19:03:48.749410] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 734, in render_posh_campaign_manager
+    _render_mcb_result(result, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 1082, in _render_mcb_result
+    render_lineage(result)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/components/campaign_visualizers.py", line 180, in render_lineage
+    st.dataframe(timeline_df, width="stretch", hide_index=True)
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/elements/arrow.py", line 571, in dataframe
+    proto.width = width
+    ^^^^^^^^^^^
+TypeError: 'str' object cannot be interpreted as an integer
+
+------------------------------------------------------------
+[2025-12-02T19:07:02.986217] Assay Development
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_10_assay_development.py", line 134, in render_assay_development
+    st.altair_chart(chart + rule, width="stretch")
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: VegaChartsMixin.altair_chart() got an unexpected keyword argument 'width'
+
+------------------------------------------------------------
+[2025-12-02T19:12:12.718983] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 734, in render_posh_campaign_manager
+    _render_mcb_result(result, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 1190, in _render_mcb_result
+    render_lineage(result)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/components/campaign_visualizers.py", line 180, in render_lineage
+    st.dataframe(timeline_df, width="stretch", hide_index=True)
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/elements/arrow.py", line 571, in dataframe
+    proto.width = width
+    ^^^^^^^^^^^
+TypeError: 'str' object cannot be interpreted as an integer
+
+------------------------------------------------------------
+[2025-12-02T19:12:13.175856] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 734, in render_posh_campaign_manager
+    _render_mcb_result(result, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 1190, in _render_mcb_result
+    render_lineage(result)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/components/campaign_visualizers.py", line 180, in render_lineage
+    st.dataframe(timeline_df, width="stretch", hide_index=True)
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/elements/arrow.py", line 571, in dataframe
+    proto.width = width
+    ^^^^^^^^^^^
+TypeError: 'str' object cannot be interpreted as an integer
+
+------------------------------------------------------------
+[2025-12-02T19:14:58.677672] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 734, in render_posh_campaign_manager
+    _render_mcb_result(result, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 1082, in _render_mcb_result
+    st.success(f"✓ Linked to {screen_cell_line} Bank ({default_lib_size} genes)")
+    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/components/campaign_visualizers.py", line 180, in render_lineage
+    st.dataframe(timeline_df, width="stretch", hide_index=True)
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/elements/arrow.py", line 571, in dataframe
+    proto.width = width
+    ^^^^^^^^^^^
+TypeError: 'str' object cannot be interpreted as an integer
+
+------------------------------------------------------------
+[2025-12-02T19:27:22.654613] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 734, in render_posh_campaign_manager
+    _render_mcb_result(result, pricing)
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/pages/tab_campaign_posh.py", line 1082, in _render_mcb_result
+    st.success(f"✓ Linked to {screen_cell_line} Bank ({default_lib_size} genes)")
+    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bjh/Desktop/cell_OS/dashboard_app/components/campaign_visualizers.py", line 180, in render_lineage
+    st.dataframe(timeline_df, use_container_width=True, hide_index=True)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/metrics_util.py", line 444, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/elements/arrow.py", line 571, in dataframe
+    proto.width = width
+    ^^^^^^^^^^^
+TypeError: 'str' object cannot be interpreted as an integer
+
+------------------------------------------------------------

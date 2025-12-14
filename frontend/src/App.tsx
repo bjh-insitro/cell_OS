@@ -4,6 +4,7 @@ import GlobalDependencyMapPage from './pages/GlobalDependencyMapPage';
 import LandingPage from './pages/LandingPage';
 import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
+import AutonomousLoopPage from './pages/AutonomousLoopPage';
 
 function App() {
     return (
@@ -13,6 +14,7 @@ function App() {
                 <Route path="/dashboard" element={<PoshA549StatusPage />} />
                 <Route path="/map" element={<GlobalDependencyMapPage />} />
                 <Route path="/cell-thalamus" element={<CellThalamusPage />} />
+                <Route path="/autonomous-loop" element={<AutonomousLoopPage />} />
                 <Route path="/under-development" element={<UnderDevelopmentPage />} />
             </Routes>
         </Router>

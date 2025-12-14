@@ -124,6 +124,13 @@ const LandingPage: React.FC = () => {
                             <span>🧬</span>
                             <span>Cell Thalamus v1</span>
                         </button>
+                        <button
+                            onClick={() => navigate('/autonomous-loop')}
+                            className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-full shadow-lg hover:shadow-emerald-500/25 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 justify-center"
+                        >
+                            <span>🔄</span>
+                            <span>Autonomous Loop</span>
+                        </button>
                     </div>
                 </div>
 

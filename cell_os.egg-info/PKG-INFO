@@ -1,0 +1,35 @@
+Metadata-Version: 2.4
+Name: cell_os
+Version: 0.1.0
+Summary: Autonomous lab operating system for cell biology experiments
+Author: BJH
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.8
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: scikit-learn
+Requires-Dist: matplotlib
+Requires-Dist: jupyter
+Requires-Dist: ipykernel
+Requires-Dist: streamlit
+Requires-Dist: pyyaml
+Requires-Dist: graphviz
+Requires-Dist: altair
+Requires-Dist: plotly
+Requires-Dist: networkx
+Requires-Dist: ortools
+Requires-Dist: tqdm
+Requires-Dist: pytest
+Dynamic: author
+Dynamic: classifier
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary

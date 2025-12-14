@@ -13,9 +13,8 @@ import DoseResponseTab from './components/DoseResponseTab';
 import VarianceTab from './components/VarianceTab';
 import SentinelTab from './components/SentinelTab';
 import PlateViewerTab from './components/PlateViewerTab';
-import AutonomousLoopTab from './components/AutonomousLoopTab';
 
-type TabType = 'run' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate' | 'autonomous';
+type TabType = 'run' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
 
 const CellThalamusPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,7 +28,6 @@ const CellThalamusPage: React.FC = () => {
     { id: 'variance', label: 'Variance Analysis', icon: '📊' },
     { id: 'sentinel', label: 'Sentinel Monitor', icon: '🎯' },
     { id: 'plate', label: 'Plate Viewer', icon: '🗺️' },
-    { id: 'autonomous', label: 'Autonomous Loop', icon: '🔄' },
   ];
 
   return (
@@ -67,10 +65,9 @@ const CellThalamusPage: React.FC = () => {
                 onClick={() => setActiveTab(tab.id as TabType)}
                 className={`
                   px-4 py-3 text-sm font-medium transition-all whitespace-nowrap
-                  ${
-                    activeTab === tab.id
-                      ? 'text-violet-400 border-b-2 border-violet-400 bg-slate-800/50'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                  ${activeTab === tab.id
+                    ? 'text-violet-400 border-b-2 border-violet-400 bg-slate-800/50'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
                   }
                 `}
               >
@@ -122,7 +119,6 @@ const CellThalamusPage: React.FC = () => {
             onDesignChange={setSelectedDesignId}
           />
         )}
-        {activeTab === 'autonomous' && <AutonomousLoopTab />}
       </div>
 
       {/* Glossary Sidebar - Expandable */}

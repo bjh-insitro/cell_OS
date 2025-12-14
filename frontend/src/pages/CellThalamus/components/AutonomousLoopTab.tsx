@@ -41,53 +41,56 @@ const STAGES: Array<{
   subtitle: string;
   Icon: React.ComponentType<any>;
 }> = [
-  {
-    key: "world",
-    title: "World model",
-    subtitle: "Belief state + uncertainty",
-    Icon: Brain,
-  },
-  {
-    key: "question",
-    title: "Question selection",
-    subtitle: "Where is ignorance most valuable?",
-    Icon: Target,
-  },
-  {
-    key: "proposal",
-    title: "Constrained proposal",
-    subtitle: "Imagination under constraints",
-    Icon: Scissors,
-  },
-  {
-    key: "execute",
-    title: "Execution",
-    subtitle: "Irreversibility, loss, time",
-    Icon: FlaskConical,
-  },
-  {
-    key: "measure",
-    title: "Measurement",
-    subtitle: "Projection of state",
-    Icon: Microscope,
-  },
-  {
-    key: "update",
-    title: "Reconciliation",
-    subtitle: "Deform beliefs, detect failure",
-    Icon: Sigma,
-  },
-  {
-    key: "reward",
-    title: "Reward",
-    subtitle: "Epistemic gain (quiet glow)",
-    Icon: Sparkles,
-  },
-];
+    {
+      key: "world",
+      title: "World model",
+      subtitle: "Belief state + uncertainty",
+      Icon: Brain,
+    },
+    {
+      key: "question",
+      title: "Question selection",
+      subtitle: "Where is ignorance most valuable?",
+      Icon: Target,
+    },
+    {
+      key: "proposal",
+      title: "Constrained proposal",
+      subtitle: "Imagination under constraints",
+      Icon: Scissors,
+    },
+    {
+      key: "execute",
+      title: "Execution",
+      subtitle: "Irreversibility, loss, time",
+      Icon: FlaskConical,
+    },
+    {
+      key: "measure",
+      title: "Measurement",
+      subtitle: "Projection of state",
+      Icon: Microscope,
+    },
+    {
+      key: "update",
+      title: "Reconciliation",
+      subtitle: "Deform beliefs, detect failure",
+      Icon: Sigma,
+    },
+    {
+      key: "reward",
+      title: "Reward",
+      subtitle: "Epistemic gain (quiet glow)",
+      Icon: Sparkles,
+    },
+  ];
 
-function Badge({ children }: { children: React.ReactNode }) {
+function Badge({ children, isDarkMode }: { children: React.ReactNode; isDarkMode?: boolean }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700 shadow-sm">
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs shadow-sm ${isDarkMode
+      ? 'border-slate-600 bg-slate-700 text-slate-300'
+      : 'border-zinc-200 bg-white text-zinc-700'
+      }`}>
       {children}
     </span>
   );
@@ -97,25 +100,32 @@ function SoftToggle({
   label,
   value,
   onChange,
+  isDarkMode,
 }: {
   label: string;
   value: boolean;
   onChange: (v: boolean) => void;
+  isDarkMode?: boolean;
 }) {
   return (
     <button
       onClick={() => onChange(!value)}
-      className="group inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:shadow"
+      className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm shadow-sm transition hover:shadow ${isDarkMode
+        ? 'border-slate-600 bg-slate-700'
+        : 'border-zinc-200 bg-white'
+        }`}
       type="button"
     >
-      <span className="h-5 w-9 rounded-full bg-zinc-200 p-[2px]">
+      <span className={`h-5 w-9 rounded-full p-[2px] ${isDarkMode ? 'bg-slate-600' : 'bg-zinc-200'
+        }`}>
         <motion.span
-          className="block h-4 w-4 rounded-full bg-white shadow"
+          className={`block h-4 w-4 rounded-full shadow ${isDarkMode ? 'bg-slate-300' : 'bg-white'
+            }`}
           animate={{ x: value ? 16 : 0 }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
         />
       </span>
-      <span className="text-zinc-700 group-hover:text-zinc-900">{label}</span>
+      <span className={isDarkMode ? 'text-slate-300 group-hover:text-white' : 'text-zinc-700 group-hover:text-zinc-900'}>{label}</span>
     </button>
   );
 }
@@ -127,6 +137,7 @@ function Slider({
   max,
   step,
   onChange,
+  isDarkMode,
 }: {
   label: string;
   value: number;
@@ -134,12 +145,18 @@ function Slider({
   max: number;
   step: number;
   onChange: (v: number) => void;
+  isDarkMode?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+    <div className={`rounded-2xl border px-3 py-2 shadow-sm ${isDarkMode
+      ? 'border-slate-600 bg-slate-700'
+      : 'border-zinc-200 bg-white'
+      }`}>
       <div className="flex items-center justify-between">
-        <span className="text-sm text-zinc-700">{label}</span>
-        <span className="text-sm tabular-nums text-zinc-900">{value.toFixed(2)}×</span>
+        <span className={`text-sm ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'
+          }`}>{label}</span>
+        <span className={`text-sm tabular-nums ${isDarkMode ? 'text-white' : 'text-zinc-900'
+          }`}>{value.toFixed(2)}×</span>
       </div>
       <input
         className="mt-2 w-full"
@@ -158,20 +175,31 @@ function NodeCard({
   title,
   subtitle,
   Icon,
+  isDarkMode,
 }: {
   title: string;
   subtitle: string;
   Icon: React.ComponentType<any>;
+  isDarkMode?: boolean;
 }) {
   return (
-    <div className="w-full rounded-3xl border border-zinc-200 bg-white/90 p-5 shadow-sm backdrop-blur">
+    <div className={`w-full rounded-3xl border p-5 shadow-sm backdrop-blur ${isDarkMode
+      ? 'border-slate-600 bg-slate-700/90'
+      : 'border-zinc-200 bg-white/90'
+      }`}>
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm">
-          <Icon className="h-5 w-5 text-zinc-800" />
+        <div className={`mt-0.5 rounded-2xl border p-2 shadow-sm ${isDarkMode
+          ? 'border-slate-600 bg-slate-600'
+          : 'border-zinc-200 bg-white'
+          }`}>
+          <Icon className={`h-5 w-5 ${isDarkMode ? 'text-slate-200' : 'text-zinc-800'
+            }`} />
         </div>
         <div className="min-w-0">
-          <div className="text-base font-semibold text-zinc-900">{title}</div>
-          <div className="mt-0.5 text-sm text-zinc-600">{subtitle}</div>
+          <div className={`text-base font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'
+            }`}>{title}</div>
+          <div className={`mt-0.5 text-sm ${isDarkMode ? 'text-slate-300' : 'text-zinc-600'
+            }`}>{subtitle}</div>
         </div>
       </div>
     </div>
@@ -227,7 +255,7 @@ function stageIndexAt(t: number, cum: number[]) {
   return Math.max(0, idx === -1 ? cum.length - 1 : idx);
 }
 
-export default function CellAutonomousScienceLoop() {
+export default function CellAutonomousScienceLoop({ isDarkMode = false }: { isDarkMode?: boolean }) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1.0);
   const [showScars, setShowScars] = useState(true);
@@ -260,20 +288,22 @@ export default function CellAutonomousScienceLoop() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-2xl font-semibold text-zinc-950">
+            <div className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-950'
+              }`}>
               Cell autonomous science loop
             </div>
-            <div className="mt-1 max-w-2xl text-sm text-zinc-600">
+            <div className={`mt-1 max-w-2xl text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'
+              }`}>
               Not a circle. A ratchet. Memory persists, proposals prune, execution is lossy,
               measurement compresses, and learning leaves scars.
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge>belief state</Badge>
-              <Badge>uncertainty</Badge>
-              <Badge>constraints</Badge>
-              <Badge>irreversibility</Badge>
-              <Badge>projection</Badge>
-              <Badge>epistemic gain</Badge>
+              <Badge isDarkMode={isDarkMode}>belief state</Badge>
+              <Badge isDarkMode={isDarkMode}>uncertainty</Badge>
+              <Badge isDarkMode={isDarkMode}>constraints</Badge>
+              <Badge isDarkMode={isDarkMode}>irreversibility</Badge>
+              <Badge isDarkMode={isDarkMode}>projection</Badge>
+              <Badge isDarkMode={isDarkMode}>epistemic gain</Badge>
             </div>
           </div>
 
@@ -281,7 +311,10 @@ export default function CellAutonomousScienceLoop() {
             <button
               type="button"
               onClick={() => setIsPlaying((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:shadow"
+              className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm shadow-sm transition hover:shadow ${isDarkMode
+                ? 'border-slate-600 bg-slate-700 text-slate-300'
+                : 'border-zinc-200 bg-white text-zinc-700'
+                }`}
             >
               {isPlaying ? (
                 <>
@@ -297,7 +330,10 @@ export default function CellAutonomousScienceLoop() {
             <button
               type="button"
               onClick={() => setEpoch((e) => e + 1)}
-              className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:shadow"
+              className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm shadow-sm transition hover:shadow ${isDarkMode
+                ? 'border-slate-600 bg-slate-700 text-slate-300'
+                : 'border-zinc-200 bg-white text-zinc-700'
+                }`}
               title="Simulate accumulation of scars across loops"
             >
               <RefreshCw className="h-4 w-4" /> Next epoch
@@ -310,20 +346,25 @@ export default function CellAutonomousScienceLoop() {
               max={1.8}
               step={0.05}
               onChange={setSpeed}
+              isDarkMode={isDarkMode}
             />
 
-            <SoftToggle label="Scars" value={showScars} onChange={setShowScars} />
+            <SoftToggle label="Scars" value={showScars} onChange={setShowScars} isDarkMode={isDarkMode} />
             <SoftToggle
               label="Constraints"
               value={showConstraints}
               onChange={setShowConstraints}
+              isDarkMode={isDarkMode}
             />
           </div>
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7">
-            <div className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50 p-4 shadow-sm">
+            <div className={`relative overflow-hidden rounded-3xl border p-4 shadow-sm ${isDarkMode
+              ? 'border-slate-600 bg-gradient-to-b from-slate-800 to-slate-700'
+              : 'border-zinc-200 bg-gradient-to-b from-white to-zinc-50'
+              }`}>
               <LoopViz
                 size={size}
                 cx={cx}
@@ -339,7 +380,7 @@ export default function CellAutonomousScienceLoop() {
           </div>
 
           <div className="lg:col-span-5">
-            <StagePanel total={total} isPlaying={isPlaying} speed={speed} />
+            <StagePanel total={total} isPlaying={isPlaying} speed={speed} isDarkMode={isDarkMode} />
           </div>
         </div>
       </div>
@@ -570,40 +611,59 @@ function LoopViz(props: {
   );
 }
 
-function StagePanel({ total, isPlaying, speed }: { total: number; isPlaying: boolean; speed: number }) {
+function StagePanel({ total, isPlaying, speed, isDarkMode }: { total: number; isPlaying: boolean; speed: number; isDarkMode?: boolean }) {
   return (
-    <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-3xl border p-4 shadow-sm ${isDarkMode
+      ? 'border-slate-600 bg-slate-700'
+      : 'border-zinc-200 bg-white'
+      }`}>
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-zinc-900">Loop state</div>
-        <div className="text-xs text-zinc-600">
+        <div className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'
+          }`}>Loop state</div>
+        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'
+          }`}>
           {isPlaying ? "Running" : "Paused"} · {speed.toFixed(2)}×
         </div>
       </div>
 
       <div className="mt-4">
-        <StageCardCycle total={total} />
+        <StageCardCycle total={total} isDarkMode={isDarkMode} />
       </div>
 
       <div className="mt-5 grid gap-3">
         {STAGES.map((s) => (
           <div
             key={s.key}
-            className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+            className={`flex items-start gap-3 rounded-2xl border px-3 py-2 ${isDarkMode
+                ? 'border-slate-600 bg-slate-600'
+                : 'border-zinc-200 bg-zinc-50'
+              }`}
           >
-            <div className="mt-0.5 rounded-xl border border-zinc-200 bg-white p-1.5">
-              <s.Icon className="h-4 w-4 text-zinc-800" />
+            <div className={`mt-0.5 rounded-xl border p-1.5 ${isDarkMode
+                ? 'border-slate-500 bg-slate-500'
+                : 'border-zinc-200 bg-white'
+              }`}>
+              <s.Icon className={`h-4 w-4 ${isDarkMode ? 'text-slate-200' : 'text-zinc-800'
+                }`} />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-medium text-zinc-900">{s.title}</div>
-              <div className="text-xs text-zinc-600">{s.subtitle}</div>
+              <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-zinc-900'
+                }`}>{s.title}</div>
+              <div className={`text-xs ${isDarkMode ? 'text-slate-300' : 'text-zinc-600'
+                }`}>{s.subtitle}</div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-3">
-        <div className="text-xs text-zinc-600">Refinement knobs:</div>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-700">
+      <div className={`mt-5 rounded-2xl border p-3 ${isDarkMode
+          ? 'border-slate-600 bg-slate-600'
+          : 'border-zinc-200 bg-white'
+        }`}>
+        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'
+          }`}>Refinement knobs:</div>
+        <ul className={`mt-2 list-disc space-y-1 pl-5 text-xs ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'
+          }`}>
           <li>Rename stages to match your stack (planner, scheduler, assay library, etc.)</li>
           <li>Make scars data-driven (failed runs, cost overruns, model breaks)</li>
           <li>Make pruning explicit (candidate experiments collapsing under constraints)</li>
@@ -614,7 +674,7 @@ function StagePanel({ total, isPlaying, speed }: { total: number; isPlaying: boo
   );
 }
 
-function StageCardCycle({ total }: { total: number }) {
+function StageCardCycle({ total, isDarkMode }: { total: number; isDarkMode?: boolean }) {
   return (
     <div className="relative h-[118px]">
       {STAGES.map((s, i) => (
@@ -634,7 +694,7 @@ function StageCardCycle({ total }: { total: number }) {
             ease: "easeInOut",
           }}
         >
-          <NodeCard title={s.title} subtitle={s.subtitle} Icon={s.Icon} />
+          <NodeCard title={s.title} subtitle={s.subtitle} Icon={s.Icon} isDarkMode={isDarkMode} />
         </motion.div>
       ))}
     </div>
