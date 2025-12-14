@@ -2,7 +2,7 @@
  * Cell Thalamus Dashboard - Main Page
  *
  * Interactive exploration of Phase 0 variance validation
- * 6 tabs: Run Simulation, Morphology, Dose-Response, Variance, Sentinel, Plate Viewer
+ * 7 tabs: Run Simulation, Morphology, Dose-Response, Variance, Sentinel, Plate Viewer, Autonomous Loop
  */
 
 import React, { useState } from 'react';
@@ -13,8 +13,9 @@ import DoseResponseTab from './components/DoseResponseTab';
 import VarianceTab from './components/VarianceTab';
 import SentinelTab from './components/SentinelTab';
 import PlateViewerTab from './components/PlateViewerTab';
+import AutonomousLoopTab from './components/AutonomousLoopTab';
 
-type TabType = 'run' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
+type TabType = 'run' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate' | 'autonomous';
 
 const CellThalamusPage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ const CellThalamusPage: React.FC = () => {
     { id: 'variance', label: 'Variance Analysis', icon: '📊' },
     { id: 'sentinel', label: 'Sentinel Monitor', icon: '🎯' },
     { id: 'plate', label: 'Plate Viewer', icon: '🗺️' },
+    { id: 'autonomous', label: 'Autonomous Loop', icon: '🔄' },
   ];
 
   return (
@@ -120,6 +122,7 @@ const CellThalamusPage: React.FC = () => {
             onDesignChange={setSelectedDesignId}
           />
         )}
+        {activeTab === 'autonomous' && <AutonomousLoopTab />}
       </div>
 
       {/* Glossary Sidebar - Expandable */}
