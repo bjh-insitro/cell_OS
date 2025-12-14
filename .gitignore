@@ -1,53 +1,9 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-*.egg-info/
-dist/
-build/
+# Database files (binary data, not source code)
+*.db
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb_checkpoints/
+# Except already-tracked databases
+!data/simulation_params.db
 
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
+# Data directory contents
+src/data/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Logs and temporary files
-*.log
-*.out
-*.tmp
-*.bak
-nohup.out
-streamlit.log
-
-# Project specific
-results/*.csv
-results/*.png
-results/*.jpg
-results/experiment_history.csv
-results/
-data/notifications.db
-
-# Data files (optional - uncomment if needed)
-# data/processed/*
-# !data/processed/.gitkeep
-data/raw/crispick_guides.csv
-
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
