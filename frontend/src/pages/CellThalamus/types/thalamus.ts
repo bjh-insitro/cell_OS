@@ -106,3 +106,25 @@ export interface SimulationStatus {
   mode: string;
   error?: string;
 }
+
+export interface WellMetadata {
+  well_id: string;
+  cell_line: string;
+  compound: string;
+  dose_uM: number;
+  timepoint_h: number;
+  is_sentinel: boolean;
+}
+
+export interface PCAData {
+  pc_scores: number[][];  // [PC1, PC2] for each well
+  loadings: number[][];   // [PC1_loading, PC2_loading] for each channel
+  variance_explained: {
+    pc1: number;
+    pc2: number;
+    total: number;
+  };
+  channels: string[];
+  well_metadata: WellMetadata[];
+  n_wells: number;
+}

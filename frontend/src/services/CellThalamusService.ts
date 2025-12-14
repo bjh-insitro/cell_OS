@@ -13,6 +13,7 @@ import {
   SentinelData,
   RunSimulationRequest,
   SimulationStatus,
+  PCAData,
 } from '../pages/CellThalamus/types/thalamus';
 
 export class CellThalamusService {
@@ -89,6 +90,28 @@ export class CellThalamusService {
 
     if (!response.ok) {
       throw new Error('Failed to fetch morphology data');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get real PCA data with optional channel selection
+   */
+  async getPCAData(designId: string, channels?: string[]): Promise<PCAData> {
+    let url = `${this.baseUrl}/designs/${designId}/pca`;
+
+    if (channels && channels.length > 0) {
+      const params = new URLSearchParams({
+        channels: channels.join(',')
+      });
+      url += `?${params}`;
+    }
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch PCA data');
     }
 
     return response.json();

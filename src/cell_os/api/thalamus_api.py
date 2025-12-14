@@ -38,8 +38,8 @@ app.add_middleware(
 # In-memory storage for running simulations
 running_simulations: Dict[str, Dict[str, Any]] = {}
 
-# Database path
-DB_PATH = "data/cell_thalamus.db"
+# Database path - use absolute path to work from any directory
+DB_PATH = str(Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus.db")
 
 
 # ============================================================================
@@ -301,9 +301,110 @@ async def get_morphology_matrix(design_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/thalamus/designs/{design_id}/pca")
+async def get_pca_data(design_id: str, channels: Optional[str] = None):
+    """
+    Compute real PCA on morphology data with optional channel selection.
+
+    Args:
+        design_id: Design ID
+        channels: Comma-separated channel names (e.g., "er,mito,rna"). Defaults to all 5.
+
+    Returns:
+        PC scores, loadings, variance explained, and well metadata
+    """
+    try:
+        from sklearn.decomposition import PCA
+        import numpy as np
+
+        db = CellThalamusDB(db_path=DB_PATH)
+        results = db.get_results(design_id)
+
+        if not results:
+            db.close()
+            raise HTTPException(status_code=404, detail="No results found")
+
+        # All available channels in order
+        all_channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+        channel_map = {
+            'er': 'morph_er',
+            'mito': 'morph_mito',
+            'nucleus': 'morph_nucleus',
+            'actin': 'morph_actin',
+            'rna': 'morph_rna'
+        }
+
+        # Parse selected channels
+        if channels:
+            selected_channels = [c.strip().lower() for c in channels.split(',')]
+            # Validate channels
+            selected_channels = [c for c in selected_channels if c in all_channels]
+            if not selected_channels:
+                selected_channels = all_channels
+        else:
+            selected_channels = all_channels
+
+        # Extract morphology matrix for selected channels
+        matrix = []
+        well_metadata = []
+
+        for result in results:
+            # Get values for selected channels
+            values = [result[channel_map[ch]] for ch in selected_channels]
+
+            # Skip if any values are None
+            if None in values:
+                continue
+
+            matrix.append(values)
+            well_metadata.append({
+                'well_id': result['well_id'],
+                'cell_line': result['cell_line'],
+                'compound': result['compound'],
+                'dose_uM': result['dose_uM'],
+                'timepoint_h': result['timepoint_h'],
+                'is_sentinel': result['is_sentinel']
+            })
+
+        db.close()
+
+        if len(matrix) < 2:
+            raise HTTPException(status_code=400, detail="Not enough data points for PCA")
+
+        # Convert to numpy array
+        X = np.array(matrix, dtype=float)
+
+        # Compute PCA (2 components)
+        pca = PCA(n_components=2)
+        pc_scores = pca.fit_transform(X)
+
+        # Get loadings (eigenvectors)
+        loadings = pca.components_.T  # Shape: (n_channels, 2)
+
+        # Variance explained
+        variance_explained = pca.explained_variance_ratio_
+
+        return {
+            'pc_scores': pc_scores.tolist(),  # List of [PC1, PC2] for each well
+            'loadings': loadings.tolist(),    # List of [PC1_loading, PC2_loading] for each channel
+            'variance_explained': {
+                'pc1': float(variance_explained[0]),
+                'pc2': float(variance_explained[1]),
+                'total': float(variance_explained[0] + variance_explained[1])
+            },
+            'channels': selected_channels,
+            'well_metadata': well_metadata,
+            'n_wells': len(well_metadata)
+        }
+
+    except Exception as e:
+        logger.error(f"Error computing PCA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/thalamus/designs/{design_id}/dose-response")
 async def get_dose_response(design_id: str, compound: str, cell_line: str, metric: str = "atp_signal"):
-    """Get dose-response data for a specific compound/cell line"""
+    """Get dose-response data for a specific compound/cell line with error bars"""
     try:
         db = CellThalamusDB(db_path=DB_PATH)
         data = db.get_dose_response_data(design_id, compound, cell_line, metric)
@@ -312,10 +413,12 @@ async def get_dose_response(design_id: str, compound: str, cell_line: str, metri
         if not data:
             raise HTTPException(status_code=404, detail="No dose-response data found")
 
-        # Convert to dict format
+        # Convert to dict format with mean, std, n
         return {
             "doses": [d[0] for d in data],
-            "values": [d[1] for d in data],
+            "values": [d[1] for d in data],  # mean
+            "std": [d[2] for d in data],     # standard deviation
+            "n": [d[3] for d in data],       # sample size
             "compound": compound,
             "cell_line": cell_line,
             "metric": metric
@@ -405,14 +508,65 @@ async def get_variance_analysis(design_id: str):
 async def get_sentinel_data(design_id: str):
     """Get sentinel SPC data"""
     try:
+        import numpy as np
+        from collections import defaultdict
+
         db = CellThalamusDB(db_path=DB_PATH)
-        sentinel_data = db.get_sentinel_data(design_id)
+        sentinel_wells = db.get_sentinel_data(design_id)
         db.close()
 
-        if not sentinel_data:
+        if not sentinel_wells:
             raise HTTPException(status_code=404, detail="No sentinel data found")
 
-        return sentinel_data
+        # Group sentinels by compound and cell line
+        grouped = defaultdict(list)
+        for well in sentinel_wells:
+            key = f"{well['compound']} ({well['cell_line']})"
+            grouped[key].append(well)
+
+        # Calculate SPC statistics for each sentinel type and metric
+        spc_data = []
+        metrics = ['atp_signal', 'morph_er', 'morph_mito', 'morph_nucleus', 'morph_actin', 'morph_rna']
+
+        for sentinel_type, wells in grouped.items():
+            for metric in metrics:
+                # Extract values for this metric
+                values = [w[metric] for w in wells if w[metric] is not None]
+
+                if len(values) < 2:
+                    continue
+
+                # Calculate statistics
+                mean = float(np.mean(values))
+                std = float(np.std(values, ddof=1))
+                ucl = mean + 3 * std
+                lcl = mean - 3 * std
+
+                # Create points with outlier detection
+                points = []
+                for well in wells:
+                    value = well[metric]
+                    if value is not None:
+                        is_outlier = value > ucl or value < lcl
+                        points.append({
+                            'plate_id': well['plate_id'],
+                            'day': well['day'],
+                            'operator': well['operator'],
+                            'value': float(value),
+                            'is_outlier': bool(is_outlier)
+                        })
+
+                spc_data.append({
+                    'sentinel_type': sentinel_type,
+                    'metric': metric,
+                    'mean': mean,
+                    'std': std,
+                    'ucl': ucl,
+                    'lcl': lcl,
+                    'points': points
+                })
+
+        return spc_data
 
     except Exception as e:
         logger.error(f"Error getting sentinel data: {e}")

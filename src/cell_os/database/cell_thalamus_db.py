@@ -275,7 +275,7 @@ class CellThalamusDB:
         return [dict(row) for row in rows]
 
     def get_dose_response_data(self, design_id: str, compound: str,
-                               cell_line: str, metric: str = 'atp_signal') -> List[Tuple[float, float]]:
+                               cell_line: str, metric: str = 'atp_signal') -> List[Tuple[float, float, float, int]]:
         """
         Get dose-response data for a specific compound and cell line.
 
@@ -286,7 +286,7 @@ class CellThalamusDB:
             metric: Metric to plot ('atp_signal', 'viability_pct', or channel name like 'morph_er')
 
         Returns:
-            List of (dose, value) tuples
+            List of (dose, mean, std, n) tuples aggregated across replicates
         """
         cursor = self.conn.cursor()
 
@@ -301,7 +301,7 @@ class CellThalamusDB:
 
         # Handle normalized viability percentage
         if metric == 'viability_pct':
-            # Get DMSO control mean for this cell line (prefer sentinels, fallback to non-sentinels)
+            # Get DMSO control mean for this cell line
             cursor.execute("""
                 SELECT AVG(atp_signal)
                 FROM thalamus_results
@@ -320,7 +320,30 @@ class CellThalamusDB:
                 ORDER BY dose_uM
             """, (dmso_mean, design_id, compound, cell_line))
             rows = cursor.fetchall()
-            return [(row[0], row[1]) for row in rows]
+
+            # Aggregate by dose: compute mean, std, n
+            from collections import defaultdict
+            import math
+
+            dose_groups = defaultdict(list)
+            for dose, value in rows:
+                dose_groups[dose].append(value)
+
+            result = []
+            for dose in sorted(dose_groups.keys()):
+                values = dose_groups[dose]
+                n = len(values)
+                mean = sum(values) / n if n > 0 else 0
+
+                if n > 1:
+                    variance = sum((x - mean) ** 2 for x in values) / (n - 1)
+                    std = math.sqrt(variance)
+                else:
+                    std = 0.0
+
+                result.append((dose, mean, std, n))
+
+            return result
 
         # Handle regular metrics
         column = morph_map.get(metric, metric)
@@ -335,7 +358,30 @@ class CellThalamusDB:
         cursor.execute(query, (design_id, compound, cell_line))
         rows = cursor.fetchall()
 
-        return [(row[0], row[1]) for row in rows]
+        # Aggregate by dose: compute mean, std, n
+        from collections import defaultdict
+        import math
+
+        dose_groups = defaultdict(list)
+        for dose, value in rows:
+            if value is not None:  # Skip NULL values
+                dose_groups[dose].append(value)
+
+        result = []
+        for dose in sorted(dose_groups.keys()):
+            values = dose_groups[dose]
+            n = len(values)
+            mean = sum(values) / n if n > 0 else 0
+
+            if n > 1:
+                variance = sum((x - mean) ** 2 for x in values) / (n - 1)
+                std = math.sqrt(variance)
+            else:
+                std = 0.0
+
+            result.append((dose, mean, std, n))
+
+        return result
 
     def close(self):
         """Close database connection."""

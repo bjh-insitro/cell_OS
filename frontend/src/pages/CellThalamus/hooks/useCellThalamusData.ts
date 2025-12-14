@@ -11,6 +11,7 @@ import type {
   DoseResponseData,
   VarianceAnalysis,
   SentinelData,
+  PCAData,
 } from '../types/thalamus';
 
 interface UseDataResult<T> {
@@ -364,6 +365,61 @@ export function usePlateData(
       isMounted = false;
     };
   }, [designId, plateId, refetchTrigger]);
+
+  const refetch = () => setRefetchTrigger((prev) => prev + 1);
+
+  return { data, loading, error, refetch };
+}
+
+/**
+ * Hook to fetch real PCA data with channel selection
+ */
+export function usePCAData(
+  designId: string | null,
+  channels: string[] | null = null
+): UseDataResult<PCAData> {
+  const [data, setData] = useState<PCAData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+
+  useEffect(() => {
+    if (!designId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const pcaData = await cellThalamusService.getPCAData(
+          designId,
+          channels || undefined
+        );
+        if (isMounted) {
+          setData(pcaData);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [designId, refetchTrigger, channels?.join(',')]);
 
   const refetch = () => setRefetchTrigger((prev) => prev + 1);
 

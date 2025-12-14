@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ErrorBar } from 'recharts';
 import { useDesigns, useDoseResponse, useResults } from '../hooks/useCellThalamusData';
 import PlateMapPreview from './PlateMapPreview';
 
@@ -198,7 +198,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
   const normalizedChartData = React.useMemo(() => {
     if (!allCompoundsData || allCompoundsData.length === 0) return [];
 
-    // Create data structure: { dose_category: string, [compound_cellLine]: value }
+    // Create data structure: { dose_category: string, [compound_cellLine]: value, [compound_cellLine_error]: std }
     const categories = ['vehicle', 'low', 'mid', 'high'];
 
     return categories.map((category, categoryIndex) => {
@@ -206,15 +206,21 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
       allCompoundsData.forEach((response: any) => {
         if (response.data.doses && response.data.values) {
-          // Sort doses and map to categories by index
-          const sortedIndices = response.data.doses
-            .map((dose: number, idx: number) => ({ dose, idx, value: response.data.values[idx] }))
-            .sort((a: any, b: any) => a.dose - b.dose);
+          // Data is already aggregated (mean, std per dose)
+          // Just sort by dose and map to categories
+          const doseData = response.data.doses.map((dose: number, idx: number) => ({
+            dose,
+            mean: response.data.values[idx],
+            std: response.data.std?.[idx] || 0,
+            n: response.data.n?.[idx] || 1,
+          })).sort((a: any, b: any) => a.dose - b.dose);
 
-          // Map the sorted doses to categories: smallest=vehicle, then low, mid, high
-          if (sortedIndices[categoryIndex]) {
+          // Map the sorted dose levels to categories: smallest=vehicle, then low, mid, high
+          if (doseData[categoryIndex]) {
             const key = `${response.compound}_${response.cellLine}`;
-            point[key] = sortedIndices[categoryIndex].value;
+            point[key] = doseData[categoryIndex].mean;
+            point[`${key}_error`] = doseData[categoryIndex].std;
+            point[`${key}_n`] = doseData[categoryIndex].n;
           }
         }
       });
@@ -223,7 +229,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
     });
   }, [allCompoundsData]);
 
-  // Format data for chart - merge all cell lines by dose
+  // Format data for chart - merge all cell lines by dose with error bars
   const chartData = React.useMemo(() => {
     if (!doseResponseData || doseResponseData.length === 0) return [];
 
@@ -235,7 +241,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
       }
     });
 
-    // Create data points with values for each cell line
+    // Create data points with values and error bars for each cell line
     const sortedDoses = Array.from(allDoses).sort((a, b) => a - b);
     return sortedDoses.map(dose => {
       const point: any = { dose };
@@ -243,7 +249,12 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
       doseResponseData.forEach((response: any) => {
         const doseIndex = response.data.doses?.indexOf(dose);
         if (doseIndex !== -1 && doseIndex !== undefined) {
+          // Mean value
           point[response.cellLine] = response.data.values[doseIndex];
+          // Error bar (std)
+          point[`${response.cellLine}_error`] = response.data.std?.[doseIndex] || 0;
+          // Sample size (for tooltip)
+          point[`${response.cellLine}_n`] = response.data.n?.[doseIndex] || 1;
         }
       });
 
@@ -501,11 +512,21 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                   borderRadius: '8px',
                   color: '#e2e8f0',
                 }}
-                formatter={(value: any) => value.toFixed(2)}
+                formatter={(value: any, name: any, props: any) => {
+                  const payload = props.payload;
+                  const cellLine = name;
+                  const n = payload[`${cellLine}_n`];
+                  const error = payload[`${cellLine}_error`];
+
+                  if (n && error !== undefined) {
+                    return [`${value.toFixed(2)} ± ${error.toFixed(2)} (n=${n})`, cellLine];
+                  }
+                  return value.toFixed(2);
+                }}
                 labelFormatter={(label) => `Dose: ${label} μM`}
               />
               <Legend />
-              {/* Render a line for each cell line */}
+              {/* Render a line for each cell line with error bars */}
               {cellLines.map((cellLine, index) => {
                 const baseColor = selectedCompound ? getCompoundColor(selectedCompound) : '#8b5cf6';
                 // Use solid color for first cell line, dashed for second
@@ -523,7 +544,9 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                     activeDot={{ r: 6, fill: baseColor }}
                     name={cellLine}
                     connectNulls={false}
-                  />
+                  >
+                    <ErrorBar dataKey={`${cellLine}_error`} stroke={baseColor} strokeWidth={1.5} />
+                  </Line>
                 );
               })}
             </LineChart>
@@ -559,6 +582,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
               ) : (
                 <span> Morphology scores show phenotypic changes relative to control.</span>
               )}
+              {' '}<strong>Error bars</strong> show ±1 standard deviation across all replicates (2 days × 2 operators × 3 replicates = 12 measurements per dose).
               {' '}Sentinel wells (QC replicates) are excluded from this view - see the Sentinel Monitor tab for QC data.
             </div>
           </div>
@@ -675,10 +699,23 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                   borderRadius: '8px',
                   color: '#e2e8f0',
                 }}
-                formatter={(value: any) => value?.toFixed(2) || 'N/A'}
+                formatter={(value: any, name: any, props: any) => {
+                  const payload = props.payload;
+                  const key = name.split(' (')[0];  // Extract compound name from "compound (cellLine)"
+                  const cellLineMatch = name.match(/\(([^)]+)\)/);  // Extract cell line
+                  const cellLine = cellLineMatch ? cellLineMatch[1] : '';
+                  const dataKey = `${key}_${cellLine}`;
+                  const n = payload[`${dataKey}_n`];
+                  const error = payload[`${dataKey}_error`];
+
+                  if (n && error !== undefined) {
+                    return [`${value?.toFixed(2) || 'N/A'} ± ${error.toFixed(2)} (n=${n})`, name];
+                  }
+                  return value?.toFixed(2) || 'N/A';
+                }}
               />
               <Legend />
-              {/* Render a line for each compound-cellLine combination */}
+              {/* Render a line for each compound-cellLine combination with error bars */}
               {compounds.flatMap(compound =>
                 cellLines.map((cellLine, cellLineIndex) => {
                   const key = `${compound}_${cellLine}`;
@@ -697,7 +734,9 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                       dot={{ r: 3, fill: color, strokeWidth: 1, stroke: '#fff' }}
                       name={`${compound} (${cellLine})`}
                       connectNulls={false}
-                    />
+                    >
+                      <ErrorBar dataKey={`${key}_error`} stroke={color} strokeWidth={1} />
+                    </Line>
                   );
                 })
               )}
@@ -731,6 +770,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
               <strong>Interpretation:</strong> This view normalizes doses relative to each compound's EC50,
               allowing direct comparison of compound potencies. Colors indicate compounds,
               solid lines = {cellLines[0] || 'first cell line'}, dashed lines = {cellLines[1] || 'second cell line'}.
+              {' '}<strong>Error bars</strong> show ±1 SD across replicates (n=12 per dose: 2 days × 2 operators × 3 replicates).
             </div>
           </div>
         </div>
