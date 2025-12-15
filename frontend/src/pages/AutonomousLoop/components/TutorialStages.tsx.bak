@@ -1,0 +1,425 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Brain, Target, Scissors, FlaskConical, Microscope, Sigma, Sparkles, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import DoseResponseChart from './DoseResponseChart';
+
+interface StageProps {
+    isDarkMode: boolean;
+    onNext?: () => void;
+    data: any;
+}
+
+export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    return (
+        <div className="space-y-6">
+            <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+                <div className="flex items-start gap-4">
+                    <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-600'} `}>
+                        <Brain className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Current Understanding</h3>
+                        <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                            <span className="font-semibold text-indigo-500">Phase 0 Objective:</span> Identify high-value targets for the next cycle.
+                            <span className="block mt-1">
+                                The table below ranks all conditions by epistemic uncertainty (Entropy) and variance (CV), prioritizing the candidates listed at the top.
+                            </span>
+                        </p>
+                        <button
+                            onClick={() => setIsExpanded(!isExpanded)}
+                            className={`mt - 3 text - xs flex items - center gap - 1 font - medium ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-700'} `}
+                        >
+                            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            {isExpanded ? 'Hide Selection Logic' : 'Show Selection Logic'}
+                        </button>
+                    </div>
+                </div>
+
+                {isExpanded && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className={`mt - 4 pt - 4 border - t ${isDarkMode ? 'border-slate-700' : 'border-zinc-200'} `}
+                    >
+                        <div className="flex justify-between items-end mb-3">
+                            <div>
+                                <h4 className={`text - sm font - medium mb - 1 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'} `}>Global Uncertainty Ranking</h4>
+                                <p className={`text - xs ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'} `}>
+                                    System scan of all Compound × Cell × Timepoint combinations. Sorted by epistemic uncertainty (entropy).
+                                </p>
+                            </div>
+                            <span className={`text - [10px] px - 2 py - 0.5 rounded - full border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'} `}>
+                                Candidate Pool
+                            </span>
+                        </div>
+
+                        <div className="rounded-lg border border-opacity-50 border-gray-500">
+                            <table className="w-full text-xs text-left">
+                                <thead className={`${isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-zinc-50 text-zinc-600'} `}>
+                                    <tr>
+                                        <th className="p-2 font-medium">Compound</th>
+                                        <th className="p-2 font-medium">Cell Line</th>
+                                        <th className="p-2 font-medium">Timepoint</th>
+                                        <th className="p-2 font-medium">Action</th>
+                                        <th className="p-2 font-medium text-right">
+                                            <div className="flex items-center justify-end gap-1 group relative cursor-help">
+                                                <span>CV (%)</span>
+                                                <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                                <div className={`absolute bottom - full right - 0 mb - 2 w - 64 p - 3 rounded - lg shadow - xl text - xs z - 50 pointer - events - none opacity - 0 group - hover: opacity - 100 transition - opacity duration - 200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'} `}>
+                                                    Coefficient of Variation (std dev / mean). Measures relative dispersion. High CV (&lt;100%) indicates meaningful biological variance; &gt;100% suggests technical noise.
+                                                    <div className={`absolute bottom - [-5px] right - 3 w - 3 h - 3 transform rotate - 45 border - b border - r ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-zinc-200'} `}></div>
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <th className="p-2 font-medium text-right">
+                                            <div className="flex items-center justify-end gap-1 group relative cursor-help">
+                                                <span>Entropy (Bits)</span>
+                                                <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                                <div className={`absolute bottom - full right - 0 mb - 2 w - 64 p - 3 rounded - lg shadow - xl text - xs z - 50 pointer - events - none opacity - 0 group - hover: opacity - 100 transition - opacity duration - 200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'} `}>
+                                                    Shannon entropy measuring epistemic uncertainty. Higher values indicate "confused" models that are high-value targets for new experiments.
+                                                    <div className={`absolute bottom - [-5px] right - 3 w - 3 h - 3 transform rotate - 45 border - b border - r ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-zinc-200'} `}></div>
+                                                </div>
+                                            </div>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide - y ${isDarkMode ? 'divide-slate-700 text-slate-300' : 'divide-zinc-200 text-zinc-700'} `}>
+                                    {data.candidateRanking?.map((item: any, i: number) => (
+                                        <tr key={i} className={i === 0 ? (isDarkMode ? 'bg-indigo-900/20' : 'bg-indigo-50') : (i < 3 ? (isDarkMode ? 'bg-indigo-900/10' : 'bg-indigo-50/30') : '')}>
+                                            <td className={`p - 2 ${i === 0 ? 'font-semibold' : ''} `}>{item.compound}</td>
+                                            <td className="p-2">{item.cellLine}</td>
+                                            <td className="p-2">{item.timepoint}</td>
+                                            <td className="p-2">
+                                                {i === 0 && <span className={`text - [10px] px - 2 py - 0.5 rounded font - medium border ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-indigo-100 text-indigo-700 border-indigo-200'} `}>Primary (60w)</span>}
+                                                {(i === 1 || i === 2) && <span className={`text - [10px] px - 2 py - 0.5 rounded font - medium border ${isDarkMode ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-blue-100 text-blue-700 border-blue-200'} `}>Scout (30w)</span>}
+                                            </td>
+                                            <td className="p-2 text-right font-mono text-opacity-70">{item.cv}</td>
+                                            <td className={`p - 2 text - right font - mono ${i === 0 ? 'font-bold' : 'text-opacity-70'} `}>
+                                                {item.entropy}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {data.candidateRanking && data.candidateRanking.length > 0 && (
+                            <div className={`mt - 3 text - xs p - 3 rounded border flex items - start gap - 2 ${isDarkMode ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-indigo-100 bg-indigo-50 text-indigo-700'} `}>
+                                <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <span className="font-semibold">Selection Rationale: </span>
+                                    {data.candidateRanking[0].compound} was selected because {data.candidateRanking[0].reason ? data.candidateRanking[0].reason.toLowerCase() : 'it maximizes information gain'}.
+                                </div>
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+            </div>
+
+            <DoseResponseChart
+                ec50={data.initial.ec50}
+                hillSlope={data.initial.hillSlope}
+                dataPoints={data.initial.dataPoints}
+                isDarkMode={isDarkMode}
+                showConfidenceInterval={true}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+                <MetricCard
+                    label="Est. EC50"
+                    value={`${data.initial.ec50.value} ± ${data.initial.ec50.uncertainty} µM`}
+                    isDarkMode={isDarkMode}
+                    color={isDarkMode ? 'text-red-400' : 'text-red-600'}
+                />
+                <MetricCard
+                    label="Hill Slope"
+                    value={`${data.initial.hillSlope.value} ± ${data.initial.hillSlope.uncertainty} `}
+                    isDarkMode={isDarkMode}
+                    color={isDarkMode ? 'text-orange-400' : 'text-orange-600'}
+                />
+            </div>
+        </div>
+    );
+};
+
+export const QuestionStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
+    <div className="space-y-6">
+        <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className="flex items-start gap-4">
+                <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-pink-500/20 text-pink-400' : 'bg-pink-100 text-pink-600'} `}>
+                    <Target className="w-6 h-6" />
+                </div>
+                <div>
+                    <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Where is Ignorance Valuable?</h3>
+                    <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        The system identifies the 15-35 µM range as the region of highest epistemic value.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div className={`h - 32 rounded - lg relative overflow - hidden flex items - end ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'} `}>
+            {/* Heatmap visualization - conceptual */}
+            <div className="absolute inset-0 flex">
+                <div className="flex-1 bg-opacity-10 bg-blue-500"></div>
+                <div className="flex-1 bg-opacity-20 bg-blue-500"></div>
+                <div className="flex-1 bg-opacity-80 bg-red-500 flex items-center justify-center">
+                    <span className="text-xs font-bold text-white drop-shadow">Max Value</span>
+                </div>
+                <div className="flex-1 bg-opacity-20 bg-blue-500"></div>
+                <div className="flex-1 bg-opacity-10 bg-blue-500"></div>
+            </div>
+            <div className="w-full flex justify-between px-2 pb-1 text-xs text-slate-500">
+                <span>1 µM</span>
+                <span>10 µM</span>
+                <span>100 µM</span>
+            </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+            <MetricCard
+                label="Information Gain Potential"
+                value="2.8 bits"
+                isDarkMode={isDarkMode}
+                tooltip="Expected reduction in Shannon entropy if this experiment is run. 1 bit = halving the uncertainty."
+            />
+        </div>
+    </div>
+);
+
+export const ProposalStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
+    <div className="space-y-6">
+        <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className="flex items-start gap-4">
+                <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-teal-500/20 text-teal-400' : 'bg-teal-100 text-teal-600'} `}>
+                    <Scissors className="w-6 h-6" />
+                </div>
+                <div>
+                    <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Experiment Design</h3>
+                    <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        Constrained optimization suggests 6 doses with 4 replicates.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div className={`rounded - xl border relative p - 4 space - y - 4 ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-zinc-200 bg-white'} `}>
+            <div className="flex justify-between items-start">
+                <h4 className={`text - sm font - semibold ${isDarkMode ? 'text-slate-200' : 'text-zinc-700'} `}>Proposed Layout (96-well)</h4>
+                <div className="flex gap-2">
+                    <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-500">✓ 2 Plates</span>
+                    <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-500">✓ 2 Timepoints</span>
+                </div>
+            </div>
+
+            <div className="text-xs space-y-2">
+                <div className={`p - 2 rounded ${isDarkMode ? 'bg-slate-800' : 'bg-zinc-50'} `}>
+                    <span className="font-semibold block mb-1">Constraints:</span>
+                    <ul className={`list - disc list - inside ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        <li>Must maintain DMSO (Vehicle) & Sentinel controls</li>
+                        <li>Must include Sentinel wells for SPC monitoring</li>
+                        <li>Max 2 new plates allowed</li>
+                    </ul>
+                </div>
+
+                <div className={`p - 2 rounded ${isDarkMode ? 'bg-indigo-900/20 border border-indigo-500/30' : 'bg-indigo-50 border border-indigo-100'} `}>
+                    <span className="font-semibold block mb-1">Strategy: Timepoint-Specific Action</span>
+                    <div className={isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}>
+                        <ul className="list-disc list-inside">
+                            <li>
+                                <strong>Plate 1 ({data.candidateRanking?.[0]?.timepoint || '24h'}):</strong> Dedicated to {data.candidateRanking?.[0]?.compound || 'Target'} (60 wells) to resolve peak uncertainty.
+                                <span className="text-[10px] opacity-75 ml-1">(20 buffer)</span>
+                            </li>
+                            {data.candidateRanking?.[1] && (
+                                <li>
+                                    <strong>Plate 2 ({data.candidateRanking[1].timepoint}):</strong> Scout {data.candidateRanking[1].compound} & {data.candidateRanking?.[2]?.compound || 'Next'} (30 wells ea).
+                                    <span className="text-[10px] opacity-75 ml-1">(20 buffer)</span>
+                                </li>
+                            )}
+                        </ul>
+                        <div className="mt-2 pt-2 border-t border-indigo-500/30 text-[10px] opacity-75 font-mono">
+                            Constraint Check: 60 &lt; 80 wells available per plate. ✓ Fits.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Visual representation of doses */}
+            <div className="h-32 flex items-end justify-center gap-2 pb-2 border-b border-dashed border-gray-500/30">
+                {data.proposed.doses.map((dose: number) => (
+                    <div key={dose} className="flex flex-col items-center gap-1 group">
+                        <div className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">n=4</div>
+                        <div className={`w - 8 rounded - t border - x border - t flex flex - col justify - end overflow - hidden transition - all hover: bg - opacity - 80 ${isDarkMode ? 'border-slate-600 bg-slate-800' : 'border-zinc-300 bg-zinc-100'} `} style={{ height: '80px' }}>
+                            <div className="w-full bg-violet-500" style={{ height: `${Math.min(100, (dose / 40) * 100)}% ` }}></div>
+                        </div>
+                        <span className="text-xs text-slate-500 font-mono">{dose}</span>
+                    </div>
+                ))}
+            </div>
+
+            <div className="flex justify-center gap-4 text-xs text-slate-500">
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-violet-500 rounded-sm"></div>Treatment</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-400 rounded-sm"></div>Controls</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-400 rounded-sm"></div>Sentinels</div>
+            </div>
+        </div>
+
+        <div className="flex justify-between text-sm">
+            <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Cost: ${data.proposed.cost}</span>
+            <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Replicates: {data.proposed.replicates}</span>
+        </div>
+    </div>
+);
+
+
+export const ExecutionStage: React.FC<StageProps> = ({ isDarkMode }) => (
+    <div className="space-y-6">
+        <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className="flex items-start gap-4">
+                <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-600'} `}>
+                    <FlaskConical className="w-6 h-6" />
+                </div>
+                <div>
+                    <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Running Experiment</h3>
+                    <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        Plating, treatment, and incubation in progress...
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div className="py-12 flex justify-center">
+            <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+            >
+                <div className={`w - 32 h - 32 rounded - full border - 4 border - dashed ${isDarkMode ? 'border-yellow-500' : 'border-yellow-600'} `}></div>
+            </motion.div>
+        </div>
+
+        <div className="text-center text-sm text-slate-500">
+            Incubating... (24h)
+        </div>
+    </div>
+);
+
+export const MeasurementStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
+    <div className="space-y-6">
+        <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className="flex items-start gap-4">
+                <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'} `}>
+                    <Microscope className="w-6 h-6" />
+                </div>
+                <div>
+                    <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Data Collection</h3>
+                    <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        24 new measurements collected. QC passed (CV &lt; 15%).
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <DoseResponseChart
+            ec50={data.initial.ec50}
+            hillSlope={data.initial.hillSlope}
+            dataPoints={[...data.initial.dataPoints, ...data.final.dataPoints.map((d: any) => ({ ...d, isNew: true }))]}
+            isDarkMode={isDarkMode}
+            showConfidenceInterval={false}
+            highlightNewData={true}
+        />
+    </div>
+);
+
+export const ReconciliationStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
+    <div className="space-y-6">
+        <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className="flex items-start gap-4">
+                <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-600'} `}>
+                    <Sigma className="w-6 h-6" />
+                </div>
+                <div>
+                    <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Updating World Model</h3>
+                    <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        Bayesian posterior update substantially reduces uncertainty ranges.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <DoseResponseChart
+            ec50={data.final.ec50}
+            hillSlope={data.final.hillSlope}
+            dataPoints={[...data.initial.dataPoints, ...data.final.dataPoints.map((d: any) => ({ ...d, isNew: true }))]}
+            isDarkMode={isDarkMode}
+            showConfidenceInterval={true}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+            <MetricCard
+                label="New Est. EC50"
+                value={`${data.final.ec50.value} ± ${data.final.ec50.uncertainty} µM`}
+                isDarkMode={isDarkMode}
+                color="text-green-500"
+            />
+            <MetricCard
+                label="Uncertainty Red."
+                value="67%"
+                isDarkMode={isDarkMode}
+                color="text-green-500"
+            />
+        </div>
+
+    </div>
+);
+
+export const RewardStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
+    <div className="space-y-6">
+        <div className={`p - 4 rounded - xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className="flex items-start gap-4">
+                <div className={`p - 3 rounded - lg ${isDarkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'} `}>
+                    <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                    <h3 className={`text - lg font - semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Epistemic Gain</h3>
+                    <p className={`mt - 1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        The system has successfully reduced ignorance in the target area.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-4 py-8">
+            <div className={`text - 5xl font - bold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>
+                {data.metrics.informationGain} bits
+            </div>
+            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Information Gained</div>
+        </div>
+
+        <div className={`p - 4 rounded - lg flex items - center gap - 3 ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'} `}>
+            <Brain className="w-5 h-5" />
+            <span className="text-sm">Loop continues... ready for next iteration.</span>
+        </div>
+    </div>
+);
+
+function MetricCard({ label, value, isDarkMode, color, tooltip }: any) {
+    return (
+        <div className={`p - 3 rounded - lg border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-zinc-200'} `}>
+            <div className={`flex items - center gap - 1 text - xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-500'} `}>
+                {label}
+                {tooltip && (
+                    <div className="group relative cursor-help">
+                        <Info className="w-3 h-3 opacity-50 hover:opacity-100 transition-opacity" />
+                        <div className={`absolute bottom - full left - 1 / 2 - translate - x - 1 / 2 mb - 2 w - 48 p - 2 rounded - lg shadow - xl text - xs z - 50 pointer - events - none opacity - 0 group - hover: opacity - 100 transition - opacity duration - 200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'} `}>
+                            {tooltip}
+                            <div className={`absolute bottom - [-5px] left - 1 / 2 - translate - x - 1 / 2 w - 3 h - 3 transform rotate - 45 border - b border - r ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-zinc-200'} `}></div>
+                        </div>
+                    </div>
+                )}
+            </div>
+            <div className={`text - lg font - semibold ${color || (isDarkMode ? 'text-white' : 'text-zinc-900')} `}>{value}</div>
+        </div>
+    )
+}

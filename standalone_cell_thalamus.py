@@ -87,7 +87,7 @@ class CellThalamusDB:
 
     SCHEMA_VERSION = 1  # Increment when schema changes
 
-    def __init__(self, db_path: str = "cell_thalamus.db"):
+    def __init__(self, db_path: str = "cell_thalamus_results.db"):
         self.db_path = os.path.abspath(db_path)
         os.makedirs(os.path.dirname(self.db_path) if os.path.dirname(self.db_path) else ".", exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)

@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Moon, Sun } from 'lucide-react';
 import AutonomousLoopTab from './CellThalamus/components/AutonomousLoopTab';
+import TutorialMode from './AutonomousLoop/components/TutorialMode';
 
 const AutonomousLoopPage: React.FC = () => {
     const navigate = useNavigate();
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isTutorialMode, setIsTutorialMode] = useState(false);
 
     return (
         <div className={`min-h-screen transition-colors duration-300 ${isDarkMode
@@ -55,7 +57,21 @@ const AutonomousLoopPage: React.FC = () => {
             </div>
 
             {/* Content */}
-            <AutonomousLoopTab isDarkMode={isDarkMode} />
+            {isTutorialMode ? (
+                <TutorialMode isDarkMode={isDarkMode} onExit={() => setIsTutorialMode(false)} />
+            ) : (
+                <div className="relative">
+                    <div className="container mx-auto px-6 py-4 flex justify-end">
+                        <button
+                            onClick={() => setIsTutorialMode(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full text-sm font-medium shadow-lg shadow-indigo-500/20 transition-all hover:scale-105"
+                        >
+                            <span>🎓</span> Start Interactive Tutorial
+                        </button>
+                    </div>
+                    <AutonomousLoopTab isDarkMode={isDarkMode} />
+                </div>
+            )}
         </div>
     );
 };

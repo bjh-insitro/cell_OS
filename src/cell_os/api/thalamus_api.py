@@ -39,7 +39,7 @@ app.add_middleware(
 running_simulations: Dict[str, Dict[str, Any]] = {}
 
 # Database path - use absolute path to work from any directory
-DB_PATH = str(Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus.db")
+DB_PATH = str(Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_results.db")
 
 
 # ============================================================================

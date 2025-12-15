@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class CellThalamusDB:
     """Database for Cell Thalamus experimental results."""
 
-    def __init__(self, db_path: str = "data/cell_thalamus.db"):
+    def __init__(self, db_path: str = "data/cell_thalamus_results.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.conn = sqlite3.connect(db_path)

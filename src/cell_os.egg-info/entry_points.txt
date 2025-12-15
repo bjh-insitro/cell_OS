@@ -1,0 +1,2 @@
+[console_scripts]
+cell-os-run = cell_os.cli.run_campaign:main

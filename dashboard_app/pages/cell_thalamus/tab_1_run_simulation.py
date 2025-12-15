@@ -76,7 +76,7 @@ def render_tab_1():
         # Database path
         db_path = st.text_input(
             "Database Path",
-            value="data/cell_thalamus.db"
+            value="data/cell_thalamus_results.db"
         )
 
     with col2:
