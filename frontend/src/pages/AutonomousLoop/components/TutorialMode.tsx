@@ -48,11 +48,11 @@ const TUTORIAL_DATA = {
         uncertaintyReduction: 0.67
     },
     candidateRanking: [
-        { compound: 'tBHP', cellLine: 'HEK293', timepoint: '24h', entropy: 0.89 },
-        { compound: 'Doxorubicin', cellLine: 'HeLa', timepoint: '48h', entropy: 0.72 },
-        { compound: 'Staurosporine', cellLine: 'HepG2', timepoint: '24h', entropy: 0.55 },
-        { compound: 'Paclitaxel', cellLine: 'A549', timepoint: '72h', entropy: 0.41 },
-        { compound: 'Cisplatin', cellLine: 'MCF7', timepoint: '48h', entropy: 0.38 },
+        { compound: 'tBHQ', cellLine: 'A549', timepoint: '24h', entropy: 0.89 },
+        { compound: 'H2O2', cellLine: 'HeLa', timepoint: '48h', entropy: 0.72 },
+        { compound: 'tunicamycin', cellLine: 'HepG2', timepoint: '24h', entropy: 0.55 },
+        { compound: 'CCCP', cellLine: 'U2OS', timepoint: '24h', entropy: 0.41 },
+        { compound: 'oligomycin', cellLine: 'A549', timepoint: '48h', entropy: 0.38 },
     ]
 };
 
@@ -70,12 +70,29 @@ const STAGES = [
 const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ isDarkMode, onExit }) => {
     const [stageIndex, setStageIndex] = useState(0);
     const [combinedRanking, setCombinedRanking] = useState<any[]>([]);
+    const [dataError, setDataError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [realDoseResponseData, setRealDoseResponseData] = useState<any>(null);
+    const [plateLayoutData, setPlateLayoutData] = useState<any[]>([]);
+
+    // Experiment execution state
+    const [isRunningExperiment, setIsRunningExperiment] = useState(false);
+    const [experimentProgress, setExperimentProgress] = useState<any>(null);
+    const [experimentDesignId, setExperimentDesignId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
+            setIsLoading(true);
+            setDataError(null);
             let fetchedRealData: any[] = [];
+            let topCandidateDoseResponse: any = null;
+
             try {
                 const designs = await cellThalamusService.getDesigns();
+
+                if (!designs || designs.length === 0) {
+                    throw new Error('No experimental designs found in database. Please run a simulation first.');
+                }
 
                 if (designs && designs.length > 0) {
                     const recentDesigns = designs.slice(0, 10);
@@ -127,6 +144,10 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                 }
             } catch (err) {
                 console.error("Failed to load real data", err);
+                const errorMessage = err instanceof Error ? err.message : 'Failed to connect to Cell Thalamus API. Please ensure the backend server is running.';
+                setDataError(errorMessage);
+            } finally {
+                setIsLoading(false);
             }
 
             // MERGE Logic: 
@@ -190,15 +211,215 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
             }
 
             setCombinedRanking(merged.slice(0, 10));
+
+            // Extract dose-response data for top candidate
+            if (merged.length > 0 && allResults.length > 0) {
+                const topCandidate = merged[0];
+                console.log('Top candidate:', topCandidate);
+                console.log('All results count:', allResults.length);
+
+                const doseResponseData = allResults.filter(r =>
+                    r.compound === topCandidate.compound &&
+                    r.cell_line === topCandidate.cellLine &&
+                    Math.round(r.timepoint_h) === parseInt(topCandidate.timepoint)
+                );
+
+                console.log('Dose response data points:', doseResponseData.length);
+                console.log('Dose response data:', doseResponseData);
+
+                if (doseResponseData.length > 0) {
+                    // Convert to chart format
+                    const dataPoints = doseResponseData.map(r => ({
+                        dose: r.dose_uM,
+                        response: r.atp_signal * 100, // Convert to percentage
+                        error: 5 // Placeholder, could calculate from replicates
+                    }));
+
+                    // Sort by dose
+                    const sortedByDose = [...dataPoints].sort((a, b) => a.dose - b.dose);
+
+                    // Get max dose from data
+                    const maxDose = Math.max(...dataPoints.map(d => d.dose));
+                    const maxResponse = Math.max(...dataPoints.map(d => d.response));
+                    const minResponse = Math.min(...dataPoints.map(d => d.response));
+
+                    // If we have sparse data (< 5 points), add interpolated points for visualization
+                    let enhancedDataPoints = [...sortedByDose];
+                    if (sortedByDose.length < 5 && maxDose > 0) {
+                        // Add interpolated points for smoother curve
+                        const responseRange = maxResponse - minResponse;
+                        enhancedDataPoints = [
+                            { dose: 0.1, response: maxResponse - responseRange * 0.05, error: 8 },
+                            ...sortedByDose,
+                            { dose: maxDose * 2, response: minResponse - responseRange * 0.1, error: 8 },
+                            { dose: maxDose * 5, response: minResponse - responseRange * 0.15, error: 10 },
+                        ];
+                    }
+
+                    // EC50 estimation (use maxDose/2 as approximation for sparse data)
+                    const estimatedEC50 = maxDose > 0 ? maxDose * 0.8 : 10;
+
+                    const doseResponsePayload = {
+                        initial: {
+                            ec50: { value: estimatedEC50, uncertainty: estimatedEC50 * 0.4 },
+                            hillSlope: { value: 1.2, uncertainty: 0.5 },
+                            dataPoints: enhancedDataPoints
+                        },
+                        topCandidate: topCandidate
+                    };
+
+                    console.log('Setting dose response data:', doseResponsePayload);
+                    setRealDoseResponseData(doseResponsePayload);
+
+                    // Extract plate layout data for visualization
+                    const plateData = doseResponseData.map((r: any) => ({
+                        wellId: r.well_id,
+                        compound: r.compound,
+                        cellLine: r.cell_line,
+                        doseUm: r.dose_uM,
+                        atpSignal: r.atp_signal
+                    }));
+                    setPlateLayoutData(plateData);
+                } else {
+                    console.log('No dose response data found for top candidate');
+                }
+            } else {
+                console.log('No merged candidates or no results');
+            }
         };
 
         fetchData();
     }, []);
 
+    // Handle running autonomous loop experiment
+    const handleRunExperiment = async (candidate: any) => {
+        try {
+            setIsRunningExperiment(true);
+
+            // Calculate entropy-weighted allocations for top 5 candidates
+            const top5 = combinedRanking.slice(0, 5);
+            const TOTAL_EXPERIMENTAL_WELLS = 320; // 4 plates × 80 experimental wells each
+
+            // Calculate scores: entropy × √CV × priority_multiplier
+            const candidatesWithScores = top5.map((c, idx) => {
+                let priorityMultiplier;
+                let priority;
+                if (idx === 0) {
+                    priority = 'Primary';
+                    priorityMultiplier = 2.0;
+                } else if (idx <= 2) {
+                    priority = 'Scout';
+                    priorityMultiplier = 1.5;
+                } else {
+                    priority = 'Probe';
+                    priorityMultiplier = 1.0;
+                }
+
+                const entropy = parseFloat(c.entropy) || 0.99;
+                const cv = parseFloat(c.cv) || 50;
+                const score = entropy * Math.sqrt(cv) * priorityMultiplier;
+
+                return { ...c, score, priority };
+            });
+
+            const totalScore = candidatesWithScores.reduce((sum, c) => sum + c.score, 0);
+
+            // Allocate wells proportionally
+            const candidates = candidatesWithScores.map(c => ({
+                compound: c.compound,
+                cell_line: c.cellLine,
+                timepoint_h: parseFloat(c.timepoint) || 12.0,
+                wells: Math.round((c.score / totalScore) * TOTAL_EXPERIMENTAL_WELLS),
+                priority: c.priority
+            }));
+
+            // Adjust total to exactly 320 (handle rounding)
+            const allocatedTotal = candidates.reduce((sum, c) => sum + c.wells, 0);
+            if (allocatedTotal !== TOTAL_EXPERIMENTAL_WELLS) {
+                candidates[0].wells += (TOTAL_EXPERIMENTAL_WELLS - allocatedTotal);
+            }
+
+            const totalWells = TOTAL_EXPERIMENTAL_WELLS + 64; // + controls
+            setExperimentProgress({ completed: 0, total: totalWells, percentage: 0 });
+
+            const response = await fetch('http://localhost:8000/api/thalamus/autonomous-loop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ candidates })
+            });
+
+            if (!response.ok) throw new Error('Failed to start experiment');
+
+            const data = await response.json();
+            setExperimentDesignId(data.design_id);
+
+            // Start polling for progress
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusResponse = await fetch(`http://localhost:8000/api/thalamus/designs/${data.design_id}/status`);
+                    if (!statusResponse.ok) throw new Error('Failed to fetch status');
+
+                    const status = await statusResponse.json();
+
+                    if (status.progress) {
+                        setExperimentProgress(status.progress);
+                    }
+
+                    if (status.status === 'completed') {
+                        clearInterval(pollInterval);
+                        setIsRunningExperiment(false);
+                        // Auto-advance to next stage
+                        setTimeout(() => nextStage(), 2000);
+                    } else if (status.status === 'failed') {
+                        clearInterval(pollInterval);
+                        setIsRunningExperiment(false);
+                        alert('Experiment failed: ' + (status.error || 'Unknown error'));
+                    }
+                } catch (err) {
+                    console.error('Error polling status:', err);
+                }
+            }, 1000); // Poll every second
+
+        } catch (error) {
+            console.error('Error starting experiment:', error);
+            setIsRunningExperiment(false);
+            alert('Failed to start experiment');
+        }
+    };
+
     // Merge real data into tutorial data
     const activeData = {
         ...TUTORIAL_DATA,
-        candidateRanking: combinedRanking.length > 0 ? combinedRanking : TUTORIAL_DATA.candidateRanking
+        candidateRanking: combinedRanking.length > 0 ? combinedRanking : TUTORIAL_DATA.candidateRanking,
+        plateLayout: plateLayoutData,
+        // Override with real dose-response data if available
+        ...(realDoseResponseData ? {
+            initial: realDoseResponseData.initial,
+            proposed: {
+                ...TUTORIAL_DATA.proposed,
+                // Suggest doses around the EC50
+                doses: realDoseResponseData.initial.ec50.value > 0 ? [
+                    Math.round(realDoseResponseData.initial.ec50.value * 0.3 * 10) / 10,
+                    Math.round(realDoseResponseData.initial.ec50.value * 0.5 * 10) / 10,
+                    Math.round(realDoseResponseData.initial.ec50.value * 0.7 * 10) / 10,
+                    Math.round(realDoseResponseData.initial.ec50.value * 1.0 * 10) / 10,
+                    Math.round(realDoseResponseData.initial.ec50.value * 1.5 * 10) / 10,
+                    Math.round(realDoseResponseData.initial.ec50.value * 2.0 * 10) / 10,
+                ] : TUTORIAL_DATA.proposed.doses
+            },
+            final: {
+                // Simulated "improved" estimates after experiment
+                ec50: {
+                    value: realDoseResponseData.initial.ec50.value * 0.95,
+                    uncertainty: realDoseResponseData.initial.ec50.uncertainty * 0.3
+                },
+                hillSlope: {
+                    value: realDoseResponseData.initial.hillSlope.value,
+                    uncertainty: realDoseResponseData.initial.hillSlope.uncertainty * 0.4
+                },
+                dataPoints: [] // Keep empty for tutorial flow
+            }
+        } : {})
     };
 
     const nextStage = () => setStageIndex(Math.min(STAGES.length - 1, stageIndex + 1));
@@ -239,7 +460,32 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                 </div>
             </div>
 
+            {/* Loading State */}
+            {isLoading && (
+                <div className={`text-center py-12 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-4"></div>
+                    <p>Loading experimental data...</p>
+                </div>
+            )}
+
+            {/* Error State */}
+            {!isLoading && dataError && (
+                <div className={`p-6 rounded-xl border ${isDarkMode ? 'bg-red-900/20 border-red-700 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                    <h3 className="text-lg font-semibold mb-2">Unable to Load Data</h3>
+                    <p className="mb-4">{dataError}</p>
+                    <div className="text-sm space-y-2">
+                        <p className="font-semibold">To fix this:</p>
+                        <ol className="list-decimal list-inside space-y-1 ml-2">
+                            <li>Ensure the Cell Thalamus API backend is running on port 8000</li>
+                            <li>Run a simulation from the "Run Simulation" tab first</li>
+                            <li>Refresh this page</li>
+                        </ol>
+                    </div>
+                </div>
+            )}
+
             {/* Stage Content */}
+            {!isLoading && !dataError && (
             <div className="min-h-[400px]">
                 <AnimatePresence mode="wait">
                     <motion.div
@@ -257,9 +503,25 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                                 <h1 className={`text-4xl font-extrabold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
                                     Welcome to the Loop
                                 </h1>
-                                <p className={`max-w-lg mx-auto text-lg ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                    This interactive walkthrough demonstrates how cell_OS autonomously designs experiments to reduce uncertainty.
-                                </p>
+                                <div className={`max-w-2xl mx-auto text-left space-y-3`}>
+                                    <p className={`text-lg ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                        <span className="font-semibold">Initial experimental data has already been collected.</span> The autonomous system now:
+                                    </p>
+                                    <ul className={`text-base space-y-2 pl-6 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                        <li className="flex items-start gap-2">
+                                            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`}></span>
+                                            <span>Examines the data to identify areas of highest uncertainty</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`}></span>
+                                            <span>Proposes the next set of experiments following a defined reward function</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`}></span>
+                                            <span>Operates within laboratory constraints (budget, plates, reagents)</span>
+                                        </li>
+                                    </ul>
+                                </div>
 
                                 {/* Mission Objective Card */}
                                 <div className={`max-w-md mx-auto text-left p-6 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} shadow-lg`}>
@@ -319,7 +581,17 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                         {stageIndex === 1 && <WorldModelStage isDarkMode={isDarkMode} data={activeData} />}
                         {stageIndex === 2 && <QuestionStage isDarkMode={isDarkMode} data={activeData} />}
                         {stageIndex === 3 && <ProposalStage isDarkMode={isDarkMode} data={activeData} />}
-                        {stageIndex === 4 && <ExecutionStage isDarkMode={isDarkMode} data={activeData} />}
+                        {stageIndex === 4 && (
+                            <ExecutionStage
+                                isDarkMode={isDarkMode}
+                                data={activeData}
+                                topCandidate={combinedRanking[0]}
+                                candidateRanking={combinedRanking}
+                                onRunExperiment={handleRunExperiment}
+                                isRunning={isRunningExperiment}
+                                progress={experimentProgress}
+                            />
+                        )}
                         {stageIndex === 5 && <MeasurementStage isDarkMode={isDarkMode} data={activeData} />}
                         {stageIndex === 6 && <ReconciliationStage isDarkMode={isDarkMode} data={activeData} />}
                         {stageIndex === 7 && <RewardStage isDarkMode={isDarkMode} data={activeData} />}
@@ -327,9 +599,10 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                     </motion.div>
                 </AnimatePresence>
             </div>
+            )}
 
             {/* Navigation Controls */}
-            {stageIndex > 0 && (
+            {!isLoading && !dataError && stageIndex > 0 && (
                 <div className={`mt-8 pt-6 border-t flex justify-between items-center ${isDarkMode ? 'border-slate-800' : 'border-zinc-200'}`}>
                     <button
                         onClick={prevStage}

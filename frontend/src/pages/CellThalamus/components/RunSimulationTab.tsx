@@ -9,6 +9,7 @@ import { useSimulation } from '../hooks/useSimulation';
 import { useDesigns } from '../hooks/useCellThalamusData';
 import PlateMapPreview from './PlateMapPreview';
 import SimulationProgress from './SimulationProgress';
+import S3WatcherControl from './S3WatcherControl';
 
 interface RunSimulationTabProps {
   onSimulationComplete: (designId: string) => void;
@@ -20,7 +21,7 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
   const [compounds, setCompounds] = useState<string[]>([]);
 
   const { runSimulation, design, status, loading, error, isPolling, progress } = useSimulation();
-  const { data: designs, loading: loadingDesigns, refetch: refetchDesigns } = useDesigns();
+  const { refetch: refetchDesigns } = useDesigns();
 
   const availableCellLines = ['A549', 'HepG2', 'U2OS'];
   const availableCompounds = [
@@ -128,6 +129,9 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
           Configure and execute Cell Thalamus campaigns to validate measurement variance
         </p>
       </div>
+
+      {/* S3 Watcher Control */}
+      <S3WatcherControl />
 
       {/* Configuration Card */}
       <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 space-y-6">
@@ -306,48 +310,6 @@ const RunSimulationTab: React.FC<RunSimulationTabProps> = ({ onSimulationComplet
 
       {/* Plate Map Preview */}
       {!isPolling && <PlateMapPreview cellLines={cellLines} compounds={compounds} mode={mode} />}
-
-      {/* Recent Designs */}
-      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Recent Designs</h3>
-        {loadingDesigns ? (
-          <div className="text-slate-400 text-sm">Loading designs...</div>
-        ) : designs && designs.length > 0 ? (
-          <div className="space-y-2">
-            {designs.slice(0, 5).map((d) => (
-              <div
-                key={d.design_id}
-                className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700"
-              >
-                <div className="flex-1">
-                  <div className="text-sm font-mono text-slate-300">
-                    {d.design_id.slice(0, 8)}...
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    {d.cell_lines.join(', ')} • {d.compounds.length} compounds
-                  </div>
-                </div>
-                <div
-                  className={`
-                    px-3 py-1 rounded-full text-xs font-semibold
-                    ${
-                      d.status === 'completed'
-                        ? 'bg-green-500/20 text-green-400'
-                        : d.status === 'failed'
-                        ? 'bg-red-500/20 text-red-400'
-                        : 'bg-yellow-500/20 text-yellow-400'
-                    }
-                  `}
-                >
-                  {d.status}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-slate-400 text-sm">No designs yet. Run your first simulation!</div>
-        )}
-      </div>
     </div>
   );
 };

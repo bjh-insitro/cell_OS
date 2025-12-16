@@ -2,19 +2,21 @@
  * Cell Thalamus Dashboard - Main Page
  *
  * Interactive exploration of Phase 0 variance validation
- * 7 tabs: Run Simulation, Morphology, Dose-Response, Variance, Sentinel, Plate Viewer, Autonomous Loop
+ * 6 tabs: Run Simulation, Dose-Response, Morphology, Variance, Sentinel, Plate Viewer
+ * Additional tutorials/viewing page accessible via button in header
  */
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import RunSimulationTab from './components/RunSimulationTab';
+import ExperimentsTab from './components/ExperimentsTab';
 import MorphologyTab from './components/MorphologyTab';
 import DoseResponseTab from './components/DoseResponseTab';
 import VarianceTab from './components/VarianceTab';
 import SentinelTab from './components/SentinelTab';
 import PlateViewerTab from './components/PlateViewerTab';
 
-type TabType = 'run' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
+type TabType = 'run' | 'experiments' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
 
 const CellThalamusPage: React.FC = () => {
   const navigate = useNavigate();
@@ -23,6 +25,7 @@ const CellThalamusPage: React.FC = () => {
 
   const tabs = [
     { id: 'run', label: 'Run Simulation', icon: '▶️' },
+    { id: 'experiments', label: 'Experiments', icon: '📋' },
     { id: 'dose', label: 'Dose-Response', icon: '📈' },
     { id: 'morphology', label: 'Morphology Manifold', icon: '🎨' },
     { id: 'variance', label: 'Variance Analysis', icon: '📊' },
@@ -50,6 +53,15 @@ const CellThalamusPage: React.FC = () => {
               <p className="text-slate-400 mt-1">
                 Variance-Aware Measurement Validation
               </p>
+            </div>
+            <div>
+              <button
+                onClick={() => navigate('/cell-thalamus/viewing')}
+                className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+              >
+                <span>🎬</span>
+                <span>Tutorials & Viewing</span>
+              </button>
             </div>
           </div>
         </div>
@@ -85,7 +97,16 @@ const CellThalamusPage: React.FC = () => {
           <RunSimulationTab
             onSimulationComplete={(designId) => {
               setSelectedDesignId(designId);
-              setActiveTab('dose');
+              navigate('/cell-thalamus/viewing');
+            }}
+          />
+        )}
+        {activeTab === 'experiments' && (
+          <ExperimentsTab
+            selectedDesignId={selectedDesignId || undefined}
+            onSelectDesign={(designId) => {
+              setSelectedDesignId(designId);
+              setActiveTab('morphology');
             }}
           />
         )}

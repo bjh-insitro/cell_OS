@@ -14,9 +14,13 @@ import json
 import os
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Pacific timezone for timestamps
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 
 class CellThalamusDB:
@@ -41,8 +45,6 @@ class CellThalamusDB:
                 phase INTEGER NOT NULL,
                 cell_lines TEXT,
                 compounds TEXT,
-                doses TEXT,
-                timepoints TEXT,
                 created_at TEXT,
                 metadata TEXT
             )
@@ -102,23 +104,20 @@ class CellThalamusDB:
         logger.info("Cell Thalamus schema created")
 
     def save_design(self, design_id: str, phase: int, cell_lines: List[str],
-                   compounds: List[str], doses: List[float], timepoints: List[float],
-                   metadata: Optional[Dict] = None):
+                   compounds: List[str], metadata: Optional[Dict] = None):
         """Save an experimental design."""
         cursor = self.conn.cursor()
 
         cursor.execute("""
             INSERT OR REPLACE INTO thalamus_designs
-            (design_id, phase, cell_lines, compounds, doses, timepoints, created_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (design_id, phase, cell_lines, compounds, created_at, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             design_id,
             phase,
             json.dumps(cell_lines),
             json.dumps(compounds),
-            json.dumps(doses),
-            json.dumps(timepoints),
-            datetime.now().isoformat(),
+            datetime.now(PACIFIC_TZ).isoformat(),
             json.dumps(metadata) if metadata else None
         ))
 
@@ -138,15 +137,15 @@ class CellThalamusDB:
             (design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
              plate_id, day, operator, is_sentinel,
              morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna,
-             atp_signal, genotype, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             atp_signal, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
             plate_id, day, operator, is_sentinel,
             morphology['er'], morphology['mito'], morphology['nucleus'],
             morphology['actin'], morphology['rna'],
-            atp_signal, genotype,
-            datetime.now().isoformat()
+            atp_signal,
+            datetime.now(PACIFIC_TZ).isoformat()
         ))
 
         self.conn.commit()
@@ -165,13 +164,12 @@ class CellThalamusDB:
             return
 
         cursor = self.conn.cursor()
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(PACIFIC_TZ).isoformat()
 
         # Prepare data tuples
         data = []
         for result in results:
             morphology = result['morphology']
-            genotype = result.get('genotype', 'WT')
 
             data.append((
                 result['design_id'],
@@ -190,7 +188,6 @@ class CellThalamusDB:
                 morphology['actin'],
                 morphology['rna'],
                 result['atp_signal'],
-                genotype,
                 timestamp
             ))
 
@@ -200,8 +197,8 @@ class CellThalamusDB:
             (design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
              plate_id, day, operator, is_sentinel,
              morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna,
-             atp_signal, genotype, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             atp_signal, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, data)
 
         self.conn.commit()
@@ -275,7 +272,8 @@ class CellThalamusDB:
         return [dict(row) for row in rows]
 
     def get_dose_response_data(self, design_id: str, compound: str,
-                               cell_line: str, metric: str = 'atp_signal') -> List[Tuple[float, float, float, int]]:
+                               cell_line: str, metric: str = 'atp_signal',
+                               timepoint: Optional[float] = None) -> List[Tuple[float, float, float, int]]:
         """
         Get dose-response data for a specific compound and cell line.
 
@@ -284,6 +282,7 @@ class CellThalamusDB:
             compound: Compound name
             cell_line: Cell line name
             metric: Metric to plot ('atp_signal', 'viability_pct', or channel name like 'morph_er')
+            timepoint: Optional timepoint filter (e.g., 12.0, 48.0)
 
         Returns:
             List of (dose, mean, std, n) tuples aggregated across replicates
@@ -302,23 +301,38 @@ class CellThalamusDB:
         # Handle normalized viability percentage
         if metric == 'viability_pct':
             # Get DMSO control mean for this cell line
-            cursor.execute("""
-                SELECT AVG(atp_signal)
-                FROM thalamus_results
-                WHERE design_id = ? AND compound = 'DMSO' AND cell_line = ?
-            """, (design_id, cell_line))
+            if timepoint is not None:
+                cursor.execute("""
+                    SELECT AVG(atp_signal)
+                    FROM thalamus_results
+                    WHERE design_id = ? AND compound = 'DMSO' AND cell_line = ? AND timepoint_h = ?
+                """, (design_id, cell_line, timepoint))
+            else:
+                cursor.execute("""
+                    SELECT AVG(atp_signal)
+                    FROM thalamus_results
+                    WHERE design_id = ? AND compound = 'DMSO' AND cell_line = ?
+                """, (design_id, cell_line))
             dmso_mean = cursor.fetchone()[0]
 
             if not dmso_mean or dmso_mean == 0:
                 return []  # Can't normalize without DMSO control
 
             # Get compound data and normalize
-            cursor.execute("""
-                SELECT dose_uM, (atp_signal / ?) * 100 as viability_pct
-                FROM thalamus_results
-                WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
-                ORDER BY dose_uM
-            """, (dmso_mean, design_id, compound, cell_line))
+            if timepoint is not None:
+                cursor.execute("""
+                    SELECT dose_uM, (atp_signal / ?) * 100 as viability_pct
+                    FROM thalamus_results
+                    WHERE design_id = ? AND compound = ? AND cell_line = ? AND timepoint_h = ? AND is_sentinel = 0
+                    ORDER BY dose_uM
+                """, (dmso_mean, design_id, compound, cell_line, timepoint))
+            else:
+                cursor.execute("""
+                    SELECT dose_uM, (atp_signal / ?) * 100 as viability_pct
+                    FROM thalamus_results
+                    WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
+                    ORDER BY dose_uM
+                """, (dmso_mean, design_id, compound, cell_line))
             rows = cursor.fetchall()
 
             # Aggregate by dose: compute mean, std, n
@@ -348,14 +362,22 @@ class CellThalamusDB:
         # Handle regular metrics
         column = morph_map.get(metric, metric)
 
-        query = f"""
-            SELECT dose_uM, {column}
-            FROM thalamus_results
-            WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
-            ORDER BY dose_uM
-        """
-
-        cursor.execute(query, (design_id, compound, cell_line))
+        if timepoint is not None:
+            query = f"""
+                SELECT dose_uM, {column}
+                FROM thalamus_results
+                WHERE design_id = ? AND compound = ? AND cell_line = ? AND timepoint_h = ? AND is_sentinel = 0
+                ORDER BY dose_uM
+            """
+            cursor.execute(query, (design_id, compound, cell_line, timepoint))
+        else:
+            query = f"""
+                SELECT dose_uM, {column}
+                FROM thalamus_results
+                WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
+                ORDER BY dose_uM
+            """
+            cursor.execute(query, (design_id, compound, cell_line))
         rows = cursor.fetchall()
 
         # Aggregate by dose: compute mean, std, n

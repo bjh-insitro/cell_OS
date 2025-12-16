@@ -61,11 +61,15 @@ import hashlib
 from typing import List, Dict, Any, Optional, Tuple
 from multiprocessing import Pool, cpu_count
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from dataclasses import dataclass
 
 import numpy as np
 from tqdm import tqdm
+
+# Pacific timezone for timestamps
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +190,7 @@ class CellThalamusDB:
             # Fresh DB - insert current version
             cursor.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
-                (self.SCHEMA_VERSION, datetime.now().isoformat())
+                (self.SCHEMA_VERSION, datetime.now(PACIFIC_TZ).isoformat())
             )
             self.conn.commit()
         elif row[0] != self.SCHEMA_VERSION:
@@ -205,7 +209,7 @@ class CellThalamusDB:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (design_id, phase, str(cell_lines), str(compounds),
               str([0.0, 0.1, 1.0, 10.0]), str([12.0, 48.0]),
-              datetime.now().isoformat(), str(metadata)))
+              datetime.now(PACIFIC_TZ).isoformat(), str(metadata)))
         self.conn.commit()
 
     def insert_results_batch(self, results: List[Dict], commit: bool = True):
@@ -214,7 +218,7 @@ class CellThalamusDB:
             return
 
         cursor = self.conn.cursor()
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(PACIFIC_TZ).isoformat()
 
         data = []
         for r in results:
@@ -1021,9 +1025,10 @@ Examples:
         """
     )
 
-    parser.add_argument('--mode', choices=['demo', 'benchmark', 'full'], default='full')
+    parser.add_argument('--mode', choices=['demo', 'benchmark', 'full', 'portfolio'], default='full')
     parser.add_argument('--workers', type=int, default=None)
     parser.add_argument('--db-path', default='cell_thalamus_results.db')
+    parser.add_argument('--portfolio-json', type=str, help='JSON string with portfolio configuration for autonomous loop')
 
     args = parser.parse_args()
 
@@ -1040,11 +1045,27 @@ Examples:
 
     print(f"\n✓ Complete! Design ID: {design_id}")
     print(f"Results saved to: {args.db_path}")
-    print(f"\nNext steps:")
-    print(f"1. Download {args.db_path} from your AWS instance")
-    print(f"2. Place it in your local data/ directory")
-    print(f"3. Open Cell Thalamus dashboard: http://localhost:5173/cell-thalamus")
-    print(f"4. Select this run to visualize results across all tabs")
+
+    # Auto-upload to S3 if running on JupyterHub/AWS
+    try:
+        import boto3
+        S3_BUCKET = 'insitro-user'
+        S3_KEY = 'brig/cell_thalamus_results.db'
+
+        print(f"\n📤 Auto-uploading to S3...")
+        s3 = boto3.client('s3')
+        s3.upload_file(args.db_path, S3_BUCKET, S3_KEY)
+        print(f"✅ Uploaded to s3://{S3_BUCKET}/{S3_KEY}")
+        print(f"\n🔄 On your Mac, run: ./scripts/sync_aws_db.sh")
+        print(f"   Then view at: http://localhost:5173/cell-thalamus")
+    except ImportError:
+        # boto3 not available - probably running locally
+        print(f"\nNext steps:")
+        print(f"1. Open Cell Thalamus dashboard: http://localhost:5173/cell-thalamus")
+        print(f"2. Select this run to visualize results across all tabs")
+    except Exception as e:
+        print(f"\n⚠️  S3 upload failed: {e}")
+        print(f"   Manual upload: aws s3 cp {args.db_path} s3://insitro-user/brig/cell_thalamus_results.db")
 
 
 if __name__ == "__main__":
