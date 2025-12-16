@@ -224,7 +224,10 @@ export function useDoseResponse(
 /**
  * Hook to fetch variance analysis
  */
-export function useVarianceAnalysis(designId: string | null): UseDataResult<VarianceAnalysis> {
+export function useVarianceAnalysis(
+  designId: string | null,
+  metric: string = 'atp_signal'
+): UseDataResult<VarianceAnalysis> {
   const [data, setData] = useState<VarianceAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -243,7 +246,61 @@ export function useVarianceAnalysis(designId: string | null): UseDataResult<Vari
       try {
         setLoading(true);
         setError(null);
-        const analysis = await cellThalamusService.getVarianceAnalysis(designId);
+        const analysis = await cellThalamusService.getVarianceAnalysis(designId, metric);
+        if (isMounted) {
+          setData(analysis);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [designId, metric, refetchTrigger]);
+
+  const refetch = () => setRefetchTrigger((prev) => prev + 1);
+
+  return { data, loading, error, refetch };
+}
+
+/**
+ * Hook to fetch variance analysis for all metrics (for heatmap)
+ */
+export function useAllVarianceAnalysis(designId: string | null): UseDataResult<any> {
+  const [data, setData] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+
+  useEffect(() => {
+    if (!designId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        // No metric parameter = get all metrics
+        const response = await fetch(`http://localhost:8000/api/thalamus/designs/${designId}/variance`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch variance analysis');
+        }
+        const analysis = await response.json();
         if (isMounted) {
           setData(analysis);
         }

@@ -5,11 +5,14 @@ import {
     Area,
     XAxis,
     YAxis,
+    ZAxis,
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
     Scatter,
-    ErrorBar
+    ErrorBar,
+    ReferenceDot,
+    ReferenceLine
 } from 'recharts';
 
 interface DataPoint {
@@ -47,6 +50,7 @@ const DoseResponseChart: React.FC<DoseResponseChartProps> = ({
 }) => {
     // Generate curve data
     const curveData = useMemo(() => {
+        console.log('DoseResponseChart ec50:', ec50, 'hillSlope:', hillSlope);
         const data = [];
         // Log scale points for smooth curve
         for (let i = 0; i <= 100; i++) {
@@ -79,12 +83,16 @@ const DoseResponseChart: React.FC<DoseResponseChartProps> = ({
 
     // Transform scatter data for Recharts
     const scatterData = useMemo(() => {
-        return dataPoints.map(p => ({
+        console.log('DoseResponseChart dataPoints:', dataPoints);
+        const transformed = dataPoints.map((p, i) => ({
             x: p.dose,
             y: p.response,
             errorY: p.error,
-            isNew: p.isNew
+            isNew: p.isNew,
+            index: 1  // Constant size for all points
         }));
+        console.log('Transformed scatterData:', transformed);
+        return transformed;
     }, [dataPoints]);
 
     const projectedData = useMemo(() => {
@@ -95,9 +103,10 @@ const DoseResponseChart: React.FC<DoseResponseChartProps> = ({
     }, [projectedDoses, ec50, hillSlope]);
 
     return (
-        <div className="h-[300px] w-full">
+        <div style={{ width: '100%', height: '300px', minHeight: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
+                    data={curveData}
                     margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
                 >
                     <CartesianGrid
@@ -109,19 +118,8 @@ const DoseResponseChart: React.FC<DoseResponseChartProps> = ({
                         dataKey="dose"
                         type="number"
                         scale="log"
-                        domain={[
-                            (dataMin: number) => {
-                                const pointsMin = Math.min(...dataPoints.map(d => d.dose), ...projectedDoses);
-                                const min = Math.min(pointsMin, 0.1); // Ensure we capture low doses, default floor
-                                return Math.pow(10, Math.floor(Math.log10(min)));
-                            },
-                            (dataMax: number) => {
-                                const pointsMax = Math.max(...dataPoints.map(d => d.dose), ...projectedDoses);
-                                const max = Math.max(pointsMax, 100); // Default ceiling
-                                return Math.pow(10, Math.ceil(Math.log10(max)));
-                            }
-                        ]}
-                        ticks={[0.1, 1, 10, 100, 1000]}
+                        domain={[0.1, 100]}
+                        ticks={[0.1, 1, 10, 100]}
                         allowDataOverflow={false}
                         stroke={isDarkMode ? '#94a3b8' : '#64748b'}
                         tickFormatter={(val) => {
@@ -195,12 +193,29 @@ const DoseResponseChart: React.FC<DoseResponseChartProps> = ({
                     />
 
                     {/* Existing Data Points */}
-                    <Scatter
-                        data={scatterData.filter(d => !d.isNew)}
-                        fill={isDarkMode ? '#94a3b8' : '#64748b'}
-                    >
-                        <ErrorBar dataKey="errorY" width={4} strokeWidth={1} stroke={isDarkMode ? '#94a3b8' : '#64748b'} direction="y" />
-                    </Scatter>
+                    {dataPoints.filter(d => !d.isNew).map((point, i) => (
+                        <React.Fragment key={`point-${i}`}>
+                            {/* Error bars rendered as reference areas */}
+                            <ReferenceLine
+                                segment={[
+                                    { x: point.dose, y: point.response - (point.error || 0) },
+                                    { x: point.dose, y: point.response + (point.error || 0) }
+                                ]}
+                                stroke={isDarkMode ? '#60a5fa' : '#3b82f6'}
+                                strokeWidth={2}
+                                isFront={false}
+                            />
+                            <ReferenceDot
+                                x={point.dose}
+                                y={point.response}
+                                r={6}
+                                fill={isDarkMode ? '#60a5fa' : '#3b82f6'}
+                                stroke={isDarkMode ? '#1e40af' : '#2563eb'}
+                                strokeWidth={2}
+                                isFront
+                            />
+                        </React.Fragment>
+                    ))}
 
                     {/* New Data Points (highlighted) */}
                     <Scatter

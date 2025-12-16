@@ -45,11 +45,43 @@ function watch_loop() {
             if [ -n "$last_etag" ]; then
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔄 Change detected! Downloading..."
 
-                # Download updated DB
-                aws s3 cp "s3://$S3_BUCKET/$S3_KEY" "$LOCAL_DB_PATH" --profile bedrock
+                # Download to temp file (don't overwrite local DB yet)
+                TEMP_DB="${LOCAL_DB_PATH}.s3_temp"
+                aws s3 cp "s3://$S3_BUCKET/$S3_KEY" "$TEMP_DB" --profile bedrock
 
-                size=$(ls -lh "$LOCAL_DB_PATH" | awk '{print $5}')
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Downloaded! Size: $size"
+                if [ $? -eq 0 ]; then
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📥 Downloaded to temp, merging..."
+
+                    # Merge S3 DB into local DB (only new designs/results)
+                    sqlite3 "$LOCAL_DB_PATH" <<EOF
+-- Attach S3 temp database
+ATTACH DATABASE '$TEMP_DB' AS s3_db;
+
+-- Insert new designs (skip duplicates)
+INSERT OR IGNORE INTO thalamus_designs
+SELECT * FROM s3_db.thalamus_designs;
+
+-- Insert new results (replace to ensure we get all data even if design exists)
+INSERT OR REPLACE INTO thalamus_results
+SELECT * FROM s3_db.thalamus_results;
+
+-- Detach
+DETACH DATABASE s3_db;
+EOF
+
+                    if [ $? -eq 0 ]; then
+                        local_count=$(sqlite3 "$LOCAL_DB_PATH" "SELECT COUNT(*) FROM thalamus_designs;")
+                        size=$(ls -lh "$LOCAL_DB_PATH" | awk '{print $5}')
+                        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Merged! Total designs: $local_count, Size: $size"
+                    else
+                        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Merge failed, keeping local DB unchanged"
+                    fi
+
+                    # Clean up temp file
+                    rm -f "$TEMP_DB"
+                else
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Download failed"
+                fi
                 echo ""
             else
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📡 Initial sync - tracking ETag: ${current_etag:0:12}..."

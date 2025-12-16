@@ -63,6 +63,11 @@ const ExperimentsTab: React.FC<ExperimentsTabProps> = ({ onSelectDesign, selecte
   };
 
   const getWellCount = (design: any): string => {
+    // Use actual well_count from design metadata if available
+    if (design.well_count) {
+      return `${design.well_count} wells`;
+    }
+
     const mode = getModeFromMetadata(design);
     const cellLines = Array.isArray(design.cell_lines)
       ? design.cell_lines
@@ -71,8 +76,8 @@ const ExperimentsTab: React.FC<ExperimentsTabProps> = ({ onSelectDesign, selecte
       ? design.compounds
       : JSON.parse(design.compounds || '[]');
 
-    if (mode === 'demo') return '8 wells';
-    if (mode === 'benchmark') return '96 wells';
+    if (mode === 'demo') return '~8 wells';
+    if (mode === 'benchmark') return '~96 wells';
 
     // Legacy or Full mode: calculate based on actual configuration
     const numCellLines = cellLines.length || 2;
@@ -80,12 +85,12 @@ const ExperimentsTab: React.FC<ExperimentsTabProps> = ({ onSelectDesign, selecte
 
     // If it looks like demo/benchmark based on counts, return those
     if (numCompounds <= 2 && numCellLines === 1) return '~8 wells';
-    if (numCompounds <= 5 && numCellLines === 2) return '~96 wells';
+    if (numCompounds <= 5 && numCellLines === 2) return '~96-192 wells';
 
     // Full mode calculation
     const experimental = numCellLines * numCompounds * 4 * 2 * 3 * 2 * 2;
     const sentinels = numCellLines * 2 * 3 * 2 * 2 * 8;
-    return `${experimental + sentinels} wells`;
+    return `~${experimental + sentinels} wells`;
   };
 
   const formatDate = (dateString: string): string => {
@@ -169,6 +174,11 @@ const ExperimentsTab: React.FC<ExperimentsTabProps> = ({ onSelectDesign, selecte
             const wellCount = getWellCount(design);
             const isSelected = design.design_id === selectedDesignId;
 
+            // Calculate actual plate count from well_count if available
+            const numericWellCount = design.well_count || parseInt(wellCount.replace(/[^0-9]/g, '')) || 0;
+            const plateCount = numericWellCount > 0 ? Math.ceil(numericWellCount / 96) : 1;
+            const plateLabel = plateCount === 1 ? '1 PLATE' : `${plateCount} PLATES`;
+
             return (
               <div
                 key={design.design_id}
@@ -191,16 +201,14 @@ const ExperimentsTab: React.FC<ExperimentsTabProps> = ({ onSelectDesign, selecte
                       </h3>
                       <span className={`
                         px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider
-                        ${mode === 'demo'
-                          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                          : mode === 'benchmark'
+                        ${plateCount === 1
                           ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                          : mode === 'legacy'
-                          ? 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                          : plateCount === 2
+                          ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
                           : 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
                         }
                       `}>
-                        {mode === 'benchmark' ? '1 Plate' : mode}
+                        {plateLabel}
                       </span>
                       <span className={`
                         px-3 py-1 rounded-full text-xs font-semibold

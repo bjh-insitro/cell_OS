@@ -146,8 +146,12 @@ export class CellThalamusService {
   /**
    * Perform variance analysis
    */
-  async getVarianceAnalysis(designId: string): Promise<VarianceAnalysis> {
-    const response = await fetch(`${this.baseUrl}/designs/${designId}/variance`);
+  async getVarianceAnalysis(
+    designId: string,
+    metric: string = 'atp_signal'
+  ): Promise<VarianceAnalysis> {
+    const params = new URLSearchParams({ metric });
+    const response = await fetch(`${this.baseUrl}/designs/${designId}/variance?${params}`);
 
     if (!response.ok) {
       throw new Error('Failed to fetch variance analysis');

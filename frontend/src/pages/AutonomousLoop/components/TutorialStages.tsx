@@ -9,24 +9,56 @@ interface StageProps {
     isDarkMode: boolean;
     onNext?: () => void;
     data: any;
+    availableDesigns?: any[];
+    selectedDesignId?: string | null;
+    onDesignChange?: (designId: string) => void;
 }
 
-export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
+export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data, availableDesigns, selectedDesignId, onDesignChange }) => {
     const [isExpanded, setIsExpanded] = useState(true);
 
     return (
         <div className="space-y-6">
+            {/* Design Selector */}
+            {availableDesigns && availableDesigns.length > 0 && onDesignChange && (
+                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'}`}>
+                    <label className={`text-sm font-semibold mb-2 block ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                        Starting Data Source
+                    </label>
+                    <select
+                        value={selectedDesignId || ''}
+                        onChange={(e) => onDesignChange(e.target.value)}
+                        className={`w-full px-4 py-2 rounded-lg font-mono text-sm ${isDarkMode
+                            ? 'bg-slate-700 border-slate-600 text-slate-200'
+                            : 'bg-white border-zinc-300 text-zinc-900'
+                        } border focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                    >
+                        {availableDesigns.map((design, index) => {
+                            const date = design.created_at ? new Date(design.created_at).toLocaleString() : '';
+                            return (
+                                <option key={design.design_id} value={design.design_id}>
+                                    {date} ({design.design_id.slice(0, 8)}) - {design.well_count || '?'} wells
+                                </option>
+                            );
+                        })}
+                    </select>
+                    <p className={`mt-2 text-xs ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>
+                        Select which experimental dataset to use as the Phase 0 baseline for candidate ranking.
+                    </p>
+                </div>
+            )}
+
             <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
                 <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-600'} `}>
                         <Brain className="w-6 h-6" />
                     </div>
                     <div>
-                        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Current Understanding</h3>
+                        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Phase 1: Morphology Variance Analysis</h3>
                         <p className={`mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                            <span className="font-semibold text-indigo-500">Phase 0 Objective:</span> Identify high-value targets for the next cycle.
+                            <span className="font-semibold text-indigo-500">Objective:</span> Identify conditions with high morphology scatter (tr(Σ_c)) but low nuisance dominance.
                             <span className="block mt-1">
-                                The chart above shows current model understanding for <strong>{data.candidateRanking?.[0]?.compound || 'oligomycin'} × {data.candidateRanking?.[0]?.cellLine || 'A549'} @ {data.candidateRanking?.[0]?.timepoint || '12h'}</strong> (the primary candidate). The table below ranks all Compound × Cell × Timepoint combinations by epistemic uncertainty (Entropy) and variance (CV), selecting the top 5 for the next experiment.
+                                The chart shows <strong>{data.candidateRanking?.[0]?.compound || 'oligomycin'} × {data.candidateRanking?.[0]?.cellLine || 'A549'} @ {data.candidateRanking?.[0]?.timepoint || '12h'}</strong> (primary candidate). The table ranks conditions by <strong>covariance trace</strong> (phenotypic scatter in PC space) weighted by nuisance penalty. High scatter = scientifically ambiguous, needs tightening.
                             </span>
                         </p>
                         <button
@@ -47,13 +79,13 @@ export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
                     >
                         <div className="flex justify-between items-end mb-3">
                             <div>
-                                <h4 className={`text-sm font-medium mb-1 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'} `}>Global Uncertainty Ranking</h4>
+                                <h4 className={`text-sm font-medium mb-1 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'} `}>Morphology Covariance Ranking</h4>
                                 <p className={`text-xs ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'} `}>
-                                    System scan of all Compound × Cell × Timepoint combinations. Sorted by epistemic uncertainty (entropy).
+                                    All Compound × Cell × Timepoint combinations ranked by within-condition scatter (tr(Σ_c)) × nuisance penalty.
                                 </p>
                             </div>
                             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'} `}>
-                                Candidate Pool
+                                Manifold Tightening
                             </span>
                         </div>
 
@@ -80,20 +112,20 @@ export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
                                         </th>
                                         <th className="p-2 font-medium text-right">
                                             <div className="flex items-center justify-end gap-1 group relative cursor-help">
-                                                <span>CV (%)</span>
+                                                <span>Cov. Trace</span>
                                                 <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
                                                 <div className={`absolute bottom-full right-0 mb-2 w-64 p-3 rounded-lg shadow-xl text-xs z-[100] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'}`}>
-                                                    Coefficient of Variation (std dev / mean). Measures relative dispersion. High CV (&lt;100%) indicates meaningful biological variance; &gt;100% suggests technical noise.
+                                                    Trace of covariance matrix (tr(Σ_c)) — total scatter in morphology PC space. High values = phenotypically ambiguous condition that needs manifold tightening.
                                                     <div className={`absolute bottom-[-5px] right-3 w-3 h-3 transform rotate-45 border-b border-r ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-zinc-200'} `}></div>
                                                 </div>
                                             </div>
                                         </th>
                                         <th className="p-2 font-medium text-right">
                                             <div className="flex items-center justify-end gap-1 group relative cursor-help">
-                                                <span>Entropy (Bits)</span>
+                                                <span>Nuisance (%)</span>
                                                 <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
                                                 <div className={`absolute bottom-full right-0 mb-2 w-64 p-3 rounded-lg shadow-xl text-xs z-[100] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'}`}>
-                                                    Shannon entropy measuring epistemic uncertainty. Higher values indicate "confused" models that are high-value targets for new experiments.
+                                                    Fraction of variance from plate/day/operator effects vs biological signal. High nuisance (&gt;50%) means technical variation dominates — needs anchor tightening before boundaries are trustworthy.
                                                     <div className={`absolute bottom-[-5px] right-3 w-3 h-3 transform rotate-45 border-b border-r ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-zinc-200'} `}></div>
                                                 </div>
                                             </div>
@@ -101,25 +133,152 @@ export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
                                     </tr>
                                 </thead>
                                 <tbody className={`divide-y ${isDarkMode ? 'divide-slate-700 text-slate-300' : 'divide-zinc-200 text-zinc-700'} `}>
-                                    {data.candidateRanking?.map((item: any, i: number) => (
+                                    {(() => {
+                                        // Wide portfolio: show all selected candidates (up to 13)
+                                        const MAX_WELLS = 12;
+                                        const maxCandidates = Math.floor(160 / MAX_WELLS); // Up to 13 candidates
+                                        const selectedCandidates = data.candidateRanking?.slice(0, Math.min(maxCandidates, data.candidateRanking?.length || 0)) || [];
+
+                                        // Calculate allocations once for all candidates
+                                        const nInitial = 12;
+                                        const scores = selectedCandidates.map((c: any, idx: number) => {
+                                            const multiplier = idx === 0 ? 2.0 : (idx <= 2 ? 1.5 : 1.0);
+                                            const entropy = parseFloat(c.entropy);
+                                            const cv = parseFloat(c.cv) / 100;
+                                            return (Math.sqrt(entropy) * Math.pow(cv, 0.3)) / Math.sqrt(nInitial + 1) * multiplier;
+                                        });
+                                        const totalScore = scores.reduce((sum: number, s: number) => sum + s, 0);
+
+                                        const allocations = scores.map(score => {
+                                            const rawAllocation = Math.round((score / totalScore) * 160);
+                                            return rawAllocation;  // No cap
+                                        });
+
+                                        // Force exactly 160 wells
+                                        let remaining = 160 - allocations.reduce((sum: number, w: number) => sum + w, 0);
+                                        let idx = 0;
+                                        while (remaining !== 0) {
+                                            if (remaining > 0) {
+                                                allocations[idx] += 1;
+                                                remaining -= 1;
+                                            } else {
+                                                if (allocations[idx] > 1) {
+                                                    allocations[idx] -= 1;
+                                                    remaining += 1;
+                                                }
+                                            }
+                                            idx = (idx + 1) % allocations.length;
+                                            const currentTotal = allocations.reduce((sum: number, w: number) => sum + w, 0);
+                                            if (currentTotal === 160) break;
+                                        }
+
+                                        return selectedCandidates.map((item: any, i: number) => {
+                                        const allocation = allocations[i];
+
+                                        const priority = i === 0 ? 'Primary' : (i <= 2 ? 'Scout' : 'Probe');
+                                        const priorityColor = i === 0
+                                            ? (isDarkMode ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-indigo-100 text-indigo-700 border-indigo-200')
+                                            : i <= 2
+                                            ? (isDarkMode ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-blue-100 text-blue-700 border-blue-200')
+                                            : (isDarkMode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200');
+
+                                        return (
                                         <tr key={i} className={i === 0 ? (isDarkMode ? 'bg-indigo-900/20' : 'bg-indigo-50') : (i < 3 ? (isDarkMode ? 'bg-indigo-900/10' : 'bg-indigo-50/30') : '')}>
                                             <td className={`p-2 ${i === 0 ? 'font-semibold' : ''} `}>{item.compound}</td>
                                             <td className="p-2">{item.cellLine}</td>
                                             <td className="p-2">{item.timepoint}</td>
                                             <td className="p-2">
-                                                {i === 0 && <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-indigo-100 text-indigo-700 border-indigo-200'}`}>Primary (50w)</span>}
-                                                {i === 1 && <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${isDarkMode ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>Scout (30w)</span>}
-                                                {i === 2 && <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${isDarkMode ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>Scout (30w)</span>}
-                                                {i === 3 && <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${isDarkMode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>Probe (25w)</span>}
-                                                {i === 4 && <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${isDarkMode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>Probe (25w)</span>}
+                                                <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${priorityColor}`}>
+                                                    {priority} ({allocation}w)
+                                                </span>
                                             </td>
-                                            <td className="p-2 text-right font-mono text-opacity-70">{item.cv}</td>
+                                            <td className="p-2 text-right font-mono text-opacity-70">{item.covariance_trace?.toFixed(2) || item.cv || '—'}</td>
                                             <td className={`p-2 text-right font-mono ${i === 0 ? 'font-bold' : 'text-opacity-70'} `}>
-                                                {item.entropy}
+                                                {item.nuisance_fraction ? `${(item.nuisance_fraction * 100).toFixed(0)}%` : item.entropy || '—'}
                                             </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    });
+                                    })()}
                                 </tbody>
+                                <tfoot className={`border-t-2 ${isDarkMode ? 'border-slate-600' : 'border-zinc-300'}`}>
+                                    {(() => {
+                                        const MAX_WELLS = 12;
+                                        const maxCandidates = Math.floor(160 / MAX_WELLS);
+                                        const selectedCandidates = data.candidateRanking?.slice(0, Math.min(maxCandidates, data.candidateRanking?.length || 0)) || [];
+                                        const nInitial = 12;
+
+                                        // Calculate actual allocations using same logic as table
+                                        const scores = selectedCandidates.map((c: any, idx: number) => {
+                                            const multiplier = idx === 0 ? 2.0 : (idx <= 2 ? 1.5 : 1.0);
+                                            const entropy = parseFloat(c.entropy);
+                                            const cv = parseFloat(c.cv) / 100;
+                                            return (Math.sqrt(entropy) * Math.pow(cv, 0.3)) / Math.sqrt(nInitial + 1) * multiplier;
+                                        });
+                                        const totalScore = scores.reduce((sum: number, s: number) => sum + s, 0);
+
+                                        const allocations = scores.map(score => {
+                                            const rawAllocation = Math.round((score / totalScore) * 160);
+                                            return rawAllocation;  // No cap
+                                        });
+
+                                        // Force exactly 160 wells
+                                        let remaining = 160 - allocations.reduce((sum: number, w: number) => sum + w, 0);
+                                        let idx = 0;
+                                        while (remaining !== 0) {
+                                            if (remaining > 0) {
+                                                allocations[idx] += 1;
+                                                remaining -= 1;
+                                            } else {
+                                                if (allocations[idx] > 1) {
+                                                    allocations[idx] -= 1;
+                                                    remaining += 1;
+                                                }
+                                            }
+                                            idx = (idx + 1) % allocations.length;
+                                            const currentTotal = allocations.reduce((sum: number, w: number) => sum + w, 0);
+                                            if (currentTotal === 160) break;
+                                        }
+
+                                        const totalWells = allocations.reduce((sum: number, w: number) => sum + w, 0);
+
+                                        const primaryCount = selectedCandidates.filter((_, i) => i === 0).length;
+                                        const scoutCount = selectedCandidates.filter((_, i) => i > 0 && i <= 2).length;
+                                        const probeCount = selectedCandidates.filter((_, i) => i > 2).length;
+
+                                        return (
+                                            <tr className={`font-semibold ${isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-zinc-100 text-zinc-900'}`}>
+                                                <td className="p-2" colSpan={3}>
+                                                    <span className="text-xs uppercase tracking-wide">Total Selected</span>
+                                                </td>
+                                                <td className="p-2">
+                                                    <div className="flex gap-1 flex-wrap text-[10px]">
+                                                        {primaryCount > 0 && (
+                                                            <span className={`px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                                {primaryCount} Primary
+                                                            </span>
+                                                        )}
+                                                        {scoutCount > 0 && (
+                                                            <span className={`px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                                                                {scoutCount} Scout
+                                                            </span>
+                                                        )}
+                                                        {probeCount > 0 && (
+                                                            <span className={`px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-700'}`}>
+                                                                {probeCount} Probe
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-2 text-right" colSpan={2}>
+                                                    <span className={`text-sm ${isDarkMode ? 'text-violet-300' : 'text-violet-700'}`}>
+                                                        {totalWells} wells
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })()}
+                                </tfoot>
                             </table>
                         </div>
 
@@ -128,9 +287,12 @@ export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
                                 <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                 <div>
                                     <span className="font-semibold">Portfolio Rationale: </span>
-                                    Selected top 5 candidates by entropy ranking. <strong>{data.candidateRanking[0].compound}</strong> (Primary, 50w) gets maximum allocation due to highest entropy (0.99) with reliable variance (99.2%).
-                                    <strong> {data.candidateRanking[1]?.compound}</strong> and <strong>{data.candidateRanking[2]?.compound}</strong> (Scouts, 30w each) validate variance patterns across timepoints.
-                                    <strong> {data.candidateRanking[3]?.compound}</strong> and <strong>{data.candidateRanking[4]?.compound}</strong> (Probes, 25w each) provide exploratory sampling of remaining high-entropy space.
+                                    <strong>Wide portfolio strategy:</strong> max 12 wells/candidate (same as initial screen data).
+                                    Table above shows <strong>all {Math.min(13, data.candidateRanking.length)} selected candidates</strong> (up to 13 max).
+                                    With 160 experimental wells available, this allows testing many conditions instead of over-investing in a few.
+                                    Prevents wasteful oversampling - no condition gets more than 1× the initial data size.
+                                    Forces <strong>broad exploration</strong> across the full uncertainty landscape rather than deep dives into top candidates.
+                                    Priority weighting (Primary 2×, Scout 1.5×, Probe 1×) still applies but capped at 12 wells each.
                                     {data.candidateRanking[0].reason && data.candidateRanking[0].reason.includes('deprioritized') && (
                                         <span className="block mt-1 text-[11px] opacity-75">
                                             Note: Some higher-variance candidates were deprioritized as likely technical noise (CV &gt; 100%).
@@ -143,13 +305,15 @@ export const WorldModelStage: React.FC<StageProps> = ({ isDarkMode, data }) => {
                 )}
             </div>
 
-            <DoseResponseChart
-                ec50={data.initial.ec50}
-                hillSlope={data.initial.hillSlope}
-                dataPoints={data.initial.dataPoints}
-                isDarkMode={isDarkMode}
-                showConfidenceInterval={true}
-            />
+            <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'}`}>
+                <DoseResponseChart
+                    ec50={data.initial.ec50}
+                    hillSlope={data.initial.hillSlope}
+                    dataPoints={data.initial.dataPoints}
+                    isDarkMode={isDarkMode}
+                    showConfidenceInterval={true}
+                />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
                 <MetricCard
@@ -177,38 +341,38 @@ export const QuestionStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
                     <Target className="w-6 h-6" />
                 </div>
                 <div>
-                    <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Where is Ignorance Valuable?</h3>
+                    <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Where is the Manifold Ambiguous?</h3>
                     <p className={`mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
-                        The system identifies the 15-35 µM range as the region of highest epistemic value.
+                        Top candidates show high morphology scatter (tr(Σ_c) {'>'} 2.0) but acceptable nuisance ({'<'}50%). These conditions are <strong>scientifically ambiguous</strong> — the phenotype varies more than technical noise explains.
                     </p>
                 </div>
             </div>
         </div>
 
         <div className={`h-32 rounded-lg relative overflow-hidden flex items-end ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'} `}>
-            {/* Heatmap visualization-conceptual */}
+            {/* Heatmap visualization - conceptual scatter map */}
             <div className="absolute inset-0 flex">
                 <div className="flex-1 bg-opacity-10 bg-blue-500"></div>
                 <div className="flex-1 bg-opacity-20 bg-blue-500"></div>
                 <div className="flex-1 bg-opacity-80 bg-red-500 flex items-center justify-center">
-                    <span className="text-xs font-bold text-white drop-shadow">Max Value</span>
+                    <span className="text-xs font-bold text-white drop-shadow">High Scatter</span>
                 </div>
                 <div className="flex-1 bg-opacity-20 bg-blue-500"></div>
                 <div className="flex-1 bg-opacity-10 bg-blue-500"></div>
             </div>
             <div className="w-full flex justify-between px-2 pb-1 text-xs text-slate-500">
-                <span>1 µM</span>
-                <span>10 µM</span>
-                <span>100 µM</span>
+                <span>Vehicle</span>
+                <span>EC10</span>
+                <span>EC90</span>
             </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4">
             <MetricCard
-                label="Information Gain Potential"
-                value="2.8 bits"
+                label="Covariance Reduction Potential"
+                value="2.4 → 0.8"
                 isDarkMode={isDarkMode}
-                tooltip="Expected reduction in Shannon entropy if this experiment is run. 1 bit = halving the uncertainty."
+                tooltip="Expected reduction in tr(Σ_c) after targeted replicates. Goal: tighten scatter to {'<'}1.0 for boundary-worthy conditions."
             />
         </div>
     </div>
@@ -260,9 +424,9 @@ export const ProposalStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
                 <div className={`p-2 rounded ${isDarkMode ? 'bg-slate-800' : 'bg-zinc-50'} `}>
                     <span className="font-semibold block mb-1">Constraints:</span>
                     <ul className={`list-disc list-inside ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
+                        <li>Tight budget: 2 plates only (1 per timepoint)</li>
                         <li>Must maintain DMSO (Vehicle) & Sentinel controls</li>
-                        <li>Must include Sentinel wells for SPC monitoring</li>
-                        <li>Max 2 new plates allowed</li>
+                        <li>Forces decisive allocation across top 5 candidates</li>
                     </ul>
                 </div>
 
@@ -271,44 +435,111 @@ export const ProposalStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
                     <div className={isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}>
                         <div className="space-y-1 text-[11px]">
                             <div className="mb-2 text-[10px] opacity-75">
-                                Allocation formula: wells ∝ (entropy × √samples_needed). Rank #1 gets 2× baseline, scouts get 1.5×, probes get 1×.
+                                Wide portfolio strategy: max 12 wells/candidate (same as initial screen). Forces broad exploration across up to 13 conditions.
                             </div>
-                            <div><strong>12h Timepoint (80w):</strong></div>
-                            <ul className="list-disc list-inside ml-2">
-                                <li>{data.candidateRanking?.[0]?.compound || 'Primary'}: 50w — Rank #1, max entropy (0.99), needs dense titration</li>
-                                <li>{data.candidateRanking?.[1]?.compound || 'Scout 1'}: 30w — Rank #2, tied entropy, validate variance</li>
-                            </ul>
-                            <div className="mt-2"><strong>48h Timepoint (80w):</strong></div>
-                            <ul className="list-disc list-inside ml-2">
-                                <li>{data.candidateRanking?.[2]?.compound || 'Scout 2'}: 30w — Rank #3, temporal dynamics check</li>
-                                <li>{data.candidateRanking?.[3]?.compound || 'Probe 1'}: 25w — Rank #4, exploratory sampling</li>
-                                <li>{data.candidateRanking?.[4]?.compound || 'Probe 2'}: 25w — Rank #5, exploratory sampling</li>
-                            </ul>
+                            {(() => {
+                                // Calculate real allocations dynamically - wide portfolio
+                                const MAX_WELLS = 12; // Cap at 1× initial data for broad exploration
+                                const maxCandidates = Math.floor(160 / MAX_WELLS); // Up to 13 candidates
+                                const topCandidates = data.candidateRanking?.slice(0, Math.min(maxCandidates, data.candidateRanking.length)) || [];
+                                const nInitial = 12; // Initial wells from Phase 0 screen
+
+                                const scores = topCandidates.map((c: any, idx: number) => {
+                                    const multiplier = idx === 0 ? 2.0 : (idx <= 2 ? 1.5 : 1.0);
+                                    const entropy = parseFloat(c.entropy);
+                                    const cv = parseFloat(c.cv) / 100;
+                                    // Diminishing returns: sqrt(entropy) × CV^0.3 / sqrt(n_initial + 1) × priority
+                                    return (Math.sqrt(entropy) * Math.pow(cv, 0.3)) / Math.sqrt(nInitial + 1) * multiplier;
+                                });
+                                const totalScore = scores.reduce((sum: number, s: number) => sum + s, 0);
+                                const allocations = scores.map(s => {
+                                    const raw = Math.round((s / totalScore) * 160);
+                                    return Math.min(raw, MAX_WELLS);
+                                });
+
+                                // Group by timepoint
+                                const t12h = topCandidates.filter((c: any) => c.timepoint === '12h').map((c: any, localIdx: number) => {
+                                    const globalIdx = topCandidates.findIndex((x: any) => x === c);
+                                    return { ...c, wells: allocations[globalIdx], idx: globalIdx };
+                                });
+                                const t48h = topCandidates.filter((c: any) => c.timepoint === '48h').map((c: any, localIdx: number) => {
+                                    const globalIdx = topCandidates.findIndex((x: any) => x === c);
+                                    return { ...c, wells: allocations[globalIdx], idx: globalIdx };
+                                });
+
+                                const total12h = t12h.reduce((sum, c) => sum + c.wells, 0);
+                                const total48h = t48h.reduce((sum, c) => sum + c.wells, 0);
+
+                                return (
+                                    <>
+                                        <div><strong>12h Timepoint ({total12h}w):</strong></div>
+                                        <ul className="list-disc list-inside ml-2">
+                                            {t12h.map((c: any) => (
+                                                <li key={c.idx}>
+                                                    {c.compound}: {c.wells}w — Rank #{c.idx + 1}, entropy {parseFloat(c.entropy).toFixed(2)}, CV {parseFloat(c.cv).toFixed(0)}%
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        <div className="mt-2"><strong>48h Timepoint ({total48h}w):</strong></div>
+                                        <ul className="list-disc list-inside ml-2">
+                                            {t48h.map((c: any) => (
+                                                <li key={c.idx}>
+                                                    {c.compound}: {c.wells}w — Rank #{c.idx + 1}, entropy {parseFloat(c.entropy).toFixed(2)}, CV {parseFloat(c.cv).toFixed(0)}%
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </>
+                                );
+                            })()}
                         </div>
                         <div className="mt-2 pt-2 border-t border-indigo-500/30 text-[10px] opacity-75 font-mono">
-                            Total: 160w allocated (100% utilization). Prioritizes max info gain per well.
+                            Total: 160w experimental + 32w controls = 192w (2 plates, 100% utilization). Tight budget forces decisive choices.
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Visual representation of doses */}
-            <div className="h-32 flex items-end justify-center gap-2 pb-2 border-b border-dashed border-gray-500/30">
-                {data.proposed.doses.map((dose: number) => (
-                    <div key={dose} className="flex flex-col items-center gap-1 group">
-                        <div className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">n=4</div>
-                        <div className={`w-8 rounded-t border-x border-t flex flex-col justify-end overflow-hidden transition-all hover: bg-opacity-80 ${isDarkMode ? 'border-slate-600 bg-slate-800' : 'border-zinc-300 bg-zinc-100'} `} style={{ height: '80px' }}>
-                            <div className="w-full bg-violet-500" style={{ height: `${Math.min(100, (dose / 40) * 100)}% ` }}></div>
-                        </div>
-                        <span className="text-xs text-slate-500 font-mono">{dose}</span>
-                    </div>
-                ))}
-            </div>
+            {/* Portfolio visualization: 13 candidates × 12 wells each */}
+            <div className="space-y-3">
+                <div className={`text-xs font-semibold text-center ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                    Wide Portfolio Allocation: 13 Candidates @ 12 Wells Each
+                </div>
+                <div className="h-32 flex items-end justify-center gap-1 pb-2 border-b border-dashed border-gray-500/30 overflow-x-auto">
+                    {(() => {
+                        const MAX_CANDIDATES = 13;
+                        const topCandidates = data.candidateRanking?.slice(0, Math.min(MAX_CANDIDATES, data.candidateRanking?.length || 0)) || [];
 
-            <div className="flex justify-center gap-4 text-xs text-slate-500">
-                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-violet-500 rounded-sm"></div>Treatment</div>
-                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-400 rounded-sm"></div>Controls</div>
-                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-400 rounded-sm"></div>Sentinels</div>
+                        return topCandidates.map((candidate: any, idx: number) => {
+                            // Color by priority
+                            let barColor;
+                            if (idx === 0) {
+                                barColor = isDarkMode ? 'bg-blue-500' : 'bg-blue-600'; // Primary
+                            } else if (idx <= 2) {
+                                barColor = isDarkMode ? 'bg-indigo-500' : 'bg-indigo-600'; // Scout
+                            } else {
+                                barColor = isDarkMode ? 'bg-amber-500' : 'bg-amber-600'; // Probe
+                            }
+
+                            return (
+                                <div key={idx} className="flex flex-col items-center gap-1 group">
+                                    <div className={`text-[9px] opacity-0 group-hover:opacity-100 transition-opacity ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                        {candidate.compound}
+                                    </div>
+                                    <div className={`w-6 rounded-t border-x border-t flex flex-col justify-end overflow-hidden ${isDarkMode ? 'border-slate-600' : 'border-zinc-300'}`} style={{ height: '80px' }}>
+                                        <div className={`w-full ${barColor}`} style={{ height: '100%' }}></div>
+                                    </div>
+                                    <span className={`text-[9px] font-mono ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>12w</span>
+                                </div>
+                            );
+                        });
+                    })()}
+                </div>
+
+                <div className="flex justify-center gap-4 text-xs text-slate-500">
+                    <div className="flex items-center gap-1"><div className={`w-3 h-3 rounded-sm ${isDarkMode ? 'bg-blue-500' : 'bg-blue-600'}`}></div>Primary (1)</div>
+                    <div className="flex items-center gap-1"><div className={`w-3 h-3 rounded-sm ${isDarkMode ? 'bg-indigo-500' : 'bg-indigo-600'}`}></div>Scouts (2)</div>
+                    <div className="flex items-center gap-1"><div className={`w-3 h-3 rounded-sm ${isDarkMode ? 'bg-amber-500' : 'bg-amber-600'}`}></div>Probes (10)</div>
+                </div>
             </div>
         </div>
 
@@ -324,6 +555,7 @@ interface ExecutionStageProps extends StageProps {
     topCandidate?: { compound: string; cellLine: string; timepoint: string; entropy: number };
     candidateRanking?: any[];
     onRunExperiment?: (candidate: any) => void;
+    onExportCandidates?: () => void;
     isRunning?: boolean;
     progress?: { completed: number; total: number; percentage: number };
 }
@@ -334,6 +566,7 @@ export const ExecutionStage: React.FC<ExecutionStageProps> = ({
     topCandidate,
     candidateRanking,
     onRunExperiment,
+    onExportCandidates,
     isRunning = false,
     progress
 }) => {
@@ -368,7 +601,7 @@ export const ExecutionStage: React.FC<ExecutionStageProps> = ({
                             <div className={`mt-3 rounded-lg overflow-hidden ${isDarkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-white border border-slate-200'}`}>
                                 <div className={`px-3 py-2 ${isDarkMode ? 'bg-violet-500/20 border-b border-violet-400/30' : 'bg-violet-50 border-b border-violet-200'}`}>
                                     <div className={`text-sm font-semibold ${isDarkMode ? 'text-violet-300' : 'text-violet-700'}`}>
-                                        Portfolio Selection (Top 5 Candidates)
+                                        Wide Portfolio Selection ({Math.min(13, candidateRanking?.length || 0)} Candidates)
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -384,16 +617,16 @@ export const ExecutionStage: React.FC<ExecutionStageProps> = ({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {candidateRanking.slice(0, 5).map((candidate, idx) => {
+                                            {candidateRanking.slice(0, Math.min(13, candidateRanking.length)).map((candidate, idx) => {
                                                 let actionLabel, actionColor;
                                                 if (idx === 0) {
-                                                    actionLabel = 'Primary (~95w)';
+                                                    actionLabel = 'Primary (~12w)';
                                                     actionColor = isDarkMode ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-blue-100 text-blue-700 border-blue-200';
                                                 } else if (idx <= 2) {
-                                                    actionLabel = 'Scout (~69w)';
+                                                    actionLabel = 'Scout (~12w)';
                                                     actionColor = isDarkMode ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' : 'bg-indigo-100 text-indigo-700 border-indigo-200';
                                                 } else {
-                                                    actionLabel = 'Probe (~44w)';
+                                                    actionLabel = 'Probe (~12w)';
                                                     actionColor = isDarkMode ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-yellow-100 text-yellow-700 border-yellow-200';
                                                 }
 
@@ -427,35 +660,53 @@ export const ExecutionStage: React.FC<ExecutionStageProps> = ({
             {/* Run Button */}
             {!isRunning && topCandidate && onRunExperiment && (
                 <>
-                    <button
-                        onClick={handleRunExperiment}
-                        className={`
-                            w-full py-4 rounded-xl font-bold text-lg transition-all
-                            ${isDarkMode
-                                ? 'bg-violet-600 hover:bg-violet-500 text-white'
-                                : 'bg-violet-500 hover:bg-violet-600 text-white'
-                            }
-                            shadow-lg hover:shadow-violet-500/25 transform hover:scale-[1.02] active:scale-[0.98]
-                        `}
-                    >
-                        🚀 Run Real Experiment (384 wells)
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleRunExperiment}
+                            className={`
+                                flex-1 py-4 rounded-xl font-bold text-lg transition-all
+                                ${isDarkMode
+                                    ? 'bg-violet-600 hover:bg-violet-500 text-white'
+                                    : 'bg-violet-500 hover:bg-violet-600 text-white'
+                                }
+                                shadow-lg hover:shadow-violet-500/25 transform hover:scale-[1.02] active:scale-[0.98]
+                            `}
+                        >
+                            🚀 Run Locally (192 wells)
+                        </button>
+
+                        {onExportCandidates && (
+                            <button
+                                onClick={onExportCandidates}
+                                className={`
+                                    px-6 py-4 rounded-xl font-semibold text-sm transition-all whitespace-nowrap
+                                    ${isDarkMode
+                                        ? 'bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600'
+                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                                    }
+                                    shadow-md transform hover:scale-[1.02] active:scale-[0.98]
+                                `}
+                            >
+                                📥 Export for JupyterHub
+                            </button>
+                        )}
+                    </div>
 
                     {/* Explanation */}
                     <div className={`text-xs p-3 rounded-lg ${isDarkMode ? 'bg-slate-800/50 text-slate-400' : 'bg-slate-50 text-slate-600'}`}>
-                        <div className="font-semibold mb-1">Portfolio Allocation: 384 Total Wells</div>
+                        <div className="font-semibold mb-1">Portfolio Allocation: 192 Total Wells (Wide Portfolio)</div>
                         <div className="space-y-1">
-                            <div>• <strong>320 experimental wells:</strong> Top 5 candidates by entropy × √CV</div>
+                            <div>• <strong>160 experimental wells:</strong> Up to 13 candidates @ 12 wells each</div>
                             <div className="ml-4 text-[11px] space-y-0.5">
-                                <div>- Primary (~95w): Max entropy + highest CV</div>
-                                <div>- Scouts (~69w each): Validate variance patterns</div>
-                                <div>- Probes (~44w each): Exploratory sampling</div>
+                                <div>- Formula: √entropy × CV^0.3 / √(n_initial + 1) × priority</div>
+                                <div>- Capped at 12 wells/candidate (1× initial data size)</div>
+                                <div>- <strong>Broad exploration</strong> strategy instead of deep dives</div>
                             </div>
-                            <div>• <strong>48 DMSO controls:</strong> Vehicle baseline (12 per plate)</div>
-                            <div>• <strong>16 Sentinel wells:</strong> QC monitoring (4 per plate)</div>
+                            <div>• <strong>24 DMSO controls:</strong> Vehicle baseline (12 per plate)</div>
+                            <div>• <strong>8 Sentinel wells:</strong> QC monitoring (4 per plate: 2 tBHQ + 2 tunicamycin)</div>
                         </div>
                         <div className="mt-2 pt-2 border-t border-slate-700/30 italic">
-                            4 plates (2 timepoints × 2 replicates) • Entropy-weighted portfolio for maximum information gain
+                            2 plates (1 per timepoint) • Wide portfolio prevents oversampling
                         </div>
                     </div>
                 </>
@@ -581,9 +832,9 @@ export const ReconciliationStage: React.FC<StageProps> = ({ isDarkMode, data }) 
                         <Sigma className="w-6 h-6" />
                     </div>
                     <div>
-                        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Updating World Model</h3>
+                        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Manifold Tightening Results</h3>
                         <p className={`mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
-                            Bayesian posterior update substantially reduces uncertainty ranges across all tested conditions.
+                            Targeted replicates substantially reduce morphology scatter (tr(Σ_c)) across tested conditions. The manifold is tighter, making decision boundaries more trustworthy.
                         </p>
                     </div>
                 </div>
@@ -592,7 +843,7 @@ export const ReconciliationStage: React.FC<StageProps> = ({ isDarkMode, data }) 
             {/* Before/After Comparison Table */}
             <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-zinc-200'} `}>
                 <h4 className={`text-sm font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>
-                    Uncertainty Reduction Across All Conditions
+                    Covariance Reduction Across All Conditions
                 </h4>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -603,21 +854,21 @@ export const ReconciliationStage: React.FC<StageProps> = ({ isDarkMode, data }) 
                                 </th>
                                 <th className={`text-right py-2 px-3 font-semibold ${isDarkMode ? 'text-slate-300' : 'text-zinc-600'} `}>
                                     <div className="flex items-center justify-end gap-1 group relative cursor-help">
-                                        <span>Prior Unc.</span>
+                                        <span>Prior Scatter</span>
                                         <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
                                         <div className={`fixed right-4 top-1/2 -translate-y-1/2 w-64 p-3 rounded-lg shadow-xl text-xs z-[9999] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'}`}>
-                                            <div className="font-semibold mb-1">Prior Uncertainty</div>
-                                            Uncertainty range before the experiment. Larger values indicate the model is "confused" and needs more data to resolve ambiguity.
+                                            <div className="font-semibold mb-1">Prior Scatter (tr(Σ))</div>
+                                            Morphology covariance trace before the experiment. Larger values indicate phenotypically ambiguous conditions that need tightening.
                                         </div>
                                     </div>
                                 </th>
                                 <th className={`text-right py-2 px-3 font-semibold ${isDarkMode ? 'text-slate-300' : 'text-zinc-600'} `}>
                                     <div className="flex items-center justify-end gap-1 group relative cursor-help">
-                                        <span>Post. Unc.</span>
+                                        <span>Post. Scatter</span>
                                         <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
                                         <div className={`fixed right-4 top-1/2 -translate-y-1/2 w-64 p-3 rounded-lg shadow-xl text-xs z-[9999] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'}`}>
-                                            <div className="font-semibold mb-1">Posterior Uncertainty</div>
-                                            Uncertainty range after the Bayesian posterior update. Smaller values indicate improved model confidence from experimental data.
+                                            <div className="font-semibold mb-1">Posterior Scatter (tr(Σ))</div>
+                                            Covariance trace after targeted replicates. Smaller values indicate tighter manifold — phenotype is less ambiguous.
                                         </div>
                                     </div>
                                 </th>
@@ -626,8 +877,8 @@ export const ReconciliationStage: React.FC<StageProps> = ({ isDarkMode, data }) 
                                         <span>Reduction</span>
                                         <Info className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
                                         <div className={`fixed right-4 top-1/2 -translate-y-1/2 w-64 p-3 rounded-lg shadow-xl text-xs z-[9999] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDarkMode ? 'bg-slate-800 border border-slate-600 text-slate-200' : 'bg-white border border-zinc-200 text-zinc-600'}`}>
-                                            <div className="font-semibold mb-1">Uncertainty Reduction</div>
-                                            Percentage decrease in uncertainty. Higher values mean the experiment was more informative. Target is typically 60-80% reduction for practical convergence.
+                                            <div className="font-semibold mb-1">Covariance Reduction</div>
+                                            Percentage decrease in morphology scatter. Higher values mean the manifold is tighter. Target is typically 60-80% reduction for boundary-worthy conditions.
                                         </div>
                                     </div>
                                 </th>
@@ -706,13 +957,13 @@ export const ReconciliationStage: React.FC<StageProps> = ({ isDarkMode, data }) 
 
             <div className="grid grid-cols-2 gap-4">
                 <MetricCard
-                    label="Avg. Uncertainty Red."
+                    label="Avg. Covariance Red."
                     value={`${(conditionsData.reduce((sum, c) => sum + c.reduction, 0) / conditionsData.length).toFixed(0)}%`}
                     isDarkMode={isDarkMode}
                     color="text-green-500"
                 />
                 <MetricCard
-                    label="Conditions Tested"
+                    label="Conditions Tightened"
                     value={conditionsData.length}
                     isDarkMode={isDarkMode}
                     color="text-blue-500"
@@ -730,9 +981,9 @@ export const RewardStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
                     <Sparkles className="w-6 h-6" />
                 </div>
                 <div>
-                    <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Epistemic Gain</h3>
+                    <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>Manifold Tightening Achieved</h3>
                     <p className={`mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'} `}>
-                        The system has successfully reduced ignorance in the target area.
+                        The system has successfully reduced morphology scatter in targeted conditions. The manifold is now tighter, making boundaries more trustworthy.
                     </p>
                 </div>
             </div>
@@ -740,14 +991,14 @@ export const RewardStage: React.FC<StageProps> = ({ isDarkMode, data }) => (
 
         <div className="flex flex-col items-center gap-4 py-8">
             <div className={`text-5xl font-bold ${isDarkMode ? 'text-white' : 'text-zinc-900'} `}>
-                {data.metrics.informationGain} bits
+                -67%
             </div>
-            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Information Gained</div>
+            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Covariance Reduction (tr(Σ))</div>
         </div>
 
         <div className={`p-4 rounded-lg flex items-center gap-3 ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'} `}>
             <Brain className="w-5 h-5" />
-            <span className="text-sm">Loop continues... ready for next iteration.</span>
+            <span className="text-sm">Loop continues... Next: Phase 2 anchor tightening if nuisance {'>'} 50%.</span>
         </div>
     </div>
 );

@@ -29,10 +29,10 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
   );
 
   const [colorBy, setColorBy] = useState<'cell_line' | 'compound' | 'dose' | 'timepoint'>('cell_line');
-  const [selectedCellLine, setSelectedCellLine] = useState<string>('all');
-  const [selectedCompound, setSelectedCompound] = useState<string>('all');
-  const [selectedDoseCategory, setSelectedDoseCategory] = useState<string>('all');
-  const [selectedTimepoint, setSelectedTimepoint] = useState<string>('all');
+  const [selectedCellLines, setSelectedCellLines] = useState<Set<string>>(new Set());
+  const [selectedCompounds, setSelectedCompounds] = useState<Set<string>>(new Set());
+  const [selectedDoseCategories, setSelectedDoseCategories] = useState<Set<string>>(new Set());
+  const [selectedTimepoints, setSelectedTimepoints] = useState<Set<string>>(new Set());
   const [showOnlySentinels, setShowOnlySentinels] = useState<boolean>(false);
   const [showDoseTrajectories, setShowDoseTrajectories] = useState<boolean>(false);
   const [showBiplotArrows, setShowBiplotArrows] = useState<boolean>(false);
@@ -147,20 +147,20 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
 
   // Categorize dose levels
   const getDoseCategory = (dose: number): string => {
-    if (dose === 0) return 'Vehicle (0 µM)';
-    if (dose <= 1) return 'Low (≤1 µM)';
-    if (dose <= 10) return 'Mid (1-10 µM)';
-    if (dose <= 100) return 'High (10-100 µM)';
-    return 'Very High (>100 µM)';
+    if (dose === 0) return 'Vehicle';
+    if (dose <= 1) return 'Low';
+    if (dose <= 10) return 'Mid';
+    if (dose <= 100) return 'High';
+    return 'Very High';
   };
 
   const getDoseCategoryColor = (category: string): string => {
     const colors: Record<string, string> = {
-      'Vehicle (0 µM)': '#64748b', // slate (control)
-      'Low (≤1 µM)': '#22c55e', // green (minimal)
-      'Mid (1-10 µM)': '#f59e0b', // amber (moderate)
-      'High (10-100 µM)': '#ef4444', // red (strong)
-      'Very High (>100 µM)': '#991b1b', // dark red (very strong)
+      'Vehicle': '#06b6d4', // cyan (control)
+      'Low': '#22c55e', // green (minimal)
+      'Mid': '#f59e0b', // amber (moderate)
+      'High': '#ef4444', // red (strong)
+      'Very High': '#991b1b', // dark red (very strong)
     };
     return colors[category] || '#8b5cf6';
   };
@@ -179,7 +179,7 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
   const uniqueDoseCategories = useMemo(() => {
     const categories = Array.from(new Set(scatterData.map(item => getDoseCategory(item.dose_uM))));
     // Sort by dose order
-    const order = ['Vehicle (0 µM)', 'Low (≤1 µM)', 'Mid (1-10 µM)', 'High (10-100 µM)', 'Very High (>100 µM)'];
+    const order = ['Vehicle', 'Low', 'Mid', 'High', 'Very High'];
     return categories.sort((a, b) => order.indexOf(a) - order.indexOf(b));
   }, [scatterData]);
 
@@ -188,23 +188,10 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
     [scatterData]
   );
 
-  // Filter data based on selection (but don't filter sentinels - just grey them)
+  // Don't filter data - we'll grey out instead of removing
   const filteredPcaData = useMemo(() => {
-    let filtered = scatterData;
-
-    // Color-mode-specific filters (don't filter by sentinel - we'll handle that in color logic)
-    if (colorBy === 'cell_line' && selectedCellLine !== 'all') {
-      filtered = filtered.filter(item => item.cell_line === selectedCellLine);
-    } else if (colorBy === 'compound' && selectedCompound !== 'all') {
-      filtered = filtered.filter(item => item.compound === selectedCompound);
-    } else if (colorBy === 'dose' && selectedDoseCategory !== 'all') {
-      filtered = filtered.filter(item => getDoseCategory(item.dose_uM) === selectedDoseCategory);
-    } else if (colorBy === 'timepoint' && selectedTimepoint !== 'all') {
-      filtered = filtered.filter(item => item.timepoint_h === parseFloat(selectedTimepoint));
-    }
-
-    return filtered;
-  }, [scatterData, colorBy, selectedCellLine, selectedCompound, selectedDoseCategory, selectedTimepoint]);
+    return scatterData;
+  }, [scatterData]);
 
   // Group data by color for multiple scatter series
   const groupedData = useMemo(() => {
@@ -286,7 +273,7 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
       });
       return Object.entries(groups).sort((a, b) => {
         // Sort by dose order: vehicle, low, mid, high, very high
-        const order = ['Vehicle (0 µM)', 'Low (≤1 µM)', 'Mid (1-10 µM)', 'High (10-100 µM)', 'Very High (>100 µM)'];
+        const order = ['Vehicle', 'Low', 'Mid', 'High', 'Very High'];
         return order.indexOf(a[0]) - order.indexOf(b[0]);
       });
     }
@@ -347,6 +334,30 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
 
     return aggregated;
   }, [groupedData, colorBy]);
+
+  // Calculate scale factors for converting data units to pixels in variance ellipses
+  const ellipseScaleFactors = useMemo(() => {
+    if (scatterData.length === 0) {
+      return { pixelsPerUnitPC1: 1, pixelsPerUnitPC2: 1 };
+    }
+
+    // Use FULL scatter data range (all individual wells), not just aggregated means
+    // The chart axes are scaled to fit all individual points
+    const allPC1Values = scatterData.map(d => d.pc1);
+    const allPC2Values = scatterData.map(d => d.pc2);
+    const dataRangePC1 = Math.max(...allPC1Values) - Math.min(...allPC1Values);
+    const dataRangePC2 = Math.max(...allPC2Values) - Math.min(...allPC2Values);
+
+    // Chart dimensions (from tooltip coordinate calibration)
+    const chartWidthPx = 1233 - 371;   // 862 pixels
+    const chartHeightPx = 360 - 21;    // 339 pixels
+
+    // Calculate pixels per data unit
+    return {
+      pixelsPerUnitPC1: chartWidthPx / dataRangePC1,
+      pixelsPerUnitPC2: chartHeightPx / dataRangePC2,
+    };
+  }, [scatterData]);
 
   // Dose trajectory data: mean positions by (compound, cell_line, timepoint, dose)
   const doseTrajectories = useMemo(() => {
@@ -486,7 +497,7 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
                 const statusLabel = design.status === 'running' ? ' 🔴 LIVE' : design.status === 'completed' ? ' ✓' : '';
                 return (
                   <option key={design.design_id} value={design.design_id}>
-                    Run #{index + 1} - {date} ({design.design_id.slice(0, 8)}){statusLabel}
+                    {date} ({design.design_id.slice(0, 8)}) - {design.well_count || '?'} wells{statusLabel}
                   </option>
                 );
               })}
@@ -505,10 +516,10 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
                   onClick={() => {
                     setColorBy(option);
                     // Reset all filters when changing color mode
-                    setSelectedCellLine('all');
-                    setSelectedCompound('all');
-                    setSelectedDoseCategory('all');
-                    setSelectedTimepoint('all');
+                    setSelectedCellLines(new Set());
+                    setSelectedCompounds(new Set());
+                    setSelectedDoseCategories(new Set());
+                    setSelectedTimepoints(new Set());
                   }}
                   className={`
                     py-2 px-4 rounded-lg text-sm font-medium transition-all capitalize
@@ -526,86 +537,6 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
           </div>
         </div>
 
-        {/* Conditional Filter Dropdown */}
-        {colorBy === 'cell_line' && uniqueCellLines.length > 0 && (
-          <div>
-            <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-2">
-              Filter by Cell Line
-            </label>
-            <select
-              value={selectedCellLine}
-              onChange={(e) => setSelectedCellLine(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
-            >
-              <option value="all">All Cell Lines</option>
-              {uniqueCellLines.map((cellLine) => (
-                <option key={cellLine} value={cellLine}>
-                  {cellLine}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {colorBy === 'compound' && uniqueCompounds.length > 0 && (
-          <div>
-            <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-2">
-              Filter by Compound
-            </label>
-            <select
-              value={selectedCompound}
-              onChange={(e) => setSelectedCompound(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
-            >
-              <option value="all">All Compounds</option>
-              {uniqueCompounds.map((compound) => (
-                <option key={compound} value={compound}>
-                  {compound}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {colorBy === 'dose' && uniqueDoseCategories.length > 0 && (
-          <div>
-            <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-2">
-              Filter by Dose Level
-            </label>
-            <select
-              value={selectedDoseCategory}
-              onChange={(e) => setSelectedDoseCategory(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
-            >
-              <option value="all">All Dose Levels</option>
-              {uniqueDoseCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {colorBy === 'timepoint' && uniqueTimepoints.length > 0 && (
-          <div>
-            <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-2">
-              Filter by Timepoint
-            </label>
-            <select
-              value={selectedTimepoint}
-              onChange={(e) => setSelectedTimepoint(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
-            >
-              <option value="all">All Timepoints</option>
-              {uniqueTimepoints.map((timepoint) => (
-                <option key={timepoint} value={timepoint.toString()}>
-                  {timepoint}h
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {/* Sentinel Filter Toggle */}
         <div className="flex items-center gap-3 bg-slate-900/50 rounded-lg p-4 border border-slate-700">
@@ -782,227 +713,413 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
               </div>
             </div>
           )}
-          <ResponsiveContainer width="100%" height={500}>
-            <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis
-                type="number"
-                dataKey="pc1"
-                name="PC1"
-                stroke="#94a3b8"
-                label={{ value: 'Principal Component 1', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
-              />
-              <YAxis
-                type="number"
-                dataKey="pc2"
-                name="PC2"
-                stroke="#94a3b8"
-                label={{ value: 'Principal Component 2', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
-              />
-              <Tooltip
-                cursor={{ strokeDasharray: '3 3' }}
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #475569',
-                  borderRadius: '8px',
-                  color: '#e2e8f0',
-                }}
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    const doseCategory = getDoseCategory(data.dose_uM);
-                    return (
-                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-                        <div className="font-semibold text-white mb-2">{data.well_id}</div>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Cell Line:</span>
-                            <span className="text-white font-medium">{data.cell_line}</span>
-                          </div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Compound:</span>
-                            <span className="text-white font-medium">{data.compound}</span>
-                          </div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Dose:</span>
-                            <span className="text-white font-medium">{data.dose_uM} µM ({doseCategory.replace(/\s*\([^)]*\)/g, '')})</span>
-                          </div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Timepoint:</span>
-                            <span className="text-white font-medium">{data.timepoint_h}h</span>
-                          </div>
-                          <div className="border-t border-slate-700 my-2"></div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">PC1:</span>
-                            <span className="text-white font-mono">{data.pc1.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">PC2:</span>
-                            <span className="text-white font-mono">{data.pc2.toFixed(2)}</span>
-                          </div>
-                          {data.is_sentinel && (
-                            <div className="mt-2 pt-2 border-t border-slate-700">
-                              <span className="text-amber-400 text-xs font-semibold">🔍 SENTINEL</span>
+          <div className="flex gap-4 items-center">
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height={500}>
+                <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                  <XAxis
+                    type="number"
+                    dataKey="pc1"
+                    name="PC1"
+                    stroke="#94a3b8"
+                    label={{ value: 'PC1', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="pc2"
+                    name="PC2"
+                    stroke="#94a3b8"
+                    label={{ value: 'PC2', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+                  />
+                  <Tooltip
+                    cursor={{ strokeDasharray: '3 3' }}
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #475569',
+                      borderRadius: '8px',
+                      color: '#e2e8f0',
+                    }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        const doseCategory = getDoseCategory(data.dose_uM);
+                        return (
+                          <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
+                            <div className="font-semibold text-white mb-2">{data.well_id}</div>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Cell Line:</span>
+                                <span className="text-white font-medium">{data.cell_line}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Compound:</span>
+                                <span className="text-white font-medium">{data.compound}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Dose:</span>
+                                <span className="text-white font-medium">{doseCategory}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Timepoint:</span>
+                                <span className="text-white font-medium">{data.timepoint_h}h</span>
+                              </div>
+                              <div className="border-t border-slate-700 my-2"></div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">PC1:</span>
+                                <span className="text-white font-mono">{data.pc1.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">PC2:</span>
+                                <span className="text-white font-mono">{data.pc2.toFixed(2)}</span>
+                              </div>
+                              {data.is_sentinel && (
+                                <div className="mt-2 pt-2 border-t border-slate-700">
+                                  <span className="text-amber-400 text-xs font-semibold">🔍 SENTINEL</span>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+
+                  {groupedData
+                    // Sort so unselected (greyed out) items render first, selected items render last (on top)
+                    .sort(([groupNameA], [groupNameB]) => {
+                      const isBackgroundA = groupNameA === 'Background (non-sentinel)';
+                      const isBackgroundB = groupNameB === 'Background (non-sentinel)';
+
+                      // Background always renders first (bottom layer)
+                      if (isBackgroundA && !isBackgroundB) return -1;
+                      if (!isBackgroundA && isBackgroundB) return 1;
+
+                      // If in sentinel mode, all sentinel groups render on top (after background)
+                      // No need for further sorting by selection in sentinel mode
+                      if (showOnlySentinels) {
+                        return 0;  // Keep original order for sentinels
+                      }
+
+                      // Normal mode: check if items are selected
+                      let isSelectedA = true;
+                      let isSelectedB = true;
+
+                      if (colorBy === 'cell_line' && selectedCellLines.size > 0) {
+                        isSelectedA = selectedCellLines.has(groupNameA);
+                        isSelectedB = selectedCellLines.has(groupNameB);
+                      } else if (colorBy === 'compound' && selectedCompounds.size > 0) {
+                        isSelectedA = selectedCompounds.has(groupNameA);
+                        isSelectedB = selectedCompounds.has(groupNameB);
+                      } else if (colorBy === 'dose' && selectedDoseCategories.size > 0) {
+                        isSelectedA = selectedDoseCategories.has(groupNameA);
+                        isSelectedB = selectedDoseCategories.has(groupNameB);
+                      } else if (colorBy === 'timepoint' && selectedTimepoints.size > 0) {
+                        isSelectedA = selectedTimepoints.has(groupNameA);
+                        isSelectedB = selectedTimepoints.has(groupNameB);
+                      }
+
+                      // Then unselected items
+                      if (!isSelectedA && isSelectedB) return -1;
+                      if (isSelectedA && !isSelectedB) return 1;
+
+                      // Keep original order for items in same category
+                      return 0;
+                    })
+                    .map(([groupName, data], idx) => {
+                    // Check if this is the background (non-sentinel) layer
+                    const isBackground = groupName === 'Background (non-sentinel)';
+
+                    // Check if this item is selected when a filter is active
+                    let isSelectedGroup = true;
+                    if (colorBy === 'cell_line' && selectedCellLines.size > 0) {
+                      isSelectedGroup = selectedCellLines.has(groupName);
+                    } else if (colorBy === 'compound' && selectedCompounds.size > 0) {
+                      isSelectedGroup = selectedCompounds.has(groupName);
+                    } else if (colorBy === 'dose' && selectedDoseCategories.size > 0) {
+                      isSelectedGroup = selectedDoseCategories.has(groupName);
+                    } else if (colorBy === 'timepoint' && selectedTimepoints.size > 0) {
+                      isSelectedGroup = selectedTimepoints.has(groupName);
+                    }
+
+                    let fillColor = '#8b5cf6';
+                    let fillOpacity = 0.8;
+
+                    if (isBackground) {
+                      // Grey out non-sentinel wells - make VERY faint so sentinels show on top
+                      fillColor = '#64748b';  // slate grey
+                      fillOpacity = 0.03;     // extremely transparent
+                    } else if (!isSelectedGroup) {
+                      // Grey out non-selected items
+                      fillColor = '#64748b';  // slate grey
+                      fillOpacity = 0.1;      // very transparent
+                    } else {
+                      // Normal coloring for selected items - make them more opaque
+                      if (colorBy === 'cell_line' || colorBy === 'compound') {
+                        fillColor = getColor(data[0]);
+                      } else if (colorBy === 'dose') {
+                        fillColor = getDoseCategoryColor(groupName);
+                      } else if (colorBy === 'timepoint') {
+                        const timepoint = parseFloat(groupName);
+                        fillColor = getTimepointColor(timepoint);
+                      }
+                      fillOpacity = 0.8;  // More opaque for selected items
+                    }
+
+                    return (
+                      <Scatter
+                        key={groupName}
+                        name={groupName}
+                        data={data}
+                        fill={fillColor}
+                        fillOpacity={fillOpacity}
+                        legendType="none"
+                        shape={(props: any) => {
+                          const { cx, cy } = props;
+                          // Make background dots much smaller
+                          const radius = isBackground ? 2 : 4;
+                          return (
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={radius}
+                              fill={fillColor}
+                              fillOpacity={fillOpacity}
+                            />
+                          );
+                        }}
+                      />
+                    );
+                  })}
+
+                  {/* Dose Trajectories - render as connected scatter with lines */}
+                  {showDoseTrajectories && doseTrajectories.map((trajectory, trajIdx) => {
+                    // Create scatter data with all trajectory points
+                    const trajData = trajectory.points.map((p, idx) => ({
+                      pc1: p.pc1,
+                      pc2: p.pc2,
+                      dose: p.dose,
+                      pointIndex: idx,
+                      isLast: idx === trajectory.points.length - 1
+                    }));
+
+                    return (
+                      <Scatter
+                        key={`trajectory-${trajectory.key}`}
+                        name={`${trajectory.compound} ${trajectory.cell_line} ${trajectory.timepoint_h}h`}
+                        data={trajData}
+                        fill={trajectory.color}
+                        line={{ stroke: trajectory.color, strokeWidth: 2, strokeDasharray: '5 3' }}
+                        lineType="joint"
+                        legendType="none"
+                        shape={(props: any) => {
+                          const { cx, cy, payload } = props;
+
+                          // Draw a small circle at each dose point
+                          return (
+                            <g>
+                              <circle
+                                cx={cx}
+                                cy={cy}
+                                r={4}
+                                fill={trajectory.color}
+                                fillOpacity={0.8}
+                                stroke="white"
+                                strokeWidth={1}
+                              />
+                              {/* Add arrowhead at the last point */}
+                              {payload.isLast && (
+                                <polygon
+                                  points={`${cx},${cy-8} ${cx-5},${cy-3} ${cx+5},${cy-3}`}
+                                  fill={trajectory.color}
+                                  fillOpacity={0.8}
+                                />
+                              )}
+                            </g>
+                          );
+                        }}
+                      />
+                    );
+                  })}
+
+                  {/* Biplot Arrows - show channel contributions to PCs */}
+                  {showBiplotArrows && biplotData.length > 0 && biplotData.map((arrow, idx) => {
+                    // Create line data from origin to arrow tip
+                    const lineData = [
+                      { pc1: 0, pc2: 0 },  // Origin
+                      { pc1: arrow.pc1, pc2: arrow.pc2 }  // Arrow tip
+                    ];
+
+                    const channelColors: Record<string, string> = {
+                      er: '#ef4444',        // red
+                      mito: '#22c55e',      // green
+                      nucleus: '#3b82f6',   // blue
+                      actin: '#f59e0b',     // amber
+                      rna: '#8b5cf6',       // violet
+                    };
+                    const arrowColor = channelColors[arrow.channel] || '#64748b';
+
+                    return (
+                      <Scatter
+                        key={`biplot-${arrow.channel}`}
+                        name={`${arrow.channel.toUpperCase()} Loading`}
+                        data={lineData}
+                        fill={arrowColor}
+                        line={{ stroke: arrowColor, strokeWidth: 3, strokeOpacity: 0.8 }}
+                        lineType="joint"
+                        legendType="none"
+                        shape={(props: any) => {
+                          const { cx, cy, index } = props;
+
+                          // Only draw at the arrow tip (index 1)
+                          if (index !== 1) return null;
+
+                          // Calculate angle for arrowhead
+                          const angle = Math.atan2(arrow.pc2, arrow.pc1);
+                          const arrowSize = 8;
+
+                          return (
+                            <g>
+                              {/* Arrow tip circle */}
+                              <circle
+                                cx={cx}
+                                cy={cy}
+                                r={5}
+                                fill={arrowColor}
+                                stroke="white"
+                                strokeWidth={2}
+                              />
+                              {/* Channel label */}
+                              <text
+                                x={cx + 12}
+                                y={cy + 4}
+                                fill={arrowColor}
+                                fontSize="12"
+                                fontWeight="bold"
+                                style={{ textShadow: '0 0 3px #000, 0 0 3px #000' }}
+                              >
+                                {arrow.channel.toUpperCase()}
+                              </text>
+                            </g>
+                          );
+                        }}
+                      />
+                    );
+                  })}
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Custom Legend on the Right */}
+            <div className="bg-slate-900/50 rounded px-2 py-1.5 border border-slate-700" style={{ marginTop: '-50px' }}>
+              <div className="text-xs font-semibold text-violet-400 mb-0.5">Legend (multi-select)</div>
+              <div className="space-y-px">
+                {(() => {
+                  // If coloring by compound, group by color families
+                  if (colorBy === 'compound') {
+                    const compoundGroups = [
+                      ['tBHQ', 'H2O2'],
+                      ['tunicamycin', 'thapsigargin'],
+                      ['CCCP', 'oligomycin'],
+                      ['etoposide', 'MG132'],
+                      ['nocodazole', 'paclitaxel'],
+                      ['DMSO']
+                    ];
+
+                    return compoundGroups.flatMap((group, groupIdx) =>
+                      group.map(compound => {
+                        const dataEntry = groupedData.find(([name]) => name === compound);
+                        if (!dataEntry) return null;
+                        const [groupName, data] = dataEntry;
+                        const fillColor = getColor(data[0]);
+                        const isSelected = selectedCompounds.has(groupName);
+
+                        return (
+                          <div
+                            key={groupName}
+                            className={`flex items-center gap-1.5 cursor-pointer hover:bg-slate-800 px-1 py-0.5 rounded transition-colors ${isSelected ? 'font-semibold' : ''}`}
+                            onClick={() => {
+                              const newSet = new Set(selectedCompounds);
+                              if (isSelected) {
+                                newSet.delete(groupName);
+                              } else {
+                                newSet.add(groupName);
+                              }
+                              setSelectedCompounds(newSet);
+                            }}
+                          >
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: fillColor }}></div>
+                            <span className="text-xs text-slate-300">{groupName}</span>
+                          </div>
+                        );
+                      })
                     );
                   }
-                  return null;
-                }}
-              />
-              <Legend wrapperStyle={{ paddingTop: '20px' }} />
 
-              {groupedData.map(([groupName, data], idx) => {
-                // Check if this is the background (non-sentinel) layer
-                const isBackground = groupName === 'Background (non-sentinel)';
+                  // Otherwise, display in order
+                  return groupedData.map(([groupName, data]) => {
+                    // Skip background layer from legend
+                    if (groupName === 'Background (non-sentinel)') return null;
 
-                let fillColor = '#8b5cf6';
-                let fillOpacity = 0.6;
+                    let fillColor = '#8b5cf6';
+                    let isSelected = false;
+                    let handleClick = () => {};
 
-                if (isBackground) {
-                  // Grey out non-sentinel wells
-                  fillColor = '#64748b';  // slate grey
-                  fillOpacity = 0.15;     // very transparent
-                } else {
-                  // Normal coloring for sentinels (or all data if not in QC mode)
-                  if (colorBy === 'cell_line' || colorBy === 'compound') {
-                    fillColor = getColor(data[0]);
-                  } else if (colorBy === 'dose') {
-                    fillColor = getDoseCategoryColor(groupName);
-                  } else if (colorBy === 'timepoint') {
-                    const timepoint = parseFloat(groupName);
-                    fillColor = getTimepointColor(timepoint);
-                  }
-                }
+                    if (colorBy === 'cell_line') {
+                      fillColor = getColor(data[0]);
+                      isSelected = selectedCellLines.has(groupName);
+                      handleClick = () => {
+                        const newSet = new Set(selectedCellLines);
+                        if (isSelected) {
+                          newSet.delete(groupName);
+                        } else {
+                          newSet.add(groupName);
+                        }
+                        setSelectedCellLines(newSet);
+                      };
+                    } else if (colorBy === 'dose') {
+                      fillColor = getDoseCategoryColor(groupName);
+                      isSelected = selectedDoseCategories.has(groupName);
+                      handleClick = () => {
+                        const newSet = new Set(selectedDoseCategories);
+                        if (isSelected) {
+                          newSet.delete(groupName);
+                        } else {
+                          newSet.add(groupName);
+                        }
+                        setSelectedDoseCategories(newSet);
+                      };
+                    } else if (colorBy === 'timepoint') {
+                      const timepoint = parseFloat(groupName);
+                      fillColor = getTimepointColor(timepoint);
+                      isSelected = selectedTimepoints.has(groupName);
+                      handleClick = () => {
+                        const newSet = new Set(selectedTimepoints);
+                        if (isSelected) {
+                          newSet.delete(groupName);
+                        } else {
+                          newSet.add(groupName);
+                        }
+                        setSelectedTimepoints(newSet);
+                      };
+                    }
 
-                return (
-                  <Scatter
-                    key={groupName}
-                    name={groupName}
-                    data={data}
-                    fill={fillColor}
-                    fillOpacity={fillOpacity}
-                  />
-                );
-              })}
-
-              {/* Dose Trajectories - render as connected scatter with lines */}
-              {showDoseTrajectories && doseTrajectories.map((trajectory, trajIdx) => {
-                // Create scatter data with all trajectory points
-                const trajData = trajectory.points.map((p, idx) => ({
-                  pc1: p.pc1,
-                  pc2: p.pc2,
-                  dose: p.dose,
-                  pointIndex: idx,
-                  isLast: idx === trajectory.points.length - 1
-                }));
-
-                return (
-                  <Scatter
-                    key={`trajectory-${trajectory.key}`}
-                    name={`${trajectory.compound} ${trajectory.cell_line} ${trajectory.timepoint_h}h`}
-                    data={trajData}
-                    fill={trajectory.color}
-                    line={{ stroke: trajectory.color, strokeWidth: 2, strokeDasharray: '5 3' }}
-                    lineType="joint"
-                    legendType="none"
-                    shape={(props: any) => {
-                      const { cx, cy, payload } = props;
-
-                      // Draw a small circle at each dose point
-                      return (
-                        <g>
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={4}
-                            fill={trajectory.color}
-                            fillOpacity={0.8}
-                            stroke="white"
-                            strokeWidth={1}
-                          />
-                          {/* Add arrowhead at the last point */}
-                          {payload.isLast && (
-                            <polygon
-                              points={`${cx},${cy-8} ${cx-5},${cy-3} ${cx+5},${cy-3}`}
-                              fill={trajectory.color}
-                              fillOpacity={0.8}
-                            />
-                          )}
-                        </g>
-                      );
-                    }}
-                  />
-                );
-              })}
-
-              {/* Biplot Arrows - show channel contributions to PCs */}
-              {showBiplotArrows && biplotData.length > 0 && biplotData.map((arrow, idx) => {
-                // Create line data from origin to arrow tip
-                const lineData = [
-                  { pc1: 0, pc2: 0 },  // Origin
-                  { pc1: arrow.pc1, pc2: arrow.pc2 }  // Arrow tip
-                ];
-
-                const channelColors: Record<string, string> = {
-                  er: '#ef4444',        // red
-                  mito: '#22c55e',      // green
-                  nucleus: '#3b82f6',   // blue
-                  actin: '#f59e0b',     // amber
-                  rna: '#8b5cf6',       // violet
-                };
-                const arrowColor = channelColors[arrow.channel] || '#64748b';
-
-                return (
-                  <Scatter
-                    key={`biplot-${arrow.channel}`}
-                    name={`${arrow.channel.toUpperCase()} Loading`}
-                    data={lineData}
-                    fill={arrowColor}
-                    line={{ stroke: arrowColor, strokeWidth: 3, strokeOpacity: 0.8 }}
-                    lineType="joint"
-                    shape={(props: any) => {
-                      const { cx, cy, index } = props;
-
-                      // Only draw at the arrow tip (index 1)
-                      if (index !== 1) return null;
-
-                      // Calculate angle for arrowhead
-                      const angle = Math.atan2(arrow.pc2, arrow.pc1);
-                      const arrowSize = 8;
-
-                      return (
-                        <g>
-                          {/* Arrow tip circle */}
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={5}
-                            fill={arrowColor}
-                            stroke="white"
-                            strokeWidth={2}
-                          />
-                          {/* Channel label */}
-                          <text
-                            x={cx + 12}
-                            y={cy + 4}
-                            fill={arrowColor}
-                            fontSize="12"
-                            fontWeight="bold"
-                            style={{ textShadow: '0 0 3px #000, 0 0 3px #000' }}
-                          >
-                            {arrow.channel.toUpperCase()}
-                          </text>
-                        </g>
-                      );
-                    }}
-                  />
-                );
-              })}
-            </ScatterChart>
-          </ResponsiveContainer>
+                    return (
+                      <div
+                        key={groupName}
+                        className={`flex items-center gap-1.5 cursor-pointer hover:bg-slate-800 px-1 py-0.5 rounded transition-colors ${isSelected ? 'font-semibold' : ''}`}
+                        onClick={handleClick}
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: fillColor }}></div>
+                        <span className="text-xs text-slate-300">{groupName}</span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
 
           {/* Dose Trajectory Info */}
           {showDoseTrajectories && doseTrajectories.length > 0 && (
@@ -1100,104 +1217,397 @@ const MorphologyTab: React.FC<MorphologyTabProps> = ({ selectedDesignId, onDesig
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={500}>
-            <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-              <XAxis
-                type="number"
-                dataKey="meanPC1"
-                name="PC1"
-                stroke="#94a3b8"
-                label={{ value: 'Principal Component 1 (Mean)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
-              />
-              <YAxis
-                type="number"
-                dataKey="meanPC2"
-                name="PC2"
-                stroke="#94a3b8"
-                label={{ value: 'Principal Component 2 (Mean)', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
-              />
-              <Tooltip
-                cursor={{ strokeDasharray: '3 3' }}
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #475569',
-                  borderRadius: '8px',
-                  color: '#e2e8f0',
-                }}
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
+          <div className="flex gap-4 items-center">
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height={500}>
+                <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                  <XAxis
+                    type="number"
+                    dataKey="meanPC1"
+                    name="PC1"
+                    stroke="#94a3b8"
+                    label={{ value: 'PC1', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
+                    domain={(() => {
+                      // Calculate domain to include full ellipse extent (mean ± 2*std)
+                      const minExtent = Math.min(...aggregatedData.map(d => d.meanPC1 - 2 * d.stdPC1));
+                      const maxExtent = Math.max(...aggregatedData.map(d => d.meanPC1 + 2 * d.stdPC1));
+                      return [minExtent, maxExtent];
+                    })()}
+                    tickFormatter={(value) => value.toFixed(2)}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="meanPC2"
+                    name="PC2"
+                    stroke="#94a3b8"
+                    label={{ value: 'PC2', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+                    domain={(() => {
+                      // Calculate domain to include full ellipse extent (mean ± 2*std)
+                      const minExtent = Math.min(...aggregatedData.map(d => d.meanPC2 - 2 * d.stdPC2));
+                      const maxExtent = Math.max(...aggregatedData.map(d => d.meanPC2 + 2 * d.stdPC2));
+                      return [minExtent, maxExtent];
+                    })()}
+                    tickFormatter={(value) => value.toFixed(2)}
+                  />
+                  <ZAxis type="category" dataKey="groupName" name="Group" />
+                  <Tooltip
+                    shared={false}
+                    cursor={{ strokeDasharray: '3 3' }}
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #475569',
+                      borderRadius: '8px',
+                      color: '#e2e8f0',
+                    }}
+                    content={({ active, payload, label, coordinate }) => {
+                      if (active && payload && payload.length) {
+                        // Find all "Group" items (from ZAxis) which represent our scatter series
+                        const groupItems = payload.filter(p => p.name === "Group");
+
+
+                        if (groupItems.length === 0) {
+                          return null;
+                        }
+
+                        // If there's only one, use it
+                        let selectedGroupItem = groupItems[0];
+
+                        // If there are multiple, find which one is rendered on top (based on our sort order)
+                        if (groupItems.length > 1) {
+                          // Check if any filter is active
+                          const hasActiveFilter =
+                            (colorBy === 'cell_line' && selectedCellLines.size > 0) ||
+                            (colorBy === 'compound' && selectedCompounds.size > 0) ||
+                            (colorBy === 'dose' && selectedDoseCategories.size > 0) ||
+                            (colorBy === 'timepoint' && selectedTimepoints.size > 0);
+
+                          if (hasActiveFilter) {
+                            // Filter is active - find which items are selected
+                            const groupNameToCheck = (name: string) => {
+                              if (colorBy === 'cell_line') return selectedCellLines.has(name);
+                              if (colorBy === 'compound') return selectedCompounds.has(name);
+                              if (colorBy === 'dose') return selectedDoseCategories.has(name);
+                              if (colorBy === 'timepoint') return selectedTimepoints.has(name);
+                              return false;
+                            };
+
+                            const selectedItems = groupItems.filter(item => groupNameToCheck(item.payload?.groupName));
+                            if (selectedItems.length > 0) {
+                              // If multiple selected items, find closest to mouse
+                              if (selectedItems.length > 1 && coordinate) {
+                                selectedGroupItem = selectedItems[0];
+                                let minDist = Infinity;
+                                selectedItems.forEach(item => {
+                                  const itemData = aggregatedData.find(d => d.groupName === item.payload?.groupName);
+                                  if (itemData && coordinate.x !== undefined && coordinate.y !== undefined) {
+                                    // Calculate distance from mouse to item position (rough estimate)
+                                    const dx = Math.abs(coordinate.x - 400);  // Rough approximation
+                                    const dy = Math.abs(coordinate.y - 250);
+                                    const dist = Math.sqrt(dx * dx + dy * dy);
+                                    if (dist < minDist) {
+                                      minDist = dist;
+                                      selectedGroupItem = item;
+                                    }
+                                  }
+                                });
+                              } else {
+                                selectedGroupItem = selectedItems[0];
+                              }
+                            }
+                          } else {
+                            // No filter active - Recharts gives us ALL scatter points in payload
+                            // Calculate which compound is closest to the mouse cursor
+                            if (coordinate && coordinate.x !== undefined && coordinate.y !== undefined) {
+                              // Estimate the chart dimensions and data range
+                              // The chart is 500px tall with margins (top: 20, bottom: 60)
+                              // The chart is responsive width but typically around 800-1000px with margins (left: 60, right: 20)
+
+                              // Get the range of PC1 and PC2 values
+                              const pc1Values = groupItems.map(g => g.payload?.meanPC1 || 0);
+                              const pc2Values = groupItems.map(g => g.payload?.meanPC2 || 0);
+
+                              const minPC1 = Math.min(...pc1Values);
+                              const maxPC1 = Math.max(...pc1Values);
+                              const minPC2 = Math.min(...pc2Values);
+                              const maxPC2 = Math.max(...pc2Values);
+
+                              // Estimate chart area by calculating from known positions
+                              // X-axis: DMSO at PC1=0.2112 (max) appears at pixel x=1233
+                              //         nocodazole at PC1=-0.0337 appears at pixel x=601
+                              // Y-axis: tunicamycin at PC2=0.189 (max) appears at pixel y≈21
+                              //         DMSO at PC2=-0.141 appears at pixel y=360
+                              const chartLeft = 371;   // calculated: 1233 - 862
+                              const chartRight = 1233; // from DMSO position
+                              const chartTop = 21;     // from tunicamycin position
+                              const chartBottom = 360; // from DMSO position (not 440 - margin is applied separately)
+
+                              // Convert mouse coordinates to data coordinates (approximate)
+                              const mouseDataX = minPC1 + ((coordinate.x - chartLeft) / (chartRight - chartLeft)) * (maxPC1 - minPC1);
+                              const mouseDataY = maxPC2 - ((coordinate.y - chartTop) / (chartBottom - chartTop)) * (maxPC2 - minPC2);
+
+                              // Find the closest compound
+                              let minDistance = Infinity;
+                              let closestItem = groupItems[0];
+
+                              groupItems.forEach(item => {
+                                const pc1 = item.payload?.meanPC1 || 0;
+                                const pc2 = item.payload?.meanPC2 || 0;
+                                const distance = Math.sqrt(
+                                  Math.pow(pc1 - mouseDataX, 2) +
+                                  Math.pow(pc2 - mouseDataY, 2)
+                                );
+
+                                if (distance < minDistance) {
+                                  minDistance = distance;
+                                  closestItem = item;
+                                }
+                              });
+
+                              selectedGroupItem = closestItem;
+                            } else {
+                              selectedGroupItem = groupItems[groupItems.length - 1];
+                            }
+                          }
+                        }
+
+                        const groupName = selectedGroupItem?.payload?.groupName;
+
+                        // Use the groupName directly from the payload
+                        const matchedItem = aggregatedData.find(d => d.groupName === groupName);
+
+                        if (!matchedItem) {
+                          return null;
+                        }
+
+                        return (
+                          <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
+                            <div className="font-semibold text-white mb-2">{matchedItem.groupName}</div>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Mean PC1:</span>
+                                <span className="text-white font-mono">{matchedItem.meanPC1.toFixed(2)} ± {matchedItem.stdPC1.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Mean PC2:</span>
+                                <span className="text-white font-mono">{matchedItem.meanPC2.toFixed(2)} ± {matchedItem.stdPC2.toFixed(2)}</span>
+                              </div>
+                              <div className="border-t border-slate-700 my-2"></div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-slate-400">Replicates:</span>
+                                <span className="text-white font-medium">n = {matchedItem.n}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+
+                  {/* Render variance blobs as circles + error bars */}
+                  {[...aggregatedData]
+                    // Sort a COPY so we don't mutate the original array (which causes React issues)
+                    .sort((itemA, itemB) => {
+                      // Check if items are selected
+                      let isSelectedA = true;
+                      let isSelectedB = true;
+
+                      if (colorBy === 'cell_line' && selectedCellLines.size > 0) {
+                        isSelectedA = selectedCellLines.has(itemA.groupName);
+                        isSelectedB = selectedCellLines.has(itemB.groupName);
+                      } else if (colorBy === 'compound' && selectedCompounds.size > 0) {
+                        isSelectedA = selectedCompounds.has(itemA.groupName);
+                        isSelectedB = selectedCompounds.has(itemB.groupName);
+                      } else if (colorBy === 'dose' && selectedDoseCategories.size > 0) {
+                        isSelectedA = selectedDoseCategories.has(itemA.groupName);
+                        isSelectedB = selectedDoseCategories.has(itemB.groupName);
+                      } else if (colorBy === 'timepoint' && selectedTimepoints.size > 0) {
+                        isSelectedA = selectedTimepoints.has(itemA.groupName);
+                        isSelectedB = selectedTimepoints.has(itemB.groupName);
+                      }
+
+                      // Unselected items render first (return -1), selected items render last (return 1)
+                      if (!isSelectedA && isSelectedB) return -1;
+                      if (isSelectedA && !isSelectedB) return 1;
+
+                      // Keep original order for items in same category
+                      return 0;
+                    })
+                    .map((item, idx) => {
+                    // Check if this item is selected when a filter is active
+                    let isSelectedGroup = true;
+                    if (colorBy === 'cell_line' && selectedCellLines.size > 0) {
+                      isSelectedGroup = selectedCellLines.has(item.groupName);
+                    } else if (colorBy === 'compound' && selectedCompounds.size > 0) {
+                      isSelectedGroup = selectedCompounds.has(item.groupName);
+                    } else if (colorBy === 'dose' && selectedDoseCategories.size > 0) {
+                      isSelectedGroup = selectedDoseCategories.has(item.groupName);
+                    } else if (colorBy === 'timepoint' && selectedTimepoints.size > 0) {
+                      isSelectedGroup = selectedTimepoints.has(item.groupName);
+                    }
+
+                    const displayColor = isSelectedGroup ? item.color : '#64748b'; // grey out if not selected
+                    const displayOpacity = isSelectedGroup ? 0.5 : 0.08;
+
+                    // Create a factory function to avoid closure issues
+                    const createShapeRenderer = (currentItem: typeof item, currentColor: string, currentIsSelected: boolean) => {
+                      return (props: any) => {
+                        const { cx, cy, payload } = props;
+                        // Draw variance circle (2 SD radius)
+                        const radiusX = currentItem.stdPC1 * 2;  // 2 standard deviations in data units
+                        const radiusY = currentItem.stdPC2 * 2;
+
+                        // Convert from data units to pixels using calculated scale factors
+                        const ellipseRadiusX = Math.abs(radiusX) * ellipseScaleFactors.pixelsPerUnitPC1;
+                        const ellipseRadiusY = Math.abs(radiusY) * ellipseScaleFactors.pixelsPerUnitPC2;
+
+                        return (
+                          <g data-groupname={currentItem.groupName}>
+                            {/* Variance ellipse */}
+                            <ellipse
+                              cx={cx}
+                              cy={cy}
+                              rx={ellipseRadiusX}
+                              ry={ellipseRadiusY}
+                              fill={currentColor}
+                              fillOpacity={currentIsSelected ? 0.3 : 0.05}
+                              stroke={currentColor}
+                              strokeWidth={currentIsSelected ? 2 : 1}
+                              strokeDasharray="3 3"
+                              strokeOpacity={currentIsSelected ? 0.8 : 0.3}
+                            />
+                            {/* Center point */}
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={currentIsSelected ? 6 : 4}
+                              fill={currentColor}
+                              fillOpacity={currentIsSelected ? 1 : 0.5}
+                              stroke="#fff"
+                              strokeWidth={2}
+                            />
+                          </g>
+                        );
+                      };
+                    };
+
+                    // Pass the item directly in an array - don't spread to avoid reference issues
                     return (
-                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl">
-                        <div className="font-semibold text-white mb-2">{data.groupName}</div>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Mean PC1:</span>
-                            <span className="text-white font-mono">{data.meanPC1.toFixed(2)} ± {data.stdPC1.toFixed(2)}</span>
+                      <Scatter
+                        key={`${item.groupName}-${idx}`}
+                        name={item.groupName}
+                        data={[item]}
+                        fill={displayColor}
+                        fillOpacity={displayOpacity}
+                        legendType="none"
+                        shape={createShapeRenderer(item, displayColor, isSelectedGroup)}
+                      />
+                    );
+                  })}
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Custom Legend on the Right */}
+            <div className="bg-slate-900/50 rounded px-2 py-1.5 border border-slate-700" style={{ marginTop: '-50px' }}>
+              <div className="text-xs font-semibold text-violet-400 mb-0.5">Legend (multi-select)</div>
+              <div className="space-y-px">
+                {(() => {
+                  // If coloring by compound, group by color families
+                  if (colorBy === 'compound') {
+                    const compoundGroups = [
+                      ['tBHQ', 'H2O2'],
+                      ['tunicamycin', 'thapsigargin'],
+                      ['CCCP', 'oligomycin'],
+                      ['etoposide', 'MG132'],
+                      ['nocodazole', 'paclitaxel'],
+                      ['DMSO']
+                    ];
+
+                    return compoundGroups.flatMap((group) =>
+                      group.map(compound => {
+                        const item = aggregatedData.find(d => d.groupName === compound);
+                        if (!item) return null;
+                        const isSelected = selectedCompounds.has(item.groupName);
+
+                        return (
+                          <div
+                            key={item.groupName}
+                            className={`flex items-center gap-1.5 cursor-pointer hover:bg-slate-800 px-1 py-0.5 rounded transition-colors ${isSelected ? 'font-semibold' : ''}`}
+                            onClick={() => {
+                              const newSet = new Set(selectedCompounds);
+                              if (isSelected) {
+                                newSet.delete(item.groupName);
+                              } else {
+                                newSet.add(item.groupName);
+                              }
+                              setSelectedCompounds(newSet);
+                            }}
+                          >
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }}></div>
+                            <span className="text-xs text-slate-300">{item.groupName}</span>
                           </div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Mean PC2:</span>
-                            <span className="text-white font-mono">{data.meanPC2.toFixed(2)} ± {data.stdPC2.toFixed(2)}</span>
-                          </div>
-                          <div className="border-t border-slate-700 my-2"></div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-slate-400">Replicates:</span>
-                            <span className="text-white font-medium">n = {data.n}</span>
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })
                     );
                   }
-                  return null;
-                }}
-              />
-              <Legend wrapperStyle={{ paddingTop: '20px' }} />
 
-              {/* Render variance blobs as circles + error bars */}
-              {aggregatedData.map((item, idx) => (
-                <Scatter
-                  key={item.groupName}
-                  name={item.groupName}
-                  data={[item]}
-                  fill={item.color}
-                  fillOpacity={0.3}
-                  shape={(props: any) => {
-                    const { cx, cy } = props;
-                    // Draw variance circle (2 SD radius)
-                    const radiusX = item.stdPC1 * 2;
-                    const radiusY = item.stdPC2 * 2;
+                  // Otherwise, display in order
+                  return aggregatedData.map((item) => {
+                    let isSelected = false;
+                    let handleClick = () => {};
+
+                    if (colorBy === 'cell_line') {
+                      isSelected = selectedCellLines.has(item.groupName);
+                      handleClick = () => {
+                        const newSet = new Set(selectedCellLines);
+                        if (isSelected) {
+                          newSet.delete(item.groupName);
+                        } else {
+                          newSet.add(item.groupName);
+                        }
+                        setSelectedCellLines(newSet);
+                      };
+                    } else if (colorBy === 'dose') {
+                      isSelected = selectedDoseCategories.has(item.groupName);
+                      handleClick = () => {
+                        const newSet = new Set(selectedDoseCategories);
+                        if (isSelected) {
+                          newSet.delete(item.groupName);
+                        } else {
+                          newSet.add(item.groupName);
+                        }
+                        setSelectedDoseCategories(newSet);
+                      };
+                    } else if (colorBy === 'timepoint') {
+                      isSelected = selectedTimepoints.has(item.groupName);
+                      handleClick = () => {
+                        const newSet = new Set(selectedTimepoints);
+                        if (isSelected) {
+                          newSet.delete(item.groupName);
+                        } else {
+                          newSet.add(item.groupName);
+                        }
+                        setSelectedTimepoints(newSet);
+                      };
+                    }
 
                     return (
-                      <g>
-                        {/* Variance ellipse */}
-                        <ellipse
-                          cx={cx}
-                          cy={cy}
-                          rx={Math.abs(radiusX) * 10}  // Scale factor for visibility
-                          ry={Math.abs(radiusY) * 10}
-                          fill={item.color}
-                          fillOpacity={0.2}
-                          stroke={item.color}
-                          strokeWidth={1.5}
-                          strokeDasharray="3 3"
-                        />
-                        {/* Center point */}
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={5}
-                          fill={item.color}
-                          stroke="#fff"
-                          strokeWidth={2}
-                        />
-                      </g>
+                      <div
+                        key={item.groupName}
+                        className={`flex items-center gap-1.5 cursor-pointer hover:bg-slate-800 px-1 py-0.5 rounded transition-colors ${isSelected ? 'font-semibold' : ''}`}
+                        onClick={handleClick}
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }}></div>
+                        <span className="text-xs text-slate-300">{item.groupName}</span>
+                      </div>
                     );
-                  }}
-                />
-              ))}
-            </ScatterChart>
-          </ResponsiveContainer>
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
 
           {/* Help Text */}
           <div className="mt-4 text-xs text-slate-400 bg-slate-900/50 rounded-lg p-4 border border-slate-700">

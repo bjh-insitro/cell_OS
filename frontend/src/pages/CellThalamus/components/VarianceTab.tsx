@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
-import { useDesigns, useVarianceAnalysis } from '../hooks/useCellThalamusData';
+import { useDesigns, useVarianceAnalysis, useAllVarianceAnalysis } from '../hooks/useCellThalamusData';
 
 interface VarianceTabProps {
   selectedDesignId: string | null;
@@ -15,7 +15,9 @@ interface VarianceTabProps {
 
 const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignChange }) => {
   const { data: designs } = useDesigns();
-  const { data: analysis, loading, error, refetch: refetchAnalysis } = useVarianceAnalysis(selectedDesignId);
+  const [selectedMetric, setSelectedMetric] = React.useState<string>('atp_signal');
+  const { data: analysis, loading, error, refetch: refetchAnalysis } = useVarianceAnalysis(selectedDesignId, selectedMetric);
+  const { data: allVarianceData, loading: heatmapLoading, refetch: refetchHeatmap } = useAllVarianceAnalysis(selectedDesignId);
   const [isLiveMode, setIsLiveMode] = React.useState<boolean>(false);
 
   const allDesigns = React.useMemo(() => designs || [], [designs]);
@@ -33,16 +35,18 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
     if (isDesignRunning && selectedDesignId) {
       setIsLiveMode(true);
       refetchAnalysis();
+      refetchHeatmap();
 
       const intervalId = setInterval(() => {
         refetchAnalysis();
+        refetchHeatmap();
       }, 5000);
 
       return () => clearInterval(intervalId);
     } else {
       setIsLiveMode(false);
     }
-  }, [isDesignRunning, selectedDesignId, refetchAnalysis]);
+  }, [isDesignRunning, selectedDesignId, refetchAnalysis, refetchHeatmap]);
 
   // Prepare chart data
   const chartData = analysis?.components.map((comp) => ({
@@ -110,21 +114,30 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
                 const statusLabel = design.status === 'running' ? ' 🔴 LIVE' : design.status === 'completed' ? ' ✓' : '';
                 return (
                   <option key={design.design_id} value={design.design_id}>
-                    Run #{index + 1} - {date} ({design.design_id.slice(0, 8)}){statusLabel}
+                    {date} ({design.design_id.slice(0, 8)}) - {design.well_count || '?'} wells{statusLabel}
                   </option>
                 );
               })}
             </select>
           </div>
 
-          {analysis && (
-            <div className="flex items-end">
-              <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700 w-full">
-                <div className="text-xs text-slate-400 uppercase tracking-wider">Metric</div>
-                <div className="text-lg font-bold text-white mt-1">{analysis.metric}</div>
-              </div>
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-semibold text-violet-400 uppercase tracking-wider mb-2">
+              Select Metric
+            </label>
+            <select
+              value={selectedMetric}
+              onChange={(e) => setSelectedMetric(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="atp_signal">ATP Signal (Viability)</option>
+              <option value="morph_er">ER Morphology</option>
+              <option value="morph_mito">Mitochondria Morphology</option>
+              <option value="morph_nucleus">Nucleus Morphology</option>
+              <option value="morph_actin">Actin Morphology</option>
+              <option value="morph_rna">RNA Morphology</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -372,6 +385,170 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Variance Heatmap - All Metrics */}
+      {selectedDesignId && allVarianceData && allVarianceData.all_metrics && (
+        <div className={`bg-slate-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all ${
+          isLiveMode
+            ? 'border-red-500/50 shadow-lg shadow-red-500/20 animate-pulse'
+            : 'border-slate-700'
+        }`}>
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            Variance Heatmap - All Metrics
+            {isLiveMode && (
+              <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full border border-red-500/50 animate-pulse">
+                LIVE
+              </span>
+            )}
+          </h3>
+
+          {(() => {
+            const metrics = Object.keys(allVarianceData.all_metrics);
+            const metricLabels: Record<string, string> = {
+              'atp_signal': 'ATP',
+              'morph_er': 'ER',
+              'morph_mito': 'Mito',
+              'morph_nucleus': 'Nucleus',
+              'morph_actin': 'Actin',
+              'morph_rna': 'RNA'
+            };
+
+            // Get all unique sources across all metrics
+            const allSources = new Set<string>();
+            metrics.forEach(metric => {
+              allVarianceData.all_metrics[metric].components.forEach((comp: any) => {
+                allSources.add(comp.source);
+              });
+            });
+
+            const sources = Array.from(allSources);
+
+            // Helper to get color based on source type and fraction
+            const getHeatmapColor = (source: string, fraction: number): string => {
+              const biologicalSources = ['cell_line', 'compound', 'dose', 'timepoint'];
+              const technicalSources = ['plate', 'day', 'operator'];
+
+              const intensity = Math.min(fraction * 100, 100);
+
+              if (biologicalSources.includes(source)) {
+                // Green for biological (higher is better)
+                if (intensity < 10) return '#134e4a'; // very dark green
+                if (intensity < 20) return '#166534';
+                if (intensity < 30) return '#15803d';
+                if (intensity < 40) return '#16a34a';
+                if (intensity < 50) return '#22c55e';
+                return '#4ade80'; // bright green
+              } else if (technicalSources.includes(source)) {
+                // Orange/Red for technical (lower is better)
+                if (intensity < 5) return '#422006'; // very dark amber
+                if (intensity < 10) return '#713f12';
+                if (intensity < 15) return '#92400e';
+                if (intensity < 20) return '#b45309';
+                if (intensity < 30) return '#f59e0b';
+                return '#fb923c'; // bright orange
+              } else {
+                // Gray for residual
+                if (intensity < 10) return '#1e293b';
+                if (intensity < 20) return '#334155';
+                if (intensity < 30) return '#475569';
+                if (intensity < 40) return '#64748b';
+                return '#94a3b8';
+              }
+            };
+
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-slate-300 border-b border-slate-700">
+                        Source
+                      </th>
+                      {metrics.map(metric => (
+                        <th key={metric} className="px-3 py-2 text-center text-xs font-semibold text-slate-300 border-b border-slate-700">
+                          {metricLabels[metric] || metric}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sources.map(source => (
+                      <tr key={source} className="border-b border-slate-800 hover:bg-slate-900/30">
+                        <td className="px-3 py-2 text-xs font-medium text-white capitalize">
+                          {source}
+                        </td>
+                        {metrics.map(metric => {
+                          const comp = allVarianceData.all_metrics[metric].components.find(
+                            (c: any) => c.source === source
+                          );
+                          const fraction = comp ? comp.fraction : 0;
+                          const color = getHeatmapColor(source, fraction);
+
+                          return (
+                            <td
+                              key={`${source}-${metric}`}
+                              className="px-3 py-2 text-center text-xs font-mono"
+                              style={{ backgroundColor: color }}
+                            >
+                              <span className="text-white font-semibold">
+                                {(fraction * 100).toFixed(1)}%
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {/* Heatmap Legend */}
+          <div className="mt-4 flex flex-wrap gap-6 justify-center text-xs">
+            <div>
+              <div className="font-semibold text-green-400 mb-2">Biological Sources (high = good)</div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#134e4a] border border-slate-600"></div>
+                <span className="text-slate-400">Low</span>
+                <div className="w-4 h-4 bg-[#16a34a]"></div>
+                <div className="w-4 h-4 bg-[#22c55e]"></div>
+                <div className="w-4 h-4 bg-[#4ade80]"></div>
+                <span className="text-slate-400">High</span>
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-orange-400 mb-2">Technical Sources (low = good)</div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#422006] border border-slate-600"></div>
+                <span className="text-slate-400">Low</span>
+                <div className="w-4 h-4 bg-[#b45309]"></div>
+                <div className="w-4 h-4 bg-[#f59e0b]"></div>
+                <div className="w-4 h-4 bg-[#fb923c]"></div>
+                <span className="text-slate-400">High</span>
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-slate-400 mb-2">Residual (unexplained)</div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#1e293b] border border-slate-600"></div>
+                <span className="text-slate-400">Low</span>
+                <div className="w-4 h-4 bg-[#475569]"></div>
+                <div className="w-4 h-4 bg-[#94a3b8]"></div>
+                <span className="text-slate-400">High</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Help Text */}
+          <div className="mt-4 text-xs text-slate-400 bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+            <strong>Interpretation:</strong> This heatmap shows variance fractions across all metrics simultaneously.
+            <strong className="text-green-400"> Green cells</strong> (biological sources) should be bright = high variance = good signal.
+            <strong className="text-orange-400"> Orange cells</strong> (technical sources) should be dark = low variance = low noise.
+            Compare columns to identify which metrics are most reliable for your assay.
+          </div>
         </div>
       )}
     </div>

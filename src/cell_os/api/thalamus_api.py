@@ -15,11 +15,29 @@ from typing import List, Optional, Dict, Any
 import logging
 from pathlib import Path
 import uuid
+import os
+import json
+from datetime import datetime
 
 from cell_os.cell_thalamus import CellThalamusAgent
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from cell_os.database.cell_thalamus_db import CellThalamusDB
 from cell_os.cell_thalamus.variance_analysis import VarianceAnalyzer
+from cell_os.cell_thalamus.boundary_detection import (
+    analyze_boundaries,
+    SentinelSpec,
+    AnchorBudgeter,
+    BoundaryBandSelector,
+    AcquisitionPlanner
+)
+from cell_os.cell_thalamus.manifold_charts import (
+    BoundaryType,
+    ChartStatus,
+    ManifoldChart,
+    create_chart_from_integration_test,
+    compute_dose_pair_separation,
+    compute_archetype_fanout
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +58,27 @@ running_simulations: Dict[str, Dict[str, Any]] = {}
 
 # Database path - use absolute path to work from any directory
 DB_PATH = str(Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus.db")
+
+# Lambda configuration
+USE_LAMBDA = os.getenv('USE_LAMBDA', 'false').lower() == 'true'
+LAMBDA_FUNCTION_NAME = os.getenv('LAMBDA_FUNCTION_NAME', 'cell-thalamus-simulator')
+AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
+AWS_PROFILE = os.getenv('AWS_PROFILE', 'bedrock')
+
+# Initialize Lambda client if using Lambda
+lambda_client = None
+if USE_LAMBDA:
+    try:
+        import boto3  # Only import if using Lambda
+        session = boto3.Session(profile_name=AWS_PROFILE)
+        lambda_client = session.client('lambda', region_name=AWS_REGION)
+        logger.info(f"✓ Lambda client initialized (function: {LAMBDA_FUNCTION_NAME}, region: {AWS_REGION})")
+    except ImportError:
+        logger.warning("boto3 not installed. Install with: pip install boto3. Falling back to local execution.")
+        USE_LAMBDA = False
+    except Exception as e:
+        logger.warning(f"Failed to initialize Lambda client: {e}. Falling back to local execution.")
+        USE_LAMBDA = False
 
 
 # ============================================================================
@@ -73,6 +112,7 @@ class DesignResponse(BaseModel):
     compounds: List[str]
     status: str
     created_at: Optional[str] = None
+    well_count: Optional[int] = None
 
 
 class ResultResponse(BaseModel):
@@ -165,9 +205,51 @@ async def run_autonomous_loop(request: AutonomousLoopRequest, background_tasks: 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _invoke_lambda_simulation(design_id: str, candidates: List):
+    """Invoke AWS Lambda to run simulation"""
+    try:
+        # Prepare payload
+        payload = {
+            'design_id': design_id,
+            'candidates': [c.dict() if hasattr(c, 'dict') else c for c in candidates]
+        }
+
+        logger.info(f"Invoking Lambda with {len(candidates)} candidates...")
+
+        # Invoke Lambda asynchronously
+        response = lambda_client.invoke(
+            FunctionName=LAMBDA_FUNCTION_NAME,
+            InvocationType='Event',  # Async invocation
+            Payload=json.dumps(payload)
+        )
+
+        status_code = response['StatusCode']
+        if status_code == 202:
+            running_simulations[design_id]["status"] = "running_lambda"
+            running_simulations[design_id]["lambda_invoked"] = True
+            logger.info(f"✓ Lambda invoked successfully (status: {status_code})")
+            logger.info(f"⏳ Simulation running on Lambda. Results will appear in S3 and auto-sync to local.")
+        else:
+            raise Exception(f"Lambda invocation failed with status: {status_code}")
+
+    except Exception as e:
+        logger.error(f"Lambda invocation failed: {e}")
+        running_simulations[design_id]["status"] = "failed"
+        running_simulations[design_id]["error"] = f"Lambda invocation failed: {str(e)}"
+        raise
+
+
 def _run_autonomous_loop_task(design_id: str, candidates: List):
     """Background task to run autonomous loop portfolio experiment"""
     try:
+        # Check if we should use Lambda
+        if USE_LAMBDA and lambda_client:
+            logger.info(f"🚀 Invoking Lambda function: {LAMBDA_FUNCTION_NAME}")
+            _invoke_lambda_simulation(design_id, candidates)
+            return
+
+        # Otherwise run locally
+        logger.info(f"💻 Running simulation locally")
         from cell_os.cell_thalamus.design_generator import WellAssignment
         import numpy as np
 
@@ -213,9 +295,9 @@ def _run_autonomous_loop_task(design_id: str, candidates: List):
         well_idx = 0
         plate_idx = 1
 
-        # Calculate proportional control allocation to hit exactly 64 controls
+        # Calculate proportional control allocation to hit exactly 32 controls
         total_experimental = sum(c.wells for c in candidates)
-        TARGET_CONTROLS = 64  # 16 per plate × 4 plates
+        TARGET_CONTROLS = 32  # 16 per plate × 2 plates
 
         controls_per_candidate = []
         for c in candidates:
@@ -457,13 +539,17 @@ async def list_designs():
             if design['design_id'] in running_simulations:
                 status = running_simulations[design['design_id']]['status']
 
+            # Get actual well count from results table
+            well_count = db.get_well_count(design['design_id'])
+
             results.append(DesignResponse(
                 design_id=design['design_id'],
                 phase=design['phase'],
                 cell_lines=eval(design['cell_lines']) if isinstance(design['cell_lines'], str) else design['cell_lines'],
                 compounds=eval(design['compounds']) if isinstance(design['compounds'], str) else design['compounds'],
                 status=status,
-                created_at=design.get('created_at')
+                created_at=design.get('created_at'),
+                well_count=well_count
             ))
 
         db.close()
@@ -803,6 +889,297 @@ async def get_variance_analysis(design_id: str, metric: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/thalamus/designs/{design_id}/morphology-variance")
+async def get_morphology_variance_analysis(design_id: str):
+    """
+    Analyze morphology variance for autonomous loop candidate ranking (Phase 1).
+
+    This replaces entropy/CV-based ranking with morphology covariance analysis:
+    - Per-condition scatter in PC space (tr(Σ_c))
+    - Nuisance variance decomposition (plate/day/operator effects)
+    - Priority scoring: high variance, non-death, low nuisance
+
+    Returns ranked conditions and global diagnostics.
+    """
+    try:
+        from cell_os.cell_thalamus.morphology_variance_analysis import rank_conditions_for_autonomous_loop
+
+        # Get results for this design
+        db = CellThalamusDB(db_path=DB_PATH)
+        results = db.get_results(design_id)
+        db.close()
+
+        if not results:
+            raise HTTPException(status_code=404, detail="No results found")
+
+        # Run morphology variance analysis
+        candidates, diagnostics = rank_conditions_for_autonomous_loop(
+            results=results,
+            design_id=design_id,
+            top_k=15
+        )
+
+        return {
+            'candidates': candidates,
+            'diagnostics': diagnostics,
+            'design_id': design_id,
+            'analysis_type': 'morphology_covariance',
+        }
+
+    except Exception as e:
+        logger.error(f"Error in morphology variance analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/thalamus/designs/{design_id}/boundaries")
+async def get_boundary_analysis(
+    design_id: str,
+    boundary_type: str = "death",
+    timepoint_h: Optional[float] = None,
+    chart_id: Optional[str] = None
+):
+    """
+    Phase 2: Boundary detection with manifold chart capability gating.
+
+    This endpoint now enforces architectural constraints:
+    - Mechanism-axis boundaries require geometry_preservation >= 0.90
+    - Charts are first-class coordinate systems with explicit capabilities
+    - Requests for disallowed boundary types return hard errors (not warnings)
+
+    Args:
+        design_id: Design to analyze
+        boundary_type: "death" or "mechanism_axis"
+        timepoint_h: Optional timepoint filter (creates chart per timepoint)
+        chart_id: Optional chart ID (overrides timepoint_h if provided)
+
+    Returns:
+        {
+            "charts": List of available charts with health + capabilities,
+            "selected_chart": Chart used for this analysis (if boundary succeeded),
+            "boundary_conditions": Conditions near decision boundary (if allowed),
+            "error": Structured error if boundary type not allowed on chart
+        }
+    """
+    try:
+        # Get results
+        db = CellThalamusDB(db_path=DB_PATH)
+        results = db.get_results(design_id)
+        db.close()
+
+        if not results:
+            raise HTTPException(status_code=404, detail="No results found")
+
+        # Parse boundary type
+        try:
+            requested_boundary = BoundaryType(boundary_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid boundary_type: {boundary_type}. Must be one of: {[bt.value for bt in BoundaryType]}"
+            )
+
+        # Group results by timepoint
+        timepoint_results = {}
+        for r in results:
+            tp = r.get('timepoint_h', 0.0)
+            if tp not in timepoint_results:
+                timepoint_results[tp] = []
+            timepoint_results[tp].append(r)
+
+        logger.info(f"Found {len(timepoint_results)} unique timepoints: {sorted(timepoint_results.keys())}")
+
+        # Define standard sentinel specs
+        sentinel_specs = [
+            SentinelSpec(name="vehicle", cell_line="A549", compound="DMSO", dose_uM=0.0),
+            SentinelSpec(name="ER", cell_line="A549", compound="thapsigargin", dose_uM=0.5),
+            SentinelSpec(name="mito", cell_line="A549", compound="oligomycin", dose_uM=1.0),
+            SentinelSpec(name="proteostasis", cell_line="A549", compound="MG132", dose_uM=1.0),
+            SentinelSpec(name="oxidative", cell_line="A549", compound="tBHQ", dose_uM=30.0),
+        ]
+
+        # Analyze each timepoint separately and create charts
+        charts = []
+        for tp, tp_results in sorted(timepoint_results.items()):
+            logger.info(f"Analyzing timepoint {tp}h ({len(tp_results)} wells)")
+
+            # Run boundary analysis for this timepoint only
+            analysis = analyze_boundaries(
+                results=tp_results,
+                design_id=f"{design_id}_T{int(tp):02d}h",
+                phase1_metrics={"trajectory_snr": {}, "global_nuisance_fraction": 0.5},
+                sentinel_specs=sentinel_specs,
+                boundary_type=boundary_type
+            )
+
+            # Create chart from integration test
+            chart = create_chart_from_integration_test(
+                timepoint_h=tp,
+                batch_diagnostics=analysis["batch_diagnostics"],
+                integration_test=analysis["integration_test"],
+                within_scatter=analysis["integration_test"]["within_scatter"]
+            )
+
+            charts.append({
+                "chart": chart,
+                "analysis": analysis
+            })
+
+        # Select chart based on user request
+        selected_chart = None
+        selected_analysis = None
+
+        if chart_id:
+            # Find by chart_id
+            for c in charts:
+                if c["chart"].chart_id == chart_id:
+                    selected_chart = c["chart"]
+                    selected_analysis = c["analysis"]
+                    break
+            if not selected_chart:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Chart {chart_id} not found. Available charts: {[c['chart'].chart_id for c in charts]}"
+                )
+        elif timepoint_h is not None:
+            # Find by timepoint
+            for c in charts:
+                if c["chart"].timepoint_h == timepoint_h:
+                    selected_chart = c["chart"]
+                    selected_analysis = c["analysis"]
+                    break
+            if not selected_chart:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No chart found for timepoint {timepoint_h}h"
+                )
+        else:
+            # Auto-select: prefer PASS charts, then earliest CONDITIONAL
+            pass_charts = [c for c in charts if c["chart"].status == ChartStatus.PASS]
+            if pass_charts:
+                selected_chart = pass_charts[0]["chart"]
+                selected_analysis = pass_charts[0]["analysis"]
+            else:
+                conditional_charts = [c for c in charts if c["chart"].status == ChartStatus.CONDITIONAL]
+                if conditional_charts:
+                    selected_chart = conditional_charts[0]["chart"]
+                    selected_analysis = conditional_charts[0]["analysis"]
+                else:
+                    # All failed - return error with chart health
+                    return {
+                        "error": {
+                            "code": "ALL_CHARTS_FAILED",
+                            "message": "All timepoint charts failed integration tests",
+                            "details": {
+                                "charts": [{
+                                    "chart_id": c["chart"].chart_id,
+                                    "timepoint_h": c["chart"].timepoint_h,
+                                    "status": c["chart"].status.value,
+                                    "health": {
+                                        "geometry_preservation": c["chart"].health.geometry_preservation_median,
+                                        "vehicle_drift": c["chart"].health.vehicle_drift_median_normalized
+                                    }
+                                } for c in charts]
+                            },
+                            "recommendation": "Run anchor tightening cycle with increased sentinel replicates (8 vehicle + 5 per archetype)"
+                        }
+                    }
+
+        # Check if requested boundary type is allowed on selected chart
+        if not selected_chart.allows_boundary_type(requested_boundary):
+            # HARD ERROR - capability violation
+            refuse_response = selected_chart.refuse_message(requested_boundary)
+            refuse_response["available_charts"] = [{
+                "chart_id": c["chart"].chart_id,
+                "timepoint_h": c["chart"].timepoint_h,
+                "status": c["chart"].status.value,
+                "allowed_boundaries": [bt.value for bt in c["chart"].allowed_boundary_types],
+                "health": {
+                    "geometry_preservation": c["chart"].health.geometry_preservation_median,
+                    "sentinel_max_drift": c["chart"].health.sentinel_max_drift_normalized
+                }
+            } for c in charts]
+            return refuse_response
+
+        # Boundary type is allowed - return analysis
+        # Get Phase 1 metrics for acquisition planning
+        from cell_os.cell_thalamus.morphology_variance_analysis import rank_conditions_for_autonomous_loop
+        try:
+            _, phase1_diagnostics = rank_conditions_for_autonomous_loop(
+                results=timepoint_results[selected_chart.timepoint_h],
+                design_id=design_id,
+                top_k=15
+            )
+        except Exception as e:
+            logger.warning(f"Could not get Phase 1 metrics: {e}")
+            phase1_diagnostics = {
+                "trajectory_snr": {},
+                "global_nuisance_fraction": 0.5
+            }
+
+        # Generate acquisition plan
+        anchor_budgeter = AnchorBudgeter(sentinel_specs, reps_per_sentinel=5, vehicle_reps=8)
+        boundary_selector = BoundaryBandSelector(mode="entropy")
+        planner = AcquisitionPlanner(anchor_budgeter, boundary_selector)
+
+        boundary_scores = {
+            (cond["cell_line"], cond["compound"], cond["dose_uM"], cond["timepoint"]): 1.0
+            for cond in selected_analysis["boundary_conditions"]
+        }
+
+        acquisition_plan = planner.plan(
+            candidate_conditions=list(boundary_scores.keys()),
+            phase1_metrics=phase1_diagnostics,
+            boundary_scores=boundary_scores,
+            plate_format=96,
+            batch_id=f"anchor_tightening_{design_id[:8]}_T{int(selected_chart.timepoint_h):02d}h",
+            policy={"boundary_frac": 0.6, "trajectory_frac": 0.4, "sentinel_frac": 0.31}
+        )
+
+        return {
+            "design_id": design_id,
+            "charts": [{
+                "chart_id": c["chart"].chart_id,
+                "timepoint_h": c["chart"].timepoint_h,
+                "status": c["chart"].status.value,
+                "chart_type": c["chart"].chart_type,
+                "allowed_boundaries": [bt.value for bt in c["chart"].allowed_boundary_types],
+                "health": {
+                    "geometry_preservation_median": c["chart"].health.geometry_preservation_median,
+                    "geometry_preservation_min": c["chart"].health.geometry_preservation_min,
+                    "sentinel_max_drift": c["chart"].health.sentinel_max_drift_normalized,
+                    "vehicle_drift_median": c["chart"].health.vehicle_drift_median_normalized,
+                    "n_batches": c["chart"].health.n_batches
+                },
+                "notes": c["chart"].notes
+            } for c in charts],
+            "selected_chart": {
+                "chart_id": selected_chart.chart_id,
+                "timepoint_h": selected_chart.timepoint_h,
+                "status": selected_chart.status.value,
+                "chart_type": selected_chart.chart_type
+            },
+            "boundary_type": boundary_type,
+            "boundary_conditions": selected_analysis["boundary_conditions"],
+            "batch_diagnostics": selected_analysis["batch_diagnostics"],
+            "integration_test": selected_analysis["integration_test"],
+            "acquisition_plan": acquisition_plan,
+            "model_fitted": selected_analysis["model_fitted"],
+            "phase": "Phase2_BoundaryDetection",
+            "model_version": "phase2_v2.0_chart_gating",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in boundary analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/thalamus/designs/{design_id}/sentinels")
 async def get_sentinel_data(design_id: str):
     """Get sentinel SPC data"""
@@ -887,6 +1264,69 @@ async def get_plate_data(design_id: str, plate_id: str):
 
     except Exception as e:
         logger.error(f"Error getting plate data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/thalamus/catalog")
+async def get_design_catalog():
+    """Get the design catalog with all versions and evolution history"""
+    try:
+        catalog_path = Path(__file__).parent.parent.parent.parent / "data" / "designs" / "catalog.json"
+
+        if not catalog_path.exists():
+            raise HTTPException(status_code=404, detail="Catalog not found")
+
+        with open(catalog_path, 'r') as f:
+            catalog = json.load(f)
+
+        return catalog
+
+    except Exception as e:
+        logger.error(f"Error getting design catalog: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/thalamus/catalog/designs/{design_id}")
+async def get_catalog_design(design_id: str):
+    """Get full design file from catalog"""
+    try:
+        designs_dir = Path(__file__).parent.parent.parent.parent / "data" / "designs"
+        catalog_path = designs_dir / "catalog.json"
+
+        if not catalog_path.exists():
+            raise HTTPException(status_code=404, detail="Catalog not found")
+
+        # Load catalog to get filename
+        with open(catalog_path, 'r') as f:
+            catalog = json.load(f)
+
+        # Find design in catalog
+        design_entry = None
+        for design in catalog['designs']:
+            if design['design_id'] == design_id:
+                design_entry = design
+                break
+
+        if not design_entry:
+            raise HTTPException(status_code=404, detail=f"Design {design_id} not found in catalog")
+
+        # Load full design file
+        design_file = designs_dir / design_entry['filename']
+        if not design_file.exists():
+            raise HTTPException(status_code=404, detail=f"Design file {design_entry['filename']} not found")
+
+        with open(design_file, 'r') as f:
+            design_data = json.load(f)
+
+        return {
+            "catalog_entry": design_entry,
+            "design_data": design_data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting catalog design: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

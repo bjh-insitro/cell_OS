@@ -271,6 +271,13 @@ class CellThalamusDB:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def get_well_count(self, design_id: str) -> int:
+        """Get the total number of wells for a design."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM thalamus_results WHERE design_id = ?", (design_id,))
+        result = cursor.fetchone()
+        return result['count'] if result else 0
+
     def get_dose_response_data(self, design_id: str, compound: str,
                                cell_line: str, metric: str = 'atp_signal',
                                timepoint: Optional[float] = None) -> List[Tuple[float, float, float, int]]:

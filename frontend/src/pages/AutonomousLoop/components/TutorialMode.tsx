@@ -74,6 +74,8 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
     const [isLoading, setIsLoading] = useState(true);
     const [realDoseResponseData, setRealDoseResponseData] = useState<any>(null);
     const [plateLayoutData, setPlateLayoutData] = useState<any[]>([]);
+    const [availableDesigns, setAvailableDesigns] = useState<any[]>([]);
+    const [selectedDesignId, setSelectedDesignId] = useState<string | null>(null);
 
     // Experiment execution state
     const [isRunningExperiment, setIsRunningExperiment] = useState(false);
@@ -86,6 +88,7 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
             setDataError(null);
             let fetchedRealData: any[] = [];
             let topCandidateDoseResponse: any = null;
+            let allResults: any[] = [];  // Declare at function scope
 
             try {
                 const designs = await cellThalamusService.getDesigns();
@@ -94,11 +97,21 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                     throw new Error('No experimental designs found in database. Please run a simulation first.');
                 }
 
-                if (designs && designs.length > 0) {
-                    const recentDesigns = designs.slice(0, 10);
-                    let allResults: any[] = [];
+                // Store available designs for selector
+                setAvailableDesigns(designs);
 
-                    for (const design of recentDesigns) {
+                // Auto-select first design if none selected
+                if (!selectedDesignId && designs.length > 0) {
+                    setSelectedDesignId(designs[0].design_id);
+                }
+
+                if (designs && designs.length > 0) {
+                    // Filter to selected design or use recent designs as fallback
+                    const designsToProcess = selectedDesignId
+                        ? designs.filter(d => d.design_id === selectedDesignId)
+                        : designs.slice(0, 10);
+
+                    for (const design of designsToProcess) {
                         try {
                             const results = await cellThalamusService.getResults(design.design_id);
                             if (results) allResults = [...allResults, ...results];
@@ -235,41 +248,39 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                         error: 5 // Placeholder, could calculate from replicates
                     }));
 
-                    // Sort by dose
-                    const sortedByDose = [...dataPoints].sort((a, b) => a.dose - b.dose);
+                    // Sort by dose and filter out invalid points
+                    const sortedByDose = [...dataPoints]
+                        .filter(d => d.dose > 0 && d.response >= 0 && d.response <= 120) // Only valid data
+                        .sort((a, b) => a.dose - b.dose);
 
                     // Get max dose from data
-                    const maxDose = Math.max(...dataPoints.map(d => d.dose));
-                    const maxResponse = Math.max(...dataPoints.map(d => d.response));
-                    const minResponse = Math.min(...dataPoints.map(d => d.response));
+                    const maxDose = Math.max(...sortedByDose.map(d => d.dose));
+                    const maxResponse = Math.max(...sortedByDose.map(d => d.response));
+                    const minResponse = Math.min(...sortedByDose.map(d => d.response));
 
-                    // If we have sparse data (< 5 points), add interpolated points for visualization
-                    let enhancedDataPoints = [...sortedByDose];
-                    if (sortedByDose.length < 5 && maxDose > 0) {
-                        // Add interpolated points for smoother curve
-                        const responseRange = maxResponse - minResponse;
-                        enhancedDataPoints = [
-                            { dose: 0.1, response: maxResponse - responseRange * 0.05, error: 8 },
-                            ...sortedByDose,
-                            { dose: maxDose * 2, response: minResponse - responseRange * 0.1, error: 8 },
-                            { dose: maxDose * 5, response: minResponse - responseRange * 0.15, error: 10 },
-                        ];
+                    // Use only real data points, no interpolation
+                    let enhancedDataPoints = sortedByDose;
+
+                    // Only use real data if we have at least 2 valid points
+                    if (enhancedDataPoints.length >= 2) {
+                        // EC50 estimation: geometric mean of doses
+                        const doses = enhancedDataPoints.map(d => d.dose);
+                        const estimatedEC50 = Math.sqrt(Math.min(...doses) * Math.max(...doses));
+
+                        const doseResponsePayload = {
+                            initial: {
+                                ec50: { value: estimatedEC50, uncertainty: estimatedEC50 * 0.5 },
+                                hillSlope: { value: 1.2, uncertainty: 0.5 },
+                                dataPoints: enhancedDataPoints
+                            },
+                            topCandidate: topCandidate
+                        };
+
+                        console.log('Setting dose response data:', doseResponsePayload);
+                        setRealDoseResponseData(doseResponsePayload);
+                    } else {
+                        console.log('Insufficient valid data points, skipping real data visualization');
                     }
-
-                    // EC50 estimation (use maxDose/2 as approximation for sparse data)
-                    const estimatedEC50 = maxDose > 0 ? maxDose * 0.8 : 10;
-
-                    const doseResponsePayload = {
-                        initial: {
-                            ec50: { value: estimatedEC50, uncertainty: estimatedEC50 * 0.4 },
-                            hillSlope: { value: 1.2, uncertainty: 0.5 },
-                            dataPoints: enhancedDataPoints
-                        },
-                        topCandidate: topCandidate
-                    };
-
-                    console.log('Setting dose response data:', doseResponsePayload);
-                    setRealDoseResponseData(doseResponsePayload);
 
                     // Extract plate layout data for visualization
                     const plateData = doseResponseData.map((r: any) => ({
@@ -289,57 +300,109 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
         };
 
         fetchData();
-    }, []);
+    }, [selectedDesignId]);
+
+    // Generate candidates list (shared logic for run and export)
+    const generateCandidates = () => {
+        // Calculate entropy-weighted allocations - wide portfolio strategy
+        // Cap at 12 wells/candidate (same as initial data) to force broad exploration
+        const TOTAL_EXPERIMENTAL_WELLS = 160; // 2 plates × 96 wells - 32 controls = 160 experimental
+        const MAX_WELLS_PER_CANDIDATE = 12; // No more than 1× expansion from initial screen
+
+        // Select enough candidates to fill budget (up to 13 candidates with 12w each)
+        const maxCandidates = Math.floor(TOTAL_EXPERIMENTAL_WELLS / MAX_WELLS_PER_CANDIDATE);
+        const selectedCandidates = combinedRanking.slice(0, Math.min(maxCandidates, combinedRanking.length));
+
+        // Calculate scores: entropy × √CV × priority_multiplier
+        const candidatesWithScores = selectedCandidates.map((c, idx) => {
+            let priorityMultiplier;
+            let priority;
+            if (idx === 0) {
+                priority = 'Primary';
+                priorityMultiplier = 2.0;
+            } else if (idx <= 2) {
+                priority = 'Scout';
+                priorityMultiplier = 1.5;
+            } else {
+                priority = 'Probe';
+                priorityMultiplier = 1.0;
+            }
+
+            const entropy = parseFloat(c.entropy) || 0.99;
+            const cv = parseFloat(c.cv) || 50;
+
+            // Diminishing returns formula: sqrt(entropy) × CV^0.3 / sqrt(n_initial + 1) × priority
+            // Assumes ~12 initial wells per condition from Phase 0 screen
+            const nInitial = 12;
+            const score = (Math.sqrt(entropy) * Math.pow(cv / 100, 0.3)) / Math.sqrt(nInitial + 1) * priorityMultiplier;
+
+            return { ...c, score, priority };
+        });
+
+        const totalScore = candidatesWithScores.reduce((sum, c) => sum + c.score, 0);
+
+        // Allocate wells proportionally, capped at 12 wells each
+        const candidates = candidatesWithScores.map(c => {
+            const rawAllocation = Math.round((c.score / totalScore) * TOTAL_EXPERIMENTAL_WELLS);
+            return {
+                compound: c.compound,
+                cell_line: c.cellLine,
+                timepoint_h: parseFloat(c.timepoint) || 12.0,
+                wells: rawAllocation,  // Don't cap yet
+                priority: c.priority
+            };
+        });
+
+        // Force exactly 160 wells allocation
+        let allocatedTotal = candidates.reduce((sum, c) => sum + c.wells, 0);
+        let remaining = TOTAL_EXPERIMENTAL_WELLS - allocatedTotal;
+
+        // Distribute remaining wells (or remove excess) round-robin
+        let idx = 0;
+        while (remaining !== 0) {
+            if (remaining > 0) {
+                candidates[idx].wells += 1;
+                remaining -= 1;
+            } else {
+                if (candidates[idx].wells > 1) {  // Don't go below 1 well
+                    candidates[idx].wells -= 1;
+                    remaining += 1;
+                }
+            }
+            idx = (idx + 1) % candidates.length;
+
+            // Safety: prevent infinite loop
+            const currentTotal = candidates.reduce((sum, c) => sum + c.wells, 0);
+            if (currentTotal === TOTAL_EXPERIMENTAL_WELLS) break;
+        }
+
+        return candidates;
+    };
+
+    // Export candidates as JSON for JupyterHub
+    const handleExportCandidates = () => {
+        const candidates = generateCandidates();
+
+        const jsonStr = JSON.stringify(candidates, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `autonomous_loop_candidates_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
 
     // Handle running autonomous loop experiment
     const handleRunExperiment = async (candidate: any) => {
         try {
             setIsRunningExperiment(true);
 
-            // Calculate entropy-weighted allocations for top 5 candidates
-            const top5 = combinedRanking.slice(0, 5);
-            const TOTAL_EXPERIMENTAL_WELLS = 320; // 4 plates × 80 experimental wells each
-
-            // Calculate scores: entropy × √CV × priority_multiplier
-            const candidatesWithScores = top5.map((c, idx) => {
-                let priorityMultiplier;
-                let priority;
-                if (idx === 0) {
-                    priority = 'Primary';
-                    priorityMultiplier = 2.0;
-                } else if (idx <= 2) {
-                    priority = 'Scout';
-                    priorityMultiplier = 1.5;
-                } else {
-                    priority = 'Probe';
-                    priorityMultiplier = 1.0;
-                }
-
-                const entropy = parseFloat(c.entropy) || 0.99;
-                const cv = parseFloat(c.cv) || 50;
-                const score = entropy * Math.sqrt(cv) * priorityMultiplier;
-
-                return { ...c, score, priority };
-            });
-
-            const totalScore = candidatesWithScores.reduce((sum, c) => sum + c.score, 0);
-
-            // Allocate wells proportionally
-            const candidates = candidatesWithScores.map(c => ({
-                compound: c.compound,
-                cell_line: c.cellLine,
-                timepoint_h: parseFloat(c.timepoint) || 12.0,
-                wells: Math.round((c.score / totalScore) * TOTAL_EXPERIMENTAL_WELLS),
-                priority: c.priority
-            }));
-
-            // Adjust total to exactly 320 (handle rounding)
-            const allocatedTotal = candidates.reduce((sum, c) => sum + c.wells, 0);
-            if (allocatedTotal !== TOTAL_EXPERIMENTAL_WELLS) {
-                candidates[0].wells += (TOTAL_EXPERIMENTAL_WELLS - allocatedTotal);
-            }
-
-            const totalWells = TOTAL_EXPERIMENTAL_WELLS + 64; // + controls
+            const candidates = generateCandidates();
+            const totalWells = 160 + 32; // experimental + controls (2 plates)
             setExperimentProgress({ completed: 0, total: totalWells, percentage: 0 });
 
             const response = await fetch('http://localhost:8000/api/thalamus/autonomous-loop', {
@@ -505,20 +568,23 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                                 </h1>
                                 <div className={`max-w-2xl mx-auto text-left space-y-3`}>
                                     <p className={`text-lg ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
-                                        <span className="font-semibold">Initial experimental data has already been collected.</span> The autonomous system now:
+                                        <span className="font-semibold">Stop optimizing viability curves. Start tightening the morphology manifold.</span>
+                                    </p>
+                                    <p className={`text-base ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                        The autonomous loop isn't trying to find the perfect EC50. It's making the phenotype space <strong>trustworthy enough to define boundaries, constraints, and reward functions</strong>.
                                     </p>
                                     <ul className={`text-base space-y-2 pl-6 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
                                         <li className="flex items-start gap-2">
                                             <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`}></span>
-                                            <span>Examines the data to identify areas of highest uncertainty</span>
+                                            <span><strong>Phase 1:</strong> Identify conditions with high morphology scatter (tr(Σ)) but low nuisance — these are <em>scientifically ambiguous</em></span>
                                         </li>
                                         <li className="flex items-start gap-2">
                                             <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`}></span>
-                                            <span>Proposes the next set of experiments following a defined reward function</span>
+                                            <span><strong>Phase 2:</strong> Tighten boundaries between stress archetypes (death, ER, mito, oxidative) with sentinel-anchored normalization</span>
                                         </li>
                                         <li className="flex items-start gap-2">
                                             <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-600'}`}></span>
-                                            <span>Operates within laboratory constraints (budget, plates, reagents)</span>
+                                            <span><strong>Stop condition:</strong> When between-plate sentinel drift &lt; 0.5× within-scatter and geometry preservation &gt; 0.9, boundaries are allowed to exist</span>
                                         </li>
                                     </ul>
                                 </div>
@@ -539,31 +605,31 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                                         <div className="flex items-start gap-3">
                                             <div className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-green-400' : 'bg-green-600'}`}></div>
                                             <p className={isDarkMode ? 'text-slate-300' : 'text-zinc-700'}>
-                                                <span className="font-semibold block mb-0.5">Maximize Information Gain</span>
-                                                Identify and resolve areas of highest epistemic uncertainty (ignorance) in the world model.
+                                                <span className="font-semibold block mb-0.5">Maximize Covariance Reduction</span>
+                                                Target conditions with high within-condition scatter (tr(Σ_c)) to tighten the manifold where decisions matter.
                                             </p>
                                         </div>
 
                                         <div className="flex items-start gap-3">
                                             <div className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-orange-400' : 'bg-orange-600'}`}></div>
                                             <p className={isDarkMode ? 'text-slate-300' : 'text-zinc-700'}>
-                                                <span className="font-semibold block mb-0.5">Minimize Resource Cost</span>
-                                                Achieve knowledge gain using the fewest plates, reagents, and robot hours possible.
+                                                <span className="font-semibold block mb-0.5">Minimize Nuisance Dominance</span>
+                                                Penalize conditions where plate/day/operator effects swamp biological signal. Priority = scatter × (1 - λ·nuisance_fraction).
                                             </p>
                                         </div>
 
                                         <div className="flex items-start gap-3">
                                             <div className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isDarkMode ? 'bg-blue-400' : 'bg-blue-600'}`}></div>
                                             <p className={isDarkMode ? 'text-slate-300' : 'text-zinc-700'}>
-                                                <span className="font-semibold block mb-0.5">Convergence Criteria</span>
-                                                Loop stops when parameter uncertainty hits target (CV &lt; 15%) or marginal gain &lt; cost.
+                                                <span className="font-semibold block mb-0.5">Integration Test: Anchor Stability</span>
+                                                Loop proceeds to Phase 2 (boundaries) only when sentinel drift &lt; 0.5× within-scatter and geometry preservation &gt; 0.9.
                                             </p>
                                         </div>
                                     </div>
 
                                     <div className={`mt-4 pt-3 border-t text-xs font-mono flex justify-between ${isDarkMode ? 'border-slate-700 text-slate-500' : 'border-zinc-100 text-zinc-400'}`}>
-                                        <span>R = ΔEntropy / Cost</span>
-                                        <span>Constraints applied</span>
+                                        <span>R = tr(Σ) × (1 - λ·P_nuis) / Cost</span>
+                                        <span>Nuisance-aware</span>
                                     </div>
                                 </div>
 
@@ -578,7 +644,15 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                             </div>
                         )}
 
-                        {stageIndex === 1 && <WorldModelStage isDarkMode={isDarkMode} data={activeData} />}
+                        {stageIndex === 1 && (
+                            <WorldModelStage
+                                isDarkMode={isDarkMode}
+                                data={activeData}
+                                availableDesigns={availableDesigns}
+                                selectedDesignId={selectedDesignId}
+                                onDesignChange={setSelectedDesignId}
+                            />
+                        )}
                         {stageIndex === 2 && <QuestionStage isDarkMode={isDarkMode} data={activeData} />}
                         {stageIndex === 3 && <ProposalStage isDarkMode={isDarkMode} data={activeData} />}
                         {stageIndex === 4 && (
@@ -588,6 +662,7 @@ const TutorialMode: React.FC<{ isDarkMode: boolean, onExit: () => void }> = ({ i
                                 topCandidate={combinedRanking[0]}
                                 candidateRanking={combinedRanking}
                                 onRunExperiment={handleRunExperiment}
+                                onExportCandidates={handleExportCandidates}
                                 isRunning={isRunningExperiment}
                                 progress={experimentProgress}
                             />

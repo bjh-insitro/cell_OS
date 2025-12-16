@@ -1,0 +1,354 @@
+{
+  "catalog_version": "1.0.0",
+  "description": "Experimental design catalog for Cell Thalamus screens",
+  "designs": [
+    {
+      "design_id": "full_phase0_screen_v1",
+      "version": "v1",
+      "filename": "phase0_design_v1_basic.json",
+      "created_at": "2025-12-16",
+      "status": "archived",
+      "design_type": "phase0_founder_screen",
+      "description": "Initial full Phase 0 screen - actual experimental run with all 96 wells per plate used",
+      "metadata": {
+        "n_plates": 24,
+        "n_wells": 2304,
+        "wells_per_plate": 96,
+        "n_cell_lines": 2,
+        "n_compounds": 10,
+        "n_timepoints": 2,
+        "timepoints_h": [12.0, 48.0],
+        "actual_experimental_run": true,
+        "original_design_id": "de4e991f-9832-4017-952f-6a6423831620"
+      },
+      "features": [
+        "Full 96-well format (all wells used, no reserved corners)",
+        "2 timepoints (12h, 48h)",
+        "2 cell lines (A549, HepG2) - mixed on same plates",
+        "2 operators × 2 days for batch structure",
+        "10 compounds + DMSO control"
+      ],
+      "limitations": [
+        "No reserved buffer wells for spatial artifact detection",
+        "No 24h Goldilocks timepoint",
+        "No dose-pair sentinels for convergence detection",
+        "Cell lines mixed on same plates (spatial confounds possible)"
+      ],
+      "superseded_by": "phase0_founder_v2_controls_stratified",
+      "notes": "Actual experimental run executed. Integration test revealed 48h geometry collapse (0.047 vs 12h 0.974). This drove design of v2 with reserved corners and 24h timepoint."
+    },
+    {
+      "design_id": "phase0_founder_v2_controls_stratified",
+      "version": "v2",
+      "filename": "phase0_design_v2_controls_stratified.json",
+      "created_at": "2025-12-16",
+      "status": "archived",
+      "superseded_by": "phase0_founder_v3_mixed_celllines_checkerboard",
+      "design_type": "phase0_founder_screen",
+      "description": "Phase 0 founder dataset v2 with stratified sentinels, timepoint charting (12h/24h/48h), and 48h dose-pair sentinels",
+      "metadata": {
+        "n_plates": 24,
+        "wells_per_plate": 88,
+        "n_cell_lines": 2,
+        "n_compounds": 10,
+        "n_timepoints": 3,
+        "timepoints_h": [12.0, 24.0, 48.0],
+        "unused_wells_per_plate": 8,
+        "charts_defined": 3
+      },
+      "features": [
+        "24h Goldilocks timepoint for mechanism boundaries",
+        "Dose-pair sentinels at 48h (ER low/mid, Mito low/mid)",
+        "Stratified sentinel allocation per timepoint",
+        "Chart definitions with explicit capabilities",
+        "8 unused corner wells for QC controls",
+        "Integration test metrics embedded in design"
+      ],
+      "improvements_over_v1": [
+        "Added 24h timepoint to test hypothesis: mechanism specificity without late convergence",
+        "Added dose-pair sentinels at 48h to detect saturation (Q_s metric)",
+        "Reduced wells/plate from 96 to 88 (corner wells reserved for future QC)",
+        "Chart metadata embedded: intended use, capabilities, health gates",
+        "Explicit sentinel plans per timepoint (not one-size-fits-all)"
+      ],
+      "chart_definitions": [
+        {
+          "chart_id": "T12h_mechanism_v1",
+          "intended_use": "mechanism",
+          "capabilities": ["death", "mechanism_axis"]
+        },
+        {
+          "chart_id": "T24h_mechanism_candidate_v1",
+          "intended_use": "mechanism_candidate",
+          "capabilities": ["death", "mechanism_axis"]
+        },
+        {
+          "chart_id": "T48h_endpoint_v1",
+          "intended_use": "endpoint",
+          "capabilities": ["death"]
+        }
+      ],
+      "validation_targets": {
+        "T12h": {
+          "geometry_preservation_min": 0.9,
+          "sentinel_max_drift_max": 0.8,
+          "expected_status": "pass"
+        },
+        "T24h": {
+          "geometry_preservation_min": 0.9,
+          "sentinel_max_drift_max": 0.8,
+          "expected_status": "pass or conditional"
+        },
+        "T48h": {
+          "geometry_preservation_min": 0.9,
+          "sentinel_max_drift_max": 0.8,
+          "expected_status": "fail (biological convergence)",
+          "diagnostic_metric": "Q_s (dose-pair separation) expected < 1.5 for ER"
+        }
+      },
+      "next_iteration_ideas": [
+        "Add 6h early timepoint for immediate transcriptional responses",
+        "Test 24h + 36h to narrow Goldilocks window",
+        "Add no-stain QC wells in unused corners",
+        "Test edge vs center vehicle replicates for position effects"
+      ],
+      "notes": "Designed based on v1 integration test results showing 48h geometry collapse. This version is hypothesis-driven: test if 24h preserves mechanism boundaries.",
+      "buffer_well_rationale": {
+        "summary": "Empty corner wells act as a spatial reference frame - they let you see plate-level structure without biological variance contaminating the signal.",
+        "positions": ["A1", "A12", "A6", "A7", "H1", "H12", "H6", "H7"],
+        "purpose": "spatial_artifact_detection",
+        "technical_necessity": [
+          "Buffer wells provide a null manifold - they should cluster tightly and be flat across the plate. If they don't, the plate itself is compromised.",
+          "They act as spatial probes: any structure in buffer wells must be technical (not biological), allowing direct detection of edge effects, illumination gradients, and staining artifacts.",
+          "They detect non-additive artifacts that vehicle centering cannot fix: multiplicative scaling, nonlinear segmentation threshold changes, and spatial warping.",
+          "In morphology space (not viability), features are extremely sensitive to staining and imaging. A tiny illumination change can masquerade as mitochondrial fragmentation, nuclear condensation, or ER expansion.",
+          "Fixed positions across all plates allow spatial alignment, drift pattern comparison, and systematic artifact separation from random noise."
+        ],
+        "epistemic_function": "Buffers force the system to confront: 'Is this pattern coming from the world, or from me?' They provide something that can never be explained biologically, giving the system structural capacity to refuse biological interpretations of technical artifacts.",
+        "phase_dependency": "Buffer wells are a Phase 0/Phase 1 tax, not a forever cost. Once plate behavior is characterized, sentinels are stable, and nuisance metrics are low, these wells can be reclaimed for biology. Skipping them early risks inventing entire 'phenotypes' that are really evaporation.",
+        "information_economics": "Leaving wells empty does not reduce information - it increases identifiability. You trade a few biological conditions for the ability to tell whether your entire experiment is lying to you. That's a good trade in a founder dataset.",
+        "design_principle": "Every plate must contain at least one region whose expected biology is invariant. This is not superstition - this is how you keep meaning anchored."
+      },
+      "cell_line_separation_rationale": {
+        "summary": "One cell line per plate - separating A549 (Plates 1-12) from HepG2 (Plates 13-24) - because mixing buys throughput but costs identifiability.",
+        "plate_allocation": {
+          "A549": "Plates 1-12",
+          "HepG2": "Plates 13-24"
+        },
+        "why_separation": [
+          "Cell identity becomes a spatially structured batch effect: If A549 occupies one region and HepG2 another, any spatial gradient (edge evaporation, staining gradients, illumination tilt) becomes correlated with cell line. The model cannot tell whether 'HepG2 looks different from A549' (true) or 'right side of plate looks different from left side' (artifact).",
+          "Segmentation and feature extraction are cell-type dependent: Most morphology pipelines assume one cell morphology regime per plate. Mixing A549 (small, tight nuclei) with HepG2 (big hepatocyte-like cells) changes segmentation thresholds, object detection priors, dynamic range of intensity features, and QC gates.",
+          "Controls stop being shared: Sentinels aren't universal. A dose that is a clean archetype in A549 may be too weak/strong/convergent in HepG2. Mixing forces either separate sentinel doses per cell line (anchor isn't shared) or accepting that sentinels behave differently (nuisance detection becomes ambiguous).",
+          "Edge effects hit cell lines differently: Even if the technical artifact is identical, the biological response isn't. Evaporation increasing concentration by 5% might be irrelevant in A549 and catastrophic in HepG2 at a sensitive dose, creating fake 'cell line interactions'."
+        ],
+        "when_mixing_makes_sense": "Mixing cell lines is powerful for paired comparison under identical staining/imaging conditions ('Does this compound shift both cell lines along the same axis?', 'Is the mechanism chart conserved?'). But it requires: (1) True checkerboard randomization (both cell lines represented everywhere on plate, not blocks/halves/quadrants), and (2) Cell-line-specific QC and segmentation (separate QC gates, segmentation parameters, vehicle baselines, sentinel expectations - essentially running two experiments sharing plastic).",
+        "phase0_recommendation": "For Phase 0 founder data whose job is to establish epistemic jurisdiction (controls, drift, chart validity), keep one cell line per plate. It makes nuisance diagnosable and guardrails interpretable. Once nuisance metrics are consistently low and the pipeline is stable, then mix cell lines for efficiency and paired-comparison power.",
+        "design_principle": "In a founder dataset establishing reference manifolds, cell line separation is not inefficiency - it's identifiability. Spatial artifacts must not be aliased into biological differences."
+      }
+    },
+    {
+      "design_id": "phase0_founder_v3_mixed_celllines_checkerboard",
+      "version": "v3",
+      "filename": "phase0_design_v3_mixed_celllines_checkerboard.json",
+      "created_at": "2025-12-16",
+      "status": "current",
+      "design_type": "phase0_founder_screen",
+      "description": "Phase 0 founder dataset v3 with checkerboard cell line mixing on same plate, per-cell-line sentinel allocation, and full 96-well format",
+      "metadata": {
+        "n_plates": 12,
+        "wells_per_plate": 96,
+        "n_cell_lines": 2,
+        "n_compounds": 10,
+        "n_timepoints": 3,
+        "timepoints_h": [12.0, 24.0, 48.0],
+        "cell_line_layout": "checkerboard",
+        "charts_defined": 3
+      },
+      "features": [
+        "Checkerboard cell line randomization (row+col parity) to deconfound spatial gradients from cell identity",
+        "Both A549 and HepG2 on same plate - 12 plates total (50% reduction from v2)",
+        "Full 96-well format (all wells used, no reserved corners)",
+        "Per-cell-line sentinel allocation preserves identifiability",
+        "Same 3 timepoints (12h, 24h, 48h) with chart-gating",
+        "Dose-pair sentinels at 48h per cell line for Q_s diagnostic"
+      ],
+      "improvements_over_v2": [
+        "Doubled throughput: 12 plates vs 24 (both cell lines on same plate)",
+        "Checkerboard randomization eliminates spatial confounding of cell identity",
+        "Restored full 96-well utilization (no buffer wells needed after v2 validation)",
+        "Per-cell-line sentinel allocation maintains separate QC anchors",
+        "Explicit control design rules embedded in metadata"
+      ],
+      "chart_definitions": [
+        {
+          "chart_id": "T12h_mechanism_v1",
+          "intended_use": "mechanism",
+          "capabilities": ["death", "mechanism_axis"]
+        },
+        {
+          "chart_id": "T24h_mechanism_candidate_v1",
+          "intended_use": "mechanism_candidate",
+          "capabilities": ["death", "mechanism_axis"]
+        },
+        {
+          "chart_id": "T48h_endpoint_v1",
+          "intended_use": "endpoint",
+          "capabilities": ["death"]
+        }
+      ],
+      "validation_targets": {
+        "T12h": {
+          "geometry_preservation_min": 0.9,
+          "sentinel_max_drift_max": 0.8,
+          "expected_status": "pass"
+        },
+        "T24h": {
+          "geometry_preservation_min": 0.9,
+          "sentinel_max_drift_max": 0.8,
+          "expected_status": "pass or conditional"
+        },
+        "T48h": {
+          "geometry_preservation_min": 0.9,
+          "sentinel_max_drift_max": 0.8,
+          "expected_status": "conditional (biological convergence expected)",
+          "diagnostic_metric": "Q_s per cell line"
+        }
+      },
+      "next_iteration_ideas": [
+        "Test if checkerboard QC metrics match v2 separated plates",
+        "Validate per-cell-line segmentation and normalization",
+        "Compare spatial artifact detection between designs",
+        "Assess if buffer wells truly needed or can be reclaimed"
+      ],
+      "notes": "Designed to test throughput gains from cell line mixing while maintaining identifiability via checkerboard randomization and per-cell-line controls. This addresses v2's 'when_mixing_makes_sense' guidelines.",
+      "checkerboard_rationale": {
+        "summary": "True checkerboard randomization (both cell lines represented everywhere on plate) eliminates spatial confounding of cell identity while doubling throughput.",
+        "layout_rule": "Cell line determined by (row + col) parity: even positions → A549, odd positions → HepG2",
+        "why_checkerboard": [
+          "Spatial gradients (edge effects, illumination, evaporation) affect both cell lines equally at every plate region",
+          "No spatial clustering of cell identity (unlike blocks/halves/quadrants)",
+          "Paired comparisons under identical local conditions ('Does this compound shift both cell lines the same way?')",
+          "Statistical power for cell-line-compound interactions"
+        ],
+        "requirements": [
+          "Per-cell-line QC and segmentation (separate gates, baselines, sentinel expectations)",
+          "Per-cell-line sentinel allocation (anchors must be cell-line-specific)",
+          "Cell-line-aware feature extraction or normalization",
+          "Validation that segmentation isn't biased by cell morphology differences"
+        ],
+        "design_principle": "Mixing cell lines is a throughput optimization, not a simplification. It requires more sophisticated analysis (per-cell-line QC) but enables direct paired comparison under identical technical conditions."
+      },
+      "mixed_plate_design_philosophy": {
+        "problem_statement": "Mixing two cell lines on one plate is only 'efficient' if it does not destroy identifiability. In morphology space, the two big failure modes are: (1) Spatial confounding - cell lines in different regions, gradients aliased into 'cell-line differences', and (2) Anchor ambiguity - shared sentinels lose ability to distinguish technical vs biological vs cell-type-specific drift.",
+        "design_goal": "Gain throughput without sacrificing the system's ability to say 'no'.",
+        "design_principles_detailed": {
+          "checkerboard_deconfounding": {
+            "summary": "Assign A549 and HepG2 by strict checkerboard (row+col parity) to guarantee both cell lines experience the same distribution of edge vs interior wells. Any smooth spatial artifact affects both cell lines similarly. Cell line is not correlated with any single plate region, so gradients don't masquerade as biology.",
+            "cheapest_prevention": "This is the cheapest way to prevent the most common mixed-plate own-goal."
+          },
+          "sentinels_per_cell_line": {
+            "summary": "Sentinels allocated separately inside each cell line's subset of wells because A549 and HepG2 do not share identical baseline morphology.",
+            "why": "ER archetype at 0.5 µM can be clean in one and saturated/weak in the other. If you pool sentinels across cell lines, drift metrics are uninterpretable: you can't tell whether geometry collapse is technical drift or different archetype expression.",
+            "implementation": "Every plate and timepoint effectively has two parallel anchor sets, one for each cell line, sampled across the plate. That's what keeps chart gating honest."
+          },
+          "timepoint_as_chart_non_negotiable": {
+            "summary": "12h behaves like mechanism space, 48h can become endpoint convergence space. Mixing timepoints in one manifold invites category error.",
+            "constraint": "Charts remain timepoint-defined. Mixed-plate design is intentionally built to support this, not weaken it."
+          },
+          "dose_pair_sentinels_48h": {
+            "summary": "At 48h, design includes low and mid doses for ER and mito sentinels per cell line. This is not redundancy - it's an identifiability test.",
+            "diagnostic_power": "If low vs mid stays separated at 48h, geometry might be rescuable by normalization/affine corrections. If low vs mid collapses, that's biological convergence. The mechanism axis is dead in that chart.",
+            "necessity": "Without dose pairs, you can observe collapse but you can't attribute it cleanly."
+          },
+          "sentinel_count_optimization": {
+            "summary": "In single-cell-line plates you can spend 25-30 wells on sentinels. In mixed plates, naively doubling sentinel structure burns half the plate for a control experiment that never learns anything new.",
+            "trade": "v3 makes deliberate trade: enough per-cell-line sentinel mass to compute drift/geometry meaningfully, without strangling experimental coverage.",
+            "key_insight": "The key is not 'maximum sentinels.' The key is 'enough sentinels to preserve veto power.'"
+          }
+        },
+        "what_this_enables": {
+          "protects_cell_line_differences": "When you see HepG2 vs A549 separation, you can trust it's not 'left side vs right side.'",
+          "interpretable_nuisance_metrics": "You can compute geometry preservation, vehicle drift, sentinel residual drift per cell line within the same physical plate. That's huge. It prevents the most common mixed-plate failure: one cell line quietly carries all the assay pathology.",
+          "preserves_chart_gating": "The system can still refuse mechanism boundaries on a failed chart, even in a mixed plate, because chart health is computable without ambiguity."
+        },
+        "what_this_does_not_solve": {
+          "segmentation_awareness": "If your segmentation/feature extraction is not cell-line-aware, mixing cell lines can still create extraction artifacts. This design prevents spatial confounding, but it cannot fix a pipeline that treats two distinct morphologies as one distribution.",
+          "mechanism_invariance": "If you want to claim cross-cell-line mechanism invariance, you still need explicit modeling (shared latent factors, alignment, etc.). The design makes that possible, not automatic."
+        },
+        "bottom_line": "This mixed-plate design is a throughput optimization that does not compromise epistemic jurisdiction. It interleaves cell lines to break spatial confounds, duplicates sentinel structure per cell line so nuisance diagnostics stay meaningful, and adds 48h dose pairs to tell you whether late-timepoint collapse is correctable distortion or true biological convergence. It's not just a plate layout. It's a commitment: efficiency cannot be allowed to override validity."
+      }
+    }
+  ],
+  "design_evolution_log": [
+    {
+      "from_version": null,
+      "to_version": "v1",
+      "date": "2025-12-16",
+      "reason": "Initial Phase 0 screen - executed experimental run",
+      "key_changes": [
+        "Full 10-compound screen executed",
+        "2 cell lines (A549, HepG2) mixed on same plates",
+        "2 timepoints (12h, 48h), 24 plates",
+        "All 96 wells per plate used (no reserved corners)",
+        "2304 total wells measured"
+      ]
+    },
+    {
+      "from_version": "v1",
+      "to_version": "v2",
+      "date": "2025-12-16",
+      "reason": "v1 integration test revealed 48h geometry collapse (0.047 vs 12h 0.974) and need for spatial artifact detection",
+      "key_changes": [
+        "Added 24h Goldilocks timepoint (3 timepoints total)",
+        "Reserved 8 corner wells per plate for buffer/QC (96 → 88 wells)",
+        "Separated cell lines: A549 (Plates 1-12), HepG2 (Plates 13-24)",
+        "Added dose-pair sentinels at 48h for Q_s diagnostic",
+        "Embedded chart definitions with explicit capabilities",
+        "Stratified sentinel plans per timepoint"
+      ],
+      "evidence": {
+        "T12h_geometry": 0.974,
+        "T48h_geometry": 0.047,
+        "T48h_ER_drift": "6.54× within-scatter (post-centering)",
+        "conclusion": "Biological convergence at 48h, not technical drift",
+        "v1_design_id": "de4e991f-9832-4017-952f-6a6423831620"
+      }
+    },
+    {
+      "from_version": "v2",
+      "to_version": "v3",
+      "date": "2025-12-16",
+      "reason": "v2 validated spatial artifact detection and chart gating. Now testing throughput optimization via checkerboard cell line mixing while maintaining identifiability.",
+      "key_changes": [
+        "Mixed A549 + HepG2 on same plate via checkerboard randomization",
+        "Reduced plate count from 24 to 12 (50% throughput gain)",
+        "Restored full 96-well format (reclaimed buffer wells after v2 validation)",
+        "Per-cell-line sentinel allocation maintains separate QC anchors",
+        "Cell line parity-based layout: even positions → A549, odd → HepG2",
+        "Explicit control design rules embedded in metadata"
+      ],
+      "rationale": {
+        "throughput_optimization": "Once v2 validated nuisance control and chart gating, reclaim buffer wells and mix cell lines for efficiency",
+        "identifiability_preservation": "Checkerboard layout + per-cell-line sentinels maintains epistemic jurisdiction per cell line",
+        "paired_comparison_power": "Both cell lines experience identical local technical conditions for direct comparison",
+        "validation_plan": "Compare v3 QC metrics to v2 to validate that checkerboard mixing doesn't compromise control"
+      }
+    }
+  ],
+  "design_principles": {
+    "sentinel_allocation": "Minimum 28 wells/plate (29%) for nuisance control. Vehicle gets 8 reps (primary anchor), archetypes get 5 reps each.",
+    "timepoint_strategy": "Separate charts per timepoint. Do not force unified manifold across timepoints with different biology.",
+    "dose_pair_diagnostics": "At late timepoints (≥36h), include low/mid dose pairs for key archetypes to measure saturation (Q_s metric).",
+    "chart_gating": "Define intended use and capabilities in design metadata. System enforces these constraints at runtime.",
+    "unused_wells": "Reserve corner wells (A1, A12, H1, H12, A6, A7, H6, H7) for future QC controls (no-stain, edge effects, etc.)."
+  },
+  "glossary": {
+    "founder_screen": "Phase 0 screen that establishes the reference manifold for all future experiments",
+    "sentinel": "Control well with fixed condition (vehicle or stress archetype) used for batch normalization and geometry preservation checks",
+    "chart": "Coordinate system for morphology space at a specific timepoint with explicit capabilities (mechanism vs endpoint)",
+    "geometry_preservation": "Correlation of pairwise sentinel distances between batch and global template (threshold: > 0.9)",
+    "Q_s": "Dose-pair separation metric: ||mu_high - mu_low|| / sqrt(mean(tr(Sigma))). Q << 1 indicates saturation.",
+    "Goldilocks timepoint": "Timepoint that balances mechanism specificity (early) with phenotypic clarity (late). Hypothesis: 24h.",
+    "checkerboard_randomization": "Spatial layout where cell lines are assigned by position parity (row+col mod 2) to eliminate correlation between cell identity and spatial gradients. Both cell lines represented at every plate region."
+  }
+}

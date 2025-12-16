@@ -15,8 +15,9 @@ import DoseResponseTab from './components/DoseResponseTab';
 import VarianceTab from './components/VarianceTab';
 import SentinelTab from './components/SentinelTab';
 import PlateViewerTab from './components/PlateViewerTab';
+import DesignCatalogTab from './components/DesignCatalogTab';
 
-type TabType = 'run' | 'experiments' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
+type TabType = 'run' | 'experiments' | 'catalog' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
 
 const CellThalamusPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ const CellThalamusPage: React.FC = () => {
   const tabs = [
     { id: 'run', label: 'Run Simulation', icon: '▶️' },
     { id: 'experiments', label: 'Experiments', icon: '📋' },
+    { id: 'catalog', label: 'Design Catalog', icon: '📐' },
     { id: 'dose', label: 'Dose-Response', icon: '📈' },
     { id: 'morphology', label: 'Morphology Manifold', icon: '🎨' },
     { id: 'variance', label: 'Variance Analysis', icon: '📊' },
@@ -110,6 +112,7 @@ const CellThalamusPage: React.FC = () => {
             }}
           />
         )}
+        {activeTab === 'catalog' && <DesignCatalogTab />}
         {activeTab === 'morphology' && (
           <MorphologyTab
             selectedDesignId={selectedDesignId}

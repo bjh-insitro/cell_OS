@@ -122,7 +122,7 @@ const SentinelTab: React.FC<SentinelTabProps> = ({ selectedDesignId, onDesignCha
                 const statusLabel = design.status === 'running' ? ' 🔴 LIVE' : design.status === 'completed' ? ' ✓' : '';
                 return (
                   <option key={design.design_id} value={design.design_id}>
-                    Run #{index + 1} - {date} ({design.design_id.slice(0, 8)}){statusLabel}
+                    {date} ({design.design_id.slice(0, 8)}) - {design.well_count || '?'} wells{statusLabel}
                   </option>
                 );
               })}
