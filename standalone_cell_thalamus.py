@@ -84,12 +84,14 @@ import sqlite3
 import os
 import hashlib
 import json
+import threading
 from typing import List, Dict, Any, Optional, Tuple
 from multiprocessing import Pool, cpu_count
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from dataclasses import dataclass
+from contextlib import contextmanager
 
 import numpy as np
 from tqdm import tqdm
@@ -101,6 +103,51 @@ logger = logging.getLogger(__name__)
 
 # Debug flag: set to True to log dose ratios for sentinel compounds
 DEBUG_DOSE_RATIOS = False
+
+# ============================================================================
+# Debug Guardrail: Enforce Addressable Randomness Rule
+# ============================================================================
+
+# Global flag: Enable debug checks for rng_assay usage
+# Set via --debug-rng CLI flag or DEBUG_RNG_USAGE=1 env var
+_DEBUG_RNG_USAGE = os.environ.get("DEBUG_RNG_USAGE", "0") == "1"
+
+# Thread-local flag: Set to True during DB write operations (simulate_well)
+# When True, accessing rng_assay throws an error (enforces addressable randomness rule)
+_thread_local = threading.local()
+
+def _get_in_db_write_section() -> bool:
+    """Check if we're currently in a DB write section."""
+    return getattr(_thread_local, 'in_db_write_section', False)
+
+def _set_in_db_write_section(value: bool):
+    """Set the DB write section flag."""
+    _thread_local.in_db_write_section = value
+
+@contextmanager
+def db_write_section():
+    """
+    Context manager for DB write operations (simulate_well).
+
+    When --debug-rng is enabled, this enforces that rng_assay cannot be used
+    during well simulation. Forces use of assay_rng_for_well() instead.
+
+    Usage:
+        with db_write_section():
+            result = simulate_well(well, design_id)
+    """
+    if not _DEBUG_RNG_USAGE:
+        # Debug mode disabled - just yield
+        yield
+        return
+
+    # Set flag for this thread
+    old_value = _get_in_db_write_section()
+    _set_in_db_write_section(True)
+    try:
+        yield
+    finally:
+        _set_in_db_write_section(old_value)
 
 
 # ============================================================================
@@ -125,7 +172,6 @@ def stable_u32(s: str) -> int:
     return int.from_bytes(h, byteorder="little", signed=False)
 
 
-@dataclass
 class RNGStreams:
     """
     Isolated RNG streams for observer-independent physics.
@@ -141,14 +187,46 @@ class RNGStreams:
     IMPORTANT: rng_assay is kept for non-well-addressable randomness (e.g., QC
     subsampling, progress jitter, optional diagnostics). For per-well measurements
     that land in the DB, use assay_rng_for_well() to ensure workers=1 equals workers=N.
-    """
-    seed: int = 0
 
-    def __post_init__(self):
-        base = int(self.seed) & 0x7FFFFFFF
+    Debug mode (--debug-rng): Accessing rng_assay during DB writes throws an error.
+    """
+
+    def __init__(self, seed: int = 0):
+        self.seed = seed
+        base = int(seed) & 0x7FFFFFFF
         self.rng_growth = np.random.default_rng(base + 1)      # Growth dynamics, cell count
         self.rng_treatment = np.random.default_rng(base + 2)   # Treatment variability
-        self.rng_assay = np.random.default_rng(base + 3)       # Non-well-addressable assay randomness
+        self._rng_assay = np.random.default_rng(base + 3)      # Non-well-addressable assay randomness
+
+    @property
+    def rng_assay(self):
+        """
+        Access to global assay RNG stream.
+
+        In debug mode (--debug-rng), this throws an error during DB write sections
+        to enforce the addressable randomness rule: per-well measurements MUST use
+        assay_rng_for_well(), not the global rng_assay stream.
+
+        Raises:
+            RuntimeError: If accessed during DB write section in debug mode
+        """
+        if _DEBUG_RNG_USAGE and _get_in_db_write_section():
+            raise RuntimeError(
+                "FORBIDDEN: rng_assay accessed during DB write section!\n"
+                "\n"
+                "Per-well measurements that land in the database MUST use:\n"
+                "  assay_rng_for_well(design_id, plate_id, cell_line, well_id, tag)\n"
+                "\n"
+                "NOT the global rng_assay stream (breaks workers=1 vs workers=N determinism).\n"
+                "\n"
+                "rng_assay is only for non-well-addressable randomness:\n"
+                "  ✅ QC subsampling, progress jitter, optional diagnostics\n"
+                "  ❌ Morphology noise, LDH noise, or ANY measurement in thalamus_results\n"
+                "\n"
+                "This error is only raised in debug mode (--debug-rng).\n"
+                "To fix: Replace rng.rng_assay with assay_rng_for_well()."
+            )
+        return self._rng_assay
 
 
 # Global RNG streams (will be initialized in main())
@@ -1175,9 +1253,15 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
 
 
 def worker_function(args) -> Optional[Dict]:
-    """Worker function for multiprocessing."""
+    """
+    Worker function for multiprocessing.
+
+    In debug mode (--debug-rng), wraps simulate_well with db_write_section()
+    to enforce that rng_assay cannot be used during DB writes.
+    """
     well, design_id = args
-    return simulate_well(well, design_id)
+    with db_write_section():
+        return simulate_well(well, design_id)
 
 
 # ============================================================================
@@ -1571,8 +1655,16 @@ Examples:
                         help='Override design_id (for intentional replicate separation). Default: deterministic from parameters.')
     parser.add_argument('--self-test', action='store_true',
                         help='Run stream isolation self-test and exit')
+    parser.add_argument('--debug-rng', action='store_true',
+                        help='Enable debug mode: Enforce addressable randomness rule (rng_assay forbidden during DB writes)')
 
     args = parser.parse_args()
+
+    # Enable debug RNG checks if requested
+    if args.debug_rng:
+        global _DEBUG_RNG_USAGE
+        _DEBUG_RNG_USAGE = True
+        logger.info("⚠️  Debug mode enabled: rng_assay access forbidden during DB writes")
 
     # Startup logging (receipts for debugging cross-machine issues)
     print("=" * 80)
@@ -1587,6 +1679,8 @@ Examples:
     print(f"Mode:         {args.mode}")
     if args.out:
         print(f"Output dir:   {args.out}")
+    if args.debug_rng:
+        print(f"⚠️  Debug:     RNG guardrail ENABLED (rng_assay forbidden during DB writes)")
     print("=" * 80)
     print()
 
