@@ -7,3 +7,14 @@
 # Data directory contents
 src/data/
 
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+*$py.class
