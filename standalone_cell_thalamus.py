@@ -459,6 +459,7 @@ CHANNELS = ['er', 'mito', 'nucleus', 'actin', 'rna']
 BASELINE_MORPH = {
     'A549':  {'er': 1.00, 'mito': 1.00, 'nucleus': 1.00, 'actin': 1.00, 'rna': 1.00},
     'HepG2': {'er': 1.10, 'mito': 1.20, 'nucleus': 1.00, 'actin': 0.95, 'rna': 1.10},
+    'iPSC_NGN2': {'er': 0.85, 'mito': 1.47, 'nucleus': 0.90, 'actin': 1.33, 'rna': 0.78},  # Neurons: low ER, very high mito, high actin (neurites)
 }
 
 # Channel-specific biological variability (CV). (Not technical noise. Real per-well biology.)
@@ -641,14 +642,16 @@ def _is_edge_well(well_position: str, plate_format: int = 96) -> bool:
 # Cell-line proliferation index (relative doubling time)
 # Higher = faster cycling (more sensitive to cell cycle poisons)
 PROLIF_INDEX = {
-    'A549': 1.3,    # Faster cycling (lung cancer)
-    'HepG2': 0.8,   # Slower cycling (hepatoma)
+    'A549': 1.3,      # Faster cycling (lung cancer)
+    'HepG2': 0.8,     # Slower cycling (hepatoma)
+    'iPSC_NGN2': 0.1, # Post-mitotic (neurons barely divide)
 }
 
 # Cell-line-specific LDH baseline (released from dead/dying cells)
 BASELINE_LDH = {
     'A549': 50000.0,
     'HepG2': 50000.0,
+    'iPSC_NGN2': 70000.0,  # Very high ATP/LDH (neurons have extreme metabolic rate)
 }
 
 # Cell-line-specific sensitivity (IC50 multipliers)
@@ -657,22 +660,22 @@ BASELINE_LDH = {
 # NOTE: Microtubule drugs (nocodazole, paclitaxel) use PROLIF_INDEX instead (see calculation below)
 CELL_LINE_SENSITIVITY = {
     # Oxidative stress
-    'tBHQ': {'A549': 1.5, 'HepG2': 0.7},      # HepG2 more sensitive (A549 is NRF2-primed)
-    'H2O2': {'A549': 0.7, 'HepG2': 1.5},      # A549 more sensitive (HepG2 has peroxide detox)
+    'tBHQ': {'A549': 1.5, 'HepG2': 0.7, 'iPSC_NGN2': 0.5},      # Neurons extremely sensitive (high ROS baseline)
+    'H2O2': {'A549': 0.7, 'HepG2': 1.5, 'iPSC_NGN2': 0.4},      # Neurons extremely sensitive (oxidative damage accumulates)
 
     # ER stress (HepG2 more sensitive - higher baseline ER load, secretory burden)
-    'tunicamycin': {'A549': 1.4, 'HepG2': 0.7},
-    'thapsigargin': {'A549': 1.4, 'HepG2': 0.7},
+    'tunicamycin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.9},
+    'thapsigargin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.9},
 
-    # Mitochondrial stress (HepG2 more sensitive - pays OXPHOS tax harder)
-    'CCCP': {'A549': 1.4, 'HepG2': 0.7},
-    'oligomycin': {'A549': 1.4, 'HepG2': 0.7},
+    # Mitochondrial stress (Neurons EXTREMELY sensitive - total OXPHOS dependence)
+    'CCCP': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.3},
+    'oligomycin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.3},
 
     # DNA damage (A549 more sensitive - cleaner apoptotic response)
-    'etoposide': {'A549': 0.7, 'HepG2': 1.3},
+    'etoposide': {'A549': 0.7, 'HepG2': 1.3, 'iPSC_NGN2': 0.8},
 
-    # Proteasome inhibition (HepG2 more sensitive - proteostasis stress on hepatocyte metabolism)
-    'MG132': {'A549': 1.4, 'HepG2': 0.7},
+    # Proteasome inhibition (Neurons sensitive - accumulate misfolded proteins)
+    'MG132': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.7},
 }
 
 # ============================================================================

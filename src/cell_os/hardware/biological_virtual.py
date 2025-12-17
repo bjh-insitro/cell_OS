@@ -357,9 +357,19 @@ class BiologicalVirtualMachine(VirtualMachine):
         
         # Get IC50 and hill slope from YAML database
         compound_data = self.compound_sensitivity.get(compound, {})
-        ic50 = compound_data.get(vessel.cell_line, self.defaults.get("default_ic50", 1.0))
+        base_ic50 = compound_data.get(vessel.cell_line, self.defaults.get("default_ic50", 1.0))
         hill_slope = compound_data.get("hill_slope", self.defaults.get("default_hill_slope", 1.0))
-        
+
+        # Apply cell-line-specific IC50 modifier (captures biological differences)
+        # Lazy load thalamus params if not already loaded
+        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+            self._load_cell_thalamus_params()
+
+        ic50_modifiers = self.thalamus_params.get('cell_line_ic50_modifiers', {})
+        cell_line_modifiers = ic50_modifiers.get(vessel.cell_line, {})
+        modifier = cell_line_modifiers.get(compound, 1.0)  # Default to no modification
+        ic50 = base_ic50 * modifier
+
         # Apply dose-response model (4-parameter logistic)
         viability_effect = 1.0 / (1.0 + (dose_uM / ic50) ** hill_slope)
         
