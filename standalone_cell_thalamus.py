@@ -609,44 +609,6 @@ AXIS_CELL_MULT = {
 # Morphology: correlated bio-noise + channel-specific technical factors
 # ============================================================================
 
-def _cv_to_log_sigma(cv: float) -> float:
-    """Convert multiplicative CV to lognormal sigma."""
-    cv = max(0.0, float(cv))
-    return float(np.sqrt(np.log(1.0 + cv * cv)))
-
-def _lognormal_factor(cv: float) -> float:
-    """Mean ~1.0 multiplicative factor with specified CV."""
-    sigma = _cv_to_log_sigma(cv)
-    return float(np.exp(np.random.normal(0.0, sigma)))
-
-# Biological cross-channel correlation (in log-space)
-# Keep it small and interpretable: nucleus is stable, mito/actin/rna more variable.
-# This drives within-well correlations that look like real imaging.
-MORPH_BIO_CORR = np.array([
-    #   er   mito nucleus actin  rna
-    [ 1.0,  0.25,  0.10,  0.15,  0.30],  # er
-    [ 0.25, 1.0,   0.10,  0.25,  0.20],  # mito
-    [ 0.10, 0.10,  1.0,   0.30,  0.10],  # nucleus
-    [ 0.15, 0.25,  0.30,  1.0,   0.15],  # actin
-    [ 0.30, 0.20,  0.10,  0.15,  1.0],   # rna
-], dtype=float)
-
-def _sample_correlated_bio_multipliers(channels, cv_map, corr_mat):
-    """
-    Sample correlated per-channel biological multipliers.
-    Uses multivariate normal in log-space so outputs are multiplicative lognormals.
-    """
-    n = len(channels)
-    sigmas = np.array([_cv_to_log_sigma(cv_map[ch]) for ch in channels], dtype=float)
-
-    # Build covariance in log-space: cov = diag(sigmas) * corr * diag(sigmas)
-    cov = np.diag(sigmas) @ corr_mat[:n, :n] @ np.diag(sigmas)
-
-    z = np.random.multivariate_normal(mean=np.zeros(n), cov=cov)
-    mult = np.exp(z)
-
-    return {ch: float(mult[i]) for i, ch in enumerate(channels)}
-
 # Technical noise parameters (matches main codebase exactly)
 # These CVs are applied multiplicatively to ALL channels together (not channel-specific)
 # Total CV budget: sqrt(0.010² + 0.015² + 0.008² + 0.015²) ≈ 2.5% ✓
@@ -661,29 +623,6 @@ TECH_CV = {
 
 def _get_attr(obj, name, default=None):
     return getattr(obj, name, default)
-
-def _deterministic_factor(seed_str: Optional[str], cv: float, well_unique_id: Optional[str] = None) -> float:
-    """
-    Generate deterministic lognormal factor from seed string.
-    Uses hash-based seeding so plate/day/operator factors are consistent across workers.
-
-    If seed_str is None and well_unique_id is provided, uses well_unique_id to avoid
-    accidentally coupling all wells through "factor_None".
-    """
-    if seed_str is None:
-        # If no seed and no unique ID, fall back to random
-        if well_unique_id is None:
-            return _lognormal_factor(cv)
-        # Use well unique ID as seed to avoid coupling through None
-        seed_str = well_unique_id
-
-    # Hash the seed string to get a deterministic integer seed
-    hash_val = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
-
-    # Use numpy's random generator with this seed
-    rng = np.random.default_rng(hash_val)
-    sigma = _cv_to_log_sigma(cv)
-    return float(np.exp(rng.normal(0.0, sigma)))
 
 def _is_edge_well(well_position: str, plate_format: int = 96) -> bool:
     """Detect if well is on plate edge (evaporation/temperature artifacts)."""

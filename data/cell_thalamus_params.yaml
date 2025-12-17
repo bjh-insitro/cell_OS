@@ -104,30 +104,30 @@ compounds:
   cccp:
     name: "CCCP"
     stress_axis: "mitochondrial"
-    intensity: 1.0
+    intensity: 1.3
     ec50_uM: 5.0
-    hill_slope: 2.0
+    hill_slope: 2.5  # Steeper hill for sharper transition
 
   CCCP:
     name: "CCCP"
     stress_axis: "mitochondrial"
-    intensity: 1.0
+    intensity: 1.3
     ec50_uM: 5.0
-    hill_slope: 2.0
+    hill_slope: 2.5  # Steeper hill for sharper transition
 
   oligomycin_a:
     name: "Oligomycin A"
     stress_axis: "mitochondrial"
-    intensity: 0.9
+    intensity: 1.0
     ec50_uM: 1.0
-    hill_slope: 1.7
+    hill_slope: 2.3
 
   oligomycin:
     name: "Oligomycin A"
     stress_axis: "mitochondrial"
-    intensity: 0.9
+    intensity: 1.0
     ec50_uM: 1.0
-    hill_slope: 1.7
+    hill_slope: 2.3
 
   two_deoxy_d_glucose:
     name: "2-Deoxy-D-Glucose"
