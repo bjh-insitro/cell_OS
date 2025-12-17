@@ -807,10 +807,11 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
                 attrition_rate = attrition_rates.get(stress_axis, 0.10)
 
                 # Additional death at high stress over time
-                # Only applies when dose > IC50 (dose_ratio > 1)
-                if dose_ratio > 1.0:
-                    # Sigmoid function for smooth transition
-                    stress_multiplier = (dose_ratio - 1.0) / (2.0 + dose_ratio - 1.0)  # 0→0.5 as dose→∞
+                # Only applies when dose >= IC50 (dose_ratio >= 1.0)
+                if dose_ratio >= 1.0:
+                    # Sigmoid function: starts at 0.5 at IC50, approaches 1.0 at high dose
+                    # dose_ratio=1.0 → 0.5, dose_ratio=2.0 → 0.67, dose_ratio=10.0 → 0.91
+                    stress_multiplier = dose_ratio / (1.0 + dose_ratio)
                     additional_death = attrition_rate * stress_multiplier * time_factor
 
                     # Apply additional death (reduce viability further)
