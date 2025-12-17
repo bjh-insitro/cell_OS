@@ -250,13 +250,19 @@ LIMIT 10
 
 ## Confidence Level
 
-After quick test passes on JH, you have **99% confidence** that:
-- ✓ Cross-machine determinism works (same seed → same results)
+After quick test passes on JH, you have **high confidence** that:
+- ✓ Determinism works (same Python+NumPy → same results)
 - ✓ Parallel determinism works (workers=1 == workers=64)
 - ✓ Observer-independent physics (RNG streams isolated)
 - ✓ Honest causality (death_unknown tracked correctly)
 
-The 1% is BLAS nondeterminism (Test 6 catches this).
+**Important qualifier**: "Determinism" means same Python/NumPy build. Across different
+platforms (Mac vs Linux) or NumPy versions, minor floating-point differences (<1e-6)
+may occur due to BLAS implementations. The **biology is identical**, but raw bytes may
+differ. This is why `compare_databases.py` uses order-independent row hashes as the
+primary signal, not raw file equality.
+
+The 1% risk is BLAS nondeterminism (Test 6 catches this if it occurs).
 
 ---
 

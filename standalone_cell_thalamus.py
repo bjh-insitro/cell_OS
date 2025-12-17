@@ -1181,6 +1181,11 @@ def run_parallel_simulation(
 
                 # Stream inserts (without committing each time)
                 if len(batch) >= BATCH_SIZE:
+                    # CRITICAL: Sort batch by stable key before insert
+                    # Even with imap(), batch order depends on buffering, so sort explicitly
+                    # Stable key: (plate_id, cell_line, well_id, compound, dose_uM, timepoint_h)
+                    batch.sort(key=lambda r: (r['plate_id'], r['cell_line'], r['well_id'],
+                                             r['compound'], r['dose_uM'], r['timepoint_h']))
                     db.insert_results_batch(batch, commit=False)
                     saved += len(batch)
                     total_staged += len(batch)
@@ -1195,6 +1200,9 @@ def run_parallel_simulation(
 
             # Flush remainder
             if batch:
+                # CRITICAL: Sort final batch too
+                batch.sort(key=lambda r: (r['plate_id'], r['cell_line'], r['well_id'],
+                                         r['compound'], r['dose_uM'], r['timepoint_h']))
                 db.insert_results_batch(batch, commit=False)
                 saved += len(batch)
                 total_staged += len(batch)
@@ -1239,8 +1247,9 @@ def run_stream_isolation_self_test(seed: int = 0):
     """
     Self-test: prove that RNG streams are isolated (assay doesn't perturb physics).
 
-    This is a minimal check that can be run on any machine (including JupyterHub)
-    to verify stream isolation guarantees hold.
+    This calls the ACTUAL simulation code path (simulate_well) to verify that
+    real assay operations don't perturb physics streams. This catches regressions
+    where someone accidentally uses rng_growth in measurement code.
     """
     print("\n" + "=" * 80)
     print("STREAM ISOLATION SELF-TEST")
@@ -1256,9 +1265,26 @@ def run_stream_isolation_self_test(seed: int = 0):
     treatment_state_before = _RNG_STREAMS.rng_treatment.bit_generator.state
     assay_state_before = _RNG_STREAMS.rng_assay.bit_generator.state
 
-    # Simulate "assay call" (just consume assay RNG)
-    rng = get_rng()
-    _ = rng.rng_assay.normal(1.0, 0.02)  # Typical measurement noise
+    # Call ACTUAL simulation code (not just rng_assay.normal)
+    # This is the real code path used in production runs
+    test_well = WellAssignment(
+        well_id='A01',
+        cell_line='A549',
+        compound='tBHQ',
+        dose_uM=10.0,
+        timepoint_h=12.0,
+        plate_id='TestPlate',
+        day=1,
+        operator='TestOp',
+        is_sentinel=False
+    )
+
+    # Run the actual simulation (this consumes RNG for morphology, LDH, etc.)
+    result = simulate_well(test_well, design_id='self_test')
+
+    if result is None:
+        print("❌ FAIL: simulate_well() returned None (simulation error)")
+        sys.exit(1)
 
     # Snapshot final state
     growth_state_after = _RNG_STREAMS.rng_growth.bit_generator.state
@@ -1270,25 +1296,28 @@ def run_stream_isolation_self_test(seed: int = 0):
     treatment_changed = (treatment_state_before != treatment_state_after)
     assay_changed = (assay_state_before != assay_state_after)
 
-    print(f"Physics streams after assay call:")
+    print(f"Physics streams after simulate_well() call:")
     print(f"  rng_growth changed:    {growth_changed}")
     print(f"  rng_treatment changed: {treatment_changed}")
     print(f"  rng_assay changed:     {assay_changed}")
     print()
 
     if growth_changed or treatment_changed:
-        print("❌ FAIL: Assay call perturbed physics RNG streams!")
+        print("❌ FAIL: simulate_well() perturbed physics RNG streams!")
         print("   This means observation can change cell fate (violates hardening guarantee)")
+        print("   Likely cause: someone used rng_growth or rng_treatment in assay code")
         sys.exit(1)
 
     if not assay_changed:
         print("❌ FAIL: Assay RNG stream didn't change (no RNG consumption detected)")
+        print("   This suggests simulate_well() is not using assay RNG at all")
         sys.exit(1)
 
     print("✅ PASS: Stream isolation verified")
     print("   Physics streams (growth, treatment) unchanged")
     print("   Assay stream changed as expected")
-    print("\nReady for production deployment with observer-independent physics guarantee.")
+    print("\nActual simulation code path tested (not just toy example).")
+    print("Ready for production deployment with observer-independent physics guarantee.")
     print("=" * 80)
 
 
