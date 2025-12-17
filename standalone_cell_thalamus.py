@@ -1,9 +1,15 @@
 """
 Standalone Cell Thalamus Parallel Runner for AWS/JupyterHub
-Last Updated: December 16, 2025 @ 9:30 PM PST
+Last Updated: December 17, 2025 @ 12:30 AM PST
 
 This is a self-contained script with all compound parameters embedded.
 Just upload this file and run it - no dependencies on external YAML files!
+
+HARDENING (December 2025):
+- Stable hashing: Deterministic across machines/processes (no Python hash salt)
+- RNG stream isolation: Observation cannot perturb physics (observer-independent)
+- Death accounting: Complete partition with death_unknown bucket (honest causality)
+- Seed contract: --seed=0 (default) for fully deterministic runs
 
 Simulation Realism Features (Matches Main Codebase):
 1. Cell-Line-Specific Sensitivity:
@@ -94,6 +100,61 @@ logger = logging.getLogger(__name__)
 # Debug flag: set to True to log dose ratios for sentinel compounds
 DEBUG_DOSE_RATIOS = False
 
+
+# ============================================================================
+# RNG HARDENING (Cross-Machine Determinism + Stream Isolation)
+# ============================================================================
+
+def stable_u32(s: str) -> int:
+    """
+    Stable 32-bit seed from string. Cross-process and cross-machine deterministic.
+
+    Unlike Python's hash(), this is NOT salted per process, so it gives
+    consistent seeds across runs, machines, and Python versions.
+    Critical for reproducibility in distributed environments (AWS, JupyterHub).
+
+    Args:
+        s: String to hash
+
+    Returns:
+        Unsigned 32-bit integer suitable for RNG seeding
+    """
+    h = hashlib.blake2s(s.encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(h, byteorder="little", signed=False)
+
+
+@dataclass
+class RNGStreams:
+    """
+    Isolated RNG streams for observer-independent physics.
+
+    Three dedicated streams ensure that observation (assay calls) cannot
+    perturb physics (growth, treatment effects).
+
+    Seed contract:
+    - seed=0 → Fully deterministic (physics + measurements)
+    - seed=N → Independent run with seed N
+    - ALWAYS pass explicitly (never rely on random seed)
+    """
+    seed: int = 0
+
+    def __post_init__(self):
+        base = int(self.seed) & 0x7FFFFFFF
+        self.rng_growth = np.random.default_rng(base + 1)      # Growth dynamics, cell count
+        self.rng_treatment = np.random.default_rng(base + 2)   # Treatment variability
+        self.rng_assay = np.random.default_rng(base + 3)       # Measurement noise
+
+
+# Global RNG streams (will be initialized in main())
+_RNG_STREAMS = None
+
+def get_rng() -> RNGStreams:
+    """Get global RNG streams."""
+    global _RNG_STREAMS
+    if _RNG_STREAMS is None:
+        _RNG_STREAMS = RNGStreams(seed=0)
+    return _RNG_STREAMS
+
 # Plate ID semantics: plate_id represents a conceptual experimental unit
 # (day, operator, replicate, timepoint) that contains TWO physical plates
 # (one per cell line). The cell_line field distinguishes physical plates.
@@ -168,6 +229,12 @@ class CellThalamusDB:
                 morph_actin REAL,
                 morph_rna REAL,
                 atp_signal REAL,  -- Actually LDH cytotoxicity (kept name for backward compat)
+                viability REAL,  -- Final viability after compound effects
+                death_compound REAL,  -- Fraction killed by compounds
+                death_confluence REAL,  -- Fraction killed by overconfluence
+                death_unknown REAL,  -- Fraction killed by unknown causes (seeding stress, etc.)
+                death_mode TEXT,  -- "compound", "confluence", "mixed", "unknown", or NULL
+                transport_dysfunction_score REAL,  -- Cytoskeletal disruption score (0-1)
                 timestamp TEXT
             )
         """)
@@ -246,7 +313,8 @@ class CellThalamusDB:
                 r['dose_uM'], r['timepoint_h'], r['plate_id'], r['day'],
                 r['operator'], r['is_sentinel'],
                 m['er'], m['mito'], m['nucleus'], m['actin'], m['rna'],
-                r['atp_signal'], timestamp
+                r['atp_signal'], r['viability'], r['death_compound'], r['death_confluence'],
+                r['death_unknown'], r['death_mode'], r['transport_dysfunction_score'], timestamp
             ))
 
         cursor.executemany("""
@@ -254,8 +322,9 @@ class CellThalamusDB:
             (design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
              plate_id, day, operator, is_sentinel,
              morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna,
-             atp_signal, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             atp_signal, viability, death_compound, death_confluence, death_unknown,
+             death_mode, transport_dysfunction_score, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, data)
 
         if commit:
@@ -431,8 +500,8 @@ COMPOUND_PARAMS = {
     'thapsigargin': {'ec50_uM': 0.5, 'hill_slope': 2.5, 'stress_axis': 'er_stress', 'intensity': 1.5},
 
     # Mitochondrial drugs: LDH rises when cells die (no early ATP crash confound)
-    'CCCP': {'ec50_uM': 5.0, 'hill_slope': 2.0, 'stress_axis': 'mitochondrial', 'intensity': 1.3},
-    'oligomycin': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'mitochondrial', 'intensity': 1.0},
+    'CCCP': {'ec50_uM': 5.0, 'hill_slope': 2.5, 'stress_axis': 'mitochondrial', 'intensity': 1.3},  # Steeper hill for sharper transition
+    'oligomycin': {'ec50_uM': 1.0, 'hill_slope': 2.3, 'stress_axis': 'mitochondrial', 'intensity': 1.0},
     'two_deoxy_d_glucose': {'ec50_uM': 1000.0, 'hill_slope': 1.5, 'stress_axis': 'mitochondrial', 'intensity': 0.6},
 
     'etoposide': {'ec50_uM': 10.0, 'hill_slope': 2.0, 'stress_axis': 'dna_damage', 'intensity': 1.0},
@@ -711,10 +780,20 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             stress_axis = params['stress_axis']
 
             if well.dose_uM > 0:
-                # Cell-line-adjusted IC50 logic (mirror your ATP/viability section)
+                # Cell-line-adjusted IC50 logic (mirror viability section below)
                 if stress_axis == 'microtubule':
                     prolif = PROLIF_INDEX.get(well.cell_line, 1.0)
-                    ic50_mult = 1.0 / max(prolif, 1e-9)
+
+                    # Improved microtubule model: mitosis + functional dependency
+                    mitosis_mult = 1.0 / max(prolif, 0.3)
+                    functional_dependency = {
+                        'A549': 0.2, 'HepG2': 0.2,
+                        'iPSC_NGN2': 0.8, 'iPSC_Microglia': 0.5
+                    }.get(well.cell_line, 0.3)
+                    # Modest functional adjustment (20% max) since morphology fails first
+                    ic50_mult = mitosis_mult * (1.0 + functional_dependency * 0.2)
+                    ic50_mult = max(0.3, min(5.0, ic50_mult))
+
                     hill_v = hill_slope * (0.8 + 0.4 * prolif)
                 else:
                     ic50_mult = CELL_LINE_SENSITIVITY.get(well.compound, {}).get(well.cell_line, 1.0)
@@ -747,14 +826,55 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
                 delta = intensity * axis_mult * (wA * eff['adapt'] * A + wD * eff['damage'] * D)
                 morph[ch] = base[ch] * (1.0 + delta)
 
+            # Special handling for microtubule drugs: morphology disruption precedes viability loss
+            # Neurons show cytoskeletal disruption (actin, mito distribution) even when viable
+            if stress_axis == 'microtubule':
+                # Morphology EC50: Lower than viability EC50 (morphology fails first)
+                # Set at 30% of viability EC50 for neurons (transport disruption happens fast)
+                morph_ec50_fraction = {
+                    'iPSC_NGN2': 0.3,       # Morphology fails at 30% of viability dose
+                    'iPSC_Microglia': 0.5,  # Moderate
+                    'A549': 1.0,            # Morphology and viability fail together
+                    'HepG2': 1.0
+                }.get(well.cell_line, 1.0)
+
+                morph_ec50 = ec50 * morph_ec50_fraction
+
+                # Smooth saturating Hill equation (not sharp min() clamp)
+                morph_penalty = well.dose_uM / (well.dose_uM + morph_ec50)  # 0 to 1, smooth
+
+                if well.cell_line == 'iPSC_NGN2':
+                    # Neurons: major actin/mito disruption at doses below viability IC50
+                    morph['actin'] *= (1.0 - 0.6 * morph_penalty)  # Up to 60% reduction
+                    morph['mito'] *= (1.0 - 0.5 * morph_penalty)   # Mito distribution severely disrupted
+                elif well.cell_line == 'iPSC_Microglia':
+                    # Microglia: moderate actin disruption (migration/phagocytosis impaired)
+                    morph['actin'] *= (1.0 - 0.4 * morph_penalty)
+
+        # CRITICAL: Compute transport dysfunction from STRUCTURAL morphology
+        # Do this BEFORE adding noise and BEFORE applying viability scaling (if any)
+        # This prevents measurement contamination from creating runaway feedback loops
+        transport_dysfunction_score = 0.0
+        if stress_axis == 'microtubule' and well.cell_line == 'iPSC_NGN2':
+            # Measure actual STRUCTURAL disruption (after drug effects, before noise/attenuation)
+            actin_disruption = max(0.0, 1.0 - morph['actin'] / base['actin'])
+            mito_disruption = max(0.0, 1.0 - morph['mito'] / base['mito'])
+            # Average disruption (0 = no disruption, 1 = complete loss)
+            transport_dysfunction_score = 0.5 * (actin_disruption + mito_disruption)
+            # Clamp to [0, 1]
+            transport_dysfunction_score = min(1.0, max(0.0, transport_dysfunction_score))
+
         # Add dose-dependent biological noise (matches main codebase)
+        # Note: Noise is added AFTER computing dysfunction to avoid measurement contamination
         # Stressed cells show higher variability (heterogeneous death timing)
         stress_level = 1.0 - float(viability_effect_true)  # 0 (healthy) to 1 (dead)
         stress_multiplier = 2.0  # Stressed cells have 2× higher CV
         effective_bio_cv = MORPH_CV['er'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        for ch in CHANNELS:
-            morph[ch] *= np.random.normal(1.0, effective_bio_cv)
+        rng = get_rng()
+        if effective_bio_cv > 0:
+            for ch in CHANNELS:
+                morph[ch] *= rng.rng_assay.normal(1.0, effective_bio_cv)
 
         # Technical noise (batch effects) - MATCHES MAIN CODEBASE EXACTLY
         # Extract batch information
@@ -763,16 +883,29 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         op_id = _get_attr(well, 'operator', None) or _get_attr(well, 'operator_id', None)
         well_id = _get_attr(well, 'well_id', 'A1')
 
-        # Consistent batch effects per plate/day/operator (deterministic random seed)
-        np.random.seed(hash(f"plate_{plate_id}") % 2**32)
-        plate_factor = np.random.normal(1.0, TECH_CV['plate_cv'])
-        np.random.seed(hash(f"day_{day_id}") % 2**32)
-        day_factor = np.random.normal(1.0, TECH_CV['day_cv'])
-        np.random.seed(hash(f"operator_{op_id}") % 2**32)
-        operator_factor = np.random.normal(1.0, TECH_CV['operator_cv'])
-        np.random.seed()  # Reset to random state for well factor
+        # Consistent batch effects per plate/day/operator (deterministic seeding)
+        # Only apply if CV > 0 (prevents RNG consumption when noise disabled)
+        rng = get_rng()
 
-        well_factor = np.random.normal(1.0, TECH_CV['well_cv'])
+        plate_factor = 1.0
+        if TECH_CV['plate_cv'] > 0:
+            rng_plate = np.random.default_rng(stable_u32(f"plate_{plate_id}"))
+            plate_factor = rng_plate.normal(1.0, TECH_CV['plate_cv'])
+
+        day_factor = 1.0
+        if TECH_CV['day_cv'] > 0:
+            rng_day = np.random.default_rng(stable_u32(f"day_{day_id}"))
+            day_factor = rng_day.normal(1.0, TECH_CV['day_cv'])
+
+        operator_factor = 1.0
+        if TECH_CV['operator_cv'] > 0:
+            rng_operator = np.random.default_rng(stable_u32(f"operator_{op_id}"))
+            operator_factor = rng_operator.normal(1.0, TECH_CV['operator_cv'])
+
+        # Well factor uses assay RNG (non-deterministic)
+        well_factor = 1.0
+        if TECH_CV['well_cv'] > 0:
+            well_factor = rng.rng_assay.normal(1.0, TECH_CV['well_cv'])
 
         # Edge effect: wells on plate edges show reduced signal
         is_edge = _is_edge_well(well_id)
@@ -788,23 +921,22 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
 
         # Apply random well failures (2% of wells fail with extreme outliers)
         well_failure = None
-        hash_val = int(hashlib.md5(f"failure_{well_id}_{design_id}".encode()).hexdigest()[:8], 16)
-        rng = np.random.default_rng(hash_val)
-        if rng.random() < TECH_CV['well_failure_rate']:
+        rng_failure = np.random.default_rng(stable_u32(f"failure_{well_id}_{design_id}"))
+        if rng_failure.random() < TECH_CV['well_failure_rate']:
             # Well failed - apply random extreme multiplier
-            failure_type = rng.choice(['bubble', 'contamination', 'pipetting_error'])
+            failure_type = rng_failure.choice(['bubble', 'contamination', 'pipetting_error'])
             if failure_type == 'bubble':
                 # Bubble in well → near-zero signal
                 for ch in CHANNELS:
-                    morph[ch] = rng.uniform(0.1, 2.0)
+                    morph[ch] = rng_failure.uniform(0.1, 2.0)
             elif failure_type == 'contamination':
                 # Contamination → 5-20× higher signal
                 for ch in CHANNELS:
-                    morph[ch] *= rng.uniform(5.0, 20.0)
+                    morph[ch] *= rng_failure.uniform(5.0, 20.0)
             elif failure_type == 'pipetting_error':
                 # Wrong volume → 5-30% of normal
                 for ch in CHANNELS:
-                    morph[ch] *= rng.uniform(0.05, 0.3)
+                    morph[ch] *= rng_failure.uniform(0.05, 0.3)
             well_failure = failure_type
 
         # ============= END MORPHOLOGY BLOCK =============
@@ -825,10 +957,36 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             stress_axis = params['stress_axis']
 
             # Apply cell-line-specific IC50 adjustment
-            # For microtubule drugs, use proliferation-coupled IC50 multiplier
+            # For microtubule drugs, use improved model with mitosis + functional dependency
             if stress_axis == 'microtubule':
                 prolif = PROLIF_INDEX.get(well.cell_line, 1.0)
-                ic50_mult = 1.0 / prolif  # Faster cycling = lower IC50 (more sensitive)
+
+                # Microtubule toxicity has TWO components:
+                # 1. Mitosis-driven (cancer cells die from mitotic catastrophe)
+                # 2. Functional transport dependency (neurons have different failure mode: transport collapse)
+
+                # Mitosis-driven component (dominant for cycling cells)
+                mitosis_mult = 1.0 / max(prolif, 0.3)  # Clamp at 0.3 to prevent infinite resistance
+
+                # Functional dependency modifies the VIABILITY IC50 modestly
+                # High functional dependency means: "morphology collapses early, death follows later"
+                # It does NOT mean "protected from death" - that's handled by morphology-to-viability feedback
+                functional_dependency = {
+                    'A549': 0.2,           # Low functional dependency (mainly mitotic)
+                    'HepG2': 0.2,          # Low functional dependency
+                    'iPSC_NGN2': 0.8,      # High functional dependency (axonal transport critical)
+                    'iPSC_Microglia': 0.5, # Moderate (migration, phagocytosis)
+                }.get(well.cell_line, 0.3)
+
+                # IC50 multiplier: mostly mitosis-driven, with modest functional adjustment
+                # For neurons: high mitosis_mult (3.3×) slightly reduced by functional dependency
+                # For cancer: low mitosis_mult (0.77-1.25×) dominates
+                # Functional dependency adds a *small* protective factor (20%) since morphology fails first
+                ic50_mult = mitosis_mult * (1.0 + functional_dependency * 0.2)
+
+                # Clamp to reasonable bounds
+                ic50_mult = max(0.3, min(5.0, ic50_mult))
+
                 hill_slope = hill_slope * (0.8 + 0.4 * prolif)  # Slightly steeper for faster cycling
             else:
                 ic50_mult = CELL_LINE_SENSITIVITY.get(well.compound, {}).get(well.cell_line, 1.0)
@@ -851,15 +1009,33 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
 
                 # Stress-axis-specific attrition rates
                 # ER/proteostasis stressors cause persistent unfolded protein accumulation
-                attrition_rates = {
+                # Base attrition rates per stress axis
+                base_attrition_rates = {
                     'er_stress': 0.40,      # Strong cumulative effect
                     'proteasome': 0.35,     # Strong cumulative effect
-                    'oxidative': 0.15,      # Moderate (some adaptation possible)
-                    'mitochondrial': 0.10,  # Weak (early commitment dominates)
+                    'oxidative': 0.20,      # Moderate (some adaptation possible, but ROS accumulates)
+                    'mitochondrial': 0.18,  # Moderate (bioenergetic collapse accumulates)
                     'dna_damage': 0.20,     # Moderate (apoptosis cascade)
-                    'microtubule': 0.05,    # Weak (rapid commitment)
+                    'microtubule': 0.05,    # Weak (rapid commitment for cancer)
                 }
-                attrition_rate = attrition_rates.get(stress_axis, 0.10)
+
+                # Microtubule-specific: neurons get higher attrition (slow burn death after transport collapse)
+                if stress_axis == 'microtubule' and well.cell_line == 'iPSC_NGN2':
+                    # Base attrition for microtubule in neurons
+                    base_mt_attrition = 0.25
+
+                    # Scale attrition by ACTUAL morphology disruption (not dose proxy!)
+                    # transport_dysfunction_score computed earlier from real actin/mito disruption
+                    # This creates the true "morphology → attrition → viability" causal arc
+                    dys = transport_dysfunction_score
+
+                    # Nonlinear scaling: mild disruption has ceiling (allows recovery)
+                    # dys^2 means: 20% disruption → 4% scale, 50% disruption → 25% scale
+                    # This prevents low doses from causing inevitable death
+                    attrition_scale = 1.0 + 2.0 * (dys ** 2.0)  # 1× at no disruption, up to 3× at complete disruption
+                    attrition_rate = base_mt_attrition * attrition_scale
+                else:
+                    attrition_rate = base_attrition_rates.get(stress_axis, 0.10)
 
                 # Additional death at high stress over time
                 # Only applies when dose >= IC50 (dose_ratio >= 1.0)
@@ -890,8 +1066,10 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             viability_effect = 1.0
             ldh_signal = baseline_ldh * (1.0 - viability_effect) * 0.05
 
-        # Add biological noise (15% CV)
-        ldh_signal *= np.random.normal(1.0, 0.15)
+        # Add biological noise (15% CV) - GUARD RNG CALL
+        ldh_cv = 0.15
+        if ldh_cv > 0:
+            ldh_signal *= rng.rng_assay.normal(1.0, ldh_cv)
 
         # Add technical noise: reuse same batch factors as morphology (matches main codebase)
         # LDH is also affected by plate/day/operator/well variation
@@ -902,6 +1080,62 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
 
         # Keep variable name as atp_signal for backward compatibility with database
         atp_signal = ldh_signal
+
+        # ============= DEATH ACCOUNTING (Honest Causality) =============
+        # Track death fractions to enforce complete partition
+        # Initial seeding: cells start at 98% viability (2% seeding stress)
+        initial_viability = 0.98
+        death_seeding = 1.0 - initial_viability  # 0.02 baseline
+
+        # Compute final viability after treatment
+        final_viability = initial_viability * viability_effect
+
+        # Track compound-induced death (instant + attrition combined)
+        # viability_effect represents survival fraction after all compound effects
+        death_compound = initial_viability * (1.0 - viability_effect)
+
+        # Unknown death = seeding stress (never reassign this to compound!)
+        death_unknown = death_seeding
+
+        # No confluence death in standalone (single timepoint snapshot)
+        death_confluence = 0.0
+
+        # Clamp all death fractions to [0, 1]
+        death_compound = min(1.0, max(0.0, death_compound))
+        death_confluence = min(1.0, max(0.0, death_confluence))
+        death_unknown = min(1.0, max(0.0, death_unknown))
+
+        # Enforce partition: death_compound + death_confluence + death_unknown = 1 - viability
+        total_dead = 1.0 - final_viability
+        tracked = death_compound + death_confluence + death_unknown
+        untracked = max(0.0, total_dead - tracked)
+
+        # If untracked > 0.1%, warn (accounting bug)
+        if untracked > 0.001:
+            logger.warning(
+                f"Well {well.well_id}: Untracked death ({untracked:.1%}). "
+                f"Total dead: {total_dead:.1%}, tracked: {tracked:.1%}"
+            )
+            # Fold untracked into death_unknown (don't invent compound causality)
+            death_unknown += untracked
+            death_unknown = min(1.0, max(0.0, death_unknown))
+
+        # Determine death mode (threshold = 5%)
+        threshold = 0.05
+        unknown_threshold = 0.01 if death_compound == 0 and death_confluence == 0 else threshold
+
+        if death_compound > threshold and death_confluence > threshold:
+            death_mode = "mixed"
+        elif death_compound > threshold:
+            death_mode = "compound"
+        elif death_confluence > threshold:
+            death_mode = "confluence"
+        elif death_unknown > unknown_threshold:
+            death_mode = "unknown"
+        elif final_viability < 0.5:
+            death_mode = "unknown"  # Significant death but no clear cause
+        else:
+            death_mode = None  # Healthy
 
         return {
             'design_id': design_id,
@@ -915,6 +1149,12 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             'operator': well.operator,
             'morphology': morph,
             'atp_signal': atp_signal,
+            'viability': final_viability,
+            'death_compound': death_compound,
+            'death_confluence': death_confluence,
+            'death_unknown': death_unknown,
+            'death_mode': death_mode,
+            'transport_dysfunction_score': transport_dysfunction_score,
             'is_sentinel': well.is_sentinel
         }
 
@@ -1074,6 +1314,8 @@ Examples:
     parser.add_argument('--workers', type=int, default=None)
     parser.add_argument('--db-path', default='cell_thalamus_results.db')
     parser.add_argument('--portfolio-json', type=str, help='JSON string with portfolio configuration for autonomous loop')
+    parser.add_argument('--seed', type=int, default=0,
+                        help='RNG seed for reproducibility (default: 0 for fully deterministic)')
 
     args = parser.parse_args()
 
@@ -1081,6 +1323,11 @@ Examples:
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+
+    # Initialize global RNG streams with explicit seed (cross-machine determinism)
+    global _RNG_STREAMS
+    _RNG_STREAMS = RNGStreams(seed=args.seed)
+    logger.info(f"Initialized RNG streams with seed={args.seed}")
 
     design_id = run_parallel_simulation(
         mode=args.mode,
