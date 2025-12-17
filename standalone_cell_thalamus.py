@@ -784,6 +784,39 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             # At IC50: viability = 50%, At 10×IC50: viability = ~1%
             viability_effect = 1.0 / (1.0 + (well.dose_uM / ic50_viability) ** hill_slope)
 
+            # Time-dependent death continuation for high stress conditions
+            # ER stress and proteostasis stress cause cumulative attrition at high doses
+            # (tunicamycin, thapsigargin, MG132 should kill more cells by 48h)
+            if well.timepoint_h > 12 and viability_effect < 0.5:  # High stress threshold
+                # Calculate stress severity (how far past IC50)
+                dose_ratio = well.dose_uM / ic50_viability
+
+                # Time scaling: more death accumulation between 12h → 48h
+                time_factor = (well.timepoint_h - 12.0) / 36.0  # 0 at 12h, 1 at 48h
+
+                # Stress-axis-specific attrition rates
+                # ER/proteostasis stressors cause persistent unfolded protein accumulation
+                attrition_rates = {
+                    'er_stress': 0.40,      # Strong cumulative effect
+                    'proteasome': 0.35,     # Strong cumulative effect
+                    'oxidative': 0.15,      # Moderate (some adaptation possible)
+                    'mitochondrial': 0.10,  # Weak (early commitment dominates)
+                    'dna_damage': 0.20,     # Moderate (apoptosis cascade)
+                    'microtubule': 0.05,    # Weak (rapid commitment)
+                }
+                attrition_rate = attrition_rates.get(stress_axis, 0.10)
+
+                # Additional death at high stress over time
+                # Only applies when dose > IC50 (dose_ratio > 1)
+                if dose_ratio > 1.0:
+                    # Sigmoid function for smooth transition
+                    stress_multiplier = (dose_ratio - 1.0) / (2.0 + dose_ratio - 1.0)  # 0→0.5 as dose→∞
+                    additional_death = attrition_rate * stress_multiplier * time_factor
+
+                    # Apply additional death (reduce viability further)
+                    viability_effect = viability_effect * (1.0 - additional_death)
+                    viability_effect = max(0.01, viability_effect)  # Floor at 1% viable
+
             # Debug logging: dose ratios for sentinel compounds (set DEBUG_DOSE_RATIOS=True to enable)
             if DEBUG_DOSE_RATIOS and well.compound in ['tBHQ', 'CCCP'] and well.dose_uM > 0 and well.is_sentinel:
                 dose_base_ratio = well.dose_uM / ic50_base
