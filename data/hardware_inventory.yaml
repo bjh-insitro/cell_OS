@@ -1,0 +1,1412 @@
+# Hardware Inventory - Available Lab Resources
+# Last Updated: 2025-12-16
+#
+# This file tracks all physical hardware and resources available in the lab.
+# Used by the lab world model to plan experiments and estimate feasibility.
+
+metadata:
+  lab_name: "Cell OS Lab"
+  location: "TBD"
+  last_updated: "2025-12-16"
+  inventory_version: "1.0.0"
+
+# ============================================================================
+# LIQUID HANDLING
+# ============================================================================
+liquid_handlers:
+  - id: "biotek_el406_cell_dispenser"
+    manufacturer: "BioTek"
+    model: "EL406 Washer Dispenser"
+    status: "operational"
+    location: "Cell Culture Room"
+
+    # Primary use case
+    primary_use: "cell_seeding"
+
+    # Capabilities
+    capabilities:
+      - dispense_cells
+      - feed_cells
+      - aspirate
+      - wash
+
+    # Plate formats
+    plate_formats:
+      - "96-well"
+      - "384-well"
+
+    # Dispensing parameters
+    dispensing:
+      volume_range_ul: [10, 3000]
+      dispense_rate_ul_per_sec: [50, 500]
+      dispense_mode: "peristaltic_pump"
+      tubing_type: "peristaltic"
+      dead_volume_ml: 5  # Wastage from loading cells into tubing
+
+    # Use cases (when to use this equipment)
+    good_for:
+      - operation: "cell_seeding"
+        plate_formats: ["96-well", "384-well"]
+        cell_types: ["adherent_robust", "suspension"]
+        cell_lines_tested: ["A549", "HepG2", "HEK293", "CHO"]
+        cell_lines_validated: ["A549", "HepG2"]  # Phase 0 lines are EL406-compatible
+        why: "High throughput, good for bulk seeding of hardy cell lines"
+        throughput: "~10 plates in 15 minutes"
+        typical_workflow: "Pre-fill wells with half volume (no dry seeding), then seed cells"
+        typical_volumes:
+          96_well: "50 µL pre-fill + 50 µL cells = 100 µL total"
+          384_well: "25 µL pre-fill + 25 µL cells = 50 µL total"
+        volume_range_tested: "20-100 µL per well"
+
+      - operation: "media_changes"
+        plate_formats: ["96-well", "384-well"]
+        why: "Can aspirate old media and dispense fresh media in one step"
+
+      - operation: "washing"
+        plate_formats: ["96-well", "384-well"]
+        wash_steps: "up to 5 cycles"
+
+    # Limitations (when NOT to use this equipment)
+    not_good_for:
+      - operation: "cell_seeding"
+        cell_types: ["shear_sensitive", "primary_cells", "fragile"]
+        cell_lines_avoid: ["iPSC", "neurons", "cardiomyocytes"]
+        why: "Peristaltic pump creates shear stress that can damage fragile cells"
+        alternative: "Use multichannel pipette or gentler dispenser"
+
+      - operation: "low_volume_dispensing"
+        volume_ul: "<20"
+        why: "Not accurate at very low volumes due to peristaltic pump design"
+
+      - operation: "viscous_media"
+        media_type: ["high_serum", "matrigel", "thick_media"]
+        why: "Tubing can clog with viscous solutions"
+
+    # Operational considerations
+    operational_notes:
+      - "Dead volume: ~5 mL in tubing before dispensing starts (wastage)"
+      - "Requires priming step before each run (adds 2-3 minutes)"
+      - "Clean tubing between different cell lines to avoid cross-contamination"
+      - "Cell viability: 85-95% for robust lines, <70% for sensitive lines"
+      - "Best for seeding >20 plates at once to amortize dead volume waste"
+
+    # Decision logic for Cell OS
+    use_when:
+      - condition: "seeding >= 5 plates AND plate_format in ['96-well', '384-well']"
+        reason: "Amortizes dead volume waste (5 mL) and setup time"
+      - condition: "cell_line in ['A549', 'HepG2', 'HEK293', 'CHO']"
+        reason: "Validated robust cell lines - good viability after dispensing"
+      - condition: "volume_per_well >= 20 uL"
+        reason: "Tested and accurate at 20-100 µL range"
+      - condition: "plate_layout == 'uniform'"
+        reason: "All wells get same cells/media - no complex patterns"
+
+    avoid_when:
+      - condition: "cell_line in ['iPSC', 'neurons', 'primary']"
+        reason: "Too harsh for fragile cells"
+        alternative: "multiflow or manual pipetting"
+      - condition: "seeding < 5 plates"
+        reason: "Dead volume waste (5 mL) too high for small experiments"
+        alternative: "manual pipetting"
+      - condition: "plate_format not in ['96-well', '384-well']"
+        reason: "Only compatible with 96 and 384 formats"
+        alternative: "multiflow for other formats"
+      - condition: "plate_layout == 'complex'"
+        reason: "Not designed for complex spatial patterns"
+        alternative: "Hamilton STAR/Vantage/STARlet for complex maps"
+      - condition: "cells_expensive OR media_expensive"
+        reason: "5 mL dead volume may be cost-prohibitive"
+        alternative: "Hamilton or manual pipetting for lower waste"
+      - condition: "need_parallel_samples"
+        reason: "Can only handle one sample at a time"
+        alternative: "Certus Flex for parallel sample processing"
+
+  # --------------------------------------------------------------------------
+  # BioTek MultiFlo FX - Multi-format bulk dispenser
+  # --------------------------------------------------------------------------
+  - id: "biotek_multiflow_fx"
+    manufacturer: "BioTek (Agilent)"
+    model: "MultiFlo FX"
+    status: "operational"
+    location: "Cell Culture Room"
+
+    primary_use: "bulk_dispensing_multiple_formats"
+
+    capabilities:
+      - dispense_cells
+      - dispense_media
+      - dispense_reagents
+      - bulk_dispensing
+
+    # Interchangeable manifolds for different formats
+    plate_formats:
+      - "6-well"
+      - "12-well"
+      - "24-well"
+      - "96-well"
+      - "384-well"
+
+    manifolds:
+      - "6-well manifold"
+      - "12-well manifold"
+      - "24-well manifold"
+      - "96-well manifold"
+      - "384-well manifold"
+
+    dispensing:
+      technology: "peristaltic_or_syringe"  # TODO: Confirm exact technology
+      volume_range_ul: [0.5, 3000]
+      dispense_mode: "uniform_only"  # Cannot do complex patterns
+
+    good_for:
+      - operation: "bulk_dispensing"
+        plate_formats: ["6-well", "12-well", "24-well", "96-well", "384-well"]
+        why: "Easy setup with interchangeable manifolds - less technical expertise required"
+        compared_to: "Hamilton systems require more programming knowledge"
+
+      - operation: "non_standard_formats"
+        plate_formats: ["6-well", "12-well", "24-well"]
+        why: "EL406 only does 96/384, MultiFlo handles larger well formats"
+
+    not_good_for:
+      - operation: "complex_patterns"
+        why: "Uniform dispensing only - all wells get the same volume"
+        alternative: "Hamilton for complex spatial patterns"
+
+    use_when:
+      - condition: "plate_format in ['6-well', '12-well', '24-well']"
+        reason: "Only option for these formats besides manual"
+      - condition: "operator_expertise == 'basic'"
+        reason: "Easier to set up and use than Hamilton systems"
+      - condition: "plate_layout == 'uniform'"
+        reason: "All wells same volume - simple bulk dispensing"
+
+    avoid_when:
+      - condition: "plate_layout == 'complex'"
+        reason: "Cannot vary volume per well"
+        alternative: "Hamilton STAR/Vantage/STARlet"
+
+  # --------------------------------------------------------------------------
+  # Hamilton STAR - High-precision tip-based liquid handler
+  # --------------------------------------------------------------------------
+  - id: "hamilton_star"
+    manufacturer: "Hamilton"
+    model: "STAR"
+    status: "operational"
+    location: "Automation Lab"
+
+    primary_use: "complex_liquid_handling"
+
+    capabilities:
+      - aspirate
+      - dispense
+      - mix
+      - serial_dilution
+      - plate_transfer
+      - variable_volume_per_well
+      - complex_patterns
+
+    plate_formats: ["6-well", "12-well", "24-well", "96-well", "384-well"]
+
+    pipetting:
+      technology: "tip_based"
+      channels: 8
+      volume_range_ul: [0.5, 1000]
+      precision: "high"
+      cv_percent: "<3% at 50 µL"
+
+    good_for:
+      - operation: "complex_plate_maps"
+        why: "Tip-based pipetting allows variable volume per well"
+        examples:
+          - "Checkerboard cell line patterns"
+          - "Dose-response curves with different volumes"
+          - "Custom spatial layouts"
+
+      - operation: "precise_compound_dosing"
+        why: "High precision (<3% CV) for accurate dose-response experiments"
+
+      - operation: "serial_dilutions"
+        why: "Can perform complex serial dilution workflows"
+
+    not_good_for:
+      - operation: "bulk_seeding_many_plates"
+        throughput: "slower than EL406 for uniform dispensing"
+        why: "Tip-based = more precise but slower"
+        alternative: "Use EL406 for >=5 plates with uniform layout"
+
+    operational_notes:
+      - "Requires expert-level programming knowledge"
+      - "More complex setup than EL406 or MultiFlo"
+      - "Higher precision but lower throughput for bulk operations"
+      - "Best for experiments where spatial complexity matters"
+
+    use_when:
+      - condition: "plate_layout == 'complex'"
+        reason: "Can handle variable volumes and complex spatial patterns"
+      - condition: "need_high_precision"
+        reason: "CV <3% for accurate dose-response curves"
+      - condition: "need_serial_dilutions"
+        reason: "Can automate complex dilution workflows"
+
+    avoid_when:
+      - condition: "seeding >= 10 plates AND plate_layout == 'uniform'"
+        reason: "Too slow for bulk uniform dispensing"
+        alternative: "Use EL406 for higher throughput"
+      - condition: "operator_expertise == 'basic'"
+        reason: "Requires programming knowledge"
+        alternative: "Use MultiFlo or EL406 for simpler workflows"
+
+  # --------------------------------------------------------------------------
+  # Hamilton Vantage
+  # --------------------------------------------------------------------------
+  - id: "hamilton_vantage"
+    manufacturer: "Hamilton"
+    model: "Vantage"
+    status: "operational"
+    location: "Automation Lab"
+
+    # Similar capabilities to STAR - inherits most properties
+    primary_use: "complex_liquid_handling"
+    capabilities: ["aspirate", "dispense", "mix", "variable_volume_per_well", "complex_patterns"]
+    plate_formats: ["96-well", "384-well"]
+
+    pipetting:
+      technology: "tip_based"
+      volume_range_ul: [0.5, 1000]
+      precision: "high"
+
+    notes: "Similar to STAR - use same decision logic"
+
+  # --------------------------------------------------------------------------
+  # Hamilton STARlet
+  # --------------------------------------------------------------------------
+  - id: "hamilton_starlet"
+    manufacturer: "Hamilton"
+    model: "STARlet"
+    status: "operational"
+    location: "Automation Lab"
+
+    # Compact version of STAR
+    primary_use: "complex_liquid_handling"
+    capabilities: ["aspirate", "dispense", "mix", "variable_volume_per_well", "complex_patterns"]
+    plate_formats: ["96-well", "384-well"]
+
+    pipetting:
+      technology: "tip_based"
+      channels: 8
+      volume_range_ul: [0.5, 1000]
+      precision: "high"
+
+    notes: "Compact STAR - use same decision logic as STAR"
+
+  # --------------------------------------------------------------------------
+  # Certus Flex - Precision multichannel dispenser with Drop-on-Demand
+  # --------------------------------------------------------------------------
+  - id: "certus_flex"
+    manufacturer: "NNANO"
+    model: "Certus Flex"
+    status: "operational"
+    location: "Compound Dosing Lab"
+
+    primary_use: "precision_compound_dosing_parallel_channels"
+
+    # Patented micro valve technology
+    dispensing:
+      technology: "drop_on_demand_microvalves"
+      contact_free: true
+      volume_range: [50, 5000000]  # 50 nL to 5 mL
+      volume_units: "nanoliters to milliliters"
+      precision: "high"
+      speed: "high_speed_multichannel"
+
+    # Key differentiator: 8 independent channels
+    channels:
+      count: 8
+      independence: "fully_independent"  # Each channel different volume/concentration
+      simultaneous: true  # All 8 channels dispense in parallel
+
+    capabilities:
+      - contact_free_dispensing
+      - parallel_multichannel_dispensing
+      - variable_volumes_per_channel
+      - gradient_dispensing
+      - compound_dosing
+      - high_precision_nanoliter
+
+    plate_formats:
+      - "96-well"
+      - "384-well"
+      - "1536-well"  # Can handle dense formats due to precision
+
+    good_for:
+      - operation: "parallel_compound_dosing"
+        channels: 8
+        why: "Can dispense 8 different compounds or concentrations simultaneously"
+        use_case: "Dose-response curves with multiple compounds in one pass"
+
+      - operation: "complex_gradient_patterns"
+        why: "Each channel can dispense different volumes independently"
+        examples:
+          - "8 different compounds at different doses"
+          - "8-point dose-response curve in single dispense"
+          - "Multiple cell lines with different treatment volumes"
+
+      - operation: "nanoliter_precision_dosing"
+        volume_range: "50 nL - 5 mL"
+        why: "Can handle very small volumes for compound screening"
+
+      - operation: "viscous_samples"
+        why: "Handles broad range of viscosities"
+
+    not_good_for:
+      - operation: "bulk_cell_seeding"
+        why: "Designed for precision compound dosing, not bulk dispensing"
+        alternative: "Use EL406 or MultiFlo for cell seeding"
+
+      - operation: "single_compound_uniform_dosing"
+        why: "Overkill if you only need to dispense one compound uniformly"
+        alternative: "Use Hamilton or EL406 for simple uniform dosing"
+
+    operational_notes:
+      - "Contact-free dispensing = no cross-contamination between channels"
+      - "Best for experiments requiring multiple compounds/doses in parallel"
+      - "High precision makes it ideal for compound screening"
+      - "Can dispense different viscosities on different channels"
+
+    use_when:
+      - condition: "need_parallel_compounds >= 2"
+        reason: "Can dispense up to 8 different compounds simultaneously"
+      - condition: "need_nanoliter_precision"
+        reason: "Can dispense down to 50 nL accurately"
+      - condition: "need_gradient_patterns"
+        reason: "Each of 8 channels can dispense different volumes"
+      - condition: "compound_screening"
+        reason: "Ideal for dose-response and compound libraries"
+
+    avoid_when:
+      - condition: "simple_uniform_dosing"
+        reason: "Overkill for single compound uniform dispensing"
+        alternative: "Use Hamilton or EL406"
+      - condition: "cell_seeding"
+        reason: "Not designed for bulk cell dispensing"
+        alternative: "Use EL406, MultiFlo, or Hamilton"
+
+  # --------------------------------------------------------------------------
+  # Echo Acoustic Dispenser - Ultra-precise compound dosing
+  # --------------------------------------------------------------------------
+  - id: "echo_acoustic_dispenser"
+    manufacturer: "Labcyte (Beckman Coulter)"
+    model: "Echo"  # TODO: Specify exact model (Echo 525, 555, 650, etc.)
+    status: "operational"
+    location: "Compound Dosing Lab"
+
+    primary_use: "ultra_precise_compound_dispensing"
+
+    dispensing:
+      technology: "acoustic_droplet_ejection"
+      contact_free: true
+      volume_range: [2.5, 1000]  # nL (2.5 nL to 1 µL typical)
+      droplet_size: 2.5  # nL per droplet
+      precision: "ultra_high"
+      cv_percent: "<5%"
+      dead_volume: "minimal"  # Transfer from source plates, very low waste
+
+    capabilities:
+      - acoustic_dispensing
+      - compound_dosing
+      - contact_free_transfer
+      - source_plate_to_destination_plate
+      - nanoliter_precision
+      - dmso_compatible
+
+    plate_formats:
+      source_plates: ["384-well", "1536-well"]
+      destination_plates: ["96-well", "384-well", "1536-well"]
+
+    automation:
+      robotic_access: true
+      integration: "KX-2 arm access via STX220 workcell"
+      plate_transfer: "Robotic arm delivers source + destination plates"
+
+    good_for:
+      - operation: "compound_library_screening"
+        why: "Transfer from compound library plates to assay plates"
+        use_case: "Phase 0 screens - dose 10 compounds across 24 plates"
+
+      - operation: "dose_response_curves"
+        why: "Ultra-precise volumes for accurate EC50 determination"
+        precision: "CV <5% critical for dose-response"
+
+      - operation: "dmso_compound_dispensing"
+        why: "DMSO-compatible, no tips required"
+        advantage: "No cross-contamination between compounds"
+
+      - operation: "low_dead_volume_dispensing"
+        why: "Acoustic transfer from source wells - minimal waste"
+        vs_certus: "Echo transfers from plates, Certus from syringes/bottles"
+
+    not_good_for:
+      - operation: "cell_dispensing"
+        why: "Designed for compounds, not cells"
+        alternative: "Use EL406 or Hamilton"
+
+      - operation: "aqueous_media_dispensing"
+        why: "Optimized for DMSO and organic solvents"
+        alternative: "Use Hamilton or EL406 for media"
+
+      - operation: "bulk_reagent_addition"
+        why: "Nanoliter range - too slow for bulk volumes"
+        alternative: "Use MultiFlo or Hamilton for bulk reagents"
+
+    operational_notes:
+      - "Gold standard for compound screening"
+      - "Contact-free = no tips = no cross-contamination"
+      - "Transfer from library source plates to assay plates"
+      - "Integrated with STX220 via KX-2 robotic arm"
+      - "2.5 nL droplet size allows precise dose-response curves"
+      - "Minimal dead volume compared to tip-based systems"
+
+    use_when:
+      - condition: "compound_screening"
+        reason: "Industry standard for compound library management"
+      - condition: "need_ultra_precision"
+        reason: "CV <5% for accurate dose-response"
+      - condition: "need_low_waste"
+        reason: "Minimal dead volume, acoustic transfer"
+      - condition: "phase0_compound_dosing"
+        reason: "10 compounds × dose-response × 24 plates"
+
+    avoid_when:
+      - condition: "cell_dispensing"
+        reason: "Not for cells"
+        alternative: "EL406"
+      - condition: "bulk_volumes"
+        reason: "Nanoliter range only"
+        alternative: "Hamilton or MultiFlo"
+      - condition: "aqueous_solutions"
+        reason: "Optimized for DMSO/organics"
+        alternative: "Hamilton"
+
+    # Comparison with Certus Flex
+    vs_certus_flex:
+      echo: "Acoustic transfer FROM source plates (library management)"
+      certus: "Acoustic dispense FROM syringes/bottles (gradient generation)"
+      echo_use_case: "Compound library screening - transfer precise volumes"
+      certus_use_case: "Parallel gradient generation - 8 independent channels"
+
+# ============================================================================
+# MANUAL PIPETTES
+# ============================================================================
+multichannel_pipettes:
+  - id: "multichannel_p300_8ch"
+    manufacturer: "TBD"  # Rainin, Eppendorf, etc.
+    model: "8-channel multichannel"
+    channels: 8
+    volume_range_ul: [20, 300]
+    status: "operational"
+    location: "Cell Culture Hood"
+
+    primary_use: "manual_liquid_handling"
+
+    good_for:
+      - operation: "small_experiments"
+        plate_count: "1-2 plates"
+        why: "Not worth setup time for automated systems"
+
+      - operation: "pilot_studies"
+        why: "Quick and flexible for testing protocols"
+
+      - operation: "fragile_cells"
+        cell_types: ["iPSC", "neurons", "primary"]
+        why: "Gentle manual pipetting preserves cell viability"
+
+      - operation: "quick_media_changes"
+        why: "Faster than setting up automation for small batches"
+
+    use_when:
+      - condition: "plate_count <= 2"
+        reason: "Not worth automation setup time"
+      - condition: "pilot_study OR protocol_development"
+        reason: "Manual gives more control and flexibility"
+      - condition: "cell_line in ['iPSC', 'neurons', 'primary']"
+        reason: "Gentle pipetting for fragile cells"
+
+    avoid_when:
+      - condition: "plate_count >= 5"
+        reason: "Manual becomes tedious and error-prone"
+        alternative: "Use EL406, MultiFlo, or Hamilton"
+      - condition: "need_high_reproducibility"
+        reason: "Manual pipetting has higher CV than automated"
+        alternative: "Use Hamilton for high precision"
+
+# ============================================================================
+# IMAGING SYSTEMS
+# ============================================================================
+imaging_systems:
+  # --------------------------------------------------------------------------
+  # Tecan Spark Cyto - Plate reader with live cell imaging
+  # --------------------------------------------------------------------------
+  - id: "tecan_spark_cyto"
+    manufacturer: "Tecan"
+    model: "Spark Cyto"
+    status: "operational"
+    location: "Cell Culture Lab"
+
+    primary_use: "quick_qc_confluence_checks_and_ldh_assays"
+
+    imaging_type: "plate_reader_with_imaging"  # Hybrid: measurements + low-res imaging
+
+    channels:
+      fluorescence: 3
+      brightfield: true
+      total_imaging_channels: 4  # 3 fluorescence + BF
+
+    detection_modes:
+      - absorbance
+      - fluorescence
+      - luminescence
+
+    absorbance_wavelengths:
+      - 490  # For LDH assay
+      - 570  # Reference wavelength
+      - "full_spectrum"
+
+    capabilities:
+      - plate_reading
+      - fluorescence_detection
+      - absorbance_detection
+      - live_cell_imaging
+      - brightfield_imaging
+      - quick_imaging
+      - ldh_cytotoxicity_assay
+
+    plate_formats: ["96-well", "384-well"]
+
+    image_quality:
+      resolution: "moderate"
+      sufficient_for: "confluence_checks, cell_counting, basic_morphology"
+      not_sufficient_for: "high_content_screening, detailed_morphology"
+
+    good_for:
+      - operation: "quick_qc"
+        why: "Fast imaging before starting experiments"
+        use_case: "Check if cells look healthy before seeding"
+
+      - operation: "confluence_checks"
+        cell_types: "certain cell lines that need confluence monitoring"
+        why: "Good enough resolution for density assessment"
+
+      - operation: "pre_experiment_validation"
+        why: "Quick check that cells are ready before committing to full screen"
+
+      - operation: "fluorescence_measurements"
+        why: "Plate reader functionality for endpoint assays"
+
+      - operation: "ldh_cytotoxicity_assay"
+        why: "Absorbance at 490 nm for LDH detection"
+        use_case: "Scalar viability measurement orthogonal to Cell Painting"
+        workflow: "Sample supernatant from experiment plates, measure LDH release"
+        advantages:
+          - "Orthogonal to Cell Painting morphology (supernatant vs cells)"
+          - "Orthogonal to mitochondrial function (not ATP-based)"
+          - "True cytotoxicity measurement (membrane integrity)"
+          - "Non-destructive sampling (cells remain for imaging)"
+        integration: "Primary scalar viability readout for Phase 0 screens"
+
+    not_good_for:
+      - operation: "cell_painting"
+        channels_needed: 5
+        channels_available: 3
+        why: "Only 3 fluorescence channels - Cell Painting needs 5"
+        alternative: "Use Nikon Ti2 for Cell Painting"
+
+      - operation: "high_content_screening"
+        why: "Limited resolution and channels"
+        alternative: "Use Nikon Ti2 or Opera Phenix"
+
+      - operation: "detailed_morphology_analysis"
+        why: "Image quality not sufficient for detailed phenotyping"
+        alternative: "Use Nikon Ti2"
+
+    use_when:
+      - condition: "need_quick_check"
+        reason: "Fast turnaround for QC"
+      - condition: "checking_confluence"
+        reason: "Good enough resolution for density assessment"
+      - condition: "pre_experiment_qc"
+        reason: "Validate cells before committing to full screen"
+      - condition: "ldh_cytotoxicity_measurement"
+        reason: "Primary scalar viability assay for Phase 0 screens"
+
+    avoid_when:
+      - condition: "need_cell_painting"
+        reason: "Only 3 fluorescence channels"
+        alternative: "Nikon Ti2"
+      - condition: "need_detailed_morphology"
+        reason: "Limited resolution"
+        alternative: "Nikon Ti2"
+
+  # --------------------------------------------------------------------------
+  # Cytation 5 - Integrated workcell QC imaging
+  # --------------------------------------------------------------------------
+  - id: "cytation5_workcell"
+    manufacturer: "BioTek (Agilent)"
+    model: "Cytation 5"
+    status: "operational"
+    location: "Automation Workcell"
+
+    primary_use: "workcell_qc_imaging"
+
+    imaging_type: "plate_reader_with_imaging"
+
+    integration:
+      integrated_with: "Hamilton Vantage"
+      workflow: "cell_passaging"
+      qc_points: ["before_passaging", "after_passaging", "general_qc"]
+
+    capabilities:
+      - plate_reading
+      - brightfield_imaging
+      - fluorescence_imaging
+      - automated_workcell_integration
+
+    image_quality:
+      resolution: "moderate"
+      quality_vs_opera: "poorer than Opera Phenix"
+      quality_vs_nikon: "poorer than Nikon Ti2"
+
+    good_for:
+      - operation: "workcell_qc"
+        why: "Integrated into Hamilton Vantage passaging workflow"
+        timing: "Before and after passaging"
+
+      - operation: "automated_confluence_assessment"
+        why: "Takes images that feed into custom confluence analysis software"
+        note: "Does not calculate confluence itself - images go to custom software"
+
+      - operation: "general_qc_during_automation"
+        why: "Quick checks during automated cell culture workflows"
+
+    not_good_for:
+      - operation: "high_content_screening"
+        why: "Image quality poorer than dedicated high-content systems"
+        alternative: "Use Nikon Ti2 or Opera Phenix"
+
+      - operation: "detailed_morphology"
+        why: "Moderate resolution only"
+        alternative: "Use Nikon Ti2"
+
+    use_when:
+      - condition: "automated_passaging_workflow"
+        reason: "Integrated with Hamilton Vantage"
+      - condition: "need_qc_images_for_custom_analysis"
+        reason: "Images feed into custom confluence software"
+
+    avoid_when:
+      - condition: "need_publication_quality_images"
+        reason: "Image quality inferior to Nikon Ti2"
+        alternative: "Nikon Ti2"
+
+  # --------------------------------------------------------------------------
+  # Opera Phenix - High-content imager (being phased out)
+  # --------------------------------------------------------------------------
+  - id: "opera_phenix"
+    manufacturer: "PerkinElmer"
+    model: "Opera Phenix"
+    status: "operational"
+    location: "High-Content Imaging Room"
+
+    primary_use: "high_content_screening"
+    lifecycle_status: "being_phased_out"
+    replacement: "nikon_ti2"
+
+    imaging_type: "high_content_confocal"
+
+    channels:
+      fluorescence: "4-6"  # Standard Opera Phenix config
+      note: "Cannot do 'exactly' 5-channel Cell Painting"
+
+    plate_formats: ["96-well", "384-well"]
+
+    automation:
+      plate_hotel: true
+      stacker: true
+
+    capabilities:
+      - high_content_imaging
+      - confocal_imaging
+      - automated_plate_handling
+      - high_throughput_screening
+
+    good_for:
+      - operation: "high_content_screening"
+        why: "Designed for automated HCS workflows"
+        note: "Being replaced by Nikon Ti2"
+
+      - operation: "automated_imaging_with_plate_hotel"
+        why: "Has integrated plate hotel/stacker"
+
+    not_good_for:
+      - operation: "phase0_cell_painting"
+        why: "Being phased out - Nikon Ti2 is now primary system"
+        alternative: "Use Nikon Ti2"
+
+      - operation: "custom_analysis_workflows"
+        why: "Limited by vendor software and account licensing"
+        alternative: "Nikon Ti2 with custom software"
+
+    operational_notes:
+      - "Being phased out in favor of Nikon Ti2"
+      - "Limited by vendor software licensing and accounts"
+      - "Nikon Ti2 offers more flexibility with custom software"
+
+    use_when:
+      - condition: "legacy_workflows"
+        reason: "Existing protocols using Opera Phenix"
+
+    avoid_when:
+      - condition: "new_experiments"
+        reason: "Being phased out - use Nikon Ti2 instead"
+        alternative: "Nikon Ti2"
+
+  # --------------------------------------------------------------------------
+  # Nikon Ti2 - Primary high-content microscope (replacing Opera Phenix)
+  # --------------------------------------------------------------------------
+  - id: "nikon_ti2"
+    manufacturer: "Nikon"
+    model: "Ti2 Eclipse"
+    status: "operational"
+    location: "High-Content Imaging Room"
+
+    primary_use: "high_content_cell_painting_and_live_cell"
+    lifecycle_status: "primary_system"
+    replaces: "opera_phenix"
+
+    imaging_type: "research_microscope_automated"
+
+    configuration:
+      manual_mode: true
+      automated_mode: true
+      stage: "motorized_xy"
+      environmental_control:
+        heater: true
+        co2_control: true
+        humidity_control: false
+
+    objectives:
+      - magnification: "10x"
+        use: "overview, large area imaging"
+      - magnification: "20x"
+        use: "Cell Painting, high-content screening"
+      - magnification: "40x"
+        use: "detailed morphology"
+      - magnification: "60x"
+        use: "high-resolution imaging"
+
+    channels:
+      fluorescence: "5+"
+      can_do_cell_painting: true
+
+    capabilities:
+      - high_content_imaging
+      - cell_painting_5channel
+      - live_cell_imaging
+      - time_lapse_imaging
+      - environmental_control
+      - custom_software_integration
+      - detailed_morphology
+      - high_resolution_imaging
+
+    software:
+      custom_software: true
+      advantages:
+        - "More straightforward imaging workflows than Opera Phenix"
+        - "Custom analysis pipelines"
+        - "Not limited by vendor accounts/licensing"
+        - "Flexible for custom experiments"
+
+    good_for:
+      - operation: "phase0_cell_painting"
+        why: "Primary system for Cell Painting screens"
+        channels: 5
+        resolution: "high"
+
+      - operation: "live_cell_time_lapse"
+        why: "Environmental control (37°C, CO2) for long-term imaging"
+        use_cases: ["cell_migration", "cell_division", "drug_response_kinetics"]
+
+      - operation: "detailed_morphology_analysis"
+        why: "High-resolution objectives (40×, 60×)"
+        use_cases: ["phenotype_characterization", "subcellular_localization"]
+
+      - operation: "custom_imaging_workflows"
+        why: "Custom software - not limited by vendor restrictions"
+
+      - operation: "high_content_screening"
+        why: "Can do Cell Painting and complex phenotyping"
+
+    not_good_for:
+      - operation: "quick_qc_checks"
+        why: "Overkill for simple confluence checks"
+        alternative: "Use Spark Cyto for quick QC"
+
+      - operation: "automated_bulk_throughput"
+        note: "Not as fast as Opera Phenix with plate hotel"
+        why: "Research microscope - optimized for quality over speed"
+
+    operational_notes:
+      - "Primary system for Phase 0 Cell Painting screens"
+      - "Custom software makes it more flexible than Opera Phenix"
+      - "Can do both endpoint (fixed) and time-lapse (live) imaging"
+      - "Environmental control for physiologically relevant conditions"
+
+    use_when:
+      - condition: "cell_painting"
+        reason: "Primary Cell Painting system - 5+ channels"
+      - condition: "need_live_cell_imaging"
+        reason: "Environmental control for time-lapse experiments"
+      - condition: "need_custom_analysis"
+        reason: "Custom software, no vendor lock-in"
+      - condition: "need_high_resolution"
+        reason: "40× and 60× objectives for detailed imaging"
+      - condition: "phase0_screening"
+        reason: "Designated primary system for Phase 0 screens"
+
+    avoid_when:
+      - condition: "quick_confluence_check"
+        reason: "Overkill for simple QC"
+        alternative: "Use Spark Cyto"
+      - condition: "automated_workcell_qc"
+        reason: "Use integrated Cytation 5 in workcell"
+        alternative: "Cytation 5"
+
+# ============================================================================
+# PLATE READERS
+# ============================================================================
+plate_readers:
+  # Example:
+  # - id: "synergy_h1_01"
+  #   manufacturer: "BioTek"
+  #   model: "Synergy H1"
+  #   detection_modes:
+  #     - "luminescence"
+  #     - "fluorescence"
+  #     - "absorbance"
+  #   plate_formats: ["96-well", "384-well"]
+  #   status: "operational"
+  #   location: "Main Lab"
+
+# ============================================================================
+# INCUBATORS & ENVIRONMENTAL CONTROL
+# ============================================================================
+incubators:
+  # Standard CO2 incubators for manual workflows
+  # TODO: Add any standard incubators used for non-automated work
+
+plate_hotels:
+  # --------------------------------------------------------------------------
+  # Liconic StoreX STX220 - Central automated plate hotel
+  # --------------------------------------------------------------------------
+  - id: "liconic_stx220"
+    manufacturer: "Liconic"
+    model: "StoreX STX220"
+    status: "operational"
+    location: "Central Automation Hub"
+
+    primary_use: "central_plate_storage_and_incubation"
+
+    capacity:
+      max_plates: 220
+      plate_formats: ["96-well", "384-well", "deep_well", "culture_flasks"]
+
+    environmental_control:
+      temperature: 37  # °C
+      temperature_range: [-30, 200]  # °C (full STX range)
+      co2_control: true
+      co2_percent: 5
+      humidity_control: true
+      note: "Optimum environmental control for cell culture"
+
+    automation:
+      robotic_access: true
+      access_method: "KX-2 robotic arm"
+      access_gates: ["side_access", "mirror_gate_optional"]
+      configuration: "Stand Alone (SA) or Bench Top (BT)"
+      frequent_access: true
+      spring_loaded_handling: true
+
+    integration:
+      role: "Central plate hotel for multiple workcells"
+      connected_equipment:
+        - "Hamilton Vantage (liquid handling)"
+        - "Hamilton STAR (liquid handling)"
+        - "Hamilton STARlet (liquid handling)"
+        - "Nikon Ti2 (imaging)"
+        - "Cytation 5 (QC imaging)"
+        - "Spark Cyto (plate reading)"
+        - "Echo (compound dispensing)"
+      plate_transfer: "KX-2 robotic arm moves plates between STX220 and all equipment"
+
+    good_for:
+      - operation: "central_plate_queuing"
+        why: "220-plate capacity - can handle large screens (e.g., 24 plates for Phase 0)"
+        use_case: "Queue plates for multiple workcells"
+
+      - operation: "automated_incubation"
+        why: "37°C, 5% CO2, humidity control with robotic access"
+        use_case: "Incubate plates between liquid handling and imaging steps"
+
+      - operation: "multi_workcell_coordination"
+        why: "Central hub connected to multiple workcells via KX-2 arm"
+        use_case: "Plates move: Hamilton → STX220 → Nikon Ti2 → STX220"
+
+      - operation: "phase0_screening"
+        capacity: "Can hold all 24 plates for v2 design"
+        workflow: "Seed → STX220 (4h) → Dose → STX220 (12h/24h/48h) → Sample"
+
+    operational_notes:
+      - "Central plate hotel for entire automation infrastructure"
+      - "KX-2 robotic arm handles all plate transfers"
+      - "220-plate capacity >> Phase 0 needs (24 plates)"
+      - "Environmental control matches cell culture requirements"
+      - "Spring-loaded handling for fast access"
+      - "Multiple workcells share access via robotic arm"
+
+    use_when:
+      - condition: "automated_workflow"
+        reason: "Robotic access via KX-2 arm"
+      - condition: "multi_step_protocol"
+        reason: "Store plates between steps (seed → dose → image)"
+      - condition: "need_environmental_control"
+        reason: "37°C, CO2, humidity for cell culture"
+      - condition: "large_screens"
+        reason: "220-plate capacity handles Phase 0 and beyond"
+
+    avoid_when:
+      - condition: "manual_workflow"
+        reason: "Use standard incubator for manual plate handling"
+        alternative: "Standard CO2 incubator"
+      - condition: "quick_overnight_incubation"
+        reason: "If not using robotic workcells"
+        alternative: "Standard incubator"
+
+# ============================================================================
+# PLATE WASHERS
+# ============================================================================
+plate_washers:
+  # Example:
+  # - id: "biotek_405ts_01"
+  #   manufacturer: "BioTek"
+  #   model: "405 TS"
+  #   channels: 8
+  #   plate_formats: ["96-well"]
+  #   status: "operational"
+  #   wash_modes:
+  #     - "aspiration"
+  #     - "dispense"
+  #     - "soak"
+
+# ============================================================================
+# COMPOUND MANAGEMENT
+# ============================================================================
+compound_dispensers:
+  # Example:
+  # - id: "tecan_d300e_01"
+  #   manufacturer: "Tecan"
+  #   model: "D300e Digital Dispenser"
+  #   dispensing_technology: "acoustic"
+  #   volume_range_nl: [10, 10000]
+  #   status: "operational"
+
+compound_storage:
+  # Example:
+  # - id: "minus80_freezer_01"
+  #   type: "freezer"
+  #   temperature_c: -80
+  #   capacity_plates: 100
+  #   status: "operational"
+  #   location: "Cold Room"
+
+# ============================================================================
+# CENTRIFUGES
+# ============================================================================
+centrifuges:
+  # Example:
+  # - id: "eppendorf_5810r_01"
+  #   manufacturer: "Eppendorf"
+  #   model: "5810R"
+  #   max_speed_rpm: 4400
+  #   max_rcf: 4427
+  #   temperature_control: true
+  #   rotor_types:
+  #     - "plate rotor"
+  #     - "tube rotor"
+  #   status: "operational"
+
+# ============================================================================
+# CELL COUNTERS & VIABILITY
+# ============================================================================
+cell_counters:
+  # Example:
+  # - id: "countess_01"
+  #   manufacturer: "Thermo Fisher"
+  #   model: "Countess 3"
+  #   detection_method: "brightfield + fluorescence"
+  #   viability_dyes:
+  #     - "trypan blue"
+  #     - "PI"
+  #   status: "operational"
+
+# ============================================================================
+# PIPETTES & MANUAL TOOLS
+# ============================================================================
+pipettes:
+  # Example:
+  # - id: "p1000_01"
+  #   manufacturer: "Eppendorf"
+  #   model: "Research Plus"
+  #   volume_range_ul: [100, 1000]
+  #   channels: 1
+  #   status: "operational"
+  #   calibration_date: "2024-12-01"
+
+multichannel_pipettes:
+  # Example:
+  # - id: "p300_multichannel_01"
+  #   manufacturer: "Rainin"
+  #   model: "Pipet-Lite Multi"
+  #   volume_range_ul: [20, 300]
+  #   channels: 8
+  #   status: "operational"
+
+# ============================================================================
+# MICROSCOPES (NON-HIGH-CONTENT)
+# ============================================================================
+microscopes:
+  # Example:
+  # - id: "evos_01"
+  #   manufacturer: "Thermo Fisher"
+  #   model: "EVOS M5000"
+  #   type: "inverted"
+  #   imaging_modes:
+  #     - "brightfield"
+  #     - "phase contrast"
+  #     - "fluorescence"
+  #   objectives:
+  #     - "4x"
+  #     - "10x"
+  #     - "20x"
+  #   status: "operational"
+
+# ============================================================================
+# SHAKERS & MIXERS
+# ============================================================================
+shakers:
+  # Example:
+  # - id: "vwr_shaker_01"
+  #   manufacturer: "VWR"
+  #   model: "Advanced Digital Shaker"
+  #   speed_range_rpm: [100, 1500]
+  #   platform_size: "standard microplate"
+  #   status: "operational"
+
+# ============================================================================
+# COMPUTE RESOURCES
+# ============================================================================
+compute:
+  local_workstations:
+    # Example:
+    # - id: "macbook_pro_01"
+    #   model: "MacBook Pro M2"
+    #   ram_gb: 32
+    #   storage_tb: 1
+    #   gpu: "M2 Integrated"
+    #   status: "operational"
+    #   primary_use: "Development & local simulation"
+
+  cloud_resources:
+    # Example:
+    # - provider: "AWS"
+    #   services:
+    #     - "Lambda"
+    #     - "EC2 (c5.18xlarge for simulations)"
+    #     - "S3 (image storage)"
+    #     - "RDS (PostgreSQL)"
+    #   status: "operational"
+
+  storage:
+    # Example:
+    # - id: "nas_01"
+    #   type: "NAS"
+    #   capacity_tb: 10
+    #   raid_level: "RAID 5"
+    #   backup: "daily to cloud"
+    #   status: "operational"
+
+# ============================================================================
+# CONSUMABLES (CURRENT STOCK)
+# ============================================================================
+consumables:
+  plates:
+    # Example:
+    # - type: "96-well tissue culture plate"
+    #   manufacturer: "Corning"
+    #   catalog_number: "3596"
+    #   current_stock: 100
+    #   reorder_threshold: 20
+    #   cost_per_unit_usd: 2.50
+
+  tips:
+    # Example:
+    # - type: "200 µL filtered tips"
+    #   manufacturer: "Rainin"
+    #   current_stock: 10000
+    #   reorder_threshold: 2000
+
+  reagents:
+    # Example:
+    # - name: "DMEM media"
+    #   manufacturer: "Gibco"
+    #   catalog_number: "11965092"
+    #   volume_ml: 500
+    #   bottles_in_stock: 5
+    #   expiration_date: "2025-06-01"
+
+# ============================================================================
+# CELL LINES (AVAILABLE)
+# ============================================================================
+cell_lines:
+  - name: "A549"
+    tissue: "lung carcinoma"
+    species: "human"
+    passage_number: 25
+    location: "Liquid nitrogen tank 1, box 3"
+    vials_available: 5
+    last_thaw_date: "2025-12-01"
+    notes: "Primary cell line for Phase 0 screens"
+
+  - name: "HepG2"
+    tissue: "hepatocellular carcinoma"
+    species: "human"
+    passage_number: 18
+    location: "Liquid nitrogen tank 1, box 3"
+    vials_available: 3
+    last_thaw_date: "2025-12-01"
+    notes: "Secondary cell line for Phase 0 screens"
+
+# ============================================================================
+# COMPOUND LIBRARIES
+# ============================================================================
+compound_libraries:
+  - library_id: "phase0_founder_compounds"
+    description: "10 compounds for Phase 0 founder screen"
+    storage_location: "-80°C freezer, rack A"
+    format: "96-well mother plate"
+    concentration_mM: 10
+    solvent: "DMSO"
+    compounds:
+      - name: "tBHQ"
+        cas_number: "1948-33-0"
+        target_pathway: "oxidative stress"
+        wells: ["A1", "A2", "A3"]
+      - name: "H2O2"
+        cas_number: "7722-84-1"
+        target_pathway: "oxidative stress"
+        wells: ["A4", "A5", "A6"]
+      - name: "tunicamycin"
+        cas_number: "11089-65-9"
+        target_pathway: "ER stress"
+        wells: ["B1", "B2", "B3"]
+      - name: "thapsigargin"
+        cas_number: "67526-95-8"
+        target_pathway: "ER stress"
+        wells: ["B4", "B5", "B6"]
+      - name: "CCCP"
+        cas_number: "555-60-2"
+        target_pathway: "mitochondrial stress"
+        wells: ["C1", "C2", "C3"]
+      - name: "oligomycin"
+        cas_number: "1404-19-9"
+        target_pathway: "mitochondrial stress"
+        wells: ["C4", "C5", "C6"]
+      - name: "etoposide"
+        cas_number: "33419-42-0"
+        target_pathway: "DNA damage"
+        wells: ["D1", "D2", "D3"]
+      - name: "MG132"
+        cas_number: "133407-82-6"
+        target_pathway: "proteasome inhibition"
+        wells: ["D4", "D5", "D6"]
+      - name: "nocodazole"
+        cas_number: "31430-18-9"
+        target_pathway: "microtubule disruption"
+        wells: ["E1", "E2", "E3"]
+      - name: "paclitaxel"
+        cas_number: "33069-62-4"
+        target_pathway: "microtubule stabilization"
+        wells: ["E4", "E5", "E6"]
+
+# ============================================================================
+# PERSONNEL & OPERATORS
+# ============================================================================
+personnel:
+  # Example:
+  # - name: "Operator A"
+  #   role: "Lab Technician"
+  #   certifications:
+  #     - "BSL2"
+  #     - "Hamilton STAR trained"
+  #   availability: "Mon-Fri 9am-5pm"
+
+# ============================================================================
+# EXTERNAL SERVICES
+# ============================================================================
+external_services:
+  # Example:
+  # - provider: "CRO ABC"
+  #   services:
+  #     - "High-content imaging"
+  #     - "CellProfiler analysis"
+  #   cost_per_plate: 150
+  #   turnaround_time_days: 7
+  #   contact: "services@croabc.com"
+
+# ============================================================================
+# ASSAY PROTOCOLS & STANDARD OPERATING PROCEDURES
+# ============================================================================
+assay_protocols:
+  # --------------------------------------------------------------------------
+  # LDH Cytotoxicity Assay - Primary scalar viability measurement
+  # --------------------------------------------------------------------------
+  - assay_id: "ldh_cytotoxicity_phase0"
+    assay_name: "LDH Release Cytotoxicity Assay"
+    assay_type: "viability_scalar"
+    status: "active"
+
+    purpose: "Scalar viability measurement orthogonal to Cell Painting morphology"
+
+    # Why LDH was chosen over alternatives
+    rationale:
+      chosen_over:
+        - assay: "ATP (CellTiter-Glo)"
+          reason: "ATP is confounded by mitochondrial stress compounds (CCCP, oligomycin)"
+          problem: "Mitochondrial dysfunction crashes ATP but cells may still be alive"
+
+        - assay: "Nuclear count from imaging"
+          reason: "Want orthogonal measurement separate from Cell Painting images"
+          problem: "Not truly independent - both from same imaging modality"
+
+        - assay: "Resazurin/PrestoBlue"
+          reason: "Still partially mitochondrial-dependent"
+          problem: "May be affected by mitochondrial stress compounds"
+
+      advantages:
+        - "Measures membrane integrity (true cell death)"
+        - "Completely orthogonal to Cell Painting morphology"
+        - "Not affected by mitochondrial dysfunction"
+        - "Non-destructive (sample supernatant, cells remain for imaging)"
+        - "Same biological sample for both measurements"
+
+    # Principle
+    principle: "When cells die and membranes rupture, cytoplasmic LDH enzyme leaks into culture media. Media is sampled and LDH activity measured by absorbance at 490 nm."
+
+    # Integration with Phase 0 workflow
+    integration_with_cell_painting:
+      measurement_pair: "LDH (scalar) + Cell Painting (morphology)"
+      orthogonality: "Supernatant biochemistry vs cellular morphology"
+      same_biological_sample: true
+      workflow: "Sample supernatant → LDH assay → Fix cells → Cell Painting"
+
+    # Experimental design parameters
+    design_parameters:
+      replicates_per_condition: 4  # From v2 design
+      wells_sampled_for_ldh: "2-3 of 4 replicates"
+      supernatant_volume: "50 µL per well"
+      wells_remaining_for_imaging: "All 4 replicates (cells intact)"
+
+    # Protocol workflow
+    workflow:
+      - step: 1
+        action: "At timepoint (12h, 24h, or 48h)"
+        details: "Cells are in 96-well plates (v2 design: 24 plates, 88 wells/plate)"
+
+      - step: 2
+        action: "Sample supernatant"
+        volume: "50 µL from 2-3 of 4 replicate wells"
+        hardware: "Multichannel pipette or Hamilton for automation"
+        destination: "Fresh 96-well plate for LDH assay"
+
+      - step: 3
+        action: "LDH detection"
+        kit: "Promega CytoTox 96 or equivalent"
+        detection: "Absorbance at 490 nm"
+        hardware: "Tecan Spark Cyto"
+        read_time: "~10 minutes after adding reagent"
+
+      - step: 4
+        action: "Fix cells in original plate"
+        fixative: "4% paraformaldehyde"
+        duration: "20 minutes"
+        note: "All 4 replicate wells remain intact for imaging"
+
+      - step: 5
+        action: "Cell Painting protocol"
+        hardware: "Nikon Ti2"
+        channels: 5
+        sites_per_well: 4
+        note: "Standard Cell Painting with Hoechst, ConA, Phalloidin, MitoTracker, SYTO14"
+
+    # Compound considerations
+    compound_considerations:
+      mitochondrial_stressors:
+        compounds: ["CCCP", "oligomycin"]
+        atp_problem: "Crash ATP production but may not kill cells"
+        ldh_advantage: "Only rises when membranes rupture (true cell death)"
+
+      other_stressors:
+        compounds: ["tBHQ", "H2O2", "tunicamycin", "thapsigargin", "etoposide", "MG132", "nocodazole", "paclitaxel"]
+        note: "LDH measures cytotoxicity independent of mechanism"
+
+    # Hardware requirements
+    hardware_required:
+      liquid_handling:
+        - "Multichannel pipette (manual supernatant transfer)"
+        - "Hamilton STAR/Vantage/STARlet (automated supernatant transfer)"
+
+      detection:
+        - "Tecan Spark Cyto (absorbance at 490 nm)"
+
+      consumables:
+        - "LDH detection kit (Promega CytoTox 96 or equivalent)"
+        - "Extra 96-well plates for LDH assay"
+
+    # Data outputs
+    outputs:
+      ldh_scalar:
+        measurement: "LDH activity (absorbance 490 nm)"
+        units: "A.U. or normalized to controls"
+        biological_meaning: "Cytotoxicity / membrane integrity"
+
+      cell_painting_morphology:
+        measurement: "5-channel morphological features"
+        features: "~1500 CellProfiler features per well"
+        biological_meaning: "Cellular phenotype / mechanism of action"
+
+    # Decision logic for Cell OS
+    use_this_assay_when:
+      - condition: "phase0_screening"
+        reason: "Primary scalar viability measurement for Phase 0"
+      - condition: "compounds_include_mitochondrial_stressors"
+        reason: "ATP would be confounded"
+      - condition: "need_orthogonal_measurement_to_imaging"
+        reason: "Supernatant biochemistry vs cellular morphology"
+
+# ============================================================================
+# NOTES & LIMITATIONS
+# ============================================================================
+notes:
+  - "This inventory should be updated weekly"
+  - "Mark equipment as 'maintenance' when scheduling calibration"
+  - "Track consumable reorder dates in resource_accounting module"
+  - "LDH cytotoxicity assay is the standard scalar viability measurement for Phase 0 screens"
