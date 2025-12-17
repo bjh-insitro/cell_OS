@@ -85,9 +85,13 @@ python standalone_cell_thalamus.py --mode full --workers 72
 
 **Runtime:** ~5 minutes on c5.18xlarge
 
+**✅ S3 Auto-Upload:** The script automatically uploads results to S3 when run on JupyterHub/AWS (boto3 credentials are available in that environment).
+
 ### 6. Download Results
 
-If running on JupyterHub, download the DB:
+Results are automatically uploaded to `s3://insitro-user/brig/cell_thalamus_results.db`.
+
+On your Mac, download them with:
 
 ```bash
 # On JupyterHub: Copy to your home directory

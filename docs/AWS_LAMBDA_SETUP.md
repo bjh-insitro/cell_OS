@@ -1,15 +1,16 @@
 # AWS Lambda Setup for Cell Thalamus
 
-**⚠️ IMPORTANT - PERMISSION BLOCKERS (as of Dec 16, 2025):**
+**⚠️ IMPORTANT - PERMISSION STATUS (as of Dec 16, 2025):**
 
-This setup requires IAM permissions that are not yet granted:
-1. ❌ S3 write access to `s3://insitro-user/brig/*` - **BLOCKED**
-2. ❌ IAM role `cell-thalamus-lambda-role` doesn't exist - **BLOCKED**
-3. ❌ Lambda function creation permissions - **UNKNOWN**
+Lambda deployment requires IAM permissions that are not yet granted:
+1. ❌ **Local Mac → S3 write**: Blocked from `aws s3 cp` with bedrock profile
+2. ✅ **JupyterHub → S3 write**: Working! (boto3 has credentials in that environment)
+3. ❌ **IAM role** `cell-thalamus-lambda-role`: Doesn't exist yet
+4. ❌ **Lambda function creation**: Unknown (role needed first)
 
-**Current status:** Using manual JupyterHub execution instead.
+**Current status:** ✅ **JupyterHub manual execution is working and uploads to S3 automatically!**
 
-**Workaround:** See `docs/JUPYTERHUB_QUICKSTART.md` for manual testing instructions.
+**Recommended approach:** See `docs/JUPYTERHUB_QUICKSTART.md` - run standalone script on JupyterHub, results auto-upload to S3, download with `./scripts/sync_aws_db.sh` on Mac.
 
 ---
 
