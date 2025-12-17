@@ -1,6 +1,19 @@
 # AWS Lambda Setup for Cell Thalamus
 
-This guide explains how to set up automatic execution of Cell Thalamus simulations on AWS Lambda.
+**⚠️ IMPORTANT - PERMISSION BLOCKERS (as of Dec 16, 2025):**
+
+This setup requires IAM permissions that are not yet granted:
+1. ❌ S3 write access to `s3://insitro-user/brig/*` - **BLOCKED**
+2. ❌ IAM role `cell-thalamus-lambda-role` doesn't exist - **BLOCKED**
+3. ❌ Lambda function creation permissions - **UNKNOWN**
+
+**Current status:** Using manual JupyterHub execution instead.
+
+**Workaround:** See `docs/JUPYTERHUB_QUICKSTART.md` for manual testing instructions.
+
+---
+
+This guide explains how to set up automatic execution of Cell Thalamus simulations on AWS Lambda (once permissions are granted).
 
 ## Architecture
 

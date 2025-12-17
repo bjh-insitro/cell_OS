@@ -3,6 +3,12 @@ set -e
 
 # Deploy Cell Thalamus Lambda Function
 # This script packages and deploys the Lambda function to AWS
+#
+# ⚠️  BLOCKED: IAM permissions not granted yet (as of Dec 16, 2025)
+# - S3 write access to s3://insitro-user/brig/* - NOT GRANTED
+# - IAM role cell-thalamus-lambda-role - DOES NOT EXIST
+#
+# USE JUPYTERHUB INSTEAD: See docs/JUPYTERHUB_QUICKSTART.md
 
 LAMBDA_FUNCTION_NAME="cell-thalamus-simulator"
 AWS_REGION="us-west-2"

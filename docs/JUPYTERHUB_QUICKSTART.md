@@ -2,6 +2,12 @@
 
 Last Updated: December 16, 2025
 
+**✅ RECOMMENDED APPROACH:** This is the current method for testing Cell Thalamus on AWS.
+
+AWS Lambda deployment is blocked due to missing IAM permissions (see `AWS_LAMBDA_SETUP.md`). Use this manual JupyterHub workflow until permissions are granted.
+
+---
+
 ## Quick Test Instructions
 
 ### 1. Copy Standalone Script to JupyterHub
