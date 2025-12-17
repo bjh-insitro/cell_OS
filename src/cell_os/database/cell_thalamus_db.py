@@ -307,39 +307,44 @@ class CellThalamusDB:
 
         # Handle normalized viability percentage
         if metric == 'viability_pct':
-            # Get DMSO control mean for this cell line
+            # atp_signal now contains LDH cytotoxicity (high LDH = LOW viability)
+            # Calculate viability as: 100 - (LDH / max_LDH) * 100
+
+            # Get max LDH for this cell line (highest cytotoxicity = 0% viability)
             if timepoint is not None:
                 cursor.execute("""
-                    SELECT AVG(atp_signal)
+                    SELECT MAX(atp_signal)
                     FROM thalamus_results
-                    WHERE design_id = ? AND compound = 'DMSO' AND cell_line = ? AND timepoint_h = ?
+                    WHERE design_id = ? AND cell_line = ? AND timepoint_h = ? AND is_sentinel = 0
                 """, (design_id, cell_line, timepoint))
             else:
                 cursor.execute("""
-                    SELECT AVG(atp_signal)
+                    SELECT MAX(atp_signal)
                     FROM thalamus_results
-                    WHERE design_id = ? AND compound = 'DMSO' AND cell_line = ?
+                    WHERE design_id = ? AND cell_line = ? AND is_sentinel = 0
                 """, (design_id, cell_line))
-            dmso_mean = cursor.fetchone()[0]
+            max_ldh = cursor.fetchone()[0]
 
-            if not dmso_mean or dmso_mean == 0:
-                return []  # Can't normalize without DMSO control
+            if not max_ldh or max_ldh == 0:
+                # If all LDH values are 0, everything is 100% viable
+                max_ldh = 1.0  # Avoid division by zero
 
-            # Get compound data and normalize
+            # Get compound data and calculate viability from LDH
+            # viability = 100 - (ldh / max_ldh) * 100
             if timepoint is not None:
                 cursor.execute("""
-                    SELECT dose_uM, (atp_signal / ?) * 100 as viability_pct
+                    SELECT dose_uM, 100.0 - (atp_signal / ? * 100.0) as viability_pct
                     FROM thalamus_results
                     WHERE design_id = ? AND compound = ? AND cell_line = ? AND timepoint_h = ? AND is_sentinel = 0
                     ORDER BY dose_uM
-                """, (dmso_mean, design_id, compound, cell_line, timepoint))
+                """, (max_ldh, design_id, compound, cell_line, timepoint))
             else:
                 cursor.execute("""
-                    SELECT dose_uM, (atp_signal / ?) * 100 as viability_pct
+                    SELECT dose_uM, 100.0 - (atp_signal / ? * 100.0) as viability_pct
                     FROM thalamus_results
                     WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
                     ORDER BY dose_uM
-                """, (dmso_mean, design_id, compound, cell_line))
+                """, (max_ldh, design_id, compound, cell_line))
             rows = cursor.fetchall()
 
             # Aggregate by dose: compute mean, std, n
