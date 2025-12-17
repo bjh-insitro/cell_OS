@@ -460,6 +460,7 @@ BASELINE_MORPH = {
     'A549':  {'er': 1.00, 'mito': 1.00, 'nucleus': 1.00, 'actin': 1.00, 'rna': 1.00},
     'HepG2': {'er': 1.10, 'mito': 1.20, 'nucleus': 1.00, 'actin': 0.95, 'rna': 1.10},
     'iPSC_NGN2': {'er': 0.85, 'mito': 1.47, 'nucleus': 0.90, 'actin': 1.33, 'rna': 0.78},  # Neurons: low ER, very high mito, high actin (neurites)
+    'iPSC_Microglia': {'er': 1.40, 'mito': 1.13, 'nucleus': 0.85, 'actin': 1.25, 'rna': 1.06},  # Immune cells: high ER (cytokines), high actin (phagocytosis)
 }
 
 # Channel-specific biological variability (CV). (Not technical noise. Real per-well biology.)
@@ -642,16 +643,18 @@ def _is_edge_well(well_position: str, plate_format: int = 96) -> bool:
 # Cell-line proliferation index (relative doubling time)
 # Higher = faster cycling (more sensitive to cell cycle poisons)
 PROLIF_INDEX = {
-    'A549': 1.3,      # Faster cycling (lung cancer)
-    'HepG2': 0.8,     # Slower cycling (hepatoma)
-    'iPSC_NGN2': 0.1, # Post-mitotic (neurons barely divide)
+    'A549': 1.3,           # Faster cycling (lung cancer)
+    'HepG2': 0.8,          # Slower cycling (hepatoma)
+    'iPSC_NGN2': 0.1,      # Post-mitotic (neurons barely divide)
+    'iPSC_Microglia': 0.6, # Moderate proliferation (can divide but slower than cancer)
 }
 
 # Cell-line-specific LDH baseline (released from dead/dying cells)
 BASELINE_LDH = {
     'A549': 50000.0,
     'HepG2': 50000.0,
-    'iPSC_NGN2': 70000.0,  # Very high ATP/LDH (neurons have extreme metabolic rate)
+    'iPSC_NGN2': 70000.0,       # Very high ATP/LDH (neurons have extreme metabolic rate)
+    'iPSC_Microglia': 65000.0,  # High ATP/LDH (active immune cells)
 }
 
 # Cell-line-specific sensitivity (IC50 multipliers)
@@ -660,22 +663,22 @@ BASELINE_LDH = {
 # NOTE: Microtubule drugs (nocodazole, paclitaxel) use PROLIF_INDEX instead (see calculation below)
 CELL_LINE_SENSITIVITY = {
     # Oxidative stress
-    'tBHQ': {'A549': 1.5, 'HepG2': 0.7, 'iPSC_NGN2': 0.5},      # Neurons extremely sensitive (high ROS baseline)
-    'H2O2': {'A549': 0.7, 'HepG2': 1.5, 'iPSC_NGN2': 0.4},      # Neurons extremely sensitive (oxidative damage accumulates)
+    'tBHQ': {'A549': 1.5, 'HepG2': 0.7, 'iPSC_NGN2': 0.5, 'iPSC_Microglia': 1.2},      # Microglia resistant (produce ROS as weapon)
+    'H2O2': {'A549': 0.7, 'HepG2': 1.5, 'iPSC_NGN2': 0.4, 'iPSC_Microglia': 1.5},      # Microglia very resistant (high antioxidant capacity)
 
     # ER stress (HepG2 more sensitive - higher baseline ER load, secretory burden)
-    'tunicamycin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.9},
-    'thapsigargin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.9},
+    'tunicamycin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.9, 'iPSC_Microglia': 0.8},
+    'thapsigargin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.9, 'iPSC_Microglia': 0.8},
 
     # Mitochondrial stress (Neurons EXTREMELY sensitive - total OXPHOS dependence)
-    'CCCP': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.3},
-    'oligomycin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.3},
+    'CCCP': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.3, 'iPSC_Microglia': 0.9},
+    'oligomycin': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.3, 'iPSC_Microglia': 0.9},
 
     # DNA damage (A549 more sensitive - cleaner apoptotic response)
-    'etoposide': {'A549': 0.7, 'HepG2': 1.3, 'iPSC_NGN2': 0.8},
+    'etoposide': {'A549': 0.7, 'HepG2': 1.3, 'iPSC_NGN2': 0.8, 'iPSC_Microglia': 1.3},  # Immune cells resist DNA damage
 
-    # Proteasome inhibition (Neurons sensitive - accumulate misfolded proteins)
-    'MG132': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.7},
+    # Proteasome inhibition (Microglia sensitive - high protein turnover for cytokines)
+    'MG132': {'A549': 1.4, 'HepG2': 0.7, 'iPSC_NGN2': 0.7, 'iPSC_Microglia': 0.6},
 }
 
 # ============================================================================

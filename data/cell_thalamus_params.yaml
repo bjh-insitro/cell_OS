@@ -222,12 +222,20 @@ baseline_morphology:
     actin: 160.0     # High actin (neurite outgrowth, cytoskeleton)
     rna: 140.0       # Moderate RNA (post-mitotic, less transcription than dividing cells)
 
+  iPSC_Microglia:  # iPSC-derived microglia (brain immune cells)
+    er: 140.0        # High ER (cytokine/protein secretion)
+    mito: 170.0      # High mitochondria (active immune cells)
+    nucleus: 170.0   # Moderate nucleus
+    actin: 150.0     # High actin (phagocytosis, migration)
+    rna: 190.0       # High RNA (inflammatory protein synthesis)
+
 # ATP viability baseline (luminescence units)
 baseline_atp:
   A549: 50000.0
   HepG2: 60000.0  # Higher metabolic activity
   U2OS: 45000.0
   iPSC_NGN2: 70000.0  # Very high ATP (neurons have extremely high metabolic rate)
+  iPSC_Microglia: 65000.0  # High ATP (active immune cells)
 
 # Technical variance parameters (coefficient of variation)
 # Tuned so DMSO controls have ~2-3% total CV (realistic for high-content screening)
@@ -350,3 +358,16 @@ cell_line_ic50_modifiers:
     MG132: 0.7         # Sensitive (neurons accumulate misfolded proteins)
     nocodazole: 2.0    # Resistant (need functional microtubules for axonal transport)
     paclitaxel: 2.5    # Resistant (stabilizing microtubules less toxic to post-mitotic cells)
+
+  iPSC_Microglia:
+    # iPSC-derived microglia - Brain immune cells, inflammatory response, ROS producers
+    tBHQ: 1.2          # Resistant to oxidative stress (produce ROS as defense mechanism)
+    H2O2: 1.5          # More resistant (high antioxidant capacity, ROS is their weapon)
+    tunicamycin: 0.8   # Somewhat sensitive (high ER protein synthesis for cytokines)
+    thapsigargin: 0.8  # Somewhat sensitive
+    CCCP: 0.9          # Moderately sensitive (metabolically active but not neuron-level dependent)
+    oligomycin: 0.9    # Moderately sensitive
+    etoposide: 1.3     # Resistant (immune cells often resist DNA damage)
+    MG132: 0.6         # Sensitive (high protein turnover, cytokine production)
+    nocodazole: 1.1    # Slightly resistant (dividing but not fast)
+    paclitaxel: 1.2    # Slightly resistant
