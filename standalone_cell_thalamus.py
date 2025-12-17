@@ -83,6 +83,7 @@ import uuid
 import sqlite3
 import os
 import hashlib
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from multiprocessing import Pool, cpu_count
 from datetime import datetime
@@ -159,6 +160,31 @@ def get_rng() -> RNGStreams:
     if _RNG_STREAMS is None:
         _RNG_STREAMS = RNGStreams(seed=0)
     return _RNG_STREAMS
+
+# ============================================================================
+# RNG Usage Rules (Treat rng_assay Like Radioactive Waste)
+# ============================================================================
+#
+# CRITICAL: For any measurement that lands in the database, use assay_rng_for_well()
+# NOT the global rng_assay stream. Otherwise workers=1 will differ from workers=N.
+#
+# ✅ OK to use rng_assay for:
+#    - Optional diagnostics (progress jitter, logging noise)
+#    - QC subsampling (random selection of wells for spot checks)
+#    - Non-deterministic features (if explicitly requested by user)
+#
+# ❌ NOT OK to use rng_assay for:
+#    - Per-well morphology noise (use assay_rng_for_well with "morph_bio" tag)
+#    - Per-well LDH noise (use assay_rng_for_well with "ldh_bio" tag)
+#    - Any measurement that lands in thalamus_results table
+#    - Any value that affects physics or downstream analysis
+#
+# Rule of thumb: If it's addressable by (design_id, plate_id, cell_line, well_id),
+# it MUST use assay_rng_for_well(). No exceptions.
+#
+# Future guardrail: In debug mode, consider wrapping rng_assay to refuse usage
+# when IN_DB_WRITE_SECTION flag is true. Slightly annoying, massively future-proof.
+# ============================================================================
 
 # Plate ID semantics: plate_id represents a conceptual experimental unit
 # (day, operator, replicate, timepoint) that contains TWO physical plates
@@ -1164,7 +1190,8 @@ def run_parallel_simulation(
     mode: str = "full",
     workers: Optional[int] = None,
     db_path: str = "cell_thalamus_results.db",
-    seed: int = 0
+    seed: int = 0,
+    design_id: Optional[str] = None
 ) -> str:
     """Run parallel simulation."""
 
@@ -1179,12 +1206,32 @@ def run_parallel_simulation(
         compounds = ['tBHQ', 'H2O2', 'tunicamycin', 'thapsigargin', 'CCCP',
                     'oligomycin', 'etoposide', 'MG132', 'nocodazole', 'paclitaxel']
 
-    # Generate deterministic design_id from parameters
-    # Same parameters (mode, seed, compounds, cell_lines) → same design_id
-    # This enables workers=1 vs workers=N comparison within a single conceptual design
-    design_key = f"{mode}|{seed}|{','.join(sorted(cell_lines))}|{','.join(sorted(compounds))}"
-    design_hash = hashlib.blake2s(design_key.encode('utf-8'), digest_size=16).hexdigest()
-    design_id = f"{design_hash[:8]}-{design_hash[8:12]}-{design_hash[12:16]}-{design_hash[16:20]}-{design_hash[20:]}"
+    # Generate deterministic design_id from ALL run-defining parameters
+    # This prevents accidental design_id collisions when parameters vary
+    if design_id is None:
+        # Build canonical dict of all parameters that affect outputs
+        # Future-proof: if you add new parameters, add them here
+        design_params = {
+            "mode": mode,
+            "seed": seed,
+            "cell_lines": sorted(cell_lines),
+            "compounds": sorted(compounds),
+            # Include key constants that might vary in future versions
+            # (Currently fixed, but safeguards against whack-a-mole)
+            "tech_cv": TECH_CV,
+            "morph_cv": MORPH_CV,
+            "baseline_morph_keys": sorted(BASELINE_MORPH.keys()),
+            "compound_params_keys": sorted(COMPOUND_PARAMS.keys()),
+            # Version marker (change this if simulation logic changes significantly)
+            "sim_version": "2025-12-17-addressable-rng"
+        }
+
+        # JSON dump with stable separators and sorted keys
+        design_key = json.dumps(design_params, sort_keys=True, separators=(',', ':'))
+        design_hash = hashlib.blake2s(design_key.encode('utf-8'), digest_size=16).hexdigest()
+        design_id = f"{design_hash[:8]}-{design_hash[8:12]}-{design_hash[12:16]}-{design_hash[16:20]}-{design_hash[20:]}"
+
+    # If user provided custom design_id, use it as-is (for intentional replicate separation)
 
     logger.info("=" * 70)
     logger.info("PARALLEL CELL THALAMUS SIMULATION")
@@ -1447,6 +1494,8 @@ Examples:
     parser.add_argument('--portfolio-json', type=str, help='JSON string with portfolio configuration for autonomous loop')
     parser.add_argument('--seed', type=int, default=0,
                         help='RNG seed for reproducibility (default: 0 for fully deterministic)')
+    parser.add_argument('--design-id', type=str, default=None,
+                        help='Override design_id (for intentional replicate separation). Default: deterministic from parameters.')
     parser.add_argument('--self-test', action='store_true',
                         help='Run stream isolation self-test and exit')
 
@@ -1492,7 +1541,8 @@ Examples:
         mode=args.mode,
         workers=args.workers,
         db_path=args.db_path,
-        seed=args.seed
+        seed=args.seed,
+        design_id=args.design_id
     )
 
     print(f"\n✓ Complete! Design ID: {design_id}")
