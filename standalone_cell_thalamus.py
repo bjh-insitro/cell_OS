@@ -136,6 +136,10 @@ class RNGStreams:
     - seed=0 → Fully deterministic (physics + measurements)
     - seed=N → Independent run with seed N
     - ALWAYS pass explicitly (never rely on random seed)
+
+    IMPORTANT: rng_assay is kept for non-well-addressable randomness (e.g., QC
+    subsampling, progress jitter, optional diagnostics). For per-well measurements
+    that land in the DB, use assay_rng_for_well() to ensure workers=1 equals workers=N.
     """
     seed: int = 0
 
@@ -143,7 +147,7 @@ class RNGStreams:
         base = int(self.seed) & 0x7FFFFFFF
         self.rng_growth = np.random.default_rng(base + 1)      # Growth dynamics, cell count
         self.rng_treatment = np.random.default_rng(base + 2)   # Treatment variability
-        self.rng_assay = np.random.default_rng(base + 3)       # Measurement noise
+        self.rng_assay = np.random.default_rng(base + 3)       # Non-well-addressable assay randomness
 
 
 # Global RNG streams (will be initialized in main())
@@ -632,7 +636,7 @@ TECH_CV = {
 def _get_attr(obj, name, default=None):
     return getattr(obj, name, default)
 
-def assay_rng_for_well(plate_id: str, cell_line: str, well_id: str, tag: str):
+def assay_rng_for_well(design_id: str, plate_id: str, cell_line: str, well_id: str, tag: str):
     """
     Generate deterministic per-well RNG for assay measurements.
 
@@ -642,11 +646,12 @@ def assay_rng_for_well(plate_id: str, cell_line: str, well_id: str, tag: str):
     Observer independence is still maintained (physics RNG streams unchanged).
     This just makes measurement noise deterministic per-well.
 
-    NOTE: Does NOT include design_id in seed, so that different runs (with different
-    design_ids) produce the same measurement noise for comparison purposes.
-    This enables: workers=1 run vs workers=64 run comparison.
+    IMPORTANT: Includes design_id in seed to avoid correlated measurement noise
+    across different designs. Different designs SHOULD have different assay noise.
+    Workers=1 vs workers=N comparison works WITHIN a single design_id.
 
     Args:
+        design_id: Design identifier (prevents cross-design correlated noise)
         plate_id: Plate identifier
         cell_line: Cell line name
         well_id: Well position (e.g., 'A01')
@@ -655,7 +660,7 @@ def assay_rng_for_well(plate_id: str, cell_line: str, well_id: str, tag: str):
     Returns:
         Numpy RNG generator seeded by stable key
     """
-    s = f"{tag}|{plate_id}|{cell_line}|{well_id}"
+    s = f"{tag}|{design_id}|{plate_id}|{cell_line}|{well_id}"
     return np.random.default_rng(stable_u32(s))
 
 def _is_edge_well(well_position: str, plate_format: int = 96) -> bool:
@@ -848,7 +853,7 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         # This ensures workers=1 equals workers=N (not dependent on shared stream consumption order)
         # Observer independence still maintained (physics RNG streams unchanged)
         if effective_bio_cv > 0:
-            rng_well_morph = assay_rng_for_well(well.plate_id, well.cell_line, well.well_id, "morph_bio")
+            rng_well_morph = assay_rng_for_well(design_id, well.plate_id, well.cell_line, well.well_id, "morph_bio")
             for ch in CHANNELS:
                 morph[ch] *= rng_well_morph.normal(1.0, effective_bio_cv)
 
@@ -1048,7 +1053,7 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         # CRITICAL: Per-well RNG ensures workers=1 equals workers=N
         ldh_cv = 0.15
         if ldh_cv > 0:
-            rng_well_ldh = assay_rng_for_well(well.plate_id, well.cell_line, well.well_id, "ldh_bio")
+            rng_well_ldh = assay_rng_for_well(design_id, well.plate_id, well.cell_line, well.well_id, "ldh_bio")
             ldh_signal *= rng_well_ldh.normal(1.0, ldh_cv)
 
         # Add technical noise: reuse same batch factors as morphology (matches main codebase)
@@ -1158,14 +1163,13 @@ def run_parallel_simulation(
     compounds: Optional[List[str]] = None,
     mode: str = "full",
     workers: Optional[int] = None,
-    db_path: str = "cell_thalamus_results.db"
+    db_path: str = "cell_thalamus_results.db",
+    seed: int = 0
 ) -> str:
     """Run parallel simulation."""
 
     if workers is None:
         workers = cpu_count()
-
-    design_id = str(uuid.uuid4())
 
     # Default parameters
     if cell_lines is None:
@@ -1174,6 +1178,13 @@ def run_parallel_simulation(
         # Original 10 compounds from Cell Thalamus Phase 0
         compounds = ['tBHQ', 'H2O2', 'tunicamycin', 'thapsigargin', 'CCCP',
                     'oligomycin', 'etoposide', 'MG132', 'nocodazole', 'paclitaxel']
+
+    # Generate deterministic design_id from parameters
+    # Same parameters (mode, seed, compounds, cell_lines) → same design_id
+    # This enables workers=1 vs workers=N comparison within a single conceptual design
+    design_key = f"{mode}|{seed}|{','.join(sorted(cell_lines))}|{','.join(sorted(compounds))}"
+    design_hash = hashlib.blake2s(design_key.encode('utf-8'), digest_size=16).hexdigest()
+    design_id = f"{design_hash[:8]}-{design_hash[8:12]}-{design_hash[12:16]}-{design_hash[16:20]}-{design_hash[20:]}"
 
     logger.info("=" * 70)
     logger.info("PARALLEL CELL THALAMUS SIMULATION")
@@ -1480,7 +1491,8 @@ Examples:
     design_id = run_parallel_simulation(
         mode=args.mode,
         workers=args.workers,
-        db_path=args.db_path
+        db_path=args.db_path,
+        seed=args.seed
     )
 
     print(f"\n✓ Complete! Design ID: {design_id}")
