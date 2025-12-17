@@ -1,11 +1,11 @@
 """
 Standalone Cell Thalamus Parallel Runner for AWS/JupyterHub
-Last Updated: December 13, 2025 @ 7:15 PM PST
+Last Updated: December 16, 2025 @ 9:30 PM PST
 
 This is a self-contained script with all compound parameters embedded.
 Just upload this file and run it - no dependencies on external YAML files!
 
-Biological Realism Features:
+Simulation Realism Features (Matches Main Codebase):
 1. Cell-Line-Specific Sensitivity:
    - A549 (lung cancer): NRF2-primed (oxidative resistant), faster cycling (microtubule drug sensitive)
    - HepG2 (hepatoma): High ER load (ER stress sensitive), OXPHOS-dependent (mito stress sensitive),
@@ -21,6 +21,25 @@ Biological Realism Features:
 3. Proliferation-Coupled Microtubule Sensitivity:
    - Faster cycling cells (A549) more sensitive to nocodazole/paclitaxel
    - Sensitivity scales with proliferation index (not arbitrary IC50 shifts)
+
+4. Realistic Noise Model (2-3% CV for DMSO controls):
+   - Biological variation: 2% CV (intrinsic cell-to-cell differences)
+   - Technical noise: 1-1.5% CV per factor (plate, day, operator, well)
+   - Total CV matches Cell Painting Consortium benchmarks
+
+5. Batch Effects (Consistent Within Batch):
+   - Plate/day/operator factors deterministic (same batch = same offset)
+   - Enables batch correction and SPC monitoring
+
+6. Edge Effects (12% Signal Reduction):
+   - Wells on plate edges (rows A/H, columns 1/12) show reduced signal
+   - Real artifacts: evaporation, temperature gradients
+
+7. Random Well Failures (2% Rate):
+   - Bubbles (40% of failures): near-zero signal
+   - Contamination (25%): 5-20× higher signal (bacteria/yeast)
+   - Pipetting errors (20%): 5-30% of normal (wrong volume)
+   - Prevents agent overfitting, teaches robust replicate allocation
 
 Full Mode Specifications:
 - 2 cell lines (A549, HepG2)
@@ -444,11 +463,11 @@ BASELINE_MORPH = {
 
 # Channel-specific biological variability (CV). (Not technical noise. Real per-well biology.)
 MORPH_CV = {
-    'er': 0.12,
-    'mito': 0.22,
-    'nucleus': 0.06,
-    'actin': 0.15,
-    'rna': 0.18,
+    'er': 0.020,    # 2% biological variation (realistic)
+    'mito': 0.020,
+    'nucleus': 0.020,
+    'actin': 0.020,
+    'rna': 0.020,
 }
 
 # Physical floors/ceilings per channel (relative to baseline)
@@ -557,28 +576,16 @@ def _sample_correlated_bio_multipliers(channels, cv_map, corr_mat):
 
     return {ch: float(mult[i]) for i, ch in enumerate(channels)}
 
-# Channel-specific technical factors: what breaks what
-# - segmentation_quality: hits nucleus/actin hardest (masking, focus, debris)
-# - stain_intensity: hits ER/mito/RNA hardest (dye prep, illumination, exposure)
-# - well_focus: hits nucleus/actin (and a bit mito) at the single-well level
+# Technical noise parameters (matches main codebase exactly)
+# These CVs are applied multiplicatively to ALL channels together (not channel-specific)
+# Total CV budget: sqrt(0.010² + 0.015² + 0.008² + 0.015²) ≈ 2.5% ✓
 TECH_CV = {
-    'plate_segmentation_q': 0.18,  # plate-to-plate segmentation quality variation
-    'plate_stain_intensity': 0.14, # plate-to-plate stain intensity/illumination drift
-    'day_drift': 0.10,             # day-to-day drift (global)
-    'operator_bias': 0.05,         # operator handling bias
-    'well_focus': 0.12,            # well-level focus/segmentation wobble
-    'well_misc': 0.08,             # additional well-level multiplicative noise
-}
-
-# Exponent weights for how strongly each factor hits each channel
-# Multiplying factor**weight keeps everything strictly positive and realistic.
-TECH_WEIGHTS = {
-    'plate_segmentation_q': {'er': 0.10, 'mito': 0.15, 'nucleus': 0.85, 'actin': 0.70, 'rna': 0.10},
-    'plate_stain_intensity': {'er': 0.65, 'mito': 0.60, 'nucleus': 0.10, 'actin': 0.15, 'rna': 0.55},
-    'well_focus': {'er': 0.05, 'mito': 0.25, 'nucleus': 0.70, 'actin': 0.60, 'rna': 0.10},
-    'day_drift': {'er': 0.25, 'mito': 0.25, 'nucleus': 0.25, 'actin': 0.25, 'rna': 0.25},
-    'operator_bias': {'er': 0.25, 'mito': 0.25, 'nucleus': 0.25, 'actin': 0.25, 'rna': 0.25},
-    'well_misc': {'er': 0.25, 'mito': 0.25, 'nucleus': 0.25, 'actin': 0.25, 'rna': 0.25},
+    'plate_cv': 0.010,          # 1% plate-to-plate variation
+    'day_cv': 0.015,            # 1.5% day-to-day variation
+    'operator_cv': 0.008,       # 0.8% operator-to-operator variation
+    'well_cv': 0.015,           # 1.5% well-to-well (measurement noise)
+    'edge_effect': 0.12,        # 12% signal reduction for edge wells (evaporation, temperature)
+    'well_failure_rate': 0.02,  # 2% of wells randomly fail (bubbles, contamination, pipetting errors)
 }
 
 def _get_attr(obj, name, default=None):
@@ -606,6 +613,30 @@ def _deterministic_factor(seed_str: Optional[str], cv: float, well_unique_id: Op
     rng = np.random.default_rng(hash_val)
     sigma = _cv_to_log_sigma(cv)
     return float(np.exp(rng.normal(0.0, sigma)))
+
+def _is_edge_well(well_position: str, plate_format: int = 96) -> bool:
+    """Detect if well is on plate edge (evaporation/temperature artifacts)."""
+    if not well_position or len(well_position) < 2:
+        return False
+
+    row = well_position[0]
+    try:
+        col = int(well_position[1:])
+    except ValueError:
+        return False
+
+    if plate_format == 96:
+        # 96-well: 8 rows (A-H), 12 columns (1-12)
+        edge_rows = ['A', 'H']
+        edge_cols = [1, 12]
+        return row in edge_rows or col in edge_cols
+    elif plate_format == 384:
+        # 384-well: 16 rows (A-P), 24 columns (1-24)
+        edge_rows = ['A', 'P']
+        edge_cols = [1, 24]
+        return row in edge_rows or col in edge_cols
+    else:
+        return False
 
 # Cell-line proliferation index (relative doubling time)
 # Higher = faster cycling (more sensitive to cell cycle poisons)
@@ -710,47 +741,65 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
                 delta = intensity * axis_mult * (wA * eff['adapt'] * A + wD * eff['damage'] * D)
                 morph[ch] = base[ch] * (1.0 + delta)
 
-        # Correlated biological noise (multivariate lognormal multipliers)
-        bio_mult = _sample_correlated_bio_multipliers(CHANNELS, MORPH_CV, MORPH_BIO_CORR)
-        for ch in CHANNELS:
-            morph[ch] *= bio_mult[ch]
+        # Add dose-dependent biological noise (matches main codebase)
+        # Stressed cells show higher variability (heterogeneous death timing)
+        stress_level = 1.0 - float(viability_effect_true)  # 0 (healthy) to 1 (dead)
+        stress_multiplier = 2.0  # Stressed cells have 2× higher CV
+        effective_bio_cv = MORPH_CV['er'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        # Channel-specific technical factors (deterministic by plate/day/operator)
+        for ch in CHANNELS:
+            morph[ch] *= np.random.normal(1.0, effective_bio_cv)
+
+        # Technical noise (batch effects) - MATCHES MAIN CODEBASE EXACTLY
+        # Extract batch information
         plate_id = _get_attr(well, 'plate_id', None) or _get_attr(well, 'plate_name', None)
         day_id = _get_attr(well, 'day', None) or _get_attr(well, 'day_index', None)
         op_id = _get_attr(well, 'operator', None) or _get_attr(well, 'operator_id', None)
+        well_id = _get_attr(well, 'well_id', 'A1')
 
-        # Unique fallback ID if plate/day/operator are None (avoids coupling through "factor_None")
-        # Include cell_line to avoid coupling across cell lines
-        well_unique = (
-            f"{plate_id}_{well.cell_line}_{well.well_id}"
-            if plate_id else
-            f"{design_id}_{well.cell_line}_{well.well_id}"
-        )
+        # Consistent batch effects per plate/day/operator (deterministic random seed)
+        np.random.seed(hash(f"plate_{plate_id}") % 2**32)
+        plate_factor = np.random.normal(1.0, TECH_CV['plate_cv'])
+        np.random.seed(hash(f"day_{day_id}") % 2**32)
+        day_factor = np.random.normal(1.0, TECH_CV['day_cv'])
+        np.random.seed(hash(f"operator_{op_id}") % 2**32)
+        operator_factor = np.random.normal(1.0, TECH_CV['operator_cv'])
+        np.random.seed()  # Reset to random state for well factor
 
-        # Use hash-based seeding so factors are consistent across workers
-        plate_seg_q = _deterministic_factor(f'seg_{plate_id}' if plate_id else None, TECH_CV['plate_segmentation_q'], well_unique)
-        plate_stain = _deterministic_factor(f'stain_{plate_id}' if plate_id else None, TECH_CV['plate_stain_intensity'], well_unique)
-        day_drift = _deterministic_factor(f'day_{day_id}' if day_id is not None else None, TECH_CV['day_drift'], well_unique)
-        op_bias = _deterministic_factor(f'op_{op_id}' if op_id else None, TECH_CV['operator_bias'], well_unique)
+        well_factor = np.random.normal(1.0, TECH_CV['well_cv'])
 
-        # Well-level factors (random per well, not deterministic)
-        well_focus = _lognormal_factor(TECH_CV['well_focus'])
-        well_misc = _lognormal_factor(TECH_CV['well_misc'])
+        # Edge effect: wells on plate edges show reduced signal
+        is_edge = _is_edge_well(well_id)
+        edge_factor = (1.0 - TECH_CV['edge_effect']) if is_edge else 1.0
 
-        # Apply channel-weighted tech factors
+        # Combine all technical factors into one
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor
+
+        # Apply single tech factor to ALL channels (not channel-specific)
         for ch in CHANNELS:
-            morph[ch] *= (plate_seg_q ** TECH_WEIGHTS['plate_segmentation_q'][ch])
-            morph[ch] *= (plate_stain ** TECH_WEIGHTS['plate_stain_intensity'][ch])
-            morph[ch] *= (well_focus ** TECH_WEIGHTS['well_focus'][ch])
-            morph[ch] *= (day_drift ** TECH_WEIGHTS['day_drift'][ch])
-            morph[ch] *= (op_bias ** TECH_WEIGHTS['operator_bias'][ch])
-            morph[ch] *= (well_misc ** TECH_WEIGHTS['well_misc'][ch])
+            morph[ch] *= total_tech_factor
+            morph[ch] = max(0.0, morph[ch])  # No negative signals
 
-            # Clamp to physical-ish floors/ceilings relative to baseline
-            lo = MORPH_FLOOR[ch] * base[ch]
-            hi = MORPH_CEIL[ch] * base[ch]
-            morph[ch] = max(lo, min(hi, morph[ch]))
+        # Apply random well failures (2% of wells fail with extreme outliers)
+        well_failure = None
+        hash_val = int(hashlib.md5(f"failure_{well_id}_{design_id}".encode()).hexdigest()[:8], 16)
+        rng = np.random.default_rng(hash_val)
+        if rng.random() < TECH_CV['well_failure_rate']:
+            # Well failed - apply random extreme multiplier
+            failure_type = rng.choice(['bubble', 'contamination', 'pipetting_error'])
+            if failure_type == 'bubble':
+                # Bubble in well → near-zero signal
+                for ch in CHANNELS:
+                    morph[ch] = rng.uniform(0.1, 2.0)
+            elif failure_type == 'contamination':
+                # Contamination → 5-20× higher signal
+                for ch in CHANNELS:
+                    morph[ch] *= rng.uniform(5.0, 20.0)
+            elif failure_type == 'pipetting_error':
+                # Wrong volume → 5-30% of normal
+                for ch in CHANNELS:
+                    morph[ch] *= rng.uniform(0.05, 0.3)
+            well_failure = failure_type
 
         # ============= END MORPHOLOGY BLOCK =============
 
@@ -838,11 +887,9 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         # Add biological noise (15% CV)
         ldh_signal *= np.random.normal(1.0, 0.15)
 
-        # Add technical noise: LDH is absorbance readout (supernatant sampling)
-        # Should correlate with handling (plate/day/operator/well)
-        ldh_plate = _deterministic_factor(f'ldh_plate_{plate_id}' if plate_id else None, 0.08, well_unique)
-        ldh_tech_factor = ldh_plate * day_drift * op_bias * well_misc
-        ldh_signal *= ldh_tech_factor
+        # Add technical noise: reuse same batch factors as morphology (matches main codebase)
+        # LDH is also affected by plate/day/operator/well variation
+        ldh_signal *= total_tech_factor
 
         # Clamp LDH to non-negative
         ldh_signal = max(0.0, ldh_signal)

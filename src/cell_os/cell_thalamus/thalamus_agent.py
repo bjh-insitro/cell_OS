@@ -131,11 +131,23 @@ class CellThalamusAgent:
             self.hardware.advance_time(remaining_time)
 
         # 5. Run assays
-        # Cell Painting (morphology)
-        painting_result = self.hardware.cell_painting_assay(vessel_id)
+        # Cell Painting (morphology) - pass batch metadata for noise model
+        painting_result = self.hardware.cell_painting_assay(
+            vessel_id,
+            plate_id=well.plate_id,
+            day=well.day,
+            operator=well.operator,
+            well_position=well.well_id
+        )
 
-        # ATP viability (scalar)
-        atp_result = self.hardware.atp_viability_assay(vessel_id)
+        # ATP viability (scalar) - pass batch metadata for noise model
+        atp_result = self.hardware.atp_viability_assay(
+            vessel_id,
+            plate_id=well.plate_id,
+            day=well.day,
+            operator=well.operator,
+            well_position=well.well_id
+        )
 
         # 6. Clean up vessel to save memory
         if vessel_id in self.hardware.vessel_states:

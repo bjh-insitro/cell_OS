@@ -1370,6 +1370,172 @@ async def get_watcher_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/thalamus/designs/{design_id}/mechanism-recovery")
+async def get_mechanism_recovery_stats(design_id: str):
+    """
+    Compute mechanism recovery statistics for a design.
+
+    Returns separation ratios and centroid distances for:
+    - All doses mixed (baseline collapse)
+    - Mid-dose 12h only (optimal separation)
+    - High-dose 48h only (death signature)
+    """
+    try:
+        import numpy as np
+        from sklearn.decomposition import PCA
+        from sklearn.preprocessing import StandardScaler
+        from collections import defaultdict
+
+        db = CellThalamusDB(DB_PATH)
+
+        # EC50 map for dose stratification
+        EC50_MAP = {
+            'tBHQ': 30.0, 'H2O2': 100.0, 'tunicamycin': 1.0, 'thapsigargin': 0.5,
+            'CCCP': 5.0, 'oligomycin': 1.0, 'etoposide': 10.0, 'MG132': 1.0,
+            'nocodazole': 0.5, 'paclitaxel': 0.01,
+        }
+
+        STRESS_AXES = {
+            'tBHQ': 'oxidative', 'H2O2': 'oxidative',
+            'tunicamycin': 'er_stress', 'thapsigargin': 'er_stress',
+            'CCCP': 'mitochondrial', 'oligomycin': 'mitochondrial',
+            'etoposide': 'dna_damage', 'MG132': 'proteasome',
+            'nocodazole': 'microtubule', 'paclitaxel': 'microtubule',
+        }
+
+        def load_and_filter(dose_filter='all', timepoint_filter=None):
+            """Load morphology data with optional dose/timepoint filtering."""
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT compound, cell_line, timepoint_h, dose_uM,
+                       morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna
+                FROM thalamus_results
+                WHERE design_id = ? AND is_sentinel = 0 AND compound != 'DMSO' AND dose_uM > 0
+            """, (design_id,))
+
+            rows = cursor.fetchall()
+            data = []
+            metadata = []
+
+            for row in rows:
+                compound, cell_line, timepoint, dose, er, mito, nucleus, actin, rna = row
+
+                # Timepoint filter
+                if timepoint_filter is not None and timepoint != timepoint_filter:
+                    continue
+
+                # Dose filter
+                ec50 = EC50_MAP.get(compound)
+                if ec50 is None:
+                    continue
+
+                dose_ratio = dose / ec50
+
+                if dose_filter == 'mid' and not (0.5 <= dose_ratio <= 2.0):
+                    continue
+                elif dose_filter == 'high' and dose_ratio < 5.0:
+                    continue
+
+                stress_axis = STRESS_AXES.get(compound, 'unknown')
+                morph_vector = np.array([er, mito, nucleus, actin, rna])
+
+                data.append(morph_vector)
+                metadata.append({'stress_axis': stress_axis})
+
+            return np.array(data), metadata
+
+        def compute_separation(X, metadata):
+            """Compute PCA and separation ratio."""
+            if len(X) < 10:
+                return 0.0, 0.0, [], []
+
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            pca = PCA(n_components=2)
+            X_pca = pca.fit_transform(X_scaled)
+
+            # Compute separation ratio
+            centroids = defaultdict(lambda: {'pc1': [], 'pc2': []})
+            for i, meta in enumerate(metadata):
+                stress_axis = meta['stress_axis']
+                centroids[stress_axis]['pc1'].append(X_pca[i, 0])
+                centroids[stress_axis]['pc2'].append(X_pca[i, 1])
+
+            within_var = 0
+            between_var = 0
+            global_centroid = X_pca.mean(axis=0)
+
+            for stress_axis, data in centroids.items():
+                class_centroid = np.array([np.mean(data['pc1']), np.mean(data['pc2'])])
+                between_var += len(data['pc1']) * np.sum((class_centroid - global_centroid)**2)
+
+                for i, meta in enumerate(metadata):
+                    if meta['stress_axis'] == stress_axis:
+                        point = X_pca[i]
+                        within_var += np.sum((point - class_centroid)**2)
+
+            separation_ratio = between_var / (within_var + 1e-9)
+
+            # Compute average pairwise centroid distance
+            axes = list(centroids.keys())
+            distances = []
+            for i, ax1 in enumerate(axes):
+                for ax2 in axes[i+1:]:
+                    c1 = np.array([np.mean(centroids[ax1]['pc1']), np.mean(centroids[ax1]['pc2'])])
+                    c2 = np.array([np.mean(centroids[ax2]['pc1']), np.mean(centroids[ax2]['pc2'])])
+                    dist = np.linalg.norm(c1 - c2)
+                    distances.append(dist)
+
+            centroid_distance = np.mean(distances) if distances else 0.0
+
+            # Return PCA coordinates for plotting
+            pc_scores = X_pca.tolist()
+
+            return separation_ratio, centroid_distance, pc_scores, metadata
+
+        # Compute stats for each condition
+        X_all, meta_all = load_and_filter(dose_filter='all')
+        sep_all, dist_all, pc_all, pc_meta_all = compute_separation(X_all, meta_all)
+
+        X_mid, meta_mid = load_and_filter(dose_filter='mid', timepoint_filter=12.0)
+        sep_mid, dist_mid, pc_mid, pc_meta_mid = compute_separation(X_mid, meta_mid)
+
+        X_high, meta_high = load_and_filter(dose_filter='high', timepoint_filter=48.0)
+        sep_high, dist_high, pc_high, pc_meta_high = compute_separation(X_high, meta_high)
+
+        improvement_factor = sep_mid / sep_all if sep_all > 0 else 0.0
+
+        return {
+            "all_doses": {
+                "separation_ratio": float(sep_all),
+                "centroid_distance": float(dist_all),
+                "n_wells": len(X_all),
+                "pc_scores": pc_all,
+                "metadata": [{"stress_axis": m["stress_axis"]} for m in pc_meta_all]
+            },
+            "mid_dose": {
+                "separation_ratio": float(sep_mid),
+                "centroid_distance": float(dist_mid),
+                "n_wells": len(X_mid),
+                "pc_scores": pc_mid,
+                "metadata": [{"stress_axis": m["stress_axis"]} for m in pc_meta_mid]
+            },
+            "high_dose": {
+                "separation_ratio": float(sep_high),
+                "centroid_distance": float(dist_high),
+                "n_wells": len(X_high),
+                "pc_scores": pc_high,
+                "metadata": [{"stress_axis": m["stress_axis"]} for m in pc_meta_high]
+            },
+            "improvement_factor": float(improvement_factor)
+        }
+
+    except Exception as e:
+        logger.error(f"Error computing mechanism recovery stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/thalamus/watcher/start")
 async def start_watcher():
     """Start the S3 watcher"""
@@ -1428,6 +1594,158 @@ async def stop_watcher():
     except Exception as e:
         logger.error(f"Error stopping watcher: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# PHASE 1: EPISTEMIC AGENT ENDPOINTS
+# ============================================================================
+
+# Store running epistemic campaigns
+running_epistemic_campaigns: Dict[str, Dict[str, Any]] = {}
+
+
+class EpistemicCampaignRequest(BaseModel):
+    """Request to start an epistemic agent campaign."""
+    budget: int = 200
+    n_iterations: int = 20
+    cell_lines: Optional[List[str]] = None
+    compounds: Optional[List[str]] = None
+
+
+@app.post("/api/thalamus/epistemic/start")
+async def start_epistemic_campaign(request: EpistemicCampaignRequest, background_tasks: BackgroundTasks):
+    """
+    Start a Phase 1 epistemic agent campaign.
+
+    The agent will autonomously explore dose/timepoint space to discover
+    which conditions maximize mechanistic information content.
+    """
+    try:
+        from cell_os.cell_thalamus.epistemic_agent import EpistemicAgent
+
+        campaign_id = str(uuid.uuid4())
+
+        logger.info(f"Starting epistemic campaign {campaign_id}")
+        logger.info(f"  Budget: {request.budget} wells")
+        logger.info(f"  Iterations: {request.n_iterations}")
+
+        # Initialize campaign tracking
+        running_epistemic_campaigns[campaign_id] = {
+            "status": "initializing",
+            "budget": request.budget,
+            "n_iterations": request.n_iterations,
+            "started_at": datetime.now().isoformat(),
+            "progress": 0,
+            "current_iteration": 0
+        }
+
+        # Start campaign in background
+        background_tasks.add_task(
+            _run_epistemic_campaign_task,
+            campaign_id,
+            request.budget,
+            request.n_iterations
+        )
+
+        return {
+            "campaign_id": campaign_id,
+            "status": "started",
+            "budget": request.budget,
+            "n_iterations": request.n_iterations
+        }
+
+    except Exception as e:
+        logger.error(f"Error starting epistemic campaign: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _run_epistemic_campaign_task(campaign_id: str, budget: int, n_iterations: int):
+    """Background task to run epistemic agent campaign."""
+    try:
+        from cell_os.cell_thalamus.epistemic_agent import EpistemicAgent
+
+        # Update status
+        running_epistemic_campaigns[campaign_id]["status"] = "running"
+
+        # Initialize agent
+        agent = EpistemicAgent(budget=budget)
+
+        # Run campaign with progress updates
+        iteration_stats = []
+
+        for iteration in range(n_iterations):
+            logger.info(f"Campaign {campaign_id}: Iteration {iteration + 1}/{n_iterations}")
+
+            # Update progress
+            running_epistemic_campaigns[campaign_id]["current_iteration"] = iteration + 1
+            running_epistemic_campaigns[campaign_id]["progress"] = (iteration + 1) / n_iterations
+
+            # Execute one iteration
+            query = agent.acquisition_function()
+            result = agent.execute_query(query)
+
+            # Compute current metrics
+            if len(agent.results) >= 4:
+                from cell_os.cell_thalamus.epistemic_agent import InformationMetrics
+                sep_ratio = InformationMetrics.compute_separation_ratio(
+                    agent.results, agent.stress_class_map
+                )
+            else:
+                sep_ratio = 0.0
+
+            iteration_stats.append({
+                'iteration': iteration + 1,
+                'query': str(query),
+                'separation_ratio': sep_ratio,
+                'budget_remaining': agent.budget_remaining
+            })
+
+            # Update campaign status
+            running_epistemic_campaigns[campaign_id]["latest_separation_ratio"] = sep_ratio
+            running_epistemic_campaigns[campaign_id]["budget_remaining"] = agent.budget_remaining
+
+        # Generate final summary
+        summary = agent._generate_summary(iteration_stats)
+
+        # Mark as completed
+        running_epistemic_campaigns[campaign_id]["status"] = "completed"
+        running_epistemic_campaigns[campaign_id]["summary"] = summary
+        running_epistemic_campaigns[campaign_id]["completed_at"] = datetime.now().isoformat()
+
+        logger.info(f"Campaign {campaign_id} completed")
+        logger.info(f"  Final separation ratio: {summary['final_separation_ratio']:.3f}")
+
+    except Exception as e:
+        logger.error(f"Error in epistemic campaign {campaign_id}: {e}")
+        running_epistemic_campaigns[campaign_id]["status"] = "failed"
+        running_epistemic_campaigns[campaign_id]["error"] = str(e)
+
+
+@app.get("/api/thalamus/epistemic/status/{campaign_id}")
+async def get_epistemic_campaign_status(campaign_id: str):
+    """Get status of a running epistemic campaign."""
+    if campaign_id not in running_epistemic_campaigns:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    return running_epistemic_campaigns[campaign_id]
+
+
+@app.get("/api/thalamus/epistemic/campaigns")
+async def list_epistemic_campaigns():
+    """List all epistemic campaigns (running and completed)."""
+    return {
+        "campaigns": [
+            {
+                "campaign_id": cid,
+                "status": data["status"],
+                "started_at": data.get("started_at"),
+                "progress": data.get("progress", 0),
+                "current_iteration": data.get("current_iteration", 0),
+                "n_iterations": data.get("n_iterations", 0)
+            }
+            for cid, data in running_epistemic_campaigns.items()
+        ]
+    }
 
 
 if __name__ == "__main__":

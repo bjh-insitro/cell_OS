@@ -16,8 +16,9 @@ import VarianceTab from './components/VarianceTab';
 import SentinelTab from './components/SentinelTab';
 import PlateViewerTab from './components/PlateViewerTab';
 import DesignCatalogTab from './components/DesignCatalogTab';
+import MechanismRecoveryTab from './components/MechanismRecoveryTab';
 
-type TabType = 'run' | 'experiments' | 'catalog' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate';
+type TabType = 'run' | 'experiments' | 'catalog' | 'morphology' | 'dose' | 'variance' | 'sentinel' | 'plate' | 'mechanism';
 
 const CellThalamusPage: React.FC = () => {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ const CellThalamusPage: React.FC = () => {
     { id: 'dose', label: 'Dose-Response', icon: '📈' },
     { id: 'morphology', label: 'Morphology Manifold', icon: '🎨' },
     { id: 'variance', label: 'Variance Analysis', icon: '📊' },
+    { id: 'mechanism', label: 'Mechanism Recovery', icon: '🔬' },
     { id: 'sentinel', label: 'Sentinel Monitor', icon: '🎯' },
     { id: 'plate', label: 'Plate Viewer', icon: '🗺️' },
   ];
@@ -127,6 +129,12 @@ const CellThalamusPage: React.FC = () => {
         )}
         {activeTab === 'variance' && (
           <VarianceTab
+            selectedDesignId={selectedDesignId}
+            onDesignChange={setSelectedDesignId}
+          />
+        )}
+        {activeTab === 'mechanism' && (
+          <MechanismRecoveryTab
             selectedDesignId={selectedDesignId}
             onDesignChange={setSelectedDesignId}
           />

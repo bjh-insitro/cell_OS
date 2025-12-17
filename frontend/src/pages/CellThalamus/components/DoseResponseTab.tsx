@@ -263,11 +263,13 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
     const data12h = doseResponseData.filter((r: any) => r.timepoint === 12);
 
-    // Get all unique doses
+    // Get all unique doses, excluding 0 for log scale
     const allDoses = new Set<number>();
     data12h.forEach((response: any) => {
       if (response.data.doses) {
-        response.data.doses.forEach((dose: number) => allDoses.add(dose));
+        response.data.doses.forEach((dose: number) => {
+          if (dose > 0) allDoses.add(dose); // Exclude 0 for log scale
+        });
       }
     });
 
@@ -298,11 +300,13 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
     const data48h = doseResponseData.filter((r: any) => r.timepoint === 48);
 
-    // Get all unique doses
+    // Get all unique doses, excluding 0 for log scale
     const allDoses = new Set<number>();
     data48h.forEach((response: any) => {
       if (response.data.doses) {
-        response.data.doses.forEach((dose: number) => allDoses.add(dose));
+        response.data.doses.forEach((dose: number) => {
+          if (dose > 0) allDoses.add(dose); // Exclude 0 for log scale
+        });
       }
     });
 
@@ -537,6 +541,98 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
         </div>
       </div>
 
+      {/* Morphology Metrics Explainer */}
+      {selectedMetric.startsWith('morph_') && (
+        <div className="bg-violet-900/20 border border-violet-500/30 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">🔬</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-violet-300 mb-2">Morphology Score Explained</h3>
+
+              {/* Pipeline Overview */}
+              <div className="mb-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                <p className="text-xs font-semibold text-violet-400 mb-2">📸 Image → Score Pipeline:</p>
+                <div className="text-xs text-slate-300 space-y-1">
+                  <p><strong>1. Fluorescent Staining:</strong> Organelle-specific dyes (ER-Tracker, MitoTracker, Hoechst, phalloidin, SYTO RNA)</p>
+                  <p><strong>2. High-Content Imaging:</strong> Automated microscopy captures 5-channel images per well (100-500 cells)</p>
+                  <p><strong>3. Segmentation:</strong> AI identifies cell boundaries and organelles from fluorescent signals</p>
+                  <p><strong>4. Feature Extraction:</strong> 200+ quantitative features per cell (area, intensity, texture, shape, network metrics)</p>
+                  <p><strong>5. Normalization:</strong> Score = (treated - DMSO_mean) / DMSO_std → z-score deviation from vehicle controls</p>
+                </div>
+              </div>
+
+              {/* Organelle-Specific Details */}
+              <div className="text-xs text-slate-300 space-y-2">
+                {selectedMetric === 'morph_er' && (
+                  <>
+                    <p>
+                      <strong className="text-violet-400">Endoplasmic Reticulum (ER):</strong> Stained with ER-Tracker dye targeting KDEL retention signal.
+                      Captures ER network structure, branch points, and tubule continuity.
+                    </p>
+                    <p className="text-slate-400">
+                      <strong>Key Features:</strong> Network connectivity, tubule thickness, fragmentation index, perinuclear accumulation, reticular vs sheet-like morphology.
+                      Unfolded protein stress (tunicamycin, thapsigargin) causes characteristic ER expansion and whorl formation.
+                    </p>
+                  </>
+                )}
+                {selectedMetric === 'morph_mito' && (
+                  <>
+                    <p>
+                      <strong className="text-violet-400">Mitochondria:</strong> Stained with MitoTracker (membrane potential-dependent).
+                      Quantifies mitochondrial network topology and fragmentation dynamics.
+                    </p>
+                    <p className="text-slate-400">
+                      <strong>Key Features:</strong> Network connectivity, tubule length, aspect ratio, form factor (perimiter²/area), puncta count.
+                      Stress responses: fragmentation (fission), hyperfusion (elongated networks), or depolarization (signal loss).
+                    </p>
+                  </>
+                )}
+                {selectedMetric === 'morph_nucleus' && (
+                  <>
+                    <p>
+                      <strong className="text-violet-400">Nucleus:</strong> Stained with Hoechst 33342 (DNA-binding dye).
+                      Measures nuclear envelope integrity, chromatin organization, and apoptotic morphology.
+                    </p>
+                    <p className="text-slate-400">
+                      <strong>Key Features:</strong> Area, circularity, eccentricity, intensity variance (texture), edge roughness, foci count.
+                      DNA damage creates γH2AX foci; apoptosis triggers condensation, fragmentation, and membrane blebbing.
+                    </p>
+                  </>
+                )}
+                {selectedMetric === 'morph_actin' && (
+                  <>
+                    <p>
+                      <strong className="text-violet-400">Actin Cytoskeleton:</strong> Stained with fluorescent phalloidin (F-actin binding).
+                      Tracks stress fiber formation, cortical actin, and cellular architecture.
+                    </p>
+                    <p className="text-slate-400">
+                      <strong>Key Features:</strong> Fiber alignment, integrated intensity, fiber count, cortical vs cytoplasmic ratio.
+                      Microtubule poisons (nocodazole, paclitaxel) disrupt actin indirectly; cytoskeletal drugs cause direct reorganization.
+                    </p>
+                  </>
+                )}
+                {selectedMetric === 'morph_rna' && (
+                  <>
+                    <p>
+                      <strong className="text-violet-400">RNA Distribution:</strong> Stained with SYTO RNASelect (RNA-specific dye).
+                      Detects stress granules, P-bodies, and nucleolar morphology changes.
+                    </p>
+                    <p className="text-slate-400">
+                      <strong>Key Features:</strong> Puncta count/size, cytoplasmic vs nuclear ratio, granule intensity, nucleolar area.
+                      Stress triggers reversible RNA-protein condensates (stress granules) marking translational arrest.
+                    </p>
+                  </>
+                )}
+                <p className="text-slate-400 italic pt-2 border-t border-slate-700">
+                  <strong>Final Score:</strong> Each well's 200+ features are aggregated into a composite z-score representing total morphological deviation from DMSO controls.
+                  Higher scores = greater perturbation. Each stress axis produces characteristic multi-organelle fingerprints.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notice for designs without DMSO */}
       {!hasDMSO && selectedDesignId && results && results.length > 0 && (
         <div className="bg-blue-900/30 border border-blue-500/50 rounded-xl p-4">
@@ -597,11 +693,12 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
               <XAxis
                 dataKey="dose"
                 stroke="#94a3b8"
-                label={{ value: 'Dose (μM)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
+                label={{ value: 'Dose (μM, log scale)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
                 type="number"
-                domain={['dataMin', 'dataMax']}
-                ticks={chartData.map(d => d.dose)}
-                tickFormatter={(value) => Number(value).toFixed(1)}
+                scale="log"
+                domain={['auto', 'auto']}
+                allowDataOverflow={false}
+                tickFormatter={(value) => value === 0 ? '0' : Number(value).toFixed(value < 1 ? 3 : 1)}
               />
               <YAxis
                 stroke="#94a3b8"

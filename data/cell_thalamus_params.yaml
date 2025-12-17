@@ -222,16 +222,38 @@ baseline_atp:
   U2OS: 45000.0
 
 # Technical variance parameters (coefficient of variation)
+# Tuned so DMSO controls have ~2-3% total CV (realistic for high-content screening)
 technical_noise:
-  plate_cv: 0.08      # 8% plate-to-plate variation
-  day_cv: 0.10        # 10% day-to-day variation
-  operator_cv: 0.05   # 5% operator-to-operator variation
-  well_cv: 0.12       # 12% well-to-well (measurement noise)
+  plate_cv: 0.010     # 1% plate-to-plate variation
+  day_cv: 0.015       # 1.5% day-to-day variation
+  operator_cv: 0.008  # 0.8% operator-to-operator variation
+  well_cv: 0.015      # 1.5% well-to-well (measurement noise)
+  edge_effect: 0.12   # 12% signal reduction for edge wells (evaporation, temperature)
+  well_failure_rate: 0.02  # 2% of wells randomly fail (bubbles, contamination, pipetting errors)
+
+# Well failure modes (when well_failure_rate triggers)
+well_failure_modes:
+  bubble:
+    probability: 0.40  # 40% of failures are bubbles
+    effect: "no_signal"  # Imaging fails, all channels near zero
+  contamination:
+    probability: 0.25  # 25% of failures are contamination
+    effect: "outlier_high"  # Abnormally high signal (bacteria/yeast growth)
+  pipetting_error:
+    probability: 0.20  # 20% of failures are pipetting errors
+    effect: "outlier_low"  # Wrong volume, low cell count
+  staining_failure:
+    probability: 0.10  # 10% of failures are staining issues
+    effect: "partial_signal"  # Some channels fail, others OK
+  cross_contamination:
+    probability: 0.05  # 5% of failures are cross-contamination
+    effect: "mixed_signal"  # Signal from neighboring well
 
 # Biological variance
 biological_noise:
-  cell_line_cv: 0.15  # 15% biological variation
-  dose_response_cv: 0.10  # 10% dose-response variability
+  cell_line_cv: 0.020  # 2% biological variation (intrinsic cell-to-cell differences)
+  dose_response_cv: 0.10  # 10% dose-response variability (unused for now)
+  stress_cv_multiplier: 2.0  # Stressed cells show 2× higher CV (heterogeneous death timing)
 
 # Sentinel definitions (fixed control wells on every plate)
 sentinels:

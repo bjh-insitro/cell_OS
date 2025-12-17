@@ -57,6 +57,14 @@ export class CellThalamusService {
   }
 
   /**
+   * Get list of available design IDs
+   */
+  async getAvailableDesigns(): Promise<string[]> {
+    const designs = await this.getDesigns();
+    return designs.map(d => d.design_id);
+  }
+
+  /**
    * Check simulation status
    */
   async getSimulationStatus(designId: string): Promise<SimulationStatus> {
@@ -225,7 +233,50 @@ export class CellThalamusService {
       poll();
     });
   }
+
+  /**
+   * Get mechanism recovery statistics for a design
+   */
+  async getMechanismRecoveryStats(designId: string): Promise<MechanismRecoveryStats> {
+    const response = await fetch(`${this.baseUrl}/designs/${designId}/mechanism-recovery`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get mechanism recovery stats');
+    }
+
+    return response.json();
+  }
+}
+
+// Type definitions
+export interface MechanismRecoveryStats {
+  all_doses: {
+    separation_ratio: number;
+    centroid_distance: number;
+    n_wells: number;
+    pc_scores: number[][];
+    metadata: Array<{ stress_axis: string }>;
+  };
+  mid_dose: {
+    separation_ratio: number;
+    centroid_distance: number;
+    n_wells: number;
+    pc_scores: number[][];
+    metadata: Array<{ stress_axis: string }>;
+  };
+  high_dose: {
+    separation_ratio: number;
+    centroid_distance: number;
+    n_wells: number;
+    pc_scores: number[][];
+    metadata: Array<{ stress_axis: string }>;
+  };
+  improvement_factor: number;
 }
 
 // Export singleton instance
 export const cellThalamusService = new CellThalamusService();
+
+// Export helper to get service instance
+export const getCellThalamusService = () => cellThalamusService;

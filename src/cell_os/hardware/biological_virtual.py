@@ -558,6 +558,135 @@ class BiologicalVirtualMachine(VirtualMachine):
         with open(yaml_path, 'r') as f:
             self.raw_yaml_data = yaml.safe_load(f)
 
+    def _apply_well_failure(self, morph: Dict[str, float], well_position: str) -> Optional[Dict]:
+        """
+        Apply random well failures (bubbles, contamination, pipetting errors).
+
+        In real HCS, ~1-5% of wells randomly fail for various reasons:
+        - Bubbles (imaging failure)
+        - Contamination (bacteria/yeast)
+        - Pipetting errors (wrong volume)
+        - Staining failures (antibody didn't work)
+        - Cross-contamination (neighboring well)
+
+        Args:
+            morph: Original morphology dict
+            well_position: Well position (for deterministic failures)
+
+        Returns:
+            Dict with modified morphology and failure_mode, or None if no failure
+        """
+        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+            return None
+
+        tech_noise = self.thalamus_params.get('technical_noise', {})
+        failure_rate = tech_noise.get('well_failure_rate', 0.0)
+
+        if failure_rate <= 0:
+            return None
+
+        # Deterministic failure based on well position (consistent across runs)
+        np.random.seed(hash(f"well_failure_{well_position}") % 2**32)
+        if np.random.random() > failure_rate:
+            np.random.seed()  # Reset
+            return None
+
+        # Select failure mode
+        failure_modes = self.thalamus_params.get('well_failure_modes', {})
+        if not failure_modes:
+            np.random.seed()
+            return None
+
+        # Build probability distribution
+        modes = list(failure_modes.keys())
+        probs = [failure_modes[mode].get('probability', 0.0) for mode in modes]
+        total_prob = sum(probs)
+        if total_prob <= 0:
+            np.random.seed()
+            return None
+
+        probs = [p / total_prob for p in probs]  # Normalize
+        selected_mode = np.random.choice(modes, p=probs)
+        effect = failure_modes[selected_mode].get('effect', 'no_signal')
+
+        np.random.seed()  # Reset random state
+
+        # Apply failure effect
+        failed_morph = morph.copy()
+
+        if effect == 'no_signal':
+            # Bubble in well → imaging fails → near-zero signal
+            for channel in failed_morph:
+                failed_morph[channel] = np.random.uniform(0.1, 2.0)  # Background noise only
+
+        elif effect == 'outlier_high':
+            # Contamination (bacteria/yeast) → abnormally high signal
+            for channel in failed_morph:
+                failed_morph[channel] *= np.random.uniform(5.0, 20.0)  # 5-20× higher
+
+        elif effect == 'outlier_low':
+            # Pipetting error → wrong volume → low cell count
+            for channel in failed_morph:
+                failed_morph[channel] *= np.random.uniform(0.05, 0.3)  # 5-30% of normal
+
+        elif effect == 'partial_signal':
+            # Staining failure → some channels fail, others OK
+            failed_channels = np.random.choice(
+                list(failed_morph.keys()),
+                size=np.random.randint(1, len(failed_morph)),
+                replace=False
+            )
+            for channel in failed_channels:
+                failed_morph[channel] = np.random.uniform(0.1, 2.0)
+
+        elif effect == 'mixed_signal':
+            # Cross-contamination → mix of this well and neighbor
+            mix_ratio = np.random.uniform(0.3, 0.7)  # 30-70% contamination
+            for channel in failed_morph:
+                neighbor_signal = failed_morph[channel] * np.random.uniform(0.5, 2.0)
+                failed_morph[channel] = mix_ratio * failed_morph[channel] + (1 - mix_ratio) * neighbor_signal
+
+        return {
+            'morphology': failed_morph,
+            'failure_mode': selected_mode,
+            'effect': effect
+        }
+
+    def _is_edge_well(self, well_position: str, plate_format: int = 96) -> bool:
+        """
+        Detect if a well is on the edge of a plate (evaporation/temperature artifacts).
+
+        Args:
+            well_position: Well position like 'A1', 'H12'
+            plate_format: 96 or 384
+
+        Returns:
+            True if well is on edge (row A or H, column 1 or 12 for 96-well)
+        """
+        if not well_position or len(well_position) < 2:
+            return False
+
+        row = well_position[0]
+        col_str = well_position[1:]
+
+        try:
+            col = int(col_str)
+        except ValueError:
+            return False
+
+        if plate_format == 96:
+            # 96-well: 8 rows (A-H), 12 columns (1-12)
+            edge_rows = ['A', 'H']
+            edge_cols = [1, 12]
+            return row in edge_rows or col in edge_cols
+        elif plate_format == 384:
+            # 384-well: 16 rows (A-P), 24 columns (1-24)
+            edge_rows = ['A', 'P']
+            edge_cols = [1, 24]
+            return row in edge_rows or col in edge_cols
+        else:
+            return False
+
     def _load_cell_thalamus_params(self):
         """Load Cell Thalamus parameters for morphology simulation."""
         thalamus_params_file = Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_params.yaml"
@@ -650,10 +779,15 @@ class BiologicalVirtualMachine(VirtualMachine):
         for channel in morph:
             morph[channel] *= viability_factor
 
-        # Add biological noise
-        bio_cv = self.thalamus_params['biological_noise']['cell_line_cv']
+        # Calculate stress level (for dose-dependent noise)
+        # Higher stress = higher variability (heterogeneous death timing)
+        stress_level = 1.0 - vessel.viability  # 0 (healthy) to 1 (dead)
+        stress_multiplier = self.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
+        effective_bio_cv = self.thalamus_params['biological_noise']['cell_line_cv'] * (1.0 + stress_level * (stress_multiplier - 1.0))
+
+        # Add biological noise (dose-dependent)
         for channel in morph:
-            morph[channel] *= np.random.normal(1.0, bio_cv)
+            morph[channel] *= np.random.normal(1.0, effective_bio_cv)
 
         # Add technical noise (plate, day, operator effects)
         tech_noise = self.thalamus_params['technical_noise']
@@ -661,22 +795,47 @@ class BiologicalVirtualMachine(VirtualMachine):
         day_cv = tech_noise['day_cv']
         operator_cv = tech_noise['operator_cv']
         well_cv = tech_noise['well_cv']
+        edge_effect = tech_noise.get('edge_effect', 0.0)
 
         # Apply technical factors
+        # Extract batch information from kwargs if provided
+        plate_id = kwargs.get('plate_id', 'P1')
+        day = kwargs.get('day', 1)
+        operator = kwargs.get('operator', 'OP1')
+        well_position = kwargs.get('well_position', 'A1')
+
+        # Consistent batch effects per plate/day/operator (same random seed)
+        np.random.seed(hash(f"plate_{plate_id}") % 2**32)
         plate_factor = np.random.normal(1.0, plate_cv)
+        np.random.seed(hash(f"day_{day}") % 2**32)
         day_factor = np.random.normal(1.0, day_cv)
+        np.random.seed(hash(f"operator_{operator}") % 2**32)
         operator_factor = np.random.normal(1.0, operator_cv)
+        np.random.seed()  # Reset to random state for well factor
+
         well_factor = np.random.normal(1.0, well_cv)
 
-        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor
+        # Edge effect: wells on plate edges show reduced signal (evaporation, temperature gradient)
+        is_edge = self._is_edge_well(well_position)
+        edge_factor = (1.0 - edge_effect) if is_edge else 1.0
+
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor
 
         for channel in morph:
             morph[channel] *= total_tech_factor
             morph[channel] = max(0.0, morph[channel])  # No negative signals
 
+        # Apply random well failures (bubbles, contamination, etc.)
+        failure_result = self._apply_well_failure(morph, well_position)
+        if failure_result:
+            morph = failure_result['morphology']
+            failure_mode = failure_result['failure_mode']
+        else:
+            failure_mode = None
+
         self._simulate_delay(2.0)  # Imaging takes time
 
-        return {
+        result = {
             "status": "success",
             "action": "cell_painting",
             "vessel_id": vessel_id,
@@ -685,6 +844,12 @@ class BiologicalVirtualMachine(VirtualMachine):
             "viability": vessel.viability,
             "timestamp": datetime.now().isoformat()
         }
+
+        if failure_mode:
+            result['well_failure'] = failure_mode
+            result['qc_flag'] = 'FAIL'
+
+        return result
 
     def atp_viability_assay(self, vessel_id: str, **kwargs) -> Dict[str, Any]:
         """
@@ -742,29 +907,68 @@ class BiologicalVirtualMachine(VirtualMachine):
         # LDH signal proportional to dead/dying cells
         ldh_signal = baseline_ldh * cell_count_factor * death_factor
 
-        # Add biological noise
-        bio_cv = self.thalamus_params['biological_noise']['cell_line_cv']
-        ldh_signal *= np.random.normal(1.0, bio_cv)
+        # Calculate stress level (for dose-dependent noise)
+        stress_level = 1.0 - vessel.viability  # 0 (healthy) to 1 (dead)
+        stress_multiplier = self.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
+        effective_bio_cv = self.thalamus_params['biological_noise']['cell_line_cv'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        # Add technical noise
+        # Add biological noise (dose-dependent)
+        ldh_signal *= np.random.normal(1.0, effective_bio_cv)
+
+        # Add technical noise (plate, day, operator effects)
         tech_noise = self.thalamus_params['technical_noise']
         plate_cv = tech_noise['plate_cv']
         day_cv = tech_noise['day_cv']
         operator_cv = tech_noise['operator_cv']
         well_cv = tech_noise['well_cv']
+        edge_effect = tech_noise.get('edge_effect', 0.0)
 
+        # Extract batch information from kwargs if provided
+        plate_id = kwargs.get('plate_id', 'P1')
+        day = kwargs.get('day', 1)
+        operator = kwargs.get('operator', 'OP1')
+        well_position = kwargs.get('well_position', 'A1')
+
+        # Consistent batch effects per plate/day/operator (same random seed)
+        np.random.seed(hash(f"plate_{plate_id}") % 2**32)
         plate_factor = np.random.normal(1.0, plate_cv)
+        np.random.seed(hash(f"day_{day}") % 2**32)
         day_factor = np.random.normal(1.0, day_cv)
+        np.random.seed(hash(f"operator_{operator}") % 2**32)
         operator_factor = np.random.normal(1.0, operator_cv)
+        np.random.seed()  # Reset to random state for well factor
+
         well_factor = np.random.normal(1.0, well_cv)
 
-        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor
+        # Edge effect: wells on plate edges show reduced signal
+        is_edge = self._is_edge_well(well_position)
+        edge_factor = (1.0 - edge_effect) if is_edge else 1.0
+
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor
         ldh_signal *= total_tech_factor
         ldh_signal = max(0.0, ldh_signal)
 
+        # Apply random well failures (same as morphology)
+        # For scalar assays, failures manifest as extreme outliers
+        failure_rate = tech_noise.get('well_failure_rate', 0.0)
+        if failure_rate > 0:
+            np.random.seed(hash(f"well_failure_{well_position}") % 2**32)
+            if np.random.random() <= failure_rate:
+                # Failed well - random extreme value
+                ldh_signal *= np.random.choice([0.01, 0.05, 0.1, 5.0, 10.0, 20.0])
+                failure_mode = 'assay_failure'
+                qc_flag = 'FAIL'
+            else:
+                failure_mode = None
+                qc_flag = None
+            np.random.seed()
+        else:
+            failure_mode = None
+            qc_flag = None
+
         self._simulate_delay(0.5)  # LDH assay is quick
 
-        return {
+        result = {
             "status": "success",
             "action": "ldh_viability",
             "vessel_id": vessel_id,
@@ -775,3 +979,9 @@ class BiologicalVirtualMachine(VirtualMachine):
             "cell_count": vessel.cell_count,
             "timestamp": datetime.now().isoformat()
         }
+
+        if failure_mode:
+            result['well_failure'] = failure_mode
+            result['qc_flag'] = qc_flag
+
+        return result
