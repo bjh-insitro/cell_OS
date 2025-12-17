@@ -1181,6 +1181,47 @@ def worker_function(args) -> Optional[Dict]:
 
 
 # ============================================================================
+# Design ID Canonicalization (Handle Numpy, Tuples, Sets)
+# ============================================================================
+
+def canonicalize_for_json(obj):
+    """
+    Canonicalize Python objects for stable JSON serialization.
+
+    Handles numpy scalars, tuples, sets, and nested structures to prevent
+    silent stringification or runtime errors when hashing design parameters.
+
+    Args:
+        obj: Object to canonicalize (dict, list, numpy scalar, etc.)
+
+    Returns:
+        JSON-safe canonical representation
+    """
+    # Numpy scalars → Python native types
+    if hasattr(obj, 'item'):  # numpy scalar
+        return obj.item()
+
+    # Sets → sorted lists (stable order)
+    if isinstance(obj, set):
+        return sorted(canonicalize_for_json(item) for item in obj)
+
+    # Tuples → lists
+    if isinstance(obj, tuple):
+        return [canonicalize_for_json(item) for item in obj]
+
+    # Dicts → recurse on values (keys already handled by sort_keys=True in JSON)
+    if isinstance(obj, dict):
+        return {k: canonicalize_for_json(v) for k, v in obj.items()}
+
+    # Lists → recurse on items
+    if isinstance(obj, list):
+        return [canonicalize_for_json(item) for item in obj]
+
+    # Plain types pass through (str, int, float, bool, None)
+    return obj
+
+
+# ============================================================================
 # Main Runner
 # ============================================================================
 
@@ -1208,37 +1249,50 @@ def run_parallel_simulation(
 
     # Generate deterministic design_id from ALL run-defining parameters
     # This prevents accidental design_id collisions when parameters vary
+    design_id_overridden = False
     if design_id is None:
         # Build canonical dict of all parameters that affect outputs
-        # Future-proof: if you add new parameters, add them here
+        # CRITICAL: Hash the full VALUES, not just keys (changing IC50 must change design_id)
         design_params = {
             "mode": mode,
             "seed": seed,
             "cell_lines": sorted(cell_lines),
             "compounds": sorted(compounds),
-            # Include key constants that might vary in future versions
-            # (Currently fixed, but safeguards against whack-a-mole)
+            # Hash full values of all constants (not just keys!)
+            # Changing CCCP IC50 or baseline morph values → different design_id
             "tech_cv": TECH_CV,
             "morph_cv": MORPH_CV,
-            "baseline_morph_keys": sorted(BASELINE_MORPH.keys()),
-            "compound_params_keys": sorted(COMPOUND_PARAMS.keys()),
-            # Version marker (change this if simulation logic changes significantly)
-            "sim_version": "2025-12-17-addressable-rng"
+            "baseline_morph": BASELINE_MORPH,  # Full values, not just keys
+            "compound_params": COMPOUND_PARAMS,  # Full values, not just keys
+            # Version marker (bump if simulation logic changes)
+            # Human gate for non-parameter changes (algorithm tweaks, etc.)
+            "sim_version": "2025-12-17-hash-values-not-keys"
         }
 
+        # Canonicalize to handle numpy scalars, tuples, sets before JSON
+        # Prevents silent stringification and ensures stable serialization
+        canonical_params = canonicalize_for_json(design_params)
+
         # JSON dump with stable separators and sorted keys
-        design_key = json.dumps(design_params, sort_keys=True, separators=(',', ':'))
+        design_key = json.dumps(canonical_params, sort_keys=True, separators=(',', ':'))
         design_hash = hashlib.blake2s(design_key.encode('utf-8'), digest_size=16).hexdigest()
         design_id = f"{design_hash[:8]}-{design_hash[8:12]}-{design_hash[12:16]}-{design_hash[16:20]}-{design_hash[20:]}"
-
-    # If user provided custom design_id, use it as-is (for intentional replicate separation)
+    else:
+        # User provided custom design_id (for intentional replicate separation)
+        design_id_overridden = True
 
     logger.info("=" * 70)
     logger.info("PARALLEL CELL THALAMUS SIMULATION")
     logger.info("=" * 70)
     logger.info(f"Mode: {mode}")
     logger.info(f"Workers: {workers} CPUs")
-    logger.info(f"Design ID: {design_id}")
+    if design_id_overridden:
+        logger.info(f"Design ID: {design_id} (OVERRIDE - intentional replicate separation)")
+        logger.warning("⚠️  Custom design_id provided via --design-id flag")
+        logger.warning("   This creates a new namespace with independent assay noise")
+        logger.warning("   Same parameters will produce different results than deterministic run")
+    else:
+        logger.info(f"Design ID: {design_id} (deterministic from parameters)")
 
     # Generate design
     design = generate_design(cell_lines, compounds, mode)
