@@ -13,13 +13,40 @@ Usage:
 import sys
 import sqlite3
 import hashlib
+import struct
 
 
 def hash_row(row) -> str:
-    """Hash a row for order-independent comparison."""
-    # Convert to string and hash
-    row_str = str(row).encode('utf-8')
-    return hashlib.blake2s(row_str, digest_size=16).hexdigest()
+    """
+    Hash a row for order-independent comparison.
+
+    Uses typed encoding to avoid Python version differences:
+    - Strings: UTF-8 bytes
+    - Floats: IEEE 754 double (struct.pack)
+    - Ints: Decimal string
+    - None: b'NULL'
+
+    This is more robust than str(row) which can vary across Python versions.
+    """
+    hasher = hashlib.blake2s(digest_size=16)
+
+    for value in row:
+        if value is None:
+            hasher.update(b'NULL')
+        elif isinstance(value, float):
+            # IEEE 754 double precision (network byte order for consistency)
+            hasher.update(struct.pack('!d', value))
+        elif isinstance(value, int):
+            # Decimal string encoding
+            hasher.update(str(value).encode('utf-8'))
+        elif isinstance(value, str):
+            # UTF-8 bytes
+            hasher.update(value.encode('utf-8'))
+        else:
+            # Fallback to repr (shouldn't happen with our schema)
+            hasher.update(repr(value).encode('utf-8'))
+
+    return hasher.hexdigest()
 
 
 def compare_databases(db1_path: str, db2_path: str) -> bool:

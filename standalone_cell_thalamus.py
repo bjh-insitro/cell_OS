@@ -175,11 +175,18 @@ class CellThalamusDB:
         self.db_path = os.path.abspath(db_path)
         os.makedirs(os.path.dirname(self.db_path) if os.path.dirname(self.db_path) else ".", exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
+
+        # Set pragmas for reliability and performance
+        # WAL mode: Better concurrency, prevents "database is locked" errors
+        # NORMAL synchronous: Balance safety vs performance (safe enough for JH)
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+
         self._create_schema()
         self._check_schema_version()
 
         # Log DB info at startup
-        cursor = self.conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         tables = [row[0] for row in cursor.fetchall()]
         logger.info(f"Connected to DB: {self.db_path}")
@@ -625,6 +632,32 @@ TECH_CV = {
 def _get_attr(obj, name, default=None):
     return getattr(obj, name, default)
 
+def assay_rng_for_well(plate_id: str, cell_line: str, well_id: str, tag: str):
+    """
+    Generate deterministic per-well RNG for assay measurements.
+
+    This ensures workers=1 equals workers=N by making measurement noise addressable
+    by stable key, not dependent on consumption order from a shared stream.
+
+    Observer independence is still maintained (physics RNG streams unchanged).
+    This just makes measurement noise deterministic per-well.
+
+    NOTE: Does NOT include design_id in seed, so that different runs (with different
+    design_ids) produce the same measurement noise for comparison purposes.
+    This enables: workers=1 run vs workers=64 run comparison.
+
+    Args:
+        plate_id: Plate identifier
+        cell_line: Cell line name
+        well_id: Well position (e.g., 'A01')
+        tag: Noise type tag (e.g., 'morph_bio', 'ldh_bio')
+
+    Returns:
+        Numpy RNG generator seeded by stable key
+    """
+    s = f"{tag}|{plate_id}|{cell_line}|{well_id}"
+    return np.random.default_rng(stable_u32(s))
+
 def _is_edge_well(well_position: str, plate_format: int = 96) -> bool:
     """Detect if well is on plate edge (evaporation/temperature artifacts)."""
     if not well_position or len(well_position) < 2:
@@ -811,10 +844,13 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         stress_multiplier = 2.0  # Stressed cells have 2× higher CV
         effective_bio_cv = MORPH_CV['er'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        rng = get_rng()
+        # CRITICAL: Use per-well deterministic RNG for measurement noise
+        # This ensures workers=1 equals workers=N (not dependent on shared stream consumption order)
+        # Observer independence still maintained (physics RNG streams unchanged)
         if effective_bio_cv > 0:
+            rng_well_morph = assay_rng_for_well(well.plate_id, well.cell_line, well.well_id, "morph_bio")
             for ch in CHANNELS:
-                morph[ch] *= rng.rng_assay.normal(1.0, effective_bio_cv)
+                morph[ch] *= rng_well_morph.normal(1.0, effective_bio_cv)
 
         # Technical noise (batch effects) - MATCHES MAIN CODEBASE EXACTLY
         # Extract batch information
@@ -822,11 +858,10 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         day_id = _get_attr(well, 'day', None) or _get_attr(well, 'day_index', None)
         op_id = _get_attr(well, 'operator', None) or _get_attr(well, 'operator_id', None)
         well_id = _get_attr(well, 'well_id', 'A1')
+        cell_line = _get_attr(well, 'cell_line', 'A549')
 
         # Consistent batch effects per plate/day/operator (deterministic seeding)
         # Only apply if CV > 0 (prevents RNG consumption when noise disabled)
-        rng = get_rng()
-
         plate_factor = 1.0
         if TECH_CV['plate_cv'] > 0:
             rng_plate = np.random.default_rng(stable_u32(f"plate_{plate_id}"))
@@ -842,10 +877,12 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             rng_operator = np.random.default_rng(stable_u32(f"operator_{op_id}"))
             operator_factor = rng_operator.normal(1.0, TECH_CV['operator_cv'])
 
-        # Well factor uses assay RNG (non-deterministic)
+        # Well factor MUST be deterministic (seed by well ID for workers=1 to match workers=N)
+        # Using rng.rng_assay would be nondeterministic across worker scheduling
         well_factor = 1.0
         if TECH_CV['well_cv'] > 0:
-            well_factor = rng.rng_assay.normal(1.0, TECH_CV['well_cv'])
+            rng_well = np.random.default_rng(stable_u32(f"well_{plate_id}_{cell_line}_{well_id}"))
+            well_factor = rng_well.normal(1.0, TECH_CV['well_cv'])
 
         # Edge effect: wells on plate edges show reduced signal
         is_edge = _is_edge_well(well_id)
@@ -860,8 +897,9 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             morph[ch] = max(0.0, morph[ch])  # No negative signals
 
         # Apply random well failures (2% of wells fail with extreme outliers)
+        # NOTE: Deterministic per-well (not per-design) for workers=1 vs workers=N comparison
         well_failure = None
-        rng_failure = np.random.default_rng(stable_u32(f"failure_{well_id}_{design_id}"))
+        rng_failure = np.random.default_rng(stable_u32(f"failure_{plate_id}_{cell_line}_{well_id}"))
         if rng_failure.random() < TECH_CV['well_failure_rate']:
             # Well failed - apply random extreme multiplier
             failure_type = rng_failure.choice(['bubble', 'contamination', 'pipetting_error'])
@@ -1006,10 +1044,12 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             viability_effect = 1.0
             ldh_signal = baseline_ldh * (1.0 - viability_effect) * 0.05
 
-        # Add biological noise (15% CV) - GUARD RNG CALL
+        # Add biological noise (15% CV) - Use per-well deterministic RNG
+        # CRITICAL: Per-well RNG ensures workers=1 equals workers=N
         ldh_cv = 0.15
         if ldh_cv > 0:
-            ldh_signal *= rng.rng_assay.normal(1.0, ldh_cv)
+            rng_well_ldh = assay_rng_for_well(well.plate_id, well.cell_line, well.well_id, "ldh_bio")
+            ldh_signal *= rng_well_ldh.normal(1.0, ldh_cv)
 
         # Add technical noise: reuse same batch factors as morphology (matches main codebase)
         # LDH is also affected by plate/day/operator/well variation
@@ -1183,9 +1223,18 @@ def run_parallel_simulation(
                 if len(batch) >= BATCH_SIZE:
                     # CRITICAL: Sort batch by stable key before insert
                     # Even with imap(), batch order depends on buffering, so sort explicitly
-                    # Stable key: (plate_id, cell_line, well_id, compound, dose_uM, timepoint_h)
-                    batch.sort(key=lambda r: (r['plate_id'], r['cell_line'], r['well_id'],
-                                             r['compound'], r['dose_uM'], r['timepoint_h']))
+                    # Stable key matches UNIQUE INDEX: (design_id, plate_id, cell_line, well_id)
+                    # Extra fields (compound, dose, timepoint) included for clarity, but redundant
+                    # float() coercion prevents type instability (10 vs 10.0)
+                    batch.sort(key=lambda r: (
+                        r['design_id'],
+                        r['plate_id'],
+                        r['cell_line'],
+                        r['well_id'],
+                        r['compound'],
+                        float(r['dose_uM']),
+                        float(r['timepoint_h'])
+                    ))
                     db.insert_results_batch(batch, commit=False)
                     saved += len(batch)
                     total_staged += len(batch)
@@ -1201,8 +1250,15 @@ def run_parallel_simulation(
             # Flush remainder
             if batch:
                 # CRITICAL: Sort final batch too
-                batch.sort(key=lambda r: (r['plate_id'], r['cell_line'], r['well_id'],
-                                         r['compound'], r['dose_uM'], r['timepoint_h']))
+                batch.sort(key=lambda r: (
+                    r['design_id'],
+                    r['plate_id'],
+                    r['cell_line'],
+                    r['well_id'],
+                    r['compound'],
+                    float(r['dose_uM']),
+                    float(r['timepoint_h'])
+                ))
                 db.insert_results_batch(batch, commit=False)
                 saved += len(batch)
                 total_staged += len(batch)
@@ -1247,16 +1303,19 @@ def run_stream_isolation_self_test(seed: int = 0):
     """
     Self-test: prove that RNG streams are isolated (assay doesn't perturb physics).
 
-    This calls the ACTUAL simulation code path (simulate_well) to verify that
-    real assay operations don't perturb physics streams. This catches regressions
-    where someone accidentally uses rng_growth in measurement code.
+    This calls the ACTUAL simulation code path (simulate_well) TWICE to verify:
+    1. RNG streams don't couple (bit_generator.state check)
+    2. Physics outputs are identical (adversarial check - cell fate unchanged)
+
+    This catches regressions where someone accidentally uses rng_growth in measurement code.
     """
     print("\n" + "=" * 80)
-    print("STREAM ISOLATION SELF-TEST")
+    print("STREAM ISOLATION SELF-TEST (ADVERSARIAL)")
     print("=" * 80)
-    print(f"Testing that assay calls don't perturb physics RNG streams (seed={seed})...\n")
+    print(f"Testing observer-independent physics with seed={seed}...\n")
 
-    # Initialize RNG streams
+    # Test 1: Run simulation, check RNG streams don't couple
+    print("Test 1/2: RNG stream coupling check...")
     global _RNG_STREAMS
     _RNG_STREAMS = RNGStreams(seed=seed)
 
@@ -1266,7 +1325,6 @@ def run_stream_isolation_self_test(seed: int = 0):
     assay_state_before = _RNG_STREAMS.rng_assay.bit_generator.state
 
     # Call ACTUAL simulation code (not just rng_assay.normal)
-    # This is the real code path used in production runs
     test_well = WellAssignment(
         well_id='A01',
         cell_line='A549',
@@ -1280,9 +1338,9 @@ def run_stream_isolation_self_test(seed: int = 0):
     )
 
     # Run the actual simulation (this consumes RNG for morphology, LDH, etc.)
-    result = simulate_well(test_well, design_id='self_test')
+    result1 = simulate_well(test_well, design_id='self_test')
 
-    if result is None:
+    if result1 is None:
         print("❌ FAIL: simulate_well() returned None (simulation error)")
         sys.exit(1)
 
@@ -1296,27 +1354,55 @@ def run_stream_isolation_self_test(seed: int = 0):
     treatment_changed = (treatment_state_before != treatment_state_after)
     assay_changed = (assay_state_before != assay_state_after)
 
-    print(f"Physics streams after simulate_well() call:")
     print(f"  rng_growth changed:    {growth_changed}")
     print(f"  rng_treatment changed: {treatment_changed}")
     print(f"  rng_assay changed:     {assay_changed}")
-    print()
 
     if growth_changed or treatment_changed:
         print("❌ FAIL: simulate_well() perturbed physics RNG streams!")
-        print("   This means observation can change cell fate (violates hardening guarantee)")
         print("   Likely cause: someone used rng_growth or rng_treatment in assay code")
         sys.exit(1)
 
-    if not assay_changed:
-        print("❌ FAIL: Assay RNG stream didn't change (no RNG consumption detected)")
-        print("   This suggests simulate_well() is not using assay RNG at all")
+    # NOTE: rng_assay may not change because we use per-well deterministic RNG for measurements
+    # This is correct - measurement noise is addressable by well key, not consumption order
+    print("  ✓ Physics RNG streams properly isolated")
+    print("  Note: Measurement noise uses per-well RNG (not global rng_assay)")
+    print()
+
+    # Test 2: Run AGAIN with same physics seed, check physics outputs match
+    print("Test 2/2: Physics output stability check (adversarial)...")
+    _RNG_STREAMS = RNGStreams(seed=seed)  # Reset to same seed
+
+    # Run second simulation (same well, same seed, fresh RNG state)
+    result2 = simulate_well(test_well, design_id='self_test')
+
+    if result2 is None:
+        print("❌ FAIL: Second simulate_well() returned None")
         sys.exit(1)
 
-    print("✅ PASS: Stream isolation verified")
-    print("   Physics streams (growth, treatment) unchanged")
-    print("   Assay stream changed as expected")
-    print("\nActual simulation code path tested (not just toy example).")
+    # Compare PHYSICS outputs (viability, death accounting)
+    # These must be bit-identical since we reset RNG to same seed
+    viability_match = (result1['viability'] == result2['viability'])
+    death_compound_match = (result1['death_compound'] == result2['death_compound'])
+    death_unknown_match = (result1['death_unknown'] == result2['death_unknown'])
+
+    print(f"  viability match:      {viability_match} ({result1['viability']:.6f})")
+    print(f"  death_compound match: {death_compound_match} ({result1['death_compound']:.6f})")
+    print(f"  death_unknown match:  {death_unknown_match} ({result1['death_unknown']:.6f})")
+
+    if not (viability_match and death_compound_match and death_unknown_match):
+        print("❌ FAIL: Physics outputs differ despite same seed!")
+        print("   This means cell fate is nondeterministic (RNG coupling or hidden state)")
+        sys.exit(1)
+
+    print("  ✓ Physics outputs bit-identical (cell fate deterministic)")
+    print()
+
+    print("✅ PASS: Stream isolation verified (adversarial)")
+    print("   ✓ RNG streams don't couple (bit_generator.state)")
+    print("   ✓ Physics outputs identical (cell fate unchanged)")
+    print()
+    print("Actual simulation code path tested with adversarial check.")
     print("Ready for production deployment with observer-independent physics guarantee.")
     print("=" * 80)
 

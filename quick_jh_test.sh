@@ -14,11 +14,11 @@ python3 standalone_cell_thalamus.py --mode demo --seed 0 --workers 4 --out runB 
 python3 compare_databases.py runA/cell_thalamus_results.db runB/cell_thalamus_results.db | grep "✅" || exit 1
 echo ""
 
-# Test 2: Worker count determinism
+# Test 2: Worker count determinism (cleaner with --out)
 echo "Test 2/7: Worker count determinism (1 vs 4)"
-python3 standalone_cell_thalamus.py --mode demo --seed 0 --workers 1 --db-path w1.db > /dev/null 2>&1
-python3 standalone_cell_thalamus.py --mode demo --seed 0 --workers 4 --db-path w4.db > /dev/null 2>&1
-python3 compare_databases.py w1.db w4.db | grep "✅" || exit 1
+python3 standalone_cell_thalamus.py --mode demo --seed 0 --workers 1 --out w1 > /dev/null 2>&1
+python3 standalone_cell_thalamus.py --mode demo --seed 0 --workers 4 --out w4 > /dev/null 2>&1
+python3 compare_databases.py w1/cell_thalamus_results.db w4/cell_thalamus_results.db | grep "✅" || exit 1
 echo ""
 
 # Test 3: Stream isolation self-test
@@ -54,11 +54,18 @@ python3 -c "import numpy, tqdm" && echo "✅ Dependencies OK" || exit 1
 echo ""
 
 # Cleanup
-rm -rf runA runB w1.db w4.db
+rm -rf runA runB w1 w4
 
 echo "=========================================="
 echo "✅ ALL TESTS PASSED"
 echo "=========================================="
 echo ""
 echo "Ready for production deployment on JupyterHub!"
-echo "Run: python3 standalone_cell_thalamus.py --mode full --seed 0 --workers 64"
+echo ""
+echo "To test workers=1 vs workers=64 determinism on JH:"
+echo "  python3 standalone_cell_thalamus.py --mode benchmark --seed 0 --workers 1 --out w1"
+echo "  python3 standalone_cell_thalamus.py --mode benchmark --seed 0 --workers 64 --out w64"
+echo "  python3 compare_databases.py w1/cell_thalamus_results.db w64/cell_thalamus_results.db"
+echo ""
+echo "For full production run:"
+echo "  python3 standalone_cell_thalamus.py --mode full --seed 0 --workers 64"
