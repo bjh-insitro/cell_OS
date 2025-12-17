@@ -16,11 +16,14 @@ from .resource_costs import ResourceCosts
 from .workflow_index import WorkflowIndex
 from .experiment_history import ExperimentHistory, Campaign, CampaignId, PathLike
 from .resource_accounting import ResourceAccounting
+from .hardware_registry import HardwareRegistry, load_hardware_registry
 
 __all__ = [
     "LabWorldModel",
     "Campaign",
     "CampaignId",
+    "HardwareRegistry",
+    "load_hardware_registry",
 ]
 
 @dataclass
