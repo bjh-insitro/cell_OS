@@ -6,12 +6,16 @@ Enhanced VirtualMachine with biological state tracking and realistic synthetic d
 
 import time
 import logging
+import hashlib
 import numpy as np
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 from .virtual import VirtualMachine
+
+# Import shared biology core (single source of truth)
+from ..sim import biology_core
 
 # Import database for parameter loading
 try:
@@ -24,9 +28,25 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def stable_u32(s: str) -> int:
+    """
+    Stable deterministic hash for RNG seeding.
+
+    Unlike Python's hash(), this is NOT salted per process, so it gives
+    consistent seeds across runs and machines. Critical for reproducibility.
+
+    Args:
+        s: String to hash
+
+    Returns:
+        Unsigned 32-bit integer suitable for RNG seeding
+    """
+    return int.from_bytes(hashlib.blake2s(s.encode(), digest_size=4).digest(), "little")
+
+
 class VesselState:
     """Tracks the biological state of a vessel."""
-    
+
     def __init__(self, vessel_id: str, cell_line: str, initial_count: float = 0):
         self.vessel_id = vessel_id
         self.cell_line = cell_line
@@ -37,14 +57,26 @@ class VesselState:
         self.last_feed_time = 0.0
         self.confluence = 0.0
         self.vessel_capacity = 1e7  # Default capacity
-        self.compounds = {}  # compound_id -> concentration
         self.seed_time = 0.0
+        self.last_update_time = 0.0
+
+        # Compound exposure tracking
+        self.compounds = {}  # compound -> dose_uM
+        self.compound_start_time = {}  # compound -> simulated_time when applied
+        self.compound_meta = {}  # compound -> {ic50, hill_slope, stress_axis}
+
+        # Death accounting (cumulative fractions)
+        self.transport_dysfunction = 0.0  # Current dysfunction score (0-1)
+        self.death_compound = 0.0  # Fraction killed by compound attrition
+        self.death_confluence = 0.0  # Fraction killed by overconfluence
+        self.death_unknown = 0.0  # Fraction killed by unknown causes (seeding stress, etc.)
+        self.death_mode = None  # "compound", "confluence", "mixed", "unknown", None
 
 
 class BiologicalVirtualMachine(VirtualMachine):
     """
     Enhanced VirtualMachine with biological simulation capabilities.
-    
+
     Features:
     - Cell growth modeling (exponential with saturation)
     - Viability dynamics (confluence-dependent)
@@ -53,14 +85,40 @@ class BiologicalVirtualMachine(VirtualMachine):
     - Realistic noise injection
     - Data-driven parameters from YAML
     """
-    
-    def __init__(self, simulation_speed: float = 1.0, 
+
+    def __init__(self, simulation_speed: float = 1.0,
                  params_file: Optional[str] = None,
-                 use_database: bool = True):
+                 use_database: bool = True,
+                 seed: int = 0):
+        """
+        Initialize BiologicalVirtualMachine.
+
+        Args:
+            simulation_speed: Speed multiplier for simulation
+            params_file: Path to YAML parameter file
+            use_database: Whether to use database for parameters
+            seed: RNG seed for reproducibility (default: 0).
+
+                  Seed contract:
+                  - seed=0 → Fully deterministic (physics + measurements)
+                  - seed=N → Independent run with seed N
+                  - ALWAYS pass explicitly (never rely on random seed)
+
+                  Future extension: Support separate seed_physics and seed_assay
+                  for "deterministic physics, stochastic measurements" use case.
+                  Never hack around this by conditionally consuming RNG.
+        """
         super().__init__(simulation_speed=simulation_speed)
         self.vessel_states: Dict[str, VesselState] = {}
         self.simulated_time = 0.0
         self.use_database = use_database and DB_AVAILABLE
+
+        # Split RNG streams for observer independence
+        # Each subsystem gets its own RNG so observation doesn't perturb physics
+        self.rng_growth = np.random.default_rng(seed + 1)      # Growth and cell count
+        self.rng_treatment = np.random.default_rng(seed + 2)   # Treatment variability
+        self.rng_assay = np.random.default_rng(seed + 3)       # Assay measurements
+
         self._load_parameters(params_file)
         self._load_raw_yaml_for_nested_params(params_file)  # Load nested params for CellROX/segmentation
     
@@ -184,54 +242,85 @@ class BiologicalVirtualMachine(VirtualMachine):
     def advance_time(self, hours: float):
         """Advance simulated time and update all vessel states."""
         self.simulated_time += hours
-        
+
         for vessel in self.vessel_states.values():
-            self._update_vessel_growth(vessel, hours)
+            self._step_vessel(vessel, hours)
+
+    def _step_vessel(self, vessel: VesselState, hours: float):
+        """
+        Update vessel state over time interval.
+
+        Order matters:
+        1. Growth (viable cells only)
+        2. Compound attrition (time-dependent death)
+        3. Confluence management (cap growth, no killing)
+        4. Update death mode label
+        """
+        # 1) Growth (viable cells only - dead cells don't grow)
+        self._update_vessel_growth(vessel, hours)
+
+        # 2) Apply compound attrition (time-dependent)
+        self._apply_compound_attrition(vessel, hours)
+
+        # 3) Manage confluence (cap growth, but don't kill cells)
+        self._manage_confluence(vessel)
+
+        # 4) Update death mode label
+        self._update_death_mode(vessel)
+
+        vessel.last_update_time = self.simulated_time
             
     def _update_vessel_growth(self, vessel: VesselState, hours: float):
-        """Update cell count based on growth model."""
+        """
+        Update cell count based on growth model.
+
+        Growth is for viable cells only - dead cells don't grow.
+        """
         if vessel.cell_count == 0:
             return
-            
+
+        # Dead cells don't grow
+        if vessel.viability <= 0.01:
+            return
+
         # Get cell line parameters with fallback to defaults
         params = self.cell_line_params.get(vessel.cell_line, self.defaults)
         doubling_time = params.get("doubling_time_h", self.defaults.get("doubling_time_h", 24.0))
         max_confluence = params.get("max_confluence", self.defaults.get("max_confluence", 0.9))
-        
+
         # Exponential growth with confluence-dependent saturation
         growth_rate = np.log(2) / doubling_time
-        
+
         # --- 1. Lag Phase Dynamics ---
         # Growth ramps up linearly over lag_duration_h
         lag_duration = params.get("lag_duration_h", self.defaults.get("lag_duration_h", 12.0))
         time_since_seed = self.simulated_time - vessel.seed_time
-        
+
         lag_factor = 1.0
         if time_since_seed < lag_duration:
             lag_factor = max(0.0, time_since_seed / lag_duration)
-            
+
         # --- 2. Spatial Edge Effects ---
         # Penalty for edge wells (evaporation/temp gradients)
         edge_penalty = 0.0
         if self._is_edge_well(vessel.vessel_id):
             edge_penalty = params.get("edge_penalty", self.defaults.get("edge_penalty", 0.15))
-            
+
+        # --- 3. Viability factor ---
+        # Scale growth by viability (dead cells don't proliferate)
+        viability_factor = max(0.0, vessel.viability)
+
         # Apply factors
-        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty)
-        
+        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty) * viability_factor
+
         # Reduce growth as confluence increases
         confluence = vessel.cell_count / vessel.vessel_capacity
         growth_factor = 1.0 - (confluence / max_confluence) ** 2
         growth_factor = max(0, growth_factor)
-        
+
         # Update count
         vessel.cell_count *= np.exp(effective_growth_rate * hours * growth_factor)
         vessel.confluence = vessel.cell_count / vessel.vessel_capacity
-        
-        # Viability decreases with over-confluence
-        if vessel.confluence > max_confluence:
-            viability_loss = (vessel.confluence - max_confluence) * 0.1
-            vessel.viability = max(0.5, vessel.viability - viability_loss)
             
     def _is_edge_well(self, vessel_id: str) -> bool:
         """
@@ -245,46 +334,222 @@ class BiologicalVirtualMachine(VirtualMachine):
         if match:
             row = match.group(1)
             col = int(match.group(2))
-            
+
             # Standard 96-well plate definition
             is_row_edge = (row == 'A') or (row == 'H')
             is_col_edge = (col == 1) or (col == 12)
-            
+
             return is_row_edge or is_col_edge
-            
+
         return False
+
+    def _apply_compound_attrition(self, vessel: VesselState, hours: float):
+        """
+        Apply time-dependent compound attrition.
+
+        Uses biology_core for consistent attrition logic with standalone simulation.
+        Attrition is "physics" - happens whether you observe it or not (Option 2).
+        """
+        if not vessel.compounds:
+            return
+
+        # Lazy load thalamus params (need for dysfunction computation)
+        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+            self._load_cell_thalamus_params()
+
+        for compound, dose_uM in vessel.compounds.items():
+            if dose_uM <= 0:
+                continue
+
+            # Get compound metadata (stored during treat_with_compound)
+            meta = vessel.compound_meta.get(compound)
+            if not meta:
+                logger.warning(f"Missing metadata for compound {compound}, skipping attrition")
+                continue
+
+            ic50_uM = meta['ic50_uM']
+            hill_slope = meta['hill_slope']
+            stress_axis = meta['stress_axis']
+            base_ec50 = meta['base_ec50']
+
+            # Time since treatment
+            time_since_treatment = self.simulated_time - vessel.compound_start_time.get(compound, self.simulated_time)
+
+            # CRITICAL: Compute dysfunction from EXPOSURE, not cached measurement (Option 2)
+            # This makes attrition observer-independent ("physics-based")
+            transport_dysfunction = biology_core.compute_transport_dysfunction_from_exposure(
+                cell_line=vessel.cell_line,
+                compound=compound,
+                dose_uM=dose_uM,
+                stress_axis=stress_axis,
+                base_potency_uM=base_ec50,  # Reference potency scale (base EC50)
+                time_since_treatment_h=time_since_treatment,
+                params=self.thalamus_params
+            )
+
+            # Compute attrition rate using biology_core (single source of truth)
+            attrition_rate = biology_core.compute_attrition_rate(
+                cell_line=vessel.cell_line,
+                compound=compound,
+                dose_uM=dose_uM,
+                stress_axis=stress_axis,
+                ic50_uM=ic50_uM,
+                hill_slope=hill_slope,
+                transport_dysfunction=transport_dysfunction,
+                time_since_treatment_h=time_since_treatment,
+                current_viability=vessel.viability,
+                params=self.thalamus_params  # Pass real params, not None
+            )
+
+            if attrition_rate <= 0:
+                continue
+
+            # Apply attrition over this time interval (exponential survival)
+            prev_viability = vessel.viability
+            survival = np.exp(-attrition_rate * hours)
+            vessel.viability *= survival
+            vessel.cell_count *= survival
+
+            # Track death accounting (capped at [0, 1])
+            killed_fraction = prev_viability - vessel.viability
+            vessel.death_compound += killed_fraction
+            vessel.death_compound = min(1.0, max(0.0, vessel.death_compound))  # Cap cumulative fraction
+
+            logger.debug(
+                f"{vessel.vessel_id}: Attrition rate={attrition_rate:.4f}/h, "
+                f"dys={transport_dysfunction:.3f}, killed={killed_fraction:.1%} over {hours:.1f}h"
+            )
+
+    def _manage_confluence(self, vessel: VesselState):
+        """
+        Manage over-confluence by capping growth.
+
+        For Phase 0: Do NOT kill cells from overconfluence (prevents "logistics death"
+        masquerading as "compound death"). Instead, cap cell count at max confluence.
+
+        If you want confluence death for specific scenarios, opt into it explicitly.
+        """
+        params = self.cell_line_params.get(vessel.cell_line, self.defaults)
+        max_confluence = params.get("max_confluence", self.defaults.get("max_confluence", 0.9))
+
+        if vessel.confluence > max_confluence:
+            # Cap growth at max confluence (cells contact-inhibit)
+            vessel.cell_count = max_confluence * vessel.vessel_capacity
+            vessel.confluence = max_confluence
+
+            # If you enabled confluence death, track it and cap
+            # vessel.death_confluence = min(1.0, max(0.0, vessel.death_confluence))
+
+            logger.debug(f"{vessel.vessel_id}: Confluence capped at {max_confluence:.1%}")
+
+    def _update_death_mode(self, vessel: VesselState):
+        """
+        Update death mode label and partition death into known causes.
+
+        Enforces complete accounting: death_compound + death_confluence + death_unknown = 1 - viability
+
+        Unknown death includes:
+        - Seeding stress (initial viability < 1.0)
+        - Delta tracking errors (numerical precision)
+        - Any death not attributable to known causes
+        """
+        # Compute total death and currently tracked causes
+        total_dead = 1.0 - vessel.viability
+        tracked_causes = vessel.death_compound + vessel.death_confluence
+        untracked = max(0.0, total_dead - tracked_causes)
+
+        # Partition untracked death into death_unknown bucket
+        # This maintains the invariant without inventing causality
+        vessel.death_unknown = untracked
+
+        # Clamp individual causes to not exceed total death
+        vessel.death_compound = min(vessel.death_compound, total_dead)
+        vessel.death_confluence = min(vessel.death_confluence, total_dead - vessel.death_compound)
+        vessel.death_unknown = min(vessel.death_unknown, total_dead - vessel.death_compound - vessel.death_confluence)
+
+        # All clamped to [0, 1]
+        vessel.death_compound = min(1.0, max(0.0, vessel.death_compound))
+        vessel.death_confluence = min(1.0, max(0.0, vessel.death_confluence))
+        vessel.death_unknown = min(1.0, max(0.0, vessel.death_unknown))
+
+        # Warn if unknown death INCREASES after treatment (suggests accounting bug)
+        # But don't warn about baseline seeding stress - that's legitimate unknown death
+        seeding_stress_baseline = 0.025  # Tolerate up to 2.5% seeding stress without warning
+        if vessel.death_unknown > seeding_stress_baseline and vessel.compounds:
+            # Significant unknown death beyond seeding stress, despite tracking compounds
+            logger.warning(
+                f"{vessel.vessel_id}: Unknown death ({vessel.death_unknown:.1%}) exceeds seeding baseline. "
+                f"Total dead: {total_dead:.1%}, compound: {vessel.death_compound:.1%}, "
+                f"confluence: {vessel.death_confluence:.1%}. Suggests delta tracking error."
+            )
+
+        threshold = 0.05  # 5% death required to label
+        # Lower threshold for unknown death if no other causes (seeding stress detection)
+        unknown_threshold = 0.01 if vessel.death_compound == 0 and vessel.death_confluence == 0 else threshold
+
+        compound_death = vessel.death_compound > threshold
+        confluence_death = vessel.death_confluence > threshold
+        unknown_death = vessel.death_unknown > unknown_threshold
+
+        # Priority: known causes > unknown > none
+        if compound_death and confluence_death:
+            vessel.death_mode = "mixed"
+        elif compound_death:
+            vessel.death_mode = "compound"
+        elif confluence_death:
+            vessel.death_mode = "confluence"
+        elif unknown_death:
+            vessel.death_mode = "unknown"
+        elif vessel.viability < 0.5:
+            # Significant death but nothing exceeds threshold (accounting bug)
+            vessel.death_mode = "unknown"
+        else:
+            vessel.death_mode = None  # Still healthy
             
-    def seed_vessel(self, vessel_id: str, cell_line: str, initial_count: float, capacity: float = 1e7):
-        """Initialize a vessel with cells."""
+    def seed_vessel(self, vessel_id: str, cell_line: str, initial_count: float, capacity: float = 1e7, initial_viability: float = None):
+        """Initialize a vessel with cells.
+
+        Args:
+            vessel_id: Vessel identifier
+            cell_line: Cell line name
+            initial_count: Initial cell count
+            capacity: Vessel capacity
+            initial_viability: Override initial viability (default: 0.98 for realistic seeding stress)
+        """
         state = VesselState(vessel_id, cell_line, initial_count)
-        state.vessel_capacity = capacity
+        if initial_viability is not None:
+            state.viability = initial_viability
         state.vessel_capacity = capacity
         state.last_passage_time = self.simulated_time
         state.seed_time = self.simulated_time
         self.vessel_states[vessel_id] = state
-        logger.info(f"Seeded {vessel_id} with {initial_count:.2e} {cell_line} cells")
+        logger.info(f"Seeded {vessel_id} with {initial_count:.2e} {cell_line} cells (viability={state.viability:.1%})")
         
     def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:
         """Count cells with realistic biological variation."""
         vessel_id = kwargs.get("vessel_id", sample_loc)
-        
+
         if vessel_id not in self.vessel_states:
             # Return default if vessel not tracked
             return super().count_cells(sample_loc, **kwargs)
-            
+
         vessel = self.vessel_states[vessel_id]
-        
+
         # Get cell line-specific noise parameters
         params = self.cell_line_params.get(vessel.cell_line, self.defaults)
         count_cv = params.get("cell_count_cv", self.defaults.get("cell_count_cv", 0.10))
         viability_cv = params.get("viability_cv", self.defaults.get("viability_cv", 0.02))
-        
-        # Add measurement noise
-        measured_count = vessel.cell_count * np.random.normal(1.0, count_cv)
+
+        # Add measurement noise (only if CV > 0)
+        measured_count = vessel.cell_count
+        if count_cv > 0:
+            measured_count *= self.rng_growth.normal(1.0, count_cv)
         measured_count = max(0, measured_count)
-        
-        # Viability measurement noise
-        measured_viability = vessel.viability * np.random.normal(1.0, viability_cv)
+
+        # Viability measurement noise (only if CV > 0)
+        measured_viability = vessel.viability
+        if viability_cv > 0:
+            measured_viability *= self.rng_growth.normal(1.0, viability_cv)
         measured_viability = np.clip(measured_viability, 0.0, 1.0)
         
         self._simulate_delay(0.5)
@@ -348,46 +613,85 @@ class BiologicalVirtualMachine(VirtualMachine):
         }
         
     def treat_with_compound(self, vessel_id: str, compound: str, dose_uM: float, **kwargs) -> Dict[str, Any]:
-        """Simulate compound treatment and dose-response."""
+        """
+        Register compound exposure and apply instant viability effect.
+
+        Time-dependent attrition is applied during advance_time(), not here.
+        This prevents treatment from being "observer-dependent" (attrition is physics, not measurement).
+        """
         if vessel_id not in self.vessel_states:
             logger.warning(f"Vessel {vessel_id} not found")
             return {"status": "error", "message": "Vessel not found"}
-            
-        vessel = self.vessel_states[vessel_id]
-        
-        # Get IC50 and hill slope from YAML database
-        compound_data = self.compound_sensitivity.get(compound, {})
-        base_ic50 = compound_data.get(vessel.cell_line, self.defaults.get("default_ic50", 1.0))
-        hill_slope = compound_data.get("hill_slope", self.defaults.get("default_hill_slope", 1.0))
 
-        # Apply cell-line-specific IC50 modifier (captures biological differences)
-        # Lazy load thalamus params if not already loaded
+        vessel = self.vessel_states[vessel_id]
+
+        # Lazy load thalamus params (for compound definitions)
         if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
             self._load_cell_thalamus_params()
 
-        ic50_modifiers = self.thalamus_params.get('cell_line_ic50_modifiers', {})
-        cell_line_modifiers = ic50_modifiers.get(vessel.cell_line, {})
-        modifier = cell_line_modifiers.get(compound, 1.0)  # Default to no modification
-        ic50 = base_ic50 * modifier
+        # Get compound parameters - FAIL LOUDLY if missing
+        compound_params = self.thalamus_params.get('compounds', {}).get(compound)
+        if not compound_params:
+            raise KeyError(
+                f"Unknown compound '{compound}' in thalamus_params. "
+                f"Available compounds: {list(self.thalamus_params.get('compounds', {}).keys())}"
+            )
 
-        # Apply dose-response model (4-parameter logistic)
-        viability_effect = 1.0 / (1.0 + (dose_uM / ic50) ** hill_slope)
-        
-        # Add biological variability
+        base_ec50 = compound_params['ec50_uM']
+        hill_slope = compound_params['hill_slope']
+        stress_axis = compound_params['stress_axis']
+
+        # Get cell-line-specific IC50 sensitivity (if exists)
+        cell_line_sensitivity = self.thalamus_params.get('cell_line_sensitivity', {})
+
+        # Compute adjusted IC50 using biology_core (single source of truth)
+        ic50_uM = biology_core.compute_adjusted_ic50(
+            compound=compound,
+            cell_line=vessel.cell_line,
+            base_ec50=base_ec50,
+            stress_axis=stress_axis,
+            cell_line_sensitivity=cell_line_sensitivity,
+            proliferation_index=biology_core.PROLIF_INDEX.get(vessel.cell_line)
+        )
+
+        # Compute instant viability effect (no attrition yet - that's in advance_time)
+        viability_effect = biology_core.compute_instant_viability_effect(
+            dose_uM=dose_uM,
+            ic50_uM=ic50_uM,
+            hill_slope=hill_slope
+        )
+
+        # Add biological variability (only if biological_cv > 0)
         params = self.cell_line_params.get(vessel.cell_line, self.defaults)
         biological_cv = params.get("biological_cv", self.defaults.get("biological_cv", 0.05))
-        viability_effect *= np.random.normal(1.0, biological_cv)
-        viability_effect = np.clip(viability_effect, 0.0, 1.0)
-        
-        # Update vessel state
+        if biological_cv > 0:
+            viability_effect *= self.rng_treatment.normal(1.0, biological_cv)
+            viability_effect = np.clip(viability_effect, 0.0, 1.0)
+
+        # Apply instant effect to vessel state and track death accounting
+        prev_viability = vessel.viability
         vessel.viability *= viability_effect
         vessel.cell_count *= viability_effect
+
+        # Track instant compound death (not just attrition!)
+        instant_killed = prev_viability - vessel.viability
+        vessel.death_compound += instant_killed
+        vessel.death_compound = min(1.0, max(0.0, vessel.death_compound))
+
+        # Register exposure for time-dependent attrition
         vessel.compounds[compound] = dose_uM
-        
+        vessel.compound_start_time[compound] = self.simulated_time
+        vessel.compound_meta[compound] = {
+            'ic50_uM': ic50_uM,
+            'hill_slope': hill_slope,
+            'stress_axis': stress_axis,
+            'base_ec50': base_ec50
+        }
+
         self._simulate_delay(0.5)
-        
-        logger.info(f"Treated {vessel_id} with {dose_uM}μM {compound} (viability: {vessel.viability:.2f})")
-        
+
+        logger.info(f"Treated {vessel_id} with {dose_uM}μM {compound} (instant viability: {vessel.viability:.2f}, IC50={ic50_uM:.2f}µM)")
+
         return {
             "status": "success",
             "action": "treat",
@@ -395,8 +699,9 @@ class BiologicalVirtualMachine(VirtualMachine):
             "dose_uM": dose_uM,
             "viability_effect": viability_effect,
             "current_viability": vessel.viability,
-            "ic50": ic50,
-            "hill_slope": hill_slope
+            "ic50_uM": ic50_uM,
+            "hill_slope": hill_slope,
+            "stress_axis": stress_axis
         }
         
     def incubate(self, duration_seconds: float, temperature_c: float, **kwargs) -> Dict[str, Any]:
@@ -487,11 +792,11 @@ class BiologicalVirtualMachine(VirtualMachine):
             fold_increase = (dose_uM ** hill_slope) / (ec50 ** hill_slope + dose_uM ** hill_slope)
             signal = baseline * (1.0 + (max_fold - 1.0) * fold_increase)
         
-        # Add biological noise
+        # Add biological noise (only if CV > 0)
         cv = self.cell_line_params.get(cell_line, {}).get('biological_cv', 0.05)
-        noise = np.random.normal(1.0, cv)
-        signal *= noise
-        
+        if cv > 0:
+            signal *= self.rng_assay.normal(1.0, cv)
+
         return max(0.0, signal)
     
     def simulate_segmentation_quality(self, vessel_id: str, compound: str, dose_uM: float) -> float:
@@ -547,12 +852,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         
         # Also factor in viability (dead cells are hard to segment)
         quality *= vessel.viability
-        
-        # Add noise
+
+        # Add noise (only if CV > 0)
         cv = 0.05  # 5% CV for segmentation quality
-        noise = np.random.normal(1.0, cv)
-        quality *= noise
-        
+        if cv > 0:
+            quality *= self.rng_assay.normal(1.0, cv)
+
         return np.clip(quality, 0.0, 1.0)
     
     def _load_raw_yaml_for_nested_params(self, params_file: Optional[str] = None):
@@ -596,15 +901,13 @@ class BiologicalVirtualMachine(VirtualMachine):
             return None
 
         # Deterministic failure based on well position (consistent across runs)
-        np.random.seed(hash(f"well_failure_{well_position}") % 2**32)
-        if np.random.random() > failure_rate:
-            np.random.seed()  # Reset
+        rng_failure = np.random.default_rng(stable_u32(f"well_failure_{well_position}"))
+        if rng_failure.random() > failure_rate:
             return None
 
         # Select failure mode
         failure_modes = self.thalamus_params.get('well_failure_modes', {})
         if not failure_modes:
-            np.random.seed()
             return None
 
         # Build probability distribution
@@ -612,14 +915,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         probs = [failure_modes[mode].get('probability', 0.0) for mode in modes]
         total_prob = sum(probs)
         if total_prob <= 0:
-            np.random.seed()
             return None
 
         probs = [p / total_prob for p in probs]  # Normalize
-        selected_mode = np.random.choice(modes, p=probs)
+        selected_mode = rng_failure.choice(modes, p=probs)
         effect = failure_modes[selected_mode].get('effect', 'no_signal')
-
-        np.random.seed()  # Reset random state
 
         # Apply failure effect
         failed_morph = morph.copy()
@@ -627,33 +927,33 @@ class BiologicalVirtualMachine(VirtualMachine):
         if effect == 'no_signal':
             # Bubble in well → imaging fails → near-zero signal
             for channel in failed_morph:
-                failed_morph[channel] = np.random.uniform(0.1, 2.0)  # Background noise only
+                failed_morph[channel] = rng_failure.uniform(0.1, 2.0)  # Background noise only
 
         elif effect == 'outlier_high':
             # Contamination (bacteria/yeast) → abnormally high signal
             for channel in failed_morph:
-                failed_morph[channel] *= np.random.uniform(5.0, 20.0)  # 5-20× higher
+                failed_morph[channel] *= rng_failure.uniform(5.0, 20.0)  # 5-20× higher
 
         elif effect == 'outlier_low':
             # Pipetting error → wrong volume → low cell count
             for channel in failed_morph:
-                failed_morph[channel] *= np.random.uniform(0.05, 0.3)  # 5-30% of normal
+                failed_morph[channel] *= rng_failure.uniform(0.05, 0.3)  # 5-30% of normal
 
         elif effect == 'partial_signal':
             # Staining failure → some channels fail, others OK
-            failed_channels = np.random.choice(
+            failed_channels = rng_failure.choice(
                 list(failed_morph.keys()),
-                size=np.random.randint(1, len(failed_morph)),
+                size=rng_failure.integers(1, len(failed_morph)),
                 replace=False
             )
             for channel in failed_channels:
-                failed_morph[channel] = np.random.uniform(0.1, 2.0)
+                failed_morph[channel] = rng_failure.uniform(0.1, 2.0)
 
         elif effect == 'mixed_signal':
             # Cross-contamination → mix of this well and neighbor
-            mix_ratio = np.random.uniform(0.3, 0.7)  # 30-70% contamination
+            mix_ratio = rng_failure.uniform(0.3, 0.7)  # 30-70% contamination
             for channel in failed_morph:
-                neighbor_signal = failed_morph[channel] * np.random.uniform(0.5, 2.0)
+                neighbor_signal = failed_morph[channel] * rng_failure.uniform(0.5, 2.0)
                 failed_morph[channel] = mix_ratio * failed_morph[channel] + (1 - mix_ratio) * neighbor_signal
 
         return {
@@ -784,7 +1084,54 @@ class BiologicalVirtualMachine(VirtualMachine):
                 # Positive axis_strength increases signal, negative decreases
                 morph[channel] *= (1.0 + dose_effect * axis_strength)
 
+            # Special handling for microtubule drugs: morphology disruption precedes viability loss
+            # Neurons show cytoskeletal disruption (actin, mito distribution) even when viable
+            if stress_axis == 'microtubule':
+                # Morphology EC50: Lower than viability EC50 (morphology fails first)
+                # Set at 30% of viability EC50 for neurons (transport disruption happens fast)
+                morph_ec50_fraction = {
+                    'iPSC_NGN2': 0.3,       # Morphology fails at 30% of viability dose
+                    'iPSC_Microglia': 0.5,  # Moderate
+                    'A549': 1.0,            # Morphology and viability fail together
+                    'HepG2': 1.0
+                }.get(cell_line, 1.0)
+
+                morph_ec50 = ec50 * morph_ec50_fraction
+
+                # Smooth saturating Hill equation (not sharp min() clamp)
+                morph_penalty = dose_uM / (dose_uM + morph_ec50)  # 0 to 1, smooth
+
+                if cell_line == 'iPSC_NGN2':
+                    # Neurons: major actin/mito disruption at doses below viability IC50
+                    morph['actin'] *= (1.0 - 0.6 * morph_penalty)  # Up to 60% reduction
+                    morph['mito'] *= (1.0 - 0.5 * morph_penalty)   # Mito distribution severely disrupted
+                elif cell_line == 'iPSC_Microglia':
+                    # Microglia: moderate actin disruption (migration/phagocytosis impaired)
+                    morph['actin'] *= (1.0 - 0.4 * morph_penalty)
+
+        # CRITICAL: Compute transport dysfunction from STRUCTURAL morphology (before viability scaling)
+        # Uses biology_core for consistent dysfunction computation
+        # This prevents measurement attenuation (dead cells are dim) from masquerading as
+        # structural worsening (cytoskeleton more broken), which would create runaway feedback
+
+        # Keep a copy of structural morphology (before viability scaling) for output
+        morph_struct = morph.copy()
+
+        # Compute dysfunction using biology_core (single source of truth)
+        transport_dysfunction_score = biology_core.compute_transport_dysfunction_score(
+            cell_line=cell_line,
+            stress_axis=stress_axis,
+            actin_signal=morph['actin'],
+            mito_signal=morph['mito'],
+            baseline_actin=baseline['actin'],
+            baseline_mito=baseline['mito']
+        )
+
+        # Store for attrition calculation during advance_time
+        vessel.transport_dysfunction = transport_dysfunction_score
+
         # Apply viability effect (dead cells have reduced signal)
+        # This affects MEASUREMENT, not STRUCTURE
         viability_factor = 0.3 + 0.7 * vessel.viability  # Dead cells retain 30% signal
         for channel in morph:
             morph[channel] *= viability_factor
@@ -795,9 +1142,10 @@ class BiologicalVirtualMachine(VirtualMachine):
         stress_multiplier = self.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
         effective_bio_cv = self.thalamus_params['biological_noise']['cell_line_cv'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        # Add biological noise (dose-dependent)
-        for channel in morph:
-            morph[channel] *= np.random.normal(1.0, effective_bio_cv)
+        # Add biological noise (dose-dependent, only if CV > 0)
+        if effective_bio_cv > 0:
+            for channel in morph:
+                morph[channel] *= self.rng_assay.normal(1.0, effective_bio_cv)
 
         # Add technical noise (plate, day, operator effects)
         tech_noise = self.thalamus_params['technical_noise']
@@ -814,16 +1162,27 @@ class BiologicalVirtualMachine(VirtualMachine):
         operator = kwargs.get('operator', 'OP1')
         well_position = kwargs.get('well_position', 'A1')
 
-        # Consistent batch effects per plate/day/operator (same random seed)
-        np.random.seed(hash(f"plate_{plate_id}") % 2**32)
-        plate_factor = np.random.normal(1.0, plate_cv)
-        np.random.seed(hash(f"day_{day}") % 2**32)
-        day_factor = np.random.normal(1.0, day_cv)
-        np.random.seed(hash(f"operator_{operator}") % 2**32)
-        operator_factor = np.random.normal(1.0, operator_cv)
-        np.random.seed()  # Reset to random state for well factor
+        # Consistent batch effects per plate/day/operator (deterministic seeding)
+        # Only apply if CV > 0
+        plate_factor = 1.0
+        if plate_cv > 0:
+            rng_plate = np.random.default_rng(stable_u32(f"plate_{plate_id}"))
+            plate_factor = rng_plate.normal(1.0, plate_cv)
 
-        well_factor = np.random.normal(1.0, well_cv)
+        day_factor = 1.0
+        if day_cv > 0:
+            rng_day = np.random.default_rng(stable_u32(f"day_{day}"))
+            day_factor = rng_day.normal(1.0, day_cv)
+
+        operator_factor = 1.0
+        if operator_cv > 0:
+            rng_operator = np.random.default_rng(stable_u32(f"operator_{operator}"))
+            operator_factor = rng_operator.normal(1.0, operator_cv)
+
+        # Well factor uses assay RNG (non-deterministic)
+        well_factor = 1.0
+        if well_cv > 0:
+            well_factor = self.rng_assay.normal(1.0, well_cv)
 
         # Edge effect: wells on plate edges show reduced signal (evaporation, temperature gradient)
         is_edge = self._is_edge_well(well_position)
@@ -850,7 +1209,10 @@ class BiologicalVirtualMachine(VirtualMachine):
             "action": "cell_painting",
             "vessel_id": vessel_id,
             "cell_line": cell_line,
-            "morphology": morph,
+            "morphology": morph,  # Observed morphology (after viability scaling + noise)
+            "morphology_struct": morph_struct,  # Structural morphology (before viability scaling)
+            "transport_dysfunction_score": transport_dysfunction_score,
+            "death_mode": vessel.death_mode,
             "viability": vessel.viability,
             "timestamp": datetime.now().isoformat()
         }
@@ -922,8 +1284,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         stress_multiplier = self.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
         effective_bio_cv = self.thalamus_params['biological_noise']['cell_line_cv'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        # Add biological noise (dose-dependent)
-        ldh_signal *= np.random.normal(1.0, effective_bio_cv)
+        # Add biological noise (dose-dependent, only if CV > 0)
+        if effective_bio_cv > 0:
+            ldh_signal *= self.rng_assay.normal(1.0, effective_bio_cv)
 
         # Add technical noise (plate, day, operator effects)
         tech_noise = self.thalamus_params['technical_noise']
@@ -939,16 +1302,27 @@ class BiologicalVirtualMachine(VirtualMachine):
         operator = kwargs.get('operator', 'OP1')
         well_position = kwargs.get('well_position', 'A1')
 
-        # Consistent batch effects per plate/day/operator (same random seed)
-        np.random.seed(hash(f"plate_{plate_id}") % 2**32)
-        plate_factor = np.random.normal(1.0, plate_cv)
-        np.random.seed(hash(f"day_{day}") % 2**32)
-        day_factor = np.random.normal(1.0, day_cv)
-        np.random.seed(hash(f"operator_{operator}") % 2**32)
-        operator_factor = np.random.normal(1.0, operator_cv)
-        np.random.seed()  # Reset to random state for well factor
+        # Consistent batch effects per plate/day/operator (deterministic seeding)
+        # Only apply if CV > 0
+        plate_factor = 1.0
+        if plate_cv > 0:
+            rng_plate = np.random.default_rng(stable_u32(f"plate_{plate_id}"))
+            plate_factor = rng_plate.normal(1.0, plate_cv)
 
-        well_factor = np.random.normal(1.0, well_cv)
+        day_factor = 1.0
+        if day_cv > 0:
+            rng_day = np.random.default_rng(stable_u32(f"day_{day}"))
+            day_factor = rng_day.normal(1.0, day_cv)
+
+        operator_factor = 1.0
+        if operator_cv > 0:
+            rng_operator = np.random.default_rng(stable_u32(f"operator_{operator}"))
+            operator_factor = rng_operator.normal(1.0, operator_cv)
+
+        # Well factor uses assay RNG (non-deterministic)
+        well_factor = 1.0
+        if well_cv > 0:
+            well_factor = self.rng_assay.normal(1.0, well_cv)
 
         # Edge effect: wells on plate edges show reduced signal
         is_edge = self._is_edge_well(well_position)
@@ -962,16 +1336,15 @@ class BiologicalVirtualMachine(VirtualMachine):
         # For scalar assays, failures manifest as extreme outliers
         failure_rate = tech_noise.get('well_failure_rate', 0.0)
         if failure_rate > 0:
-            np.random.seed(hash(f"well_failure_{well_position}") % 2**32)
-            if np.random.random() <= failure_rate:
+            rng_failure = np.random.default_rng(stable_u32(f"well_failure_{well_position}"))
+            if rng_failure.random() <= failure_rate:
                 # Failed well - random extreme value
-                ldh_signal *= np.random.choice([0.01, 0.05, 0.1, 5.0, 10.0, 20.0])
+                ldh_signal *= rng_failure.choice([0.01, 0.05, 0.1, 5.0, 10.0, 20.0])
                 failure_mode = 'assay_failure'
                 qc_flag = 'FAIL'
             else:
                 failure_mode = None
                 qc_flag = None
-            np.random.seed()
         else:
             failure_mode = None
             qc_flag = None
@@ -987,6 +1360,10 @@ class BiologicalVirtualMachine(VirtualMachine):
             "atp_signal": ldh_signal,  # Keep for backward compatibility
             "viability": vessel.viability,
             "cell_count": vessel.cell_count,
+            "death_mode": vessel.death_mode,
+            "death_compound": vessel.death_compound,
+            "death_confluence": vessel.death_confluence,
+            "death_unknown": vessel.death_unknown,
             "timestamp": datetime.now().isoformat()
         }
 
