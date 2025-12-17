@@ -1188,17 +1188,26 @@ def canonicalize_for_json(obj):
     """
     Canonicalize Python objects for stable JSON serialization.
 
-    Handles numpy scalars, tuples, sets, and nested structures to prevent
-    silent stringification or runtime errors when hashing design parameters.
+    Handles numpy arrays, numpy scalars, tuples, sets, and nested structures
+    to prevent silent stringification or runtime errors when hashing design parameters.
 
     Args:
         obj: Object to canonicalize (dict, list, numpy scalar, etc.)
 
     Returns:
         JSON-safe canonical representation
+
+    Raises:
+        TypeError: If object cannot be canonicalized
     """
+    # Numpy arrays → lists (then recurse)
+    # CRITICAL: Check this BEFORE hasattr(obj, 'item') since arrays also have .item()
+    if isinstance(obj, np.ndarray):
+        return [canonicalize_for_json(item) for item in obj.tolist()]
+
     # Numpy scalars → Python native types
-    if hasattr(obj, 'item'):  # numpy scalar
+    # Check for numpy scalar types explicitly (not just hasattr which can be surprising)
+    if isinstance(obj, (np.integer, np.floating, np.bool_, np.complexfloating)):
         return obj.item()
 
     # Sets → sorted lists (stable order)
@@ -1218,7 +1227,11 @@ def canonicalize_for_json(obj):
         return [canonicalize_for_json(item) for item in obj]
 
     # Plain types pass through (str, int, float, bool, None)
-    return obj
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+
+    # If we reach here, it's something unexpected
+    raise TypeError(f"Cannot canonicalize type {type(obj).__name__}: {obj!r}")
 
 
 # ============================================================================
@@ -1274,7 +1287,13 @@ def run_parallel_simulation(
         canonical_params = canonicalize_for_json(design_params)
 
         # JSON dump with stable separators and sorted keys
-        design_key = json.dumps(canonical_params, sort_keys=True, separators=(',', ':'))
+        # CRITICAL: allow_nan=False → fail loudly on NaN/Infinity instead of cursed hash
+        design_key = json.dumps(
+            canonical_params,
+            sort_keys=True,
+            separators=(',', ':'),
+            allow_nan=False  # Crash on non-finite floats (better than silent corruption)
+        )
         design_hash = hashlib.blake2s(design_key.encode('utf-8'), digest_size=16).hexdigest()
         design_id = f"{design_hash[:8]}-{design_hash[8:12]}-{design_hash[12:16]}-{design_hash[16:20]}-{design_hash[20:]}"
     else:
