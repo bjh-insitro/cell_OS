@@ -130,7 +130,7 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
               onChange={(e) => setSelectedMetric(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
-              <option value="atp_signal">ATP Signal (Viability)</option>
+              <option value="atp_signal">LDH Cytotoxicity (Viability)</option>
               <option value="morph_er">ER Morphology</option>
               <option value="morph_mito">Mitochondria Morphology</option>
               <option value="morph_nucleus">Nucleus Morphology</option>
@@ -407,7 +407,7 @@ const VarianceTab: React.FC<VarianceTabProps> = ({ selectedDesignId, onDesignCha
           {(() => {
             const metrics = Object.keys(allVarianceData.all_metrics);
             const metricLabels: Record<string, string> = {
-              'atp_signal': 'ATP',
+              'atp_signal': 'LDH',
               'morph_er': 'ER',
               'morph_mito': 'Mito',
               'morph_nucleus': 'Nucleus',

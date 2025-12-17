@@ -132,7 +132,7 @@ class ResultResponse(BaseModel):
     morph_nucleus: float
     morph_actin: float
     morph_rna: float
-    atp_signal: float
+    atp_signal: float  # NOTE: Actually LDH cytotoxicity (kept name for backward compat). High = cell death, Low = viable
 
 
 # ============================================================================

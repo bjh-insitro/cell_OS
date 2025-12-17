@@ -11,13 +11,12 @@ Biological Realism Features:
    - HepG2 (hepatoma): High ER load (ER stress sensitive), OXPHOS-dependent (mito stress sensitive),
      high proteostasis burden (proteasome sensitive), peroxide detox capacity (H2O2 resistant)
 
-2. Decoupled ATP and Viability:
-   - ATP = baseline × viability × metabolic_mult (not V²)
-   - Metabolic penalty is EXTRA hit beyond viability, controlled by ATP_EXTRA_PENALTY per stress axis
-   - Mitochondrial (penalty=1.0): ATP crashes EARLY (at 50% viability, ATP may be 0%)
-   - DNA damage (penalty=0.0): ATP tracks viability exactly
-   - Oxidative/Proteasome (penalty=0.1-0.15): Mild early ATP drop
-   - Separate IC50 and Hill slope for ATP metabolic penalty curve
+2. LDH Cytotoxicity (Replaces ATP):
+   - LDH = baseline × (1 - viability)  # Inverse relationship
+   - LDH rises when cells die (membrane rupture releases LDH)
+   - Orthogonal to Cell Painting (supernatant vs cellular morphology)
+   - NOT confounded by mitochondrial stress (CCCP/oligomycin)
+   - True cytotoxicity measurement (membrane integrity)
 
 3. Proliferation-Coupled Microtubule Sensitivity:
    - Faster cycling cells (A549) more sensitive to nocodazole/paclitaxel
@@ -149,7 +148,7 @@ class CellThalamusDB:
                 morph_nucleus REAL,
                 morph_actin REAL,
                 morph_rna REAL,
-                atp_signal REAL,
+                atp_signal REAL,  -- Actually LDH cytotoxicity (kept name for backward compat)
                 timestamp TEXT
             )
         """)
@@ -402,48 +401,31 @@ def generate_design(cell_lines: List[str], compounds: List[str],
 COMPOUND_PARAMS = {
     # ec50_uM: base EC50 for viability (before cell-line adjustments)
     # hill_slope: Hill coefficient for viability curve steepness
-    # stress_axis: category determining morphology and ATP effects
-    # intensity: morphology effect magnitude (NOT used for ATP - see ATP_EXTRA_PENALTY)
-    # atp_ec50_mult: multiplier for ATP EC50 relative to viability EC50 (<1.0 = ATP drops earlier)
-    # atp_hill: Hill slope for ATP metabolic penalty curve (higher = steeper)
+    # stress_axis: category determining morphology effects
+    # intensity: morphology effect magnitude
 
-    'tBHQ': {'ec50_uM': 30.0, 'hill_slope': 2.0, 'stress_axis': 'oxidative', 'intensity': 0.8,
-             'atp_ec50_mult': 0.8, 'atp_hill': 2.0},
-    'H2O2': {'ec50_uM': 100.0, 'hill_slope': 2.0, 'stress_axis': 'oxidative', 'intensity': 1.2,
-             'atp_ec50_mult': 0.7, 'atp_hill': 2.2},
-    'tbhp': {'ec50_uM': 80.0, 'hill_slope': 2.0, 'stress_axis': 'oxidative', 'intensity': 1.0,
-             'atp_ec50_mult': 0.7, 'atp_hill': 2.0},
+    'tBHQ': {'ec50_uM': 30.0, 'hill_slope': 2.0, 'stress_axis': 'oxidative', 'intensity': 0.8},
+    'H2O2': {'ec50_uM': 100.0, 'hill_slope': 2.0, 'stress_axis': 'oxidative', 'intensity': 1.2},
+    'tbhp': {'ec50_uM': 80.0, 'hill_slope': 2.0, 'stress_axis': 'oxidative', 'intensity': 1.0},
 
-    'tunicamycin': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'er_stress', 'intensity': 1.2,
-                    'atp_ec50_mult': 0.9, 'atp_hill': 2.0},
-    'thapsigargin': {'ec50_uM': 0.5, 'hill_slope': 2.5, 'stress_axis': 'er_stress', 'intensity': 1.5,
-                     'atp_ec50_mult': 0.9, 'atp_hill': 2.5},
+    'tunicamycin': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'er_stress', 'intensity': 1.2},
+    'thapsigargin': {'ec50_uM': 0.5, 'hill_slope': 2.5, 'stress_axis': 'er_stress', 'intensity': 1.5},
 
-    # Mitochondrial drugs: ATP drops much earlier and steeper
-    'CCCP': {'ec50_uM': 5.0, 'hill_slope': 2.0, 'stress_axis': 'mitochondrial', 'intensity': 1.3,
-             'atp_ec50_mult': 0.4, 'atp_hill': 2.8},  # ATP crashes early!
-    'oligomycin': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'mitochondrial', 'intensity': 1.0,
-                   'atp_ec50_mult': 0.3, 'atp_hill': 3.0},  # ATP crashes very early!
-    'two_deoxy_d_glucose': {'ec50_uM': 1000.0, 'hill_slope': 1.5, 'stress_axis': 'mitochondrial', 'intensity': 0.6,
-                            'atp_ec50_mult': 0.5, 'atp_hill': 2.0},
+    # Mitochondrial drugs: LDH rises when cells die (no early ATP crash confound)
+    'CCCP': {'ec50_uM': 5.0, 'hill_slope': 2.0, 'stress_axis': 'mitochondrial', 'intensity': 1.3},
+    'oligomycin': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'mitochondrial', 'intensity': 1.0},
+    'two_deoxy_d_glucose': {'ec50_uM': 1000.0, 'hill_slope': 1.5, 'stress_axis': 'mitochondrial', 'intensity': 0.6},
 
-    'etoposide': {'ec50_uM': 10.0, 'hill_slope': 2.0, 'stress_axis': 'dna_damage', 'intensity': 1.0,
-                  'atp_ec50_mult': 0.9, 'atp_hill': 2.0},
-    'cisplatin': {'ec50_uM': 5.0, 'hill_slope': 2.0, 'stress_axis': 'dna_damage', 'intensity': 1.2,
-                  'atp_ec50_mult': 0.9, 'atp_hill': 2.0},
-    'doxorubicin': {'ec50_uM': 0.5, 'hill_slope': 2.5, 'stress_axis': 'dna_damage', 'intensity': 1.4,
-                    'atp_ec50_mult': 0.9, 'atp_hill': 2.5},
-    'staurosporine': {'ec50_uM': 0.1, 'hill_slope': 3.0, 'stress_axis': 'dna_damage', 'intensity': 1.8,
-                      'atp_ec50_mult': 0.8, 'atp_hill': 3.0},
+    'etoposide': {'ec50_uM': 10.0, 'hill_slope': 2.0, 'stress_axis': 'dna_damage', 'intensity': 1.0},
+    'cisplatin': {'ec50_uM': 5.0, 'hill_slope': 2.0, 'stress_axis': 'dna_damage', 'intensity': 1.2},
+    'doxorubicin': {'ec50_uM': 0.5, 'hill_slope': 2.5, 'stress_axis': 'dna_damage', 'intensity': 1.4},
+    'staurosporine': {'ec50_uM': 0.1, 'hill_slope': 3.0, 'stress_axis': 'dna_damage', 'intensity': 1.8},
 
-    'MG132': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'proteasome', 'intensity': 1.1,
-              'atp_ec50_mult': 0.85, 'atp_hill': 2.2},
+    'MG132': {'ec50_uM': 1.0, 'hill_slope': 2.0, 'stress_axis': 'proteasome', 'intensity': 1.1},
 
     # Microtubule drugs: sensitivity coupled to proliferation rate (handled separately)
-    'nocodazole': {'ec50_uM': 0.5, 'hill_slope': 2.0, 'stress_axis': 'microtubule', 'intensity': 1.3,
-                   'atp_ec50_mult': 0.95, 'atp_hill': 2.0},
-    'paclitaxel': {'ec50_uM': 0.01, 'hill_slope': 2.5, 'stress_axis': 'microtubule', 'intensity': 1.5,
-                   'atp_ec50_mult': 0.95, 'atp_hill': 2.5},
+    'nocodazole': {'ec50_uM': 0.5, 'hill_slope': 2.0, 'stress_axis': 'microtubule', 'intensity': 1.3},
+    'paclitaxel': {'ec50_uM': 0.01, 'hill_slope': 2.5, 'stress_axis': 'microtubule', 'intensity': 1.5},
 }
 
 # ============================================================================
@@ -625,18 +607,6 @@ def _deterministic_factor(seed_str: Optional[str], cv: float, well_unique_id: Op
     sigma = _cv_to_log_sigma(cv)
     return float(np.exp(rng.normal(0.0, sigma)))
 
-# ATP extra penalty coefficient by stress axis (how much ATP drops beyond viability)
-# 0.0 = ATP tracks viability exactly
-# 1.0 = full metabolic penalty (ATP crashes independently)
-ATP_EXTRA_PENALTY = {
-    'oxidative': 0.1,      # Mild early ATP drop (oxidative stress affects energetics)
-    'er_stress': 0.05,     # Minimal extra ATP drop
-    'mitochondrial': 1.0,  # Full penalty (ATP crashes early!)
-    'dna_damage': 0.0,     # ATP tracks viability (apoptosis doesn't hit ATP first)
-    'proteasome': 0.15,    # Moderate (proteostasis stress affects metabolism)
-    'microtubule': 0.0,    # ATP tracks viability (mitotic arrest doesn't hit ATP early)
-}
-
 # Cell-line proliferation index (relative doubling time)
 # Higher = faster cycling (more sensitive to cell cycle poisons)
 PROLIF_INDEX = {
@@ -644,10 +614,10 @@ PROLIF_INDEX = {
     'HepG2': 0.8,   # Slower cycling (hepatoma)
 }
 
-# Cell-line-specific ATP baseline (can vary by cell type and metabolic state)
-BASELINE_ATP = {
-    'A549': 1.0,
-    'HepG2': 1.1,   # Slightly higher baseline (liver metabolism)
+# Cell-line-specific LDH baseline (released from dead/dying cells)
+BASELINE_LDH = {
+    'A549': 50000.0,
+    'HepG2': 50000.0,
 }
 
 # Cell-line-specific sensitivity (IC50 multipliers)
@@ -784,13 +754,15 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
 
         # ============= END MORPHOLOGY BLOCK =============
 
-        # ATP signal using decoupled viability and metabolic penalty curves
-        baseline_atp = BASELINE_ATP.get(well.cell_line, 1.0)
+        # LDH cytotoxicity signal (replaces ATP)
+        # LDH is released when cells die and membranes rupture
+        # Orthogonal to Cell Painting morphology
+        baseline_ldh = BASELINE_LDH.get(well.cell_line, 50000.0)
 
-        # DMSO vehicle control: high viability and ATP
+        # DMSO vehicle control: high viability, low LDH
         if well.compound == 'DMSO':
             viability_effect = 1.0
-            atp_signal = baseline_atp
+            ldh_signal = baseline_ldh * (1.0 - viability_effect) * 0.05  # Minimal LDH from healthy cells
         elif well.compound in COMPOUND_PARAMS and well.dose_uM > 0:
             params = COMPOUND_PARAMS[well.compound]
             ic50_base = params['ec50_uM']
@@ -820,43 +792,29 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
                             f"{dose_base_ratio:.2f}×base_EC50, {dose_adjusted_ratio:.2f}×adjusted_IC50, "
                             f"viability={viability_effect:.1%}")
 
-            # ATP metabolic penalty (EXTRA penalty beyond viability, not V²)
-            # Penalty strength determined by stress axis
-            atp_ec50_mult = params.get('atp_ec50_mult', 1.0)
-            atp_hill = params.get('atp_hill', hill_slope)
-            extra_penalty_coef = ATP_EXTRA_PENALTY.get(stress_axis, 0.0)
-
-            # Calculate raw penalty curve (independent of viability)
-            ic50_atp = ic50_viability * atp_ec50_mult
-            raw_penalty = 1.0 / (1.0 + (well.dose_uM / ic50_atp) ** atp_hill)
-
-            # Convert to metabolic multiplier: 1.0 (no penalty) → 0.0 (full penalty)
-            # For mito (coef=1.0): metabolic_mult can drop to 0 while viability is high
-            # For DNA damage (coef=0.0): metabolic_mult stays at 1.0 (ATP = baseline × viability)
-            metabolic_mult = 1.0 - extra_penalty_coef * (1.0 - raw_penalty)
-
-            # Clamp to [0, 1] to prevent negative ATP or values > baseline
-            metabolic_mult = max(0.0, min(1.0, metabolic_mult))
-
-            # ATP = baseline × viability × metabolic_mult
-            # For mito: metabolic_mult drops early (ATP crashes at low dose)
-            # For others: metabolic_mult ≈ 1.0 (ATP tracks viability)
-            atp_signal = baseline_atp * viability_effect * metabolic_mult
+            # LDH signal (INVERSE of viability - rises when cells die)
+            # High viability (0.95) → Low LDH (only 5% dead cells releasing LDH)
+            # Low viability (0.30) → High LDH (70% dead cells releasing LDH)
+            death_fraction = 1.0 - viability_effect
+            ldh_signal = baseline_ldh * death_fraction
         else:
             viability_effect = 1.0
-            atp_signal = baseline_atp
+            ldh_signal = baseline_ldh * (1.0 - viability_effect) * 0.05
 
-        # Add biological noise (15% CV) - matching biological_virtual.py line 725
-        atp_signal *= np.random.normal(1.0, 0.15)
+        # Add biological noise (15% CV)
+        ldh_signal *= np.random.normal(1.0, 0.15)
 
-        # Add technical noise: ATP is a luminescence readout (not imaging!)
-        # Should correlate with handling (plate/day/operator/well), NOT imaging artifacts
-        atp_plate = _deterministic_factor(f'atp_plate_{plate_id}' if plate_id else None, 0.08, well_unique)
-        atp_tech_factor = atp_plate * day_drift * op_bias * well_misc
-        atp_signal *= atp_tech_factor
+        # Add technical noise: LDH is absorbance readout (supernatant sampling)
+        # Should correlate with handling (plate/day/operator/well)
+        ldh_plate = _deterministic_factor(f'ldh_plate_{plate_id}' if plate_id else None, 0.08, well_unique)
+        ldh_tech_factor = ldh_plate * day_drift * op_bias * well_misc
+        ldh_signal *= ldh_tech_factor
 
-        # Clamp ATP to non-negative (law of physics: ATP can't be negative)
-        atp_signal = max(0.0, atp_signal)
+        # Clamp LDH to non-negative
+        ldh_signal = max(0.0, ldh_signal)
+
+        # Keep variable name as atp_signal for backward compatibility with database
+        atp_signal = ldh_signal
 
         return {
             'design_id': design_id,

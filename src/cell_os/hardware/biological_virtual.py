@@ -688,17 +688,26 @@ class BiologicalVirtualMachine(VirtualMachine):
 
     def atp_viability_assay(self, vessel_id: str, **kwargs) -> Dict[str, Any]:
         """
-        Simulate ATP-based viability assay (orthogonal scalar readout).
+        Simulate LDH cytotoxicity assay (orthogonal scalar readout).
 
-        ATP luminescence provides a scalar anchor that's independent of
-        morphology but correlated with cell viability.
+        LDH (lactate dehydrogenase) release measures membrane integrity - only rises
+        when cells die and membranes rupture. Orthogonal to Cell Painting morphology.
+
+        Key advantages over ATP:
+        - Not confounded by mitochondrial dysfunction (CCCP, oligomycin crash ATP but may not kill cells)
+        - True cytotoxicity measurement (membrane rupture = cell death)
+        - Orthogonal to Cell Painting (supernatant biochemistry vs cellular morphology)
+
+        LDH signal is INVERSELY proportional to viability:
+        - High viability (0.95) → Low LDH (from 5% dead cells)
+        - Low viability (0.30) → High LDH (from 70% dead cells)
 
         Args:
             vessel_id: Vessel identifier
             **kwargs: Additional parameters (plate_id, day, operator for technical noise)
 
         Returns:
-            Dict with ATP signal and metadata
+            Dict with LDH signal and metadata
         """
         # Lazy load thalamus params
         if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
@@ -711,18 +720,22 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel = self.vessel_states[vessel_id]
         cell_line = vessel.cell_line
 
-        # Get baseline ATP for this cell line
-        baseline_atp = self.thalamus_params['baseline_atp'].get(cell_line, 50000.0)
+        # Get baseline LDH for this cell line
+        # LDH is released by dead/dying cells (inverse of ATP)
+        baseline_ldh = self.thalamus_params['baseline_atp'].get(cell_line, 50000.0)  # Keep same param name for backward compat
 
-        # ATP scales with cell count and viability
+        # LDH scales with cell count and DEATH (inverse of viability)
+        # High viability (0.95) = low LDH (from 5% dead cells)
+        # Low viability (0.30) = high LDH (from 70% dead cells)
         cell_count_factor = vessel.cell_count / 1e6  # Normalize to 1M cells
-        viability_factor = vessel.viability
+        death_factor = 1.0 - vessel.viability  # Inverse of viability
 
-        atp_signal = baseline_atp * cell_count_factor * viability_factor
+        # LDH signal proportional to dead/dying cells
+        ldh_signal = baseline_ldh * cell_count_factor * death_factor
 
         # Add biological noise
         bio_cv = self.thalamus_params['biological_noise']['cell_line_cv']
-        atp_signal *= np.random.normal(1.0, bio_cv)
+        ldh_signal *= np.random.normal(1.0, bio_cv)
 
         # Add technical noise
         tech_noise = self.thalamus_params['technical_noise']
@@ -737,17 +750,18 @@ class BiologicalVirtualMachine(VirtualMachine):
         well_factor = np.random.normal(1.0, well_cv)
 
         total_tech_factor = plate_factor * day_factor * operator_factor * well_factor
-        atp_signal *= total_tech_factor
-        atp_signal = max(0.0, atp_signal)
+        ldh_signal *= total_tech_factor
+        ldh_signal = max(0.0, ldh_signal)
 
-        self._simulate_delay(0.5)  # ATP assay is quick
+        self._simulate_delay(0.5)  # LDH assay is quick
 
         return {
             "status": "success",
-            "action": "atp_viability",
+            "action": "ldh_viability",
             "vessel_id": vessel_id,
             "cell_line": cell_line,
-            "atp_signal": atp_signal,
+            "ldh_signal": ldh_signal,
+            "atp_signal": ldh_signal,  # Keep for backward compatibility
             "viability": vessel.viability,
             "cell_count": vessel.cell_count,
             "timestamp": datetime.now().isoformat()

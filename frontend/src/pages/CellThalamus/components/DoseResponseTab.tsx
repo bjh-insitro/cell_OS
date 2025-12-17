@@ -211,7 +211,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
   const metrics = [
     { value: 'viability_pct', label: 'Viability (%)' },
-    { value: 'atp_signal', label: 'ATP Signal (raw)' },
+    { value: 'atp_signal', label: 'LDH Cytotoxicity (raw)' },
     { value: 'morph_er', label: 'ER Morphology' },
     { value: 'morph_mito', label: 'Mito Morphology' },
     { value: 'morph_nucleus', label: 'Nucleus Morphology' },
@@ -542,7 +542,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
         <div className="bg-blue-900/30 border border-blue-500/50 rounded-xl p-4">
           <div className="text-sm text-blue-300">
             <strong>Note:</strong> This design does not include DMSO controls.
-            Showing raw ATP signal instead of normalized viability percentage.
+            Showing raw LDH cytotoxicity instead of normalized viability percentage.
           </div>
         </div>
       )}
@@ -607,7 +607,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                 stroke="#94a3b8"
                 label={{
                   value: selectedMetric === 'viability_pct' ? 'Viability (%)' :
-                         selectedMetric === 'atp_signal' ? 'ATP Signal' : 'Morphology Score',
+                         selectedMetric === 'atp_signal' ? 'LDH Cytotoxicity' : 'Morphology Score',
                   angle: -90,
                   position: 'insideLeft',
                   fill: '#94a3b8',
@@ -886,7 +886,7 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                 stroke="#94a3b8"
                 label={{
                   value: normalizedMetric === 'viability_pct' ? 'Viability (%)' :
-                         normalizedMetric === 'atp_signal' ? 'ATP Signal' : 'Morphology Score',
+                         normalizedMetric === 'atp_signal' ? 'LDH Cytotoxicity' : 'Morphology Score',
                   angle: -90,
                   position: 'insideLeft',
                   fill: '#94a3b8',

@@ -105,7 +105,7 @@ class ComparisonDB:
                 morph_nucleus REAL,
                 morph_actin REAL,
                 morph_rna REAL,
-                atp_signal REAL,
+                atp_signal REAL,  -- Actually LDH cytotoxicity (kept name for backward compat)
                 FOREIGN KEY (design_id) REFERENCES designs(design_id)
             )
         """)
@@ -246,8 +246,12 @@ def simulate_well(well: WellAssignment) -> Dict:
         'RNA': np.clip(np.random.normal(0.5 + 0.3 * stress_level, noise_scale), 0, 1),
     }
 
-    # ATP signal
-    atp_signal = viability * (0.8 + 0.2 * np.random.random())
+    # LDH cytotoxicity signal (inverse of viability)
+    # High viability → Low LDH, Low viability → High LDH
+    death_fraction = 1.0 - viability
+    baseline_ldh = 50000.0
+    ldh_signal = baseline_ldh * death_fraction * (0.8 + 0.4 * np.random.random())  # With noise
+    atp_signal = ldh_signal  # Keep variable name for backward compat
 
     return {
         'design_id': '',  # Will be filled in
@@ -454,7 +458,7 @@ def compute_statistical_power(design_id: str, db: ComparisonDB) -> Dict:
             continue
 
         doses = [w['dose_uM'] for w in wells]
-        responses = [w['atp_signal'] for w in wells]
+        responses = [w['atp_signal'] for w in wells]  # atp_signal contains LDH values
 
         ec50_mean, ec50_ci_width, hill_mean, hill_ci_width, n_samples = fit_dose_response_bootstrap(
             doses, responses, n_bootstrap=50
@@ -514,9 +518,9 @@ def compute_simple_metrics(design_id: str, db: ComparisonDB) -> Dict:
         sentinels = [r for r in tp_results if r['is_sentinel']]
 
         if len(sentinels) > 1:
-            # Sentinel stability (CV of ATP across sentinels)
-            atp_values = [r['atp_signal'] for r in sentinels]
-            cv = np.std(atp_values) / np.mean(atp_values) if np.mean(atp_values) > 0 else 999
+            # Sentinel stability (CV of LDH across sentinels)
+            ldh_values = [r['atp_signal'] for r in sentinels]  # atp_signal contains LDH
+            cv = np.std(ldh_values) / np.mean(ldh_values) if np.mean(ldh_values) > 0 else 999
 
             metrics[f'T{int(tp)}h_sentinel_cv'] = cv
             db.save_metric(design_id, 'sentinel_cv', cv, tp)
@@ -582,7 +586,7 @@ def generate_report(all_metrics: List[Dict]) -> str:
     report.append("")
 
     # Sentinel stability
-    report.append("\nSENTINEL STABILITY (CV of ATP - lower is better)")
+    report.append("\nSENTINEL STABILITY (CV of LDH - lower is better)")
     report.append("-" * 80)
     report.append(f"{'Design':<45} {'T12h CV':<15} {'T48h CV':<15}")
     report.append("-" * 80)
