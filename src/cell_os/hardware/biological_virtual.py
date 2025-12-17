@@ -724,10 +724,19 @@ class BiologicalVirtualMachine(VirtualMachine):
         # LDH is released by dead/dying cells (inverse of ATP)
         baseline_ldh = self.thalamus_params['baseline_atp'].get(cell_line, 50000.0)  # Keep same param name for backward compat
 
-        # LDH scales with cell count and DEATH (inverse of viability)
+        # LDH scales with ORIGINAL cell count and DEATH (inverse of viability)
         # High viability (0.95) = low LDH (from 5% dead cells)
         # Low viability (0.30) = high LDH (from 70% dead cells)
-        cell_count_factor = vessel.cell_count / 1e6  # Normalize to 1M cells
+
+        # IMPORTANT: Reconstruct original cell count before death
+        # treat_with_compound reduces cell_count proportionally to viability,
+        # but LDH is released from ALL dead cells (which remain in well initially)
+        if vessel.viability > 0:
+            original_cell_count = vessel.cell_count / vessel.viability
+        else:
+            original_cell_count = vessel.cell_count  # All dead
+
+        cell_count_factor = original_cell_count / 1e6  # Normalize to 1M cells
         death_factor = 1.0 - vessel.viability  # Inverse of viability
 
         # LDH signal proportional to dead/dying cells

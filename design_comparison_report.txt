@@ -1,0 +1,62 @@
+
+================================================================================
+DESIGN COMPARISON REPORT - WITH STATISTICAL POWER
+================================================================================
+
+OVERVIEW
+--------------------------------------------------------------------------------
+Design                                        Wells      Sentinels    Experimental
+--------------------------------------------------------------------------------
+full_phase0_screen_v1                         2304       384          1920        
+phase0_founder_v2_controls_stratified         2112       688          1424        
+phase0_founder_v3_mixed_celllines_checkerboard 1152       416          736         
+
+
+PER-CELL-LINE REPLICATION
+--------------------------------------------------------------------------------
+Design                                        A549 wells      HepG2 wells    
+--------------------------------------------------------------------------------
+full_phase0_screen_v1                         1152            1152           
+phase0_founder_v2_controls_stratified         1056            1056           
+phase0_founder_v3_mixed_celllines_checkerboard 576             576            
+
+
+SENTINEL STABILITY (CV of ATP - lower is better)
+--------------------------------------------------------------------------------
+Design                                        T12h CV         T48h CV        
+--------------------------------------------------------------------------------
+full_phase0_screen_v1                         0.472           0.471          
+phase0_founder_v2_controls_stratified         0.354           0.333          
+phase0_founder_v3_mixed_celllines_checkerboard 0.358           0.313          
+
+
+STATISTICAL POWER (Mean EC50 CI Width - lower is better)
+--------------------------------------------------------------------------------
+Design                                        Mean CI Width (µM)   Interpretation                
+--------------------------------------------------------------------------------
+full_phase0_screen_v1                         1.39                 HIGH POWER ✓                  
+phase0_founder_v2_controls_stratified         2.64                 HIGH POWER ✓                  
+phase0_founder_v3_mixed_celllines_checkerboard 10.08                MODERATE POWER                
+
+
+MORPHOLOGY VARIANCE (Trace of Cov)
+--------------------------------------------------------------------------------
+Design                                        T12h Var        T48h Var       
+--------------------------------------------------------------------------------
+full_phase0_screen_v1                         0.215           0.232          
+phase0_founder_v2_controls_stratified         0.273           0.232          
+phase0_founder_v3_mixed_celllines_checkerboard 0.247           0.219          
+
+
+KEY TRADE-OFFS
+--------------------------------------------------------------------------------
+v2: 1056 wells per cell line, CI width = 2.64 µM
+v3: 576 wells per cell line, CI width = 10.08 µM
+
+v3 has 1.8× FEWER replicates per cell line
+v3 has 3.82× WIDER confidence intervals (less power)
+
+✗ VERDICT: v3's power loss is SEVERE (> 50% wider CIs)
+  Throughput gain may not be worth loss of statistical power
+
+================================================================================
