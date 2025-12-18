@@ -369,39 +369,44 @@ type ScaffoldHashItem = {
 };
 
 /**
+ * Format a number like Python's json.dumps does for floats.
+ * - Integers get .0 appended (0 -> "0.0", 1 -> "1.0")
+ * - Floats keep their decimal representation
+ * - NaN/Infinity should never reach here (rejected upstream)
+ */
+function formatNumberPythonStyle(n: number): string {
+  if (!Number.isFinite(n)) {
+    throw new Error(`Invalid number for scaffold hash: ${n}`);
+  }
+  return Number.isInteger(n) ? `${n}.0` : String(n);
+}
+
+/**
  * Python-compatible canonical JSON: alphabetically sorted object keys, no whitespace.
  * Matches Python's json.dumps(sort_keys=True, separators=(',', ':'))
  *
- * CRITICAL: Python always outputs floats with decimal point (e.g., 0.0, 1.0).
- * JavaScript JSON.stringify outputs whole numbers without decimal (e.g., 0, 1).
- * We must match Python's float formatting exactly.
+ * Explicit serialization instead of relying on JSON.stringify quirks.
  */
 function canonicalJsonPythonCompatible(items: ScaffoldHashItem[]): string {
   // Sort items by position
   const sortedItems = [...items].sort((a, b) => a.position.localeCompare(b.position));
 
-  // Sort keys inside each item to match json.dumps(sort_keys=True)
-  // Alphabetical order: compound, dose_uM, position, type
-  const normalized = sortedItems.map((x) => ({
-    compound: x.compound,
-    dose_uM: x.dose_uM,
-    position: x.position,
-    type: x.type,
-  }));
+  // Manually serialize each item with keys in alphabetical order: compound, dose_uM, position, type
+  const serializedItems = sortedItems.map((item) => {
+    // Escape strings for JSON (handle quotes, backslashes, control chars)
+    const escapeString = (s: string) => JSON.stringify(s);
 
-  // JSON.stringify with custom replacer to format floats like Python
-  const json = JSON.stringify(normalized, (key, value) => {
-    // For dose_uM field, ensure float formatting with decimal point
-    if (key === 'dose_uM' && typeof value === 'number') {
-      // If integer (no decimal part), add .0
-      return Number.isInteger(value) ? `${value}.0` : value;
-    }
-    return value;
+    return [
+      '{',
+      `"compound":${escapeString(item.compound)},`,
+      `"dose_uM":${formatNumberPythonStyle(item.dose_uM)},`,
+      `"position":${escapeString(item.position)},`,
+      `"type":${escapeString(item.type)}`,
+      '}',
+    ].join('');
   });
 
-  // The replacer adds quotes around our float strings, so we need to remove them
-  // Pattern: "dose_uM":"0.0" should become "dose_uM":0.0
-  return json.replace(/"dose_uM":"([^"]+)"/g, '"dose_uM":$1');
+  return `[${serializedItems.join(',')}]`;
 }
 
 function sha256_16hex(canonical: string): string {
