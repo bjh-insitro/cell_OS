@@ -69,15 +69,18 @@ class TemplateChooser:
         if assay == "ldh":
             gate_earned = beliefs.ldh_sigma_stable
             if not gate_earned:
-                return (False, f"LDH gate not earned (rel_width={beliefs.ldh_rel_width:.3f if beliefs.ldh_rel_width else 'N/A'})")
+                rw = f"{beliefs.ldh_rel_width:.3f}" if beliefs.ldh_rel_width is not None else "N/A"
+                return (False, f"LDH gate not earned (rel_width={rw})")
         elif assay == "cell_paint":
             gate_earned = beliefs.cell_paint_sigma_stable
             if not gate_earned:
-                return (False, f"Cell Painting gate not earned (rel_width={beliefs.cell_paint_rel_width:.3f if beliefs.cell_paint_rel_width else 'N/A'})")
+                rw = f"{beliefs.cell_paint_rel_width:.3f}" if beliefs.cell_paint_rel_width is not None else "N/A"
+                return (False, f"Cell Painting gate not earned (rel_width={rw})")
         elif assay == "scrna":
             gate_earned = beliefs.scrna_sigma_stable
             if not gate_earned:
-                return (False, f"scRNA gate not earned (rel_width={beliefs.scrna_rel_width:.3f if beliefs.scrna_rel_width else 'N/A'})")
+                rw = f"{beliefs.scrna_rel_width:.3f}" if beliefs.scrna_rel_width is not None else "N/A"
+                return (False, f"scRNA gate not earned (rel_width={rw})")
 
             # Ladder constraint: scRNA requires CP gate first
             if require_ladder and not beliefs.cell_paint_sigma_stable:
@@ -187,10 +190,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "gate_lock",
                         "regime": "gate_revoked",
-                        "gate_state": {
-                            "noise_sigma": "lost",
-                            "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown"
-                        },
+                        "gate_state": self._get_gate_state(beliefs),
                         "n_reps": 12
                     }
                 )
@@ -232,10 +232,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "abort",
                         "regime": "pre_gate",
-                        "gate_state": {
-                            "noise_sigma": "lost",
-                            "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown"
-                        },
+                        "gate_state": self._get_gate_state(beliefs),
                         "calibration_plan": calibration_plan
                     }
                 )
@@ -256,10 +253,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "must_calibrate",
                         "regime": "pre_gate",
-                        "gate_state": {
-                            "noise_sigma": "lost",
-                            "edge_effect": "lost"
-                        },
+                        "gate_state": self._get_gate_state(beliefs),
                         "calibration_plan": calibration_plan
                     }
                 )
@@ -278,10 +272,7 @@ class TemplateChooser:
                     "forced": True,
                     "trigger": "must_calibrate",
                     "regime": "pre_gate",
-                    "gate_state": {
-                        "noise_sigma": "lost",
-                        "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown"
-                    },
+                    "gate_state": self._get_gate_state(beliefs),
                     "calibration_plan": calibration_plan,
                     "n_reps": 12
                 }
@@ -292,6 +283,45 @@ class TemplateChooser:
             })
         
         # Gate earned - allow biology
+        # v0.5.0: Check for CP → scRNA upgrade opportunity first
+        if beliefs.cell_paint_sigma_stable and not beliefs.scrna_sigma_stable:
+            # Placeholder novelty score (proxy from observation variance)
+            # TODO: Replace with real CP feature novelty when available
+            novelty_score = 0.0  # Will be populated by observation context
+            ldh_viable = True  # Placeholder: assume viable unless LDH says otherwise
+
+            # For now, don't trigger upgrade in every cycle (placeholder threshold)
+            novelty_threshold = 0.8
+            if novelty_score >= novelty_threshold and ldh_viable:
+                # Check affordability for scRNA calibration
+                scrna_plan = self._compute_assay_calibration_plan(beliefs, "scrna")
+                wells_needed = scrna_plan.get("wells_needed", 0)
+
+                if remaining_wells >= wells_needed:
+                    reason = f"Upgrade to scRNA: novelty={novelty_score:.3f}, ldh_viable={ldh_viable}"
+                    self._set_last_decision(
+                        cycle=cycle,
+                        selected="scrna_upgrade_probe",
+                        selected_score=1.0,
+                        reason=reason,
+                        selected_candidate={
+                            "template": "scrna_upgrade_probe",
+                            "forced": False,
+                            "trigger": "upgrade",
+                            "regime": "in_gate",
+                            "gate_state": self._get_gate_state(beliefs),
+                            "novelty_score": novelty_score,
+                            "novelty_threshold": novelty_threshold,
+                            "ldh_viable": ldh_viable,
+                            "budget_remaining": remaining_wells,
+                        }
+                    )
+                    return ("scrna_upgrade_probe", {
+                        "reason": reason,
+                        "novelty_score": novelty_score,
+                        "ldh_viable": ldh_viable,
+                    })
+
         # Simple fallback: test compounds with dose ladder
         tested = beliefs.tested_compounds - {'DMSO'}
         if not tested or len(tested) < 5:
@@ -306,10 +336,7 @@ class TemplateChooser:
                     "forced": False,
                     "trigger": "scoring",
                     "regime": "in_gate",
-                    "gate_state": {
-                        "noise_sigma": "earned",
-                        "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown"
-                    }
+                    "gate_state": self._get_gate_state(beliefs)
                 }
             )
             return ("dose_ladder_coarse", {
@@ -327,10 +354,7 @@ class TemplateChooser:
                 "forced": False,
                 "trigger": "scoring",
                 "regime": "in_gate",
-                "gate_state": {
-                    "noise_sigma": "earned",
-                    "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown"
-                },
+                "gate_state": self._get_gate_state(beliefs),
                 "n_reps": 12
             }
         )

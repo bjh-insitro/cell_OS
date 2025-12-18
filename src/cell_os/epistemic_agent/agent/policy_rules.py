@@ -55,6 +55,23 @@ class RuleBasedPolicy:
             return self._template_edge_center_test(capabilities, **template_kwargs)
         elif template_name == "dose_ladder_coarse":
             return self._template_dose_ladder_coarse(capabilities, **template_kwargs)
+        # v0.5.0: Assay ladder templates
+        elif template_name == "calibrate_ldh_baseline":
+            return self._template_calibrate_ldh_baseline(capabilities, **template_kwargs)
+        elif template_name == "calibrate_cell_paint_baseline":
+            return self._template_calibrate_cell_paint_baseline(capabilities, **template_kwargs)
+        elif template_name == "calibrate_scrna_baseline":
+            return self._template_calibrate_scrna_baseline(capabilities, **template_kwargs)
+        elif template_name == "cell_paint_screen":
+            return self._template_cell_paint_screen(capabilities, **template_kwargs)
+        elif template_name == "scrna_upgrade_probe":
+            return self._template_scrna_upgrade_probe(capabilities, **template_kwargs)
+        elif template_name == "abort_insufficient_assay_gate_budget":
+            assay = template_kwargs.get("assay", "unknown")
+            block_reason = template_kwargs.get("block_reason", "Unknown")
+            calib_plan = template_kwargs.get("calibration_plan", {})
+            reason = template_kwargs.get("reason", f"Cannot afford {assay} gate calibration")
+            raise RuntimeError(f"ABORT EXPERIMENT: {reason}. Calibration plan: {calib_plan}")
         else:
             # Fallback
             return self._template_baseline_replicates(capabilities, n_reps=12, reason="Fallback")
@@ -177,6 +194,165 @@ class RuleBasedPolicy:
         return Proposal(
             design_id=design_id,
             hypothesis=f"{reason}. Map dose-response for {compound} across 4 log-spaced doses.",
+            wells=wells,
+            budget_limit=self.budget_remaining
+        )
+
+    def _template_calibrate_ldh_baseline(
+        self,
+        cap: dict,
+        n_reps: int = 12,
+        assay: str = "ldh",
+        reason: str = "Calibrate LDH assay gate"
+    ) -> Proposal:
+        """Template: DMSO replicates for LDH assay calibration.
+
+        v0.5.0: LDH proxy using noisy_morphology until real LDH assay added.
+        """
+        design_id = f"ldh_calib_{uuid.uuid4().hex[:8]}"
+
+        wells = []
+        for i in range(n_reps):
+            wells.append(WellSpec(
+                cell_line='A549',
+                compound='DMSO',
+                dose_uM=0.0,
+                time_h=12.0,
+                assay='ldh',  # Declare LDH assay intent (proxy: noisy_morphology)
+                position_tag='center'
+            ))
+
+        return Proposal(
+            design_id=design_id,
+            hypothesis=f"{reason}. LDH gate calibration (proxy: noisy_morphology).",
+            wells=wells,
+            budget_limit=self.budget_remaining
+        )
+
+    def _template_calibrate_cell_paint_baseline(
+        self,
+        cap: dict,
+        n_reps: int = 12,
+        assay: str = "cell_paint",
+        reason: str = "Calibrate Cell Painting assay gate"
+    ) -> Proposal:
+        """Template: DMSO replicates for Cell Painting assay calibration.
+
+        v0.5.0: Cell Painting uses noisy_morphology (existing signal).
+        """
+        design_id = f"cp_calib_{uuid.uuid4().hex[:8]}"
+
+        wells = []
+        for i in range(n_reps):
+            wells.append(WellSpec(
+                cell_line='A549',
+                compound='DMSO',
+                dose_uM=0.0,
+                time_h=12.0,
+                assay='cell_painting',
+                position_tag='center'
+            ))
+
+        return Proposal(
+            design_id=design_id,
+            hypothesis=f"{reason}. Cell Painting gate calibration (morphology features).",
+            wells=wells,
+            budget_limit=self.budget_remaining
+        )
+
+    def _template_calibrate_scrna_baseline(
+        self,
+        cap: dict,
+        n_reps: int = 6,  # Smaller, expensive
+        assay: str = "scrna",
+        reason: str = "Calibrate scRNA assay gate"
+    ) -> Proposal:
+        """Template: DMSO replicates for scRNA assay calibration (placeholder).
+
+        v0.5.0: scRNA placeholder using noisy_morphology proxy. Small n_reps (expensive).
+        """
+        design_id = f"scrna_calib_{uuid.uuid4().hex[:8]}"
+
+        wells = []
+        for i in range(n_reps):
+            wells.append(WellSpec(
+                cell_line='A549',
+                compound='DMSO',
+                dose_uM=0.0,
+                time_h=12.0,
+                assay='scrna',  # Declare scRNA intent (proxy: noisy_morphology)
+                position_tag='center'
+            ))
+
+        return Proposal(
+            design_id=design_id,
+            hypothesis=f"{reason}. scRNA gate calibration (placeholder: proxy morphology).",
+            wells=wells,
+            budget_limit=self.budget_remaining
+        )
+
+    def _template_cell_paint_screen(
+        self,
+        cap: dict,
+        reason: str = "Screen compounds with Cell Painting"
+    ) -> Proposal:
+        """Template: Small Cell Painting screen across diverse compounds."""
+        design_id = f"cp_screen_{uuid.uuid4().hex[:8]}"
+
+        # Diverse compound panel
+        compounds = ['Staurosporine', 'Paclitaxel', 'Doxorubicin', 'DMSO']
+        wells = []
+
+        for compound in compounds:
+            dose = 1.0 if compound != 'DMSO' else 0.0
+            for rep in range(3):
+                wells.append(WellSpec(
+                    cell_line='A549',
+                    compound=compound,
+                    dose_uM=dose,
+                    time_h=12.0,
+                    assay='cell_painting',
+                    position_tag='center'
+                ))
+
+        return Proposal(
+            design_id=design_id,
+            hypothesis=f"{reason}. Screen {len(compounds)} compounds with Cell Painting morphology.",
+            wells=wells,
+            budget_limit=self.budget_remaining
+        )
+
+    def _template_scrna_upgrade_probe(
+        self,
+        cap: dict,
+        novelty_score: float = 0.0,
+        ldh_viable: bool = True,
+        reason: str = "Upgrade to scRNA for mechanistic insight"
+    ) -> Proposal:
+        """Template: scRNA probe on selected conditions (upgrade from CP).
+
+        v0.5.0: Placeholder implementation. Real version would select conditions
+        based on CP novelty clusters.
+        """
+        design_id = f"scrna_probe_{uuid.uuid4().hex[:8]}"
+
+        # Placeholder: run scRNA on most interesting compound (proxy: use last non-DMSO)
+        compound = 'Staurosporine'
+        wells = []
+
+        for rep in range(3):  # Small n for expensive assay
+            wells.append(WellSpec(
+                cell_line='A549',
+                compound=compound,
+                dose_uM=1.0,
+                time_h=12.0,
+                assay='scrna',
+                position_tag='center'
+            ))
+
+        return Proposal(
+            design_id=design_id,
+            hypothesis=f"{reason}. scRNA probe (novelty={novelty_score:.3f}, ldh_viable={ldh_viable}).",
             wells=wells,
             budget_limit=self.budget_remaining
         )

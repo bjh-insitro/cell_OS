@@ -221,7 +221,7 @@ class BeliefState:
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate earned: ldh (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')})",
+                    note=f"Gate earned: ldh (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')}, proxy:noisy_morphology)",
                 )
             elif field_name == "cell_paint_sigma_stable":
                 self._emit_gate_event(
@@ -230,7 +230,7 @@ class BeliefState:
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate earned: cell_paint (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')})",
+                    note=f"Gate earned: cell_paint (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')}, proxy:noisy_morphology)",
                 )
             elif field_name == "scrna_sigma_stable":
                 self._emit_gate_event(
@@ -239,7 +239,7 @@ class BeliefState:
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate earned: scrna (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')})",
+                    note=f"Gate earned: scrna (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')}, proxy:noisy_morphology)",
                 )
 
         # v0.4.2+: symmetric gate_loss events (True → False)
@@ -271,7 +271,7 @@ class BeliefState:
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: ldh (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'})",
+                    note=f"Gate lost: ldh (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, proxy:noisy_morphology)",
                 )
             elif field_name == "cell_paint_sigma_stable":
                 self._emit_gate_loss(
@@ -280,7 +280,7 @@ class BeliefState:
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: cell_paint (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'})",
+                    note=f"Gate lost: cell_paint (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, proxy:noisy_morphology)",
                 )
             elif field_name == "scrna_sigma_stable":
                 self._emit_gate_loss(
@@ -289,7 +289,7 @@ class BeliefState:
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: scrna (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'})",
+                    note=f"Gate lost: scrna (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, proxy:noisy_morphology)",
                 )
 
     def _emit_gate_event(
@@ -814,6 +814,7 @@ class BeliefState:
             new_stable = not (rel_width is not None and rel_width >= exit_threshold)
 
         # Record belief change
+        rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "N/A"
         self._set(
             stable_field,
             new_stable,
@@ -824,8 +825,9 @@ class BeliefState:
                 "exit_threshold": exit_threshold,
                 "df_min_sanity": df_min_sanity,
                 "assay": assay,
+                "metric_source": "proxy:noisy_morphology",  # Honest labeling: using morphology as proxy until real assay models exist
             },
             supporting_conditions=[cond_key(c) for c in dmso_conditions],
-            note=f"{assay}_sigma_stable={new_stable} (df={total_df}, rel_width={rel_width:.3f if rel_width else 'N/A'})",
+            note=f"{assay}_sigma_stable={new_stable} (df={total_df}, rel_width={rel_width_str}, proxy:noisy_morphology)",
         )
         setattr(self, stable_field, new_stable)
