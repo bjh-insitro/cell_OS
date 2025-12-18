@@ -18,3 +18,13 @@ __pycache__/
 # Byte-compiled / optimized / DLL files
 *.py[cod]
 *$py.class
+
+# Build artifacts and caches
+__pycache__/
+*.egg-info/
+venv/
+env/
+logs/
+*.pyc
+*.pyo
+*.log
