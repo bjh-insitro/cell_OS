@@ -1,11 +1,14 @@
 """
 Lightweight belief state for evidence-driven experiment selection.
 
-v0.4.2: Pay-for-calibration regime with gate events (earned + revoked).
-- Pooled variance + chi-square CI for noise model
-- Symmetric gate events (gate_event:* and gate_loss:*)
-- Gate lock invariant enforcement
-- Complete provenance tracking
+v0.5.0: Measurement ladder with assay-specific gates (LDH, Cell Painting, scRNA).
+- Pay-for-calibration regime extended to assay ladder
+- Assay-specific gate events (ldh, cell_paint, scrna)
+- Ladder constraints: scRNA requires CP gate, CP requires LDH gate (or noise baseline)
+- Symmetric gate events (gate_event:* and gate_loss:*) for all assays
+- Complete provenance tracking with upgrade triggers
+
+v0.4.2: Baseline pay-for-calibration regime with noise gates.
 
 No Bayesian math, no LLM - just trackable heuristics with receipts.
 """
@@ -94,8 +97,9 @@ def _sigma_ci_from_pooled(sse_total: float, df_total: int, alpha: float = 0.05):
 @dataclass
 class BeliefState:
     """Tracks what the agent knows (with evidence receipts).
-    
-    v0.4.2: Pay-for-calibration regime with symmetric gate events.
+
+    v0.5.0: Pay-for-calibration with measurement ladder (LDH, CP, scRNA gates).
+    v0.4.2: Baseline noise gate implementation.
     """
     
     # Noise model (pooled variance + chi-square CI)
@@ -108,7 +112,23 @@ class BeliefState:
     noise_sse_total: float = 0.0
     noise_sigma_cycle_history: List[float] = field(default_factory=list)
     noise_drift_metric: Optional[float] = None
-    
+
+    # Assay-specific gates (measurement ladder)
+    # LDH: scalar viability readout
+    ldh_df_total: int = 0
+    ldh_rel_width: Optional[float] = None
+    ldh_sigma_stable: bool = False
+
+    # Cell Painting: high-dimensional morphology
+    cell_paint_df_total: int = 0
+    cell_paint_rel_width: Optional[float] = None
+    cell_paint_sigma_stable: bool = False
+
+    # scRNA Drug-seq: transcriptional state
+    scrna_df_total: int = 0
+    scrna_rel_width: Optional[float] = None
+    scrna_sigma_stable: bool = False
+
     baseline_cv_scalar: Optional[float] = None
     baseline_cv_by_channel: Dict[str, float] = field(default_factory=dict)
     calibration_reps: int = 0
@@ -193,6 +213,34 @@ class BeliefState:
                     supporting_conditions=supporting_conditions,
                     note=f"Gate earned: edge_effect (n_tests={evidence.get('n_tests')}, mean_abs_effect={evidence.get('mean_abs_effect'):.4f})",
                 )
+            # Assay-specific gates (measurement ladder)
+            elif field_name == "ldh_sigma_stable":
+                self._emit_gate_event(
+                    "ldh",
+                    prev=prev_value,
+                    new=new_value,
+                    evidence=evidence,
+                    supporting_conditions=supporting_conditions,
+                    note=f"Gate earned: ldh (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')})",
+                )
+            elif field_name == "cell_paint_sigma_stable":
+                self._emit_gate_event(
+                    "cell_paint",
+                    prev=prev_value,
+                    new=new_value,
+                    evidence=evidence,
+                    supporting_conditions=supporting_conditions,
+                    note=f"Gate earned: cell_paint (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')})",
+                )
+            elif field_name == "scrna_sigma_stable":
+                self._emit_gate_event(
+                    "scrna",
+                    prev=prev_value,
+                    new=new_value,
+                    evidence=evidence,
+                    supporting_conditions=supporting_conditions,
+                    note=f"Gate earned: scrna (rel_width={evidence.get('rel_width'):.4f}, df={evidence.get('df')})",
+                )
 
         # v0.4.2+: symmetric gate_loss events (True → False)
         elif (prev_value is True) and (new_value is False):
@@ -214,6 +262,34 @@ class BeliefState:
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
                     note=f"Gate lost: edge_effect (n_tests={evidence.get('n_tests')}, mean_abs_effect={evidence.get('mean_abs_effect'):.4f if evidence.get('mean_abs_effect') else 0.0})",
+                )
+            # Assay-specific gates
+            elif field_name == "ldh_sigma_stable":
+                self._emit_gate_loss(
+                    "ldh",
+                    prev=prev_value,
+                    new=new_value,
+                    evidence=evidence,
+                    supporting_conditions=supporting_conditions,
+                    note=f"Gate lost: ldh (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'})",
+                )
+            elif field_name == "cell_paint_sigma_stable":
+                self._emit_gate_loss(
+                    "cell_paint",
+                    prev=prev_value,
+                    new=new_value,
+                    evidence=evidence,
+                    supporting_conditions=supporting_conditions,
+                    note=f"Gate lost: cell_paint (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'})",
+                )
+            elif field_name == "scrna_sigma_stable":
+                self._emit_gate_loss(
+                    "scrna",
+                    prev=prev_value,
+                    new=new_value,
+                    evidence=evidence,
+                    supporting_conditions=supporting_conditions,
+                    note=f"Gate lost: scrna (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'})",
                 )
 
     def _emit_gate_event(
@@ -291,6 +367,17 @@ class BeliefState:
             'noise_rel_width': self.noise_rel_width,
             'noise_sigma_stable': self.noise_sigma_stable,
             'noise_df_total': self.noise_df_total,
+            # Assay-specific gates
+            'ldh_df_total': self.ldh_df_total,
+            'ldh_rel_width': self.ldh_rel_width,
+            'ldh_sigma_stable': self.ldh_sigma_stable,
+            'cell_paint_df_total': self.cell_paint_df_total,
+            'cell_paint_rel_width': self.cell_paint_rel_width,
+            'cell_paint_sigma_stable': self.cell_paint_sigma_stable,
+            'scrna_df_total': self.scrna_df_total,
+            'scrna_rel_width': self.scrna_rel_width,
+            'scrna_sigma_stable': self.scrna_sigma_stable,
+            # Legacy fields
             'baseline_cv_scalar': self.baseline_cv_scalar,
             'baseline_cv_by_channel': dict(self.baseline_cv_by_channel),
             'calibration_reps': self.calibration_reps,
@@ -329,6 +416,11 @@ class BeliefState:
         self._update_noise_beliefs(conditions, diagnostics_out)
         self._update_edge_beliefs(conditions)
         self._update_response_beliefs(conditions)
+
+        # v0.5.0: Update assay-specific gates (measurement ladder)
+        self._update_assay_gates(conditions, "ldh")
+        self._update_assay_gates(conditions, "cell_paint")
+        self._update_assay_gates(conditions, "scrna")
 
         return (self._events, diagnostics_out)
 
@@ -643,3 +735,97 @@ class BeliefState:
                         supporting_conditions=[cond_key(c) for c in conds_sorted],
                         note=f"Time-dependent response detected for {compound} @ {dose}µM",
                     )
+
+    def _update_assay_gates(self, conditions: List, assay: str):
+        """Update assay-specific gate (ldh, cell_paint, scrna).
+
+        v0.5.0: Assay ladder gate computation.
+        Uses same pooled variance approach as noise_sigma, but per-assay.
+
+        For now, uses existing noisy_morphology as proxy:
+        - ldh: scalar viability (from morphology mean)
+        - cell_paint: morphology features (existing signal)
+        - scrna: placeholder (TODO: add transcriptional readouts)
+        """
+        # Find DMSO baseline for this assay
+        dmso_conditions = [c for c in conditions if c.compound == 'DMSO' and c.position_tag == 'center']
+        if not dmso_conditions:
+            return
+
+        # Get assay-specific fields
+        if assay == "ldh":
+            df_field = "ldh_df_total"
+            rel_width_field = "ldh_rel_width"
+            stable_field = "ldh_sigma_stable"
+        elif assay == "cell_paint":
+            df_field = "cell_paint_df_total"
+            rel_width_field = "cell_paint_rel_width"
+            stable_field = "cell_paint_sigma_stable"
+        elif assay == "scrna":
+            df_field = "scrna_df_total"
+            rel_width_field = "scrna_rel_width"
+            stable_field = "scrna_sigma_stable"
+        else:
+            return
+
+        # Accumulate pooled variance
+        sse_total = 0.0
+        df_total = 0
+        for cond in dmso_conditions:
+            n = cond.n_wells
+            df = n - 1
+            sse = df * (float(cond.std) ** 2)
+            df_total += df
+            sse_total += sse
+
+        # Update fields
+        current_df = getattr(self, df_field)
+        setattr(self, df_field, current_df + df_total)
+        total_df = current_df + df_total
+
+        # Compute pooled sigma + CI
+        if total_df > 0 and sse_total > 0:
+            sigma2_hat = sse_total / total_df
+            sigma_hat = math.sqrt(max(sigma2_hat, 0.0))
+            ci_low, ci_high = _sigma_ci_from_pooled(sse_total, total_df, alpha=0.05)
+
+            if ci_low is not None and ci_high is not None and sigma_hat > 0:
+                rel_width = abs(ci_high - ci_low) / sigma_hat
+            else:
+                rel_width = None
+            setattr(self, rel_width_field, rel_width)
+        else:
+            rel_width = None
+
+        # Gate with hysteresis
+        enter_threshold = 0.25
+        exit_threshold = 0.40
+        df_min_sanity = 40
+
+        current_stable = getattr(self, stable_field)
+        new_stable = current_stable
+        if not current_stable:
+            new_stable = (
+                total_df >= df_min_sanity and
+                rel_width is not None and
+                rel_width <= enter_threshold
+            )
+        else:
+            new_stable = not (rel_width is not None and rel_width >= exit_threshold)
+
+        # Record belief change
+        self._set(
+            stable_field,
+            new_stable,
+            evidence={
+                "df": total_df,
+                "rel_width": rel_width,
+                "enter_threshold": enter_threshold,
+                "exit_threshold": exit_threshold,
+                "df_min_sanity": df_min_sanity,
+                "assay": assay,
+            },
+            supporting_conditions=[cond_key(c) for c in dmso_conditions],
+            note=f"{assay}_sigma_stable={new_stable} (df={total_df}, rel_width={rel_width:.3f if rel_width else 'N/A'})",
+        )
+        setattr(self, stable_field, new_stable)

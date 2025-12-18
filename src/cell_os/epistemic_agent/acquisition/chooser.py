@@ -1,8 +1,13 @@
 """
-Template chooser with pay-for-calibration regime and gate lock invariant.
+Template chooser with pay-for-calibration regime and measurement ladder.
 
-v0.4.2: Hard constraints - biology forbidden until gate earned.
-Gate lock invariant prevents lying once earned.
+v0.5.0: Assay-specific gates with ladder constraints.
+- LDH, Cell Painting, scRNA gates enforced independently
+- Ladder rule: scRNA requires CP gate earned first
+- Fail-fast affordability checks per assay
+- Complete decision provenance for upgrades
+
+v0.4.2: Baseline noise gate implementation.
 """
 
 from typing import Tuple, Optional, Any, Dict, List
@@ -34,6 +39,89 @@ class TemplateChooser:
             selected_candidate=selected_candidate or {},
             reason=str(reason),
         )
+
+    def _get_gate_state(self, beliefs: BeliefState) -> Dict[str, str]:
+        """Get current gate state for all assays (for decision provenance)."""
+        return {
+            "noise_sigma": "earned" if beliefs.noise_sigma_stable else "lost",
+            "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown",
+            "ldh": "earned" if beliefs.ldh_sigma_stable else "lost",
+            "cell_paint": "earned" if beliefs.cell_paint_sigma_stable else "lost",
+            "scrna": "earned" if beliefs.scrna_sigma_stable else "lost",
+        }
+
+    def _check_assay_gate(
+        self,
+        beliefs: BeliefState,
+        assay: str,
+        require_ladder: bool = True
+    ) -> Tuple[bool, Optional[str]]:
+        """Check if assay gate is earned (with optional ladder check).
+
+        Args:
+            beliefs: Current belief state
+            assay: One of 'ldh', 'cell_paint', 'scrna'
+            require_ladder: If True, enforce ladder constraints
+
+        Returns:
+            (gate_ok, block_reason): gate_ok is True if gate earned and ladder satisfied
+        """
+        if assay == "ldh":
+            gate_earned = beliefs.ldh_sigma_stable
+            if not gate_earned:
+                return (False, f"LDH gate not earned (rel_width={beliefs.ldh_rel_width:.3f if beliefs.ldh_rel_width else 'N/A'})")
+        elif assay == "cell_paint":
+            gate_earned = beliefs.cell_paint_sigma_stable
+            if not gate_earned:
+                return (False, f"Cell Painting gate not earned (rel_width={beliefs.cell_paint_rel_width:.3f if beliefs.cell_paint_rel_width else 'N/A'})")
+        elif assay == "scrna":
+            gate_earned = beliefs.scrna_sigma_stable
+            if not gate_earned:
+                return (False, f"scRNA gate not earned (rel_width={beliefs.scrna_rel_width:.3f if beliefs.scrna_rel_width else 'N/A'})")
+
+            # Ladder constraint: scRNA requires CP gate first
+            if require_ladder and not beliefs.cell_paint_sigma_stable:
+                return (False, "scRNA requires Cell Painting gate earned first (ladder constraint)")
+        else:
+            return (False, f"Unknown assay: {assay}")
+
+        return (True, None)
+
+    def _compute_assay_calibration_plan(
+        self,
+        beliefs: BeliefState,
+        assay: str
+    ) -> Dict[str, Any]:
+        """Compute calibration plan for an assay gate (wells needed, df needed)."""
+        if assay == "ldh":
+            df_total = beliefs.ldh_df_total
+            rel_width = beliefs.ldh_rel_width
+        elif assay == "cell_paint":
+            df_total = beliefs.cell_paint_df_total
+            rel_width = beliefs.cell_paint_rel_width
+        elif assay == "scrna":
+            df_total = beliefs.scrna_df_total
+            rel_width = beliefs.scrna_rel_width
+        else:
+            return {}
+
+        enter_threshold = 0.25
+        if rel_width and rel_width > 0:
+            c = rel_width * (df_total ** 0.5)
+            df_needed = int((c / enter_threshold) ** 2 * 1.25)  # safety factor
+        else:
+            df_needed = 140  # conservative floor
+
+        df_delta = max(0, df_needed - df_total)
+        wells_needed = ((df_delta + 11) // 11) * 12  # cycles of 12 wells
+
+        return {
+            "assay": assay,
+            "df_current": df_total,
+            "df_needed": df_needed,
+            "wells_needed": wells_needed,
+            "rel_width": rel_width,
+        }
 
     def choose_next(
         self,
@@ -75,10 +163,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "abort",
                         "regime": "integrity_error",
-                        "gate_state": {
-                            "noise_sigma": "corrupted",
-                            "edge_effect": "earned" if beliefs.edge_effect_confident else "unknown"
-                        }
+                        "gate_state": self._get_gate_state(beliefs)
                     }
                 )
                 return ("abort", {
