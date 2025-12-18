@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ErrorBar } from 'recharts';
 import { useDesigns, useDoseResponse, useResults } from '../hooks/useCellThalamusData';
-import PlateMapPreview from './PlateMapPreview';
 
 interface DoseResponseTabProps {
   selectedDesignId: string | null;
@@ -263,30 +262,42 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
     const data12h = doseResponseData.filter((r: any) => r.timepoint === 12);
 
-    // Get all unique doses, excluding 0 for log scale
+    // Get all unique doses (including 0)
     const allDoses = new Set<number>();
     data12h.forEach((response: any) => {
       if (response.data.doses) {
         response.data.doses.forEach((dose: number) => {
-          if (dose > 0) allDoses.add(dose); // Exclude 0 for log scale
+          allDoses.add(dose);
         });
       }
     });
 
     // Create data points with values and error bars for each cell line
     const sortedDoses = Array.from(allDoses).sort((a, b) => a - b);
+
+    // Find minimum non-zero dose for log scale offset
+    const minNonZeroDose = Math.min(...sortedDoses.filter(d => d > 0));
+    const zeroOffset = minNonZeroDose / 10; // Place vehicle control at 1/10th of first dose
+
     return sortedDoses.map(dose => {
-      const point: any = { dose };
+      // For log scale: replace 0 with small offset
+      const plotDose = dose === 0 ? zeroOffset : dose;
+      const point: any = { dose: plotDose, actualDose: dose };
 
       data12h.forEach((response: any) => {
-        const doseIndex = response.data.doses?.indexOf(dose);
+        // Use tolerance-based search instead of exact indexOf
+        const doseIndex = response.data.doses?.findIndex((d: number) => Math.abs(d - dose) < 0.0001);
         if (doseIndex !== -1 && doseIndex !== undefined) {
+          const stdValue = response.data.std?.[doseIndex];
+          const nValue = response.data.n?.[doseIndex];
+
           // Mean value
           point[response.cellLine] = response.data.values[doseIndex];
-          // Error bar (std)
-          point[`${response.cellLine}_error`] = response.data.std?.[doseIndex] || 0;
+          // Error bar (std) - use actual std, even if 0
+          // Note: 0 std means all replicates had identical values (likely a backend calculation artifact)
+          point[`${response.cellLine}_error`] = stdValue ?? 0;
           // Sample size (for tooltip)
-          point[`${response.cellLine}_n`] = response.data.n?.[doseIndex] || 1;
+          point[`${response.cellLine}_n`] = nValue ?? 1;
         }
       });
 
@@ -300,30 +311,42 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
     const data48h = doseResponseData.filter((r: any) => r.timepoint === 48);
 
-    // Get all unique doses, excluding 0 for log scale
+    // Get all unique doses (including 0)
     const allDoses = new Set<number>();
     data48h.forEach((response: any) => {
       if (response.data.doses) {
         response.data.doses.forEach((dose: number) => {
-          if (dose > 0) allDoses.add(dose); // Exclude 0 for log scale
+          allDoses.add(dose);
         });
       }
     });
 
     // Create data points with values and error bars for each cell line
     const sortedDoses = Array.from(allDoses).sort((a, b) => a - b);
+
+    // Find minimum non-zero dose for log scale offset
+    const minNonZeroDose = Math.min(...sortedDoses.filter(d => d > 0));
+    const zeroOffset = minNonZeroDose / 10; // Place vehicle control at 1/10th of first dose
+
     return sortedDoses.map(dose => {
-      const point: any = { dose };
+      // For log scale: replace 0 with small offset
+      const plotDose = dose === 0 ? zeroOffset : dose;
+      const point: any = { dose: plotDose, actualDose: dose };
 
       data48h.forEach((response: any) => {
-        const doseIndex = response.data.doses?.indexOf(dose);
+        // Use tolerance-based search instead of exact indexOf
+        const doseIndex = response.data.doses?.findIndex((d: number) => Math.abs(d - dose) < 0.0001);
         if (doseIndex !== -1 && doseIndex !== undefined) {
+          const stdValue = response.data.std?.[doseIndex];
+          const nValue = response.data.n?.[doseIndex];
+
           // Mean value
           point[response.cellLine] = response.data.values[doseIndex];
-          // Error bar (std)
-          point[`${response.cellLine}_error`] = response.data.std?.[doseIndex] || 0;
+          // Error bar (std) - use actual std, even if 0
+          // Note: 0 std means all replicates had identical values (likely a backend calculation artifact)
+          point[`${response.cellLine}_error`] = stdValue ?? 0;
           // Sample size (for tooltip)
-          point[`${response.cellLine}_n`] = response.data.n?.[doseIndex] || 1;
+          point[`${response.cellLine}_n`] = nValue ?? 1;
         }
       });
 
@@ -345,25 +368,31 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
       const point: any = { dose };
 
       // Add 12h data for each cell line
-      const point12h = chartData12h.find(p => p.dose === dose);
+      const point12h = chartData12h.find(p => Math.abs(p.dose - dose) < 0.0001);
       if (point12h) {
+        // Preserve actualDose field for vehicle control identification
+        point.actualDose = point12h.actualDose;
         cellLines.forEach(cellLine => {
           if (point12h[cellLine] !== undefined) {
             point[`${cellLine}_12h`] = point12h[cellLine];
-            point[`${cellLine}_12h_error`] = point12h[`${cellLine}_error`];
-            point[`${cellLine}_12h_n`] = point12h[`${cellLine}_n`];
+            point[`${cellLine}_12h_error`] = point12h[`${cellLine}_error`] || 0;  // Ensure fallback to 0
+            point[`${cellLine}_12h_n`] = point12h[`${cellLine}_n`] || 1;
           }
         });
       }
 
       // Add 48h data for each cell line
-      const point48h = chartData48h.find(p => p.dose === dose);
+      const point48h = chartData48h.find(p => Math.abs(p.dose - dose) < 0.0001);
       if (point48h) {
+        // Preserve actualDose field (use 48h if 12h didn't set it)
+        if (point.actualDose === undefined) {
+          point.actualDose = point48h.actualDose;
+        }
         cellLines.forEach(cellLine => {
           if (point48h[cellLine] !== undefined) {
             point[`${cellLine}_48h`] = point48h[cellLine];
-            point[`${cellLine}_48h_error`] = point48h[`${cellLine}_error`];
-            point[`${cellLine}_48h_n`] = point48h[`${cellLine}_n`];
+            point[`${cellLine}_48h_error`] = point48h[`${cellLine}_error`] || 0;  // Ensure fallback to 0
+            point[`${cellLine}_48h_n`] = point48h[`${cellLine}_n`] || 1;
           }
         });
       }
@@ -696,9 +725,19 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                 label={{ value: 'Dose (μM, log scale)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
                 type="number"
                 scale="log"
-                domain={['auto', 'auto']}
+                domain={[
+                  (dataMin: number) => dataMin,  // Start exactly at vehicle control (no left padding)
+                  (dataMax: number) => dataMax * 2     // Add padding above max dose
+                ]}
                 allowDataOverflow={false}
-                tickFormatter={(value) => value === 0 ? '0' : Number(value).toFixed(value < 1 ? 3 : 1)}
+                tickFormatter={(value) => {
+                  // Find if this tick corresponds to a vehicle control point
+                  const dataPoint = chartData.find(d => Math.abs(d.dose - value) < value * 0.01);
+                  if (dataPoint?.actualDose === 0) {
+                    return '0 (vehicle)';
+                  }
+                  return Number(value).toFixed(value < 1 ? 3 : 1);
+                }}
               />
               <YAxis
                 stroke="#94a3b8"
@@ -710,6 +749,8 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                   fill: '#94a3b8',
                 }}
                 domain={[0, 'auto']}
+                allowDataOverflow={false}
+                includeHidden={false}
               />
               <Tooltip
                 contentStyle={{
@@ -720,16 +761,23 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
                 }}
                 formatter={(value: any, name: any, props: any) => {
                   const payload = props.payload;
-                  const cellLine = name;
-                  const n = payload[`${cellLine}_n`];
-                  const error = payload[`${cellLine}_error`];
+                  // name comes as "CellLine (12h)" or "CellLine (48h)"
+                  // Convert to dataKey format: "CellLine_12h" or "CellLine_48h"
+                  const dataKey = name.replace(' (12h)', '_12h').replace(' (48h)', '_48h');
+                  const n = payload[`${dataKey}_n`];
+                  const error = payload[`${dataKey}_error`];
 
-                  if (n && error !== undefined) {
-                    return [`${value.toFixed(2)} ± ${error.toFixed(2)} (n=${n})`, cellLine];
+                  if (n !== undefined && error !== undefined) {
+                    return [`${value.toFixed(2)} ± ${error.toFixed(2)} (n=${n})`, name];
                   }
-                  return value.toFixed(2);
+                  return [value.toFixed(2), name];
                 }}
-                labelFormatter={(label) => `Dose: ${label} μM`}
+                labelFormatter={(label) => {
+                  // Show actual dose (0 for vehicle control)
+                  const dataPoint = chartData.find(d => Math.abs(d.dose - label) < 0.0001);
+                  const actualDose = dataPoint?.actualDose ?? label;
+                  return actualDose === 0 ? 'Dose: 0 μM (vehicle control)' : `Dose: ${label} μM`;
+                }}
               />
               {/* Render lines for each cell line at both timepoints (4 lines total) */}
               {cellLines.flatMap((cellLine, cellLineIndex) => {
@@ -897,14 +945,6 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
             </div>
           )}
 
-          {/* Plate Map */}
-          <div className="mt-6">
-            <PlateMapPreview
-              cellLines={cellLines}
-              compounds={selectedCompound ? [selectedCompound] : []}
-              mode={detectedMode}
-            />
-          </div>
         </div>
       )}
 

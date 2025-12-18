@@ -1,0 +1,942 @@
+{
+  "_meta": {
+    "report_type": "phase0_design_report_for_llm_review",
+    "version": "1.0.0",
+    "purpose": "Comprehensive design snapshot for LLM feedback on design quality",
+    "design_file": "data/designs/phase0_founder_v2_regenerated.json"
+  },
+  "parameters": {
+    "design_id": "phase0_founder_v2_controls_stratified",
+    "design_type": "phase0_v2_founder",
+    "description": "Phase 0 V2 Founder Design (Audit-Compliant)",
+    "cell_lines": [
+      "A549",
+      "HepG2"
+    ],
+    "compounds": {
+      "groups": [],
+      "total": null
+    },
+    "doses": [
+      0.1,
+      0.3,
+      1.0,
+      3.0,
+      10.0,
+      30.0
+    ],
+    "replicates": 2,
+    "timepoints_h": [
+      12.0,
+      24.0,
+      48.0
+    ],
+    "days": [
+      1,
+      2
+    ],
+    "operators": [
+      "Operator_A",
+      "Operator_B"
+    ],
+    "plate_format": 96,
+    "exclusions": {
+      "corners": true,
+      "midRow": true
+    },
+    "sentinel_schema": {
+      "policy": "fixed_scaffold",
+      "scaffold_id": "phase0_v2_scaffold_v1",
+      "scaffold_hash": "901ffeb4603019fe",
+      "total_per_plate": 28,
+      "types": {
+        "vehicle": 8,
+        "ER_mid": 5,
+        "mito_mid": 5,
+        "proteostasis": 5,
+        "oxidative": 5
+      }
+    },
+    "randomization": {
+      "seed": 42,
+      "method": "per_cell_line_shuffle",
+      "note": "Per-cell-line position shuffle with deterministic RNG (seed=42): same position = same condition across all plates for that cell line, but compounds scattered spatially"
+    }
+  },
+  "statistics": {
+    "total_wells": 2112,
+    "sentinel_wells": 672,
+    "experimental_wells": 1440,
+    "plates": 24,
+    "wells_per_plate": 88,
+    "unique_compounds": 10,
+    "unique_cell_lines": 2,
+    "timepoints": [
+      12.0,
+      24.0,
+      48.0
+    ],
+    "days": [
+      1,
+      2
+    ],
+    "operators": [
+      "Operator_A",
+      "Operator_B"
+    ]
+  },
+  "spatial_dispersion": {
+    "tBHQ": {
+      "compound": "tBHQ",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_1",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_2",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_3",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_4",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_5",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_6",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_7",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_8",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_9",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_10",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_11",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        },
+        {
+          "plate_id": "Plate_12",
+          "row_span": 6,
+          "col_span": 11,
+          "bounding_box_area": 66
+        }
+      ],
+      "avg_bounding_box_area": 66.0,
+      "avg_row_span": 6.0,
+      "avg_col_span": 11.0,
+      "min_bounding_box_area": 66,
+      "max_bounding_box_area": 66
+    },
+    "H2O2": {
+      "compound": "H2O2",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_1",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_2",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_3",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_4",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_5",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_6",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_7",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_8",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_9",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_10",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_11",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_12",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        }
+      ],
+      "avg_bounding_box_area": 88.0,
+      "avg_row_span": 8.0,
+      "avg_col_span": 11.0,
+      "min_bounding_box_area": 88,
+      "max_bounding_box_area": 88
+    },
+    "tunicamycin": {
+      "compound": "tunicamycin",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_1",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_2",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_3",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_4",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_5",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_6",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_7",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_8",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_9",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_10",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_11",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_12",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        }
+      ],
+      "avg_bounding_box_area": 80.0,
+      "avg_row_span": 8.0,
+      "avg_col_span": 10.0,
+      "min_bounding_box_area": 80,
+      "max_bounding_box_area": 80
+    },
+    "thapsigargin": {
+      "compound": "thapsigargin",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_1",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_2",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_3",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_4",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_5",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_6",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_7",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_8",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_9",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_10",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_11",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        },
+        {
+          "plate_id": "Plate_12",
+          "row_span": 8,
+          "col_span": 8,
+          "bounding_box_area": 64
+        }
+      ],
+      "avg_bounding_box_area": 64.0,
+      "avg_row_span": 8.0,
+      "avg_col_span": 8.0,
+      "min_bounding_box_area": 64,
+      "max_bounding_box_area": 64
+    },
+    "CCCP": {
+      "compound": "CCCP",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_1",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_2",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_3",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_4",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_5",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_6",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_7",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_8",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_9",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_10",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_11",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        },
+        {
+          "plate_id": "Plate_12",
+          "row_span": 8,
+          "col_span": 11,
+          "bounding_box_area": 88
+        }
+      ],
+      "avg_bounding_box_area": 88.0,
+      "avg_row_span": 8.0,
+      "avg_col_span": 11.0,
+      "min_bounding_box_area": 88,
+      "max_bounding_box_area": 88
+    },
+    "oligomycin": {
+      "compound": "oligomycin",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_13",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_14",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_15",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_16",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_17",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_18",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_19",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_20",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_21",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_22",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_23",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_24",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        }
+      ],
+      "avg_bounding_box_area": 84.0,
+      "avg_row_span": 7.0,
+      "avg_col_span": 12.0,
+      "min_bounding_box_area": 84,
+      "max_bounding_box_area": 84
+    },
+    "etoposide": {
+      "compound": "etoposide",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_13",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_14",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_15",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_16",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_17",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_18",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_19",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_20",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_21",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_22",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_23",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        },
+        {
+          "plate_id": "Plate_24",
+          "row_span": 6,
+          "col_span": 12,
+          "bounding_box_area": 72
+        }
+      ],
+      "avg_bounding_box_area": 72.0,
+      "avg_row_span": 6.0,
+      "avg_col_span": 12.0,
+      "min_bounding_box_area": 72,
+      "max_bounding_box_area": 72
+    },
+    "MG132": {
+      "compound": "MG132",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_13",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_14",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_15",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_16",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_17",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_18",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_19",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_20",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_21",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_22",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_23",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        },
+        {
+          "plate_id": "Plate_24",
+          "row_span": 8,
+          "col_span": 10,
+          "bounding_box_area": 80
+        }
+      ],
+      "avg_bounding_box_area": 80.0,
+      "avg_row_span": 8.0,
+      "avg_col_span": 10.0,
+      "min_bounding_box_area": 80,
+      "max_bounding_box_area": 80
+    },
+    "nocodazole": {
+      "compound": "nocodazole",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_13",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_14",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_15",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_16",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_17",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_18",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_19",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_20",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_21",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_22",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_23",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        },
+        {
+          "plate_id": "Plate_24",
+          "row_span": 7,
+          "col_span": 12,
+          "bounding_box_area": 84
+        }
+      ],
+      "avg_bounding_box_area": 84.0,
+      "avg_row_span": 7.0,
+      "avg_col_span": 12.0,
+      "min_bounding_box_area": 84,
+      "max_bounding_box_area": 84
+    },
+    "paclitaxel": {
+      "compound": "paclitaxel",
+      "well_count": 12,
+      "plates": [
+        {
+          "plate_id": "Plate_13",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_14",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_15",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_16",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_17",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_18",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_19",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_20",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_21",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_22",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_23",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        },
+        {
+          "plate_id": "Plate_24",
+          "row_span": 6,
+          "col_span": 10,
+          "bounding_box_area": 60
+        }
+      ],
+      "avg_bounding_box_area": 60.0,
+      "avg_row_span": 6.0,
+      "avg_col_span": 10.0,
+      "min_bounding_box_area": 60,
+      "max_bounding_box_area": 60
+    }
+  },
+  "validation": {
+    "note": "Run validateFounderDesign.ts to get full validation certificate",
+    "scaffold_hash": "901ffeb4603019fe"
+  },
+  "context": {
+    "design_goals": [
+      "Maximum identifiability (position = identity)",
+      "Batch orthogonality (day \u00d7 operator \u00d7 timepoint)",
+      "Spatial scatter (eliminate gradient confounding)",
+      "Position stability (same position = same condition within cell line)"
+    ],
+    "constraints": [
+      "Fixed sentinel scaffold (28 sentinels, same positions on all plates)",
+      "Exact fill requirement (88 wells per plate, no partials)",
+      "Cell line separation (no mixing on same plate)",
+      "Identical conditions per timepoint (multiset consistency)"
+    ],
+    "spatial_baseline": {
+      "sequential_fill": "rows\u22482, cols\u22486, area\u224812 (BAD: creates compound-specific gradients)",
+      "random_scatter": "rows\u22485-7, cols\u22488-11, area\u224850-80 (GOOD: eliminates spatial confounding)"
+    }
+  }
+}

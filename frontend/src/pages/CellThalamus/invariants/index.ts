@@ -11,6 +11,7 @@ export * from './batchBalance';
 export * from './sentinelScaffold';
 export * from './plateCapacity';
 export * from './conditionMultiset';
+export * from './spatialDispersion';
 
 import type { Well, Violation, DesignCertificate, DesignMetadata } from './types';
 import { inv_sentinelsPlacedCorrectly, PHASE0_V2_SENTINEL_CONFIG } from './sentinelPlacement';
@@ -26,6 +27,7 @@ import {
   inv_experimental_position_stability,
   PHASE0_V2_CONDITION_MULTISET_CONFIG,
 } from './conditionMultiset';
+import { inv_spatialDispersion, PHASE0_V2_SPATIAL_CONFIG } from './spatialDispersion';
 
 /**
  * Run all invariants for Phase 0 v2 (max identifiability)
@@ -47,14 +49,17 @@ export function checkPhase0V2Design(wells: Well[], designMetadata?: DesignMetada
   // 4. Experimental position stability
   violations.push(...inv_experimental_position_stability(wells, PHASE0_V2_CONDITION_MULTISET_CONFIG));
 
-  // 5. Sentinel placement quality
+  // 5. Spatial dispersion (anti-clumping - catches sequential fill)
+  violations.push(...inv_spatialDispersion(wells, PHASE0_V2_SPATIAL_CONFIG));
+
+  // 6. Sentinel placement quality
   violations.push(...inv_sentinelsPlacedCorrectly(wells, PHASE0_V2_SENTINEL_CONFIG));
 
-  // 6. Batch balance
+  // 7. Batch balance
   violations.push(...inv_batchBalance(wells, PHASE0_V2_BATCH_CONFIG));
 
-  // TODO: 7. IC50 dose calculation
-  // TODO: 8. Cell line stratification
+  // TODO: 8. IC50 dose calculation
+  // TODO: 9. Cell line stratification
 
   const sentinelWells = wells.filter((w) => w.is_sentinel).length;
   const experimentalWells = wells.length - sentinelWells;

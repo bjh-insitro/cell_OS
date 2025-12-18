@@ -17,6 +17,8 @@ from datetime import datetime
 import json
 import sys
 import os
+import random
+import hashlib
 
 # Import fixed sentinel scaffold
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +29,22 @@ from phase0_sentinel_scaffold import (
     SCAFFOLD_ID,
     SCAFFOLD_HASH,
 )
+
+
+def make_rng(design_seed: int | None, salt: str) -> random.Random:
+    """
+    Create a deterministic RNG seeded per design + salt.
+
+    This ensures:
+    - Same seed + salt = same shuffle (reproducible)
+    - Different salt = independent shuffle (no coupling)
+    - Per-plate shuffles use plate-specific salts
+    """
+    base = str(design_seed if design_seed is not None else 0) + "|" + salt
+    h = hashlib.sha256(base.encode("utf-8")).hexdigest()
+    # Fit into Python int range
+    seed_int = int(h[:16], 16)
+    return random.Random(seed_int)
 
 
 @dataclass
@@ -111,9 +129,12 @@ def get_phase0_compound_ic50() -> Dict[str, float]:
     }
 
 
-def generate_phase0_v2_founder():
+def generate_phase0_v2_founder(design_seed: int = 42):
     """
     Generate Phase 0 V2 Founder Design (audit-compliant)
+
+    Args:
+        design_seed: Seed for deterministic RNG (shuffles experimental positions per plate)
 
     Fixed parameters:
     - 2 cell lines: A549, HepG2 (separate plates)
@@ -226,6 +247,14 @@ def generate_phase0_v2_founder():
         # A549 gets group 1, HepG2 gets group 2 (arbitrary but deterministic)
         conditions = conditions_group_1 if cell_line == 'A549' else conditions_group_2
 
+        # CRITICAL: Shuffle experimental positions ONCE per cell line
+        # This ensures position stability: same position = same condition across all plates for this cell line
+        # But eliminates spatial confounding: compounds are scattered, not clustered
+        cell_line_exp_positions = [pos for pos in available_well_positions
+                                   if pos not in {s['position'] for s in get_sentinel_tokens()}]
+        cell_line_rng = make_rng(design_seed, f"exp_positions|{cell_line}")
+        cell_line_rng.shuffle(cell_line_exp_positions)
+
         for day in days:
             for operator in operators:
                 for timepoint in timepoints_h:
@@ -253,9 +282,9 @@ def generate_phase0_v2_founder():
                             'sentinel_type': None,
                         })
 
-                    # Get experimental positions (available positions minus sentinel positions)
-                    experimental_positions = [pos for pos in available_well_positions
-                                            if pos not in sentinel_positions]
+                    # Use pre-shuffled positions for this cell line
+                    # (shuffled once per cell line to ensure position stability across plates)
+                    experimental_positions = cell_line_exp_positions
 
                     # HARD CHECK: experimental count must match available positions
                     if len(experimental_tokens) != len(experimental_positions):
@@ -319,6 +348,7 @@ def generate_phase0_v2_founder():
             'generated_at_utc': datetime.utcnow().isoformat() + 'Z',
             'generator': 'design_generator_phase0.py',
             'generator_version': '1.0.0_audit_driven',
+            'design_seed': design_seed,
             'cell_lines': cell_lines,
             'operators': operators,
             'days': days,
@@ -348,9 +378,10 @@ def generate_phase0_v2_founder():
             'batch_structure': {
                 'orthogonal_factors': ['day', 'operator', 'timepoint'],
                 'separate_factors': ['cell_line'],
-                'note': 'Batch-first allocation with fixed sentinel scaffolding',
+                'note': 'Batch-first allocation with fixed sentinel scaffolding and randomized experimental positions',
                 'allocation': 'Identical experimental conditions per timepoint (batch orthogonality)',
-                'placement': 'Sentinels at fixed positions (same 28 positions on all plates), experimentals fill remaining positions',
+                'placement': 'Sentinels at fixed positions (same 28 positions on all plates), experimentals randomly shuffled per cell line (eliminates spatial confounding while preserving position stability)',
+                'randomization': f'Per-cell-line position shuffle with deterministic RNG (seed={design_seed}): same position = same condition across all plates for that cell line, but compounds scattered spatially',
             },
         },
         'wells': wells,

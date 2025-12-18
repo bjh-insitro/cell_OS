@@ -324,5 +324,320 @@ def main():
         print(f"Unknown command: {command}")
 
 
+class DesignGenerator:
+    """
+    Interactive design generator for Cell Thalamus experiments.
+
+    Creates experimental designs with full control over:
+    - Cell lines and compounds
+    - Dose levels and IC50 positioning
+    - Replicates and batch structure
+    - Sentinel wells and QC controls
+    - Plate layout (checkerboard, corner exclusion)
+    - Plate format (96-well, 384-well)
+    """
+
+    def __init__(self):
+        # Compound parameters (IC50 values for dose calculation)
+        self.compound_ic50 = {
+            'tBHQ': 30.0, 'H2O2': 100.0, 'tbhp': 80.0,
+            'tunicamycin': 1.0, 'thapsigargin': 0.5,
+            'CCCP': 5.0, 'oligomycin': 1.0, 'two_deoxy_d_glucose': 1000.0,
+            'etoposide': 10.0, 'cisplatin': 5.0, 'doxorubicin': 0.5, 'staurosporine': 0.1,
+            'MG132': 1.0,
+            'nocodazole': 0.5, 'paclitaxel': 0.01,
+        }
+
+    def create_design(
+        self,
+        design_id: str,
+        description: str,
+        # Cell lines and compounds
+        cell_lines: List[str] = None,
+        compounds: List[str] = None,
+        # Dose configuration
+        n_doses: int = 4,
+        dose_multipliers: List[float] = None,  # Relative to IC50 (e.g., [0, 0.1, 1, 10])
+        # Replicates and batch structure
+        replicates_per_dose: int = 3,
+        days: List[int] = None,
+        operators: List[str] = None,
+        timepoints_h: List[float] = None,
+        # Sentinels
+        sentinel_config: Dict = None,
+        # Plate layout
+        plate_format: int = 96,
+        checkerboard: bool = False,
+        exclude_corners: bool = False,
+        exclude_edges: bool = False,
+        # Output
+        output_path: str = None
+    ) -> Dict:
+        """
+        Generate a custom experimental design.
+
+        Args:
+            design_id: Unique design identifier
+            description: Human-readable description
+            cell_lines: List of cell lines (default: ['A549', 'HepG2'])
+            compounds: List of compounds to test (default: all 10 from Phase 0)
+            n_doses: Number of dose levels per compound (default: 4)
+            dose_multipliers: Dose positions relative to IC50 (default: [0, 0.1, 1, 10])
+            replicates_per_dose: Technical replicates per dose (default: 3)
+            days: Experimental days (default: [1, 2])
+            operators: Operators (default: ['Operator_A', 'Operator_B'])
+            timepoints_h: Timepoints in hours (default: [12.0, 48.0])
+            sentinel_config: Custom sentinel configuration (default: standard QC sentinels)
+            plate_format: 96 or 384 wells (default: 96)
+            checkerboard: Interleave cell lines in checkerboard pattern (default: False)
+            exclude_corners: Exclude corner wells (A1, A12, H1, H12) (default: False)
+            exclude_edges: Exclude all edge wells (default: False)
+            output_path: Where to save design JSON (default: data/designs/<design_id>.json)
+
+        Returns:
+            Design dictionary ready for standalone_cell_thalamus.py
+        """
+
+        # Defaults
+        if cell_lines is None:
+            cell_lines = ['A549', 'HepG2']
+        if compounds is None:
+            compounds = ['tBHQ', 'H2O2', 'tunicamycin', 'thapsigargin', 'CCCP',
+                        'oligomycin', 'etoposide', 'MG132', 'nocodazole', 'paclitaxel']
+        if dose_multipliers is None:
+            dose_multipliers = [0, 0.1, 1.0, 10.0]  # Vehicle, low, mid, high
+        if days is None:
+            days = [1, 2]
+        if operators is None:
+            operators = ['Operator_A', 'Operator_B']
+        if timepoints_h is None:
+            timepoints_h = [12.0, 48.0]
+        if sentinel_config is None:
+            # Standard QC sentinels (per cell line)
+            sentinel_config = {
+                'DMSO': {'dose_uM': 0.0, 'n_per_cell': 4},
+                'tBHQ': {'dose_uM': 10.0, 'n_per_cell': 2},
+                'tunicamycin': {'dose_uM': 2.0, 'n_per_cell': 2},
+            }
+        if output_path is None:
+            output_path = f"data/designs/{design_id}.json"
+
+        # Validate plate format
+        if plate_format not in [96, 384]:
+            raise ValueError(f"plate_format must be 96 or 384, got {plate_format}")
+
+        # Calculate plate geometry
+        if plate_format == 96:
+            n_rows, n_cols = 8, 12
+            row_labels = [chr(65 + i) for i in range(n_rows)]  # A-H
+        else:  # 384
+            n_rows, n_cols = 16, 24
+            row_labels = [chr(65 + i) for i in range(n_rows)]  # A-P
+
+        # Generate excluded wells
+        excluded_wells = set()
+        if exclude_corners:
+            excluded_wells.update([
+                f"{row_labels[0]}{1:02d}",  # Top-left
+                f"{row_labels[0]}{n_cols:02d}",  # Top-right
+                f"{row_labels[-1]}{1:02d}",  # Bottom-left
+                f"{row_labels[-1]}{n_cols:02d}",  # Bottom-right
+            ])
+        if exclude_edges:
+            # All wells in first/last row or first/last column
+            for row in [row_labels[0], row_labels[-1]]:
+                for col in range(1, n_cols + 1):
+                    excluded_wells.add(f"{row}{col:02d}")
+            for col in [1, n_cols]:
+                for row in row_labels:
+                    excluded_wells.add(f"{row}{col:02d}")
+
+        # Generate all well positions
+        all_wells = [f"{row}{col:02d}" for row in row_labels for col in range(1, n_cols + 1)]
+        available_wells = [w for w in all_wells if w not in excluded_wells]
+
+        print(f"\nDesign Configuration:")
+        print(f"  Plate format: {plate_format}-well")
+        print(f"  Available wells: {len(available_wells)}/{len(all_wells)}")
+        print(f"  Cell lines: {len(cell_lines)}")
+        print(f"  Compounds: {len(compounds)}")
+        print(f"  Doses per compound: {len(dose_multipliers)}")
+        print(f"  Replicates per dose: {replicates_per_dose}")
+        print(f"  Sentinels per cell line: {sum(s['n_per_cell'] for s in sentinel_config.values())}")
+        print(f"  Timepoints: {timepoints_h}")
+        print(f"  Days × Operators: {len(days)} × {len(operators)}")
+
+        # Calculate wells needed per plate
+        experimental_wells_per_cell = len(compounds) * len(dose_multipliers) * replicates_per_dose
+        sentinel_wells_per_cell = sum(s['n_per_cell'] for s in sentinel_config.values())
+        wells_per_cell_line = experimental_wells_per_cell + sentinel_wells_per_cell
+
+        if checkerboard:
+            # Checkerboard: both cell lines on same plate
+            total_wells_needed = wells_per_cell_line * len(cell_lines)
+            print(f"\nCheckerboard layout: {total_wells_needed} wells needed per plate")
+            if total_wells_needed > len(available_wells):
+                raise ValueError(
+                    f"Not enough wells! Need {total_wells_needed}, have {len(available_wells)}. "
+                    f"Try reducing compounds/doses/replicates or using 384-well format."
+                )
+        else:
+            # Separate plates per cell line
+            print(f"\nSeparate plates: {wells_per_cell_line} wells per cell line")
+            if wells_per_cell_line > len(available_wells):
+                raise ValueError(
+                    f"Not enough wells! Need {wells_per_cell_line}, have {len(available_wells)}. "
+                    f"Try reducing compounds/doses/replicates or using 384-well format."
+                )
+
+        # Generate wells
+        wells = []
+        well_counter = 0
+
+        for day in days:
+            for operator in operators:
+                for timepoint in timepoints_h:
+                    if checkerboard:
+                        # Single plate with interleaved cell lines
+                        plate_id = f"Plate_Day{day}_{operator}_T{timepoint}h"
+                        well_iter = iter(available_wells)
+
+                        # Experimental wells - interleave by cell line
+                        for compound in compounds:
+                            ic50 = self.compound_ic50.get(compound, 1.0)
+                            for dose_mult in dose_multipliers:
+                                dose_uM = dose_mult * ic50
+                                for rep in range(replicates_per_dose):
+                                    for cell_line in cell_lines:
+                                        well_pos = next(well_iter)
+                                        wells.append({
+                                            'plate_id': plate_id,
+                                            'cell_line': cell_line,
+                                            'compound': compound,
+                                            'dose_uM': dose_uM,
+                                            'timepoint_h': timepoint,
+                                            'operator': operator,
+                                            'day': day,
+                                            'is_sentinel': False,
+                                            'sentinel_type': None,
+                                            'well_pos': well_pos,
+                                            'row': well_pos[0],
+                                            'col': int(well_pos[1:]),
+                                            'well_id': f"{plate_id}_W{well_counter:03d}"
+                                        })
+                                        well_counter += 1
+
+                        # Sentinel wells - interleave by cell line
+                        for sentinel_compound, config in sentinel_config.items():
+                            for _ in range(config['n_per_cell']):
+                                for cell_line in cell_lines:
+                                    well_pos = next(well_iter)
+                                    wells.append({
+                                        'plate_id': plate_id,
+                                        'cell_line': cell_line,
+                                        'compound': sentinel_compound,
+                                        'dose_uM': config['dose_uM'],
+                                        'timepoint_h': timepoint,
+                                        'operator': operator,
+                                        'day': day,
+                                        'is_sentinel': True,
+                                        'sentinel_type': sentinel_compound.lower(),
+                                        'well_pos': well_pos,
+                                        'row': well_pos[0],
+                                        'col': int(well_pos[1:]),
+                                        'well_id': f"{plate_id}_W{well_counter:03d}"
+                                    })
+                                    well_counter += 1
+                    else:
+                        # Separate plate per cell line
+                        for cell_line in cell_lines:
+                            plate_id = f"Plate_{cell_line}_Day{day}_{operator}_T{timepoint}h"
+                            well_iter = iter(available_wells)
+
+                            # Experimental wells
+                            for compound in compounds:
+                                ic50 = self.compound_ic50.get(compound, 1.0)
+                                for dose_mult in dose_multipliers:
+                                    dose_uM = dose_mult * ic50
+                                    for rep in range(replicates_per_dose):
+                                        well_pos = next(well_iter)
+                                        wells.append({
+                                            'plate_id': plate_id,
+                                            'cell_line': cell_line,
+                                            'compound': compound,
+                                            'dose_uM': dose_uM,
+                                            'timepoint_h': timepoint,
+                                            'operator': operator,
+                                            'day': day,
+                                            'is_sentinel': False,
+                                            'sentinel_type': None,
+                                            'well_pos': well_pos,
+                                            'row': well_pos[0],
+                                            'col': int(well_pos[1:]),
+                                            'well_id': f"{plate_id}_W{well_counter:03d}"
+                                        })
+                                        well_counter += 1
+
+                            # Sentinel wells
+                            for sentinel_compound, config in sentinel_config.items():
+                                for _ in range(config['n_per_cell']):
+                                    well_pos = next(well_iter)
+                                    wells.append({
+                                        'plate_id': plate_id,
+                                        'cell_line': cell_line,
+                                        'compound': sentinel_compound,
+                                        'dose_uM': config['dose_uM'],
+                                        'timepoint_h': timepoint,
+                                        'operator': operator,
+                                        'day': day,
+                                        'is_sentinel': True,
+                                        'sentinel_type': sentinel_compound.lower(),
+                                        'well_pos': well_pos,
+                                        'row': well_pos[0],
+                                        'col': int(well_pos[1:]),
+                                        'well_id': f"{plate_id}_W{well_counter:03d}"
+                                    })
+                                    well_counter += 1
+
+        # Create design object
+        design = {
+            'design_id': design_id,
+            'design_type': 'custom_generated',
+            'description': description,
+            'metadata': {
+                'generated_at_utc': datetime.utcnow().isoformat() + 'Z',
+                'generator': 'DesignGenerator',
+                'cell_lines': cell_lines,
+                'compounds': compounds,
+                'n_doses': len(dose_multipliers),
+                'dose_multipliers': dose_multipliers,
+                'replicates_per_dose': replicates_per_dose,
+                'days': days,
+                'operators': operators,
+                'timepoints_h': timepoints_h,
+                'plate_format': plate_format,
+                'checkerboard': checkerboard,
+                'exclude_corners': exclude_corners,
+                'exclude_edges': exclude_edges,
+                'n_plates': len(wells) // len(available_wells) if checkerboard else len(cell_lines) * len(days) * len(operators) * len(timepoints_h),
+                'wells_per_plate': len(available_wells),
+                'total_wells': len(wells),
+            },
+            'wells': wells
+        }
+
+        # Save to file
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, 'w') as f:
+            json.dump(design, f, indent=2)
+
+        print(f"\n✓ Design saved to: {output_file}")
+        print(f"  Total wells: {len(wells)}")
+        print(f"  Unique plates: {len(set(w['plate_id'] for w in wells))}")
+
+        return design
+
+
 if __name__ == '__main__':
     main()

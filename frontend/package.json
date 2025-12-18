@@ -7,7 +7,10 @@
         "dev": "vite",
         "build": "tsc && vite build",
         "preview": "vite preview",
-        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:ci": "vitest run --reporter=default --passWithNoTests=false"
     },
     "dependencies": {
         "@types/dagre": "^0.7.53",
@@ -35,7 +38,9 @@
         "eslint-plugin-react-refresh": "^0.4.5",
         "postcss": "^8.4.32",
         "tailwindcss": "^3.4.0",
+        "tsx": "^4.19.0",
         "typescript": "^5.2.2",
-        "vite": "^5.0.8"
+        "vite": "^5.0.8",
+        "vitest": "^2.1.0"
     }
 }

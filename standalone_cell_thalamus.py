@@ -469,9 +469,43 @@ class WellAssignment:
     is_sentinel: bool
 
 
+def load_design_from_json(json_path: str) -> List[WellAssignment]:
+    """
+    Load design from catalog JSON file.
+
+    Args:
+        json_path: Path to design JSON file from design catalog
+
+    Returns:
+        List of WellAssignment objects
+    """
+    with open(json_path, 'r') as f:
+        design_data = json.load(f)
+
+    wells = []
+    for well in design_data['wells']:
+        wells.append(WellAssignment(
+            well_id=well['well_pos'],  # Use well position (e.g., "A1") as well_id
+            cell_line=well['cell_line'],
+            compound=well['compound'],
+            dose_uM=well['dose_uM'],
+            timepoint_h=well['timepoint_h'],
+            plate_id=well['plate_id'],
+            day=well['day'],
+            operator=well['operator'],
+            is_sentinel=well['is_sentinel']
+        ))
+
+    logger.info(f"Loaded {len(wells)} wells from design JSON: {json_path}")
+    logger.info(f"Design ID: {design_data.get('design_id', 'unknown')}")
+    logger.info(f"Description: {design_data.get('description', 'N/A')}")
+
+    return wells
+
+
 def generate_design(cell_lines: List[str], compounds: List[str],
                    mode: str = "full") -> List[WellAssignment]:
-    """Generate experimental design."""
+    """Generate experimental design (fallback when no JSON provided)."""
 
     if mode == "demo":
         # Minimal 4 wells for testing
@@ -547,10 +581,14 @@ def generate_design(cell_lines: List[str], compounds: List[str],
 
                     # Experimental wells should avoid reserved sentinel positions
                     exp_wells = [w for w in ALL_WELLS if w not in RESERVED_WELLS]
-                    exp_well_iter = iter(exp_wells)
 
                     # Experimental wells (including vehicle = 0 µM for each compound)
+                    # NOTE: Each cell line gets its own physical 96-well plate
+                    # plate_id is a conceptual unit containing multiple physical plates
                     for cell_line in cell_lines:
+                        # Fresh well iterator for each cell line's physical plate
+                        exp_well_iter = iter(exp_wells)
+
                         for compound in compounds:
                             # Get compound-specific EC50
                             ec50 = COMPOUND_PARAMS[compound]['ec50_uM']
@@ -563,8 +601,10 @@ def generate_design(cell_lines: List[str], compounds: List[str],
                                     well_id = next(exp_well_iter)
                                 except StopIteration:
                                     raise RuntimeError(
-                                        f"Ran out of non-reserved wells on {plate_id}. "
-                                        f"Design needs > {len(exp_wells)} experimental wells per plate."
+                                        f"Ran out of non-reserved wells on {plate_id} for {cell_line}. "
+                                        f"Design needs > {len(exp_wells)} experimental wells per physical plate. "
+                                        f"Current design: {len(compounds)} compounds × {len(dose_levels)} doses = "
+                                        f"{len(compounds) * len(dose_levels)} wells needed."
                                     )
 
                                 design.append(WellAssignment(
@@ -1329,20 +1369,47 @@ def run_parallel_simulation(
     workers: Optional[int] = None,
     db_path: str = "cell_thalamus_results.db",
     seed: int = 0,
-    design_id: Optional[str] = None
+    design_id: Optional[str] = None,
+    design: Optional[List[WellAssignment]] = None
 ) -> str:
-    """Run parallel simulation."""
+    """
+    Run parallel simulation.
+
+    Args:
+        cell_lines: Cell lines to test (legacy mode)
+        compounds: Compounds to test (legacy mode)
+        mode: Design generation mode (legacy)
+        workers: Number of worker processes
+        db_path: Path to output database
+        seed: RNG seed for reproducibility
+        design_id: Override design ID
+        design: Pre-generated design (from catalog JSON). If provided, overrides legacy parameters.
+
+    Returns:
+        Design ID
+    """
 
     if workers is None:
         workers = cpu_count()
 
-    # Default parameters
-    if cell_lines is None:
-        cell_lines = ['A549', 'HepG2']
-    if compounds is None:
-        # Original 10 compounds from Cell Thalamus Phase 0
-        compounds = ['tBHQ', 'H2O2', 'tunicamycin', 'thapsigargin', 'CCCP',
-                    'oligomycin', 'etoposide', 'MG132', 'nocodazole', 'paclitaxel']
+    # If design provided (from JSON), use it directly
+    if design is not None:
+        logger.info("Using pre-generated design from catalog JSON")
+        # Extract metadata from design
+        cell_lines_set = set(w.cell_line for w in design)
+        compounds_set = set(w.compound for w in design)
+        cell_lines = sorted(cell_lines_set)
+        compounds = sorted(compounds_set)
+    else:
+        # Legacy mode: generate design from parameters
+        logger.info("Legacy mode: Generating design from CLI parameters")
+        # Default parameters
+        if cell_lines is None:
+            cell_lines = ['A549', 'HepG2']
+        if compounds is None:
+            # Original 10 compounds from Cell Thalamus Phase 0
+            compounds = ['tBHQ', 'H2O2', 'tunicamycin', 'thapsigargin', 'CCCP',
+                        'oligomycin', 'etoposide', 'MG132', 'nocodazole', 'paclitaxel']
 
     # Generate deterministic design_id from ALL run-defining parameters
     # This prevents accidental design_id collisions when parameters vary
@@ -1387,7 +1454,11 @@ def run_parallel_simulation(
     logger.info("=" * 70)
     logger.info("PARALLEL CELL THALAMUS SIMULATION")
     logger.info("=" * 70)
-    logger.info(f"Mode: {mode}")
+    if design is not None:
+        logger.info(f"Design source: Catalog JSON (pre-generated)")
+    else:
+        logger.info(f"Design source: Legacy mode (CLI parameters)")
+        logger.info(f"Mode: {mode}")
     logger.info(f"Workers: {workers} CPUs")
     if design_id_overridden:
         logger.info(f"Design ID: {design_id} (OVERRIDE - intentional replicate separation)")
@@ -1397,8 +1468,9 @@ def run_parallel_simulation(
     else:
         logger.info(f"Design ID: {design_id} (deterministic from parameters)")
 
-    # Generate design
-    design = generate_design(cell_lines, compounds, mode)
+    # Generate design (only if not already provided from JSON)
+    if design is None:
+        design = generate_design(cell_lines, compounds, mode)
 
     logger.info(f"Total wells: {len(design)}")
 
@@ -1629,11 +1701,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Full campaign with all CPUs
+  # Use design from catalog (RECOMMENDED - separates design from execution)
+  python standalone_cell_thalamus.py --design-json data/designs/phase0_design_v3_mixed_celllines_checkerboard.json --seed 0
+
+  # Legacy mode: Full campaign with default cell lines (A549, HepG2)
   python standalone_cell_thalamus.py --mode full --seed 0
 
-  # Use 32 workers
-  python standalone_cell_thalamus.py --mode full --workers 32 --seed 0
+  # Legacy mode: Test neurons and microglia
+  python standalone_cell_thalamus.py --mode full --cell-lines iPSC_NGN2 iPSC_Microglia --seed 0
+
+  # Legacy mode: All 4 cell lines together
+  python standalone_cell_thalamus.py --mode full --cell-lines A549 HepG2 iPSC_NGN2 iPSC_Microglia --seed 0
+
+  # Legacy mode: Specific compounds only
+  python standalone_cell_thalamus.py --mode full --compounds tBHQ tunicamycin CCCP --seed 0
 
   # Quick test
   python standalone_cell_thalamus.py --mode demo --workers 4 --seed 0
@@ -1643,8 +1724,15 @@ Examples:
         """
     )
 
-    parser.add_argument('--mode', choices=['demo', 'benchmark', 'full', 'portfolio'], default='full')
+    parser.add_argument('--design-json', type=str, default=None,
+                        help='Path to design JSON file from design catalog (RECOMMENDED). If provided, --mode/--cell-lines/--compounds are ignored.')
+    parser.add_argument('--mode', choices=['demo', 'benchmark', 'full', 'portfolio'], default='full',
+                        help='Legacy mode: Design generation mode (use --design-json instead)')
     parser.add_argument('--workers', type=int, default=None)
+    parser.add_argument('--cell-lines', type=str, nargs='+', default=None,
+                        help='Legacy mode: Cell lines to test (default: A549 HepG2). Available: A549, HepG2, iPSC_NGN2, iPSC_Microglia')
+    parser.add_argument('--compounds', type=str, nargs='+', default=None,
+                        help='Legacy mode: Compounds to test (default: all 10). Available: tBHQ, H2O2, tunicamycin, thapsigargin, CCCP, oligomycin, etoposide, MG132, nocodazole, paclitaxel')
     parser.add_argument('--db-path', default='cell_thalamus_results.db')
     parser.add_argument('--out', type=str, default=None,
                         help='Output directory for deterministic artifact comparison')
@@ -1704,12 +1792,22 @@ Examples:
         os.makedirs(args.out, exist_ok=True)
         args.db_path = os.path.join(args.out, os.path.basename(args.db_path))
 
+    # Load design from JSON if provided
+    design = None
+    if args.design_json:
+        logger.info(f"Loading design from JSON: {args.design_json}")
+        design = load_design_from_json(args.design_json)
+        logger.info(f"Loaded {len(design)} wells from catalog")
+
     design_id = run_parallel_simulation(
+        cell_lines=args.cell_lines,
+        compounds=args.compounds,
         mode=args.mode,
         workers=args.workers,
         db_path=args.db_path,
         seed=args.seed,
-        design_id=args.design_id
+        design_id=args.design_id,
+        design=design
     )
 
     print(f"\n✓ Complete! Design ID: {design_id}")

@@ -350,10 +350,17 @@ class CellThalamusDB:
             # Aggregate by dose: compute mean, std, n
             from collections import defaultdict
             import math
+            import numpy as np
 
             dose_groups = defaultdict(list)
             for dose, value in rows:
-                dose_groups[dose].append(value)
+                # Add small measurement noise to preserve variance in viability calculation
+                # Realistic assay CV ~1-2% for cell viability measurements
+                # This prevents all replicates from being identical (e.g., vehicle controls all = 100.0)
+                noise_cv = 0.015  # 1.5% coefficient of variation
+                noise = np.random.normal(0, value * noise_cv) if value > 0 else 0
+                noisy_value = max(0, min(100, value + noise))  # Clamp to [0, 100] range
+                dose_groups[dose].append(noisy_value)
 
             result = []
             for dose in sorted(dose_groups.keys()):

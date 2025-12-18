@@ -361,7 +361,7 @@ function detectScaffoldPattern(wells: Well[], cfg: ScaffoldInvariantConfig): boo
   return true;
 }
 
-type ScaffoldHashItem = {
+export type ScaffoldHashItem = {
   position: string;
   type: string;
   compound: string;
@@ -386,8 +386,10 @@ function formatNumberPythonStyle(n: number): string {
  * Matches Python's json.dumps(sort_keys=True, separators=(',', ':'))
  *
  * Explicit serialization instead of relying on JSON.stringify quirks.
+ *
+ * Exported for testing to verify byte-for-byte match with Python.
  */
-function canonicalJsonPythonCompatible(items: ScaffoldHashItem[]): string {
+export function canonicalJsonPythonCompatible(items: ScaffoldHashItem[]): string {
   // Sort items by position
   const sortedItems = [...items].sort((a, b) => a.position.localeCompare(b.position));
 
