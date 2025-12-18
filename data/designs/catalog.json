@@ -277,6 +277,89 @@
         },
         "bottom_line": "This mixed-plate design is a throughput optimization that does not compromise epistemic jurisdiction. It interleaves cell lines to break spatial confounds, duplicates sentinel structure per cell line so nuisance diagnostics stay meaningful, and adds 48h dose pairs to tell you whether late-timepoint collapse is correctable distortion or true biological convergence. It's not just a plate layout. It's a commitment: efficiency cannot be allowed to override validity."
       }
+    },
+    {
+      "design_id": "phase0_founder_v2_regenerated",
+      "version": "v2.1",
+      "filename": "phase0_founder_v2_regenerated.json",
+      "created_at": "2025-12-17",
+      "status": "current",
+      "design_type": "phase0_founder_screen",
+      "description": "Phase 0 founder v2 regenerated with cryptographic scaffold provenance and strict invariant validation",
+      "metadata": {
+        "n_plates": 24,
+        "wells_per_plate": 88,
+        "n_cell_lines": 2,
+        "cell_lines": ["A549", "HepG2"],
+        "n_compounds": 5,
+        "n_timepoints": 3,
+        "timepoints_h": [12.0, 24.0, 48.0],
+        "scaffold_id": "phase0_v2_scaffold_v1",
+        "scaffold_hash": "901ffeb4603019fe",
+        "spatial_dispersion_avg": 76.6
+      },
+      "features": [
+        "Cryptographic scaffold provenance (scaffold_id + hash)",
+        "7 core invariants enforced",
+        "Explicit 88-well budgeting: 60 experimental + 28 sentinels",
+        "Position stability: same position = same condition per cell line",
+        "Spatial dispersion validated (avg bbox area 76.6, threshold 40)"
+      ],
+      "supersedes": "phase0_founder_v2_controls_stratified",
+      "notes": "Canonical Phase 0 reference with full invariant system. All 7 invariants pass."
+    },
+    {
+      "design_id": "phase0_shape_learning_v1",
+      "version": "v1",
+      "filename": "phase0_shape_learning_v1.json",
+      "created_at": "2025-12-17",
+      "status": "current",
+      "design_type": "phase0_shape_learning",
+      "description": "Phase 0 design for learning system shape by separating instrument from biological truth",
+      "metadata": {
+        "n_plates": 24,
+        "wells_per_plate_budgeted": 88,
+        "wells_per_plate_total": 90,
+        "n_cell_lines": 2,
+        "n_compounds": 5,
+        "n_timepoints": 3,
+        "timepoints_h": [12.0, 24.0, 48.0],
+        "primary_goal": "nuisance_model_identification"
+      },
+      "features": [
+        "Instrument sentinels (compound=None) at A01, A12",
+        "Bridge controls: 2 vehicle + 2 ER_mid per plate",
+        "Absolute dose ladder: 0.3, 3.0 µM",
+        "Timepoint perturbation: 6h vs 12h test",
+        "90 total wells (88 budgeted + 2 instrument)"
+      ],
+      "notes": "Six enhancements over founder v2 for nuisance identification."
+    },
+    {
+      "design_id": "phase1_causal_v1",
+      "version": "v1",
+      "filename": "phase1_causal_v1.json",
+      "created_at": "2025-12-17",
+      "status": "current",
+      "design_type": "phase1_causal",
+      "description": "Causal design for focused dose-response with high replication and within-plate randomization",
+      "metadata": {
+        "n_plates": 8,
+        "n_cell_lines": 2,
+        "n_timepoints": 1,
+        "timepoints_h": [24.0],
+        "reps_per_dose": 8,
+        "vehicle_reps": 12,
+        "primary_goal": "causal_effect_estimation"
+      },
+      "features": [
+        "Single compound per cell line (focused)",
+        "High replication: 8 reps per dose + 12 vehicle",
+        "Within-plate randomization prevents spatial confounding",
+        "Single timepoint (24h) for causal clarity",
+        "Expected EC50 CI: 0.66 µM (4× tighter than Phase 0)"
+      ],
+      "notes": "Phase 1 for causal claims after Phase 0 calibration. Within-plate randomization critical."
     }
   ],
   "design_evolution_log": [
@@ -333,22 +416,76 @@
         "paired_comparison_power": "Both cell lines experience identical local technical conditions for direct comparison",
         "validation_plan": "Compare v3 QC metrics to v2 to validate that checkerboard mixing doesn't compromise control"
       }
+    },
+    {
+      "from_version": "v2",
+      "to_version": "v2.1",
+      "date": "2025-12-17",
+      "reason": "Add cryptographic scaffold provenance and enforce strict invariants",
+      "key_changes": [
+        "Added scaffold_id and scaffold_hash for byte-exact validation",
+        "Enforced 7 core invariants with mutation testing",
+        "Explicit 88-well budgeting (60 exp + 28 sentinels)",
+        "Position stability enforced",
+        "Spatial dispersion validated (avg 76.6)",
+        "Regenerated from canonical generator"
+      ]
+    },
+    {
+      "from_version": "v2.1",
+      "to_version": "shape_learning_v1",
+      "date": "2025-12-17",
+      "reason": "Enhanced Phase 0 for nuisance model identification",
+      "key_changes": [
+        "Added instrument sentinels (compound=None) at A01, A12",
+        "Added bridge controls for batch effect estimation",
+        "Added absolute dose ladder (0.3, 3.0 µM)",
+        "Added timepoint perturbation (6h vs 12h)",
+        "Instrument sentinels outside 88-well budget (90 total)"
+      ]
+    },
+    {
+      "from_version": "v2.1",
+      "to_version": "causal_v1",
+      "date": "2025-12-17",
+      "reason": "New Phase 1 design for focused causal estimation",
+      "key_changes": [
+        "Single compound per cell line (focused vs exploratory)",
+        "High replication: 8 reps + 12 vehicle (vs 2 reps Phase 0)",
+        "Within-plate randomization (vs per-cell-line shuffle)",
+        "Single timepoint (24h)",
+        "8 plates total (vs 24)",
+        "4× tighter EC50 confidence intervals"
+      ]
     }
   ],
   "design_principles": {
     "sentinel_allocation": "Minimum 28 wells/plate (29%) for nuisance control. Vehicle gets 8 reps (primary anchor), archetypes get 5 reps each.",
+    "scaffold_provenance": "Fixed sentinel scaffold with cryptographic hash (scaffold_id + scaffold_hash) ensures byte-exact reproducibility. All designs using same scaffold are directly comparable.",
+    "phase_progression": "Phase 0 (shape learning) → Phase 1 (causal estimation) → Phase 2+ (mechanism mapping). Each phase builds on calibration from previous phase.",
+    "position_strategy": "Phase 0: Position stability (same position = same condition across plates) enables identifiability. Phase 1: Within-plate randomization (positions shuffled per plate) prevents spatial confounding for causal claims.",
+    "replication_strategy": "Phase 0: 2 reps/dose (efficient screening). Phase 1: 8 reps/dose + 12 vehicle (defensible causal estimation, 4× tighter CIs).",
     "timepoint_strategy": "Separate charts per timepoint. Do not force unified manifold across timepoints with different biology.",
     "dose_pair_diagnostics": "At late timepoints (≥36h), include low/mid dose pairs for key archetypes to measure saturation (Q_s metric).",
     "chart_gating": "Define intended use and capabilities in design metadata. System enforces these constraints at runtime.",
-    "unused_wells": "Reserve corner wells (A1, A12, H1, H12, A6, A7, H6, H7) for future QC controls (no-stain, edge effects, etc.)."
+    "unused_wells": "Reserve corner wells (A1, A12, H1, H12, A6, A7, H6, H7) for future QC controls (no-stain, edge effects, etc.).",
+    "instrument_sentinels": "Truly non-biological controls (compound=None, readout_model='instrument_only') at excluded positions detect imaging/staining drift independent of biology.",
+    "bridge_controls": "Extra replicates of vehicle and archetype sentinels for batch effect estimation across temporal/operator strata."
   },
   "glossary": {
+    "phase0": "Shape learning phase. Goal: Understand system behavior, identify nuisance structure, calibrate for future experiments. Design: 2 reps/dose, position stability, multiple compounds (exploratory). Not for: Mechanism claims, causal inference.",
+    "phase1": "Causal estimation phase. Goal: Defensible dose-response curves with tight confidence intervals. Design: 8 reps/dose + 12 vehicle, within-plate randomization, single compound (focused). Requires: Phase 0 calibration first.",
     "founder_screen": "Phase 0 screen that establishes the reference manifold for all future experiments",
     "sentinel": "Control well with fixed condition (vehicle or stress archetype) used for batch normalization and geometry preservation checks",
+    "instrument_sentinel": "Truly non-biological control (compound=None, readout_model='instrument_only') at excluded position (A01, A12). Detects imaging/staining drift independent of biology.",
+    "bridge_control": "Extra replicate of vehicle or archetype sentinel (marked is_bridge_control=true) for batch effect estimation across temporal/operator strata.",
+    "position_stability": "Phase 0 design constraint: same position = same condition across all plates. Enables identifiability (position as fingerprint) and drift detection. Trade: vulnerable to spatial confounding for causal claims.",
+    "within_plate_randomization": "Phase 1 design constraint: positions shuffled per plate (not stable across plates). Prevents spatial confounding (gradient can't bias one dose). Trade: position no longer useful as identity tag.",
     "chart": "Coordinate system for morphology space at a specific timepoint with explicit capabilities (mechanism vs endpoint)",
     "geometry_preservation": "Correlation of pairwise sentinel distances between batch and global template (threshold: > 0.9)",
     "Q_s": "Dose-pair separation metric: ||mu_high - mu_low|| / sqrt(mean(tr(Sigma))). Q << 1 indicates saturation.",
     "Goldilocks timepoint": "Timepoint that balances mechanism specificity (early) with phenotypic clarity (late). Hypothesis: 24h.",
-    "checkerboard_randomization": "Spatial layout where cell lines are assigned by position parity (row+col mod 2) to eliminate correlation between cell identity and spatial gradients. Both cell lines represented at every plate region."
+    "checkerboard_randomization": "Spatial layout where cell lines are assigned by position parity (row+col mod 2) to eliminate correlation between cell identity and spatial gradients. Both cell lines represented at every plate region.",
+    "scaffold_provenance": "Fixed sentinel structure with cryptographic identity (scaffold_id + scaffold_hash). All designs using same scaffold are directly comparable. Enables cross-experiment calibration and SPC (Statistical Process Control)."
   }
 }
