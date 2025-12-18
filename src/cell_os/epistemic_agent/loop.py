@@ -21,7 +21,7 @@ from typing import Optional
 from .world import ExperimentalWorld
 from .agent.policy_rules import RuleBasedPolicy
 from .schemas import Observation
-from .beliefs.ledger import append_events_jsonl, append_decisions_jsonl, append_noise_diagnostics_jsonl
+from .beliefs.ledger import append_events_jsonl, append_decisions_jsonl, append_noise_diagnostics_jsonl, DecisionEvent
 
 
 class EpistemicLoop:
@@ -90,11 +90,40 @@ class EpistemicLoop:
                     capabilities,
                     previous_observation=self.history[-1] if self.history else None
                 )
+
+                # v0.4.2: Write decision event (always present after chooser.choose_next)
+                if hasattr(self.agent, 'chooser') and hasattr(self.agent.chooser, 'last_decision_event'):
+                    decision_evt = self.agent.chooser.last_decision_event
+                    if decision_evt is not None:
+                        append_decisions_jsonl(self.decisions_file, [decision_evt])
+
             except RuntimeError as e:
                 # Handle abort from policy (e.g., insufficient budget)
                 if "ABORT" in str(e):
                     self._log(f"\n⛔ POLICY ABORT: {e}")
                     self.abort_reason = str(e)
+
+                    # v0.4.2: Write abort decision event
+                    if hasattr(self.agent, 'chooser') and hasattr(self.agent.chooser, 'last_decision_event'):
+                        decision_evt = self.agent.chooser.last_decision_event
+                        if decision_evt is not None:
+                            append_decisions_jsonl(self.decisions_file, [decision_evt])
+                        else:
+                            # Fallback: create minimal abort receipt if chooser didn't set one
+                            abort_decision = DecisionEvent(
+                                cycle=cycle,
+                                candidates=[],
+                                selected="abort_runtime_error",
+                                selected_score=0.0,
+                                selected_candidate={
+                                    "template": "abort_runtime_error",
+                                    "forced": True,
+                                    "trigger": "abort",
+                                    "regime": "aborted"
+                                },
+                                reason=str(e),
+                            )
+                            append_decisions_jsonl(self.decisions_file, [abort_decision])
                     break
                 else:
                     raise
@@ -273,6 +302,7 @@ class EpistemicLoop:
         self._log(f"\nFull log: {self.log_file}")
         self._log(f"JSON data: {self.json_file}")
         self._log(f"Evidence: {self.evidence_file}")
+        self._log(f"Decisions: {self.decisions_file}")
         self._log(f"Diagnostics: {self.diagnostics_file}")
 
     def _save_json(self):
@@ -287,6 +317,8 @@ class EpistemicLoop:
                 integrity_warnings.append(f"Missing evidence file: {self.evidence_file.name}")
             if not self.diagnostics_file.exists():
                 integrity_warnings.append(f"Missing diagnostics file: {self.diagnostics_file.name}")
+            if not self.decisions_file.exists():
+                integrity_warnings.append(f"Missing decisions file: {self.decisions_file.name}")
 
         # Build output
         output = {
@@ -302,6 +334,7 @@ class EpistemicLoop:
                 'log': str(self.log_file.name),
                 'json': str(self.json_file.name),
                 'evidence': str(self.evidence_file.name),
+                'decisions': str(self.decisions_file.name),
                 'diagnostics': str(self.diagnostics_file.name),
             },
         }

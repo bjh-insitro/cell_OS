@@ -39,7 +39,8 @@ class RuleBasedPolicy:
         # Choose template based on current beliefs
         template_name, template_kwargs = self.chooser.choose_next(
             beliefs=self.beliefs,
-            budget_remaining_wells=self.budget_remaining
+            budget_remaining_wells=self.budget_remaining,
+            cycle=self.cycle
         )
 
         # Handle abort

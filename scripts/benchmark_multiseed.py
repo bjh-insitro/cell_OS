@@ -15,6 +15,9 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any
 
+# Import reusable KPI extraction
+from benchmark_utils import extract_all_kpis
+
 
 def run_single_seed(seed: int, budget: int, cycles: int, log_dir: Path) -> Dict[str, Any]:
     """Run epistemic agent for a single seed."""
@@ -45,66 +48,15 @@ def run_single_seed(seed: int, budget: int, cycles: int, log_dir: Path) -> Dict[
         }
 
     run_json_path = json_files[-1]
-    
-    with open(run_json_path) as f:
-        run_data = json.load(f)
 
-    # Extract KPIs
-    beliefs = run_data.get("beliefs_final", {})
-    kpis = extract_gate_kpis(run_data, beliefs)
+    # Extract all KPIs using reusable utils
+    kpis = extract_all_kpis(run_json_path)
 
     return {
         "seed": seed,
         "success": result.returncode == 0,
         "exit_code": result.returncode,
-        "run_json": str(run_json_path.name),
         **kpis,
-    }
-
-
-def extract_gate_kpis(run_data: Dict, beliefs: Dict) -> Dict[str, Any]:
-    """Extract gate-related KPIs from run data.
-
-    KPIs:
-    - gate_earned: Did agent earn noise gate?
-    - rel_width_final: Final relative CI width
-    - df_final: Final degrees of freedom
-    - gate_slack: How much tighter than threshold (0.25)?
-    - cycles_to_gate: How many cycles to earn gate?
-    - abort_reason: Why did run end?
-    - integrity_warnings: Missing evidence files?
-    """
-    gate_earned = beliefs.get("noise_sigma_stable", False)
-    rel_width_final = beliefs.get("noise_rel_width")
-    df_final = beliefs.get("noise_df_total", 0)
-
-    # Gate slack: how much better than threshold?
-    gate_slack = None
-    if rel_width_final is not None and gate_earned:
-        gate_slack = 0.25 - rel_width_final  # positive = better than threshold
-
-    # Cycles to gate: scan evidence file for first gate_event
-    cycles_to_gate = None
-    paths = run_data.get("paths", {})
-    evidence_file = Path(run_data.get("paths", {}).get("evidence", ""))
-    
-    if evidence_file.exists():
-        with open(Path(evidence_file).parent / evidence_file.name) as f:
-            for line in f:
-                event = json.loads(line)
-                if event.get("belief", "").startswith("gate_event:noise_sigma"):
-                    cycles_to_gate = event.get("cycle")
-                    break
-
-    return {
-        "gate_earned": gate_earned,
-        "rel_width_final": rel_width_final,
-        "df_final": df_final,
-        "gate_slack": gate_slack,
-        "cycles_to_gate": cycles_to_gate,
-        "cycles_completed": run_data.get("cycles_completed", 0),
-        "abort_reason": run_data.get("abort_reason"),
-        "integrity_warnings": run_data.get("integrity_warnings", []),
     }
 
 
