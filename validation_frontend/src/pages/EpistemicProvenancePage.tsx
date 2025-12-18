@@ -137,9 +137,25 @@ const EpistemicProvenancePage: React.FC = () => {
                             <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
                                 Epistemic Provenance Demo
                             </h1>
-                            <p className={`mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                Pay-for-calibration regime with gate events and decision receipts
+                            <p className={`mt-1 max-w-3xl text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                <strong>Pay-for-calibration regime:</strong> The system only acts when it can statistically justify its conclusions.
+                                Gate events mark when noise calibration meets thresholds. Aborts are first-class decisions - refusing to act
+                                when reliability can't be guaranteed.
                             </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {['gate thresholds', 'regime tracking', 'forced decisions', 'abort provenance', 'gate slack', 'calibration plans'].map((concept) => (
+                                    <span
+                                        key={concept}
+                                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs shadow-sm ${
+                                            isDarkMode
+                                                ? 'border-slate-600 bg-slate-700 text-slate-300'
+                                                : 'border-zinc-200 bg-white text-zinc-700'
+                                        }`}
+                                    >
+                                        {concept}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Dark Mode Toggle */}
@@ -160,6 +176,24 @@ const EpistemicProvenancePage: React.FC = () => {
 
             {/* Content */}
             <div className="container mx-auto px-6 py-6">
+                {/* Concept Guide */}
+                {!selectedRun && !loadingSummaries && runs.length > 0 && (
+                    <div className={`mb-6 p-6 rounded-lg border-l-4 ${isDarkMode ? 'bg-indigo-900/20 border-indigo-500' : 'bg-indigo-50 border-indigo-600'}`}>
+                        <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                            Understanding Run Stories
+                        </h3>
+                        <p className={`text-sm mb-3 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                            Each run is sorted by outcome quality. Look for:
+                        </p>
+                        <ul className={`text-sm space-y-2 ml-4 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                            <li><strong className="text-green-600">🟩 Gate earned:</strong> System calibrated noise to statistical threshold. Biological conclusions are valid.</li>
+                            <li><strong className="text-red-600">🟥 Aborted:</strong> System refused to act because conclusions would be unreliable. <em>This is correct behavior.</em></li>
+                            <li><strong className="text-amber-600">🟨 No gate:</strong> Run completed but never earned statistical confidence.</li>
+                            <li><strong>Regime summary:</strong> Shows transitions (e.g., <code className={`px-1 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>pre_gate → in_gate</code>)</li>
+                        </ul>
+                    </div>
+                )}
+
                 {/* Run Picker */}
                 {loadingSummaries ? (
                     <div className={`p-4 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-zinc-200'}`}>
@@ -189,6 +223,21 @@ const EpistemicProvenancePage: React.FC = () => {
                     </div>
                 )}
 
+                {/* Timeline Guide */}
+                {artifacts && !loading && (
+                    <div className={`mb-6 p-6 rounded-lg border-l-4 ${isDarkMode ? 'bg-green-900/20 border-green-500' : 'bg-green-50 border-green-600'}`}>
+                        <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                            Reading the Timeline
+                        </h3>
+                        <div className={`text-sm space-y-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                            <p><strong>Decision Regime Track:</strong> Each bar is one cycle. Colors show regime (orange=pre-gate, green=in-gate, red=revoked). <strong>F</strong> marks forced decisions (system had no choice).</p>
+                            <p><strong>Gate Events Track:</strong> Vertical bars mark explicit gate transitions. ✓ = earned, ✗ = lost.</p>
+                            <p><strong>Noise Metrics Chart:</strong> Shows rel_width (blue) and pooled_sigma (purple) over time. Thresholds at 0.25 (enter) and 0.40 (exit).</p>
+                            <p><strong>Decision Receipt:</strong> Click any cycle to see the full decision provenance: template chosen, why, calibration plan, gate state.</p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Main Content */}
                 {artifacts && !loading && (
                     <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -210,6 +259,21 @@ const EpistemicProvenancePage: React.FC = () => {
                                 evidence={artifacts.evidence.data}
                                 isDarkMode={isDarkMode}
                             />
+                        </div>
+                    </div>
+                )}
+
+                {/* Gate Metrics Guide */}
+                {artifacts && gateKPIs && decisionKPIs && !loading && (
+                    <div className={`mt-6 p-6 rounded-lg border-l-4 ${isDarkMode ? 'bg-amber-900/20 border-amber-500' : 'bg-amber-50 border-amber-600'}`}>
+                        <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                            Understanding Gate Metrics
+                        </h3>
+                        <div className={`text-sm space-y-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                            <p><strong>Gate Slack:</strong> How much "room" the system had when earning the gate. High slack (>0.10) = comfortable margin. Low slack (<0.05) = barely made it.</p>
+                            <p><strong>Gate Flapping:</strong> Number of times the gate was lost after earning. Zero losses = stable calibration.</p>
+                            <p><strong>Forced Rate:</strong> Percentage of decisions where the system had no choice (constraints forced the action). High forced rate = tight constraints.</p>
+                            <p><strong>Time in Gate:</strong> What fraction of the run was spent with valid statistical confidence. Higher is better.</p>
                         </div>
                     </div>
                 )}
