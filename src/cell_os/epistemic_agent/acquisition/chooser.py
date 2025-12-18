@@ -148,6 +148,89 @@ class TemplateChooser:
         # (cheap calibration before expensive biology)
         return {"ldh", "cell_paint"}
 
+    def _enforce_template_gates(
+        self,
+        beliefs: BeliefState,
+        template_name: str,
+        template_kwargs: dict,
+        remaining_wells: int,
+        cycle: int
+    ) -> Tuple[str, dict]:
+        """Enforce gate requirements before returning a template.
+
+        v0.5.0: Authoritative gate enforcement at decision point.
+        If template requires gates that are missing, override to calibration.
+
+        Returns:
+            (actual_template_name, actual_template_kwargs): May override if gates missing
+        """
+        required_gates = self._required_gates_for_template(template_name)
+        missing_gates = []
+
+        # Check which gates are missing
+        for gate in required_gates:
+            gate_ok, block_reason = self._check_assay_gate(beliefs, gate, require_ladder=False)
+            if not gate_ok:
+                missing_gates.append(gate)
+
+        # If no gates missing, return original template
+        if not missing_gates:
+            return (template_name, template_kwargs)
+
+        # Gates missing: force calibration for first missing gate
+        first_missing = missing_gates[0]  # LDH before CP (priority order)
+        calib_plan = self._compute_assay_calibration_plan(beliefs, first_missing)
+        wells_needed = calib_plan.get("wells_needed", 0)
+
+        # Check affordability
+        if remaining_wells < wells_needed:
+            reason = f"ABORT: Cannot afford {first_missing} gate (required for {template_name}, need {wells_needed} wells, have {remaining_wells})"
+            self._set_last_decision(
+                cycle=cycle,
+                selected="abort_insufficient_assay_gate_budget",
+                selected_score=0.0,
+                reason=reason,
+                selected_candidate={
+                    "template": "abort_insufficient_assay_gate_budget",
+                    "forced": True,
+                    "trigger": "abort",
+                    "regime": "pre_gate",
+                    "gate_state": self._get_gate_state(beliefs),
+                    "calibration_plan": calib_plan,
+                    "assay": first_missing,
+                    "blocked_template": template_name,
+                    "missing_gates": missing_gates,
+                }
+            )
+            return ("abort", {"reason": reason})
+
+        # Override to calibration
+        calibration_template = f"calibrate_{first_missing}_baseline"
+        reason = f"Earn {first_missing} gate (required for {template_name})"
+        self._set_last_decision(
+            cycle=cycle,
+            selected=calibration_template,
+            selected_score=1.0,
+            reason=reason,
+            selected_candidate={
+                "template": calibration_template,
+                "forced": True,
+                "trigger": "must_calibrate_for_template",
+                "regime": "pre_gate",
+                "gate_state": self._get_gate_state(beliefs),
+                "calibration_plan": calib_plan,
+                "assay": first_missing,
+                "blocked_template": template_name,
+                "missing_gates": missing_gates,
+                "n_reps": 12
+            }
+        )
+        return (calibration_template, {
+            "reason": reason,
+            "assay": first_missing,
+            "n_reps": 12
+        })
+
     def choose_next(
         self,
         beliefs: BeliefState,
@@ -377,31 +460,54 @@ class TemplateChooser:
         tested = beliefs.tested_compounds - {'DMSO'}
         if not tested or len(tested) < 5:
             reason = "Explore compounds with dose-response"
+            candidate_template = "dose_ladder_coarse"
+            candidate_kwargs = {"reason": reason}
+
+            # Enforce template gates (may override to calibration if gates missing)
+            actual_template, actual_kwargs = self._enforce_template_gates(
+                beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle
+            )
+
+            # If gates were missing, _enforce_template_gates already set decision
+            if actual_template != candidate_template:
+                return (actual_template, actual_kwargs)
+
+            # Gates OK, proceed with original template
             self._set_last_decision(
                 cycle=cycle,
-                selected="dose_ladder_coarse",
+                selected=candidate_template,
                 selected_score=1.0,
                 reason=reason,
                 selected_candidate={
-                    "template": "dose_ladder_coarse",
+                    "template": candidate_template,
                     "forced": False,
                     "trigger": "scoring",
                     "regime": "in_gate",
                     "gate_state": self._get_gate_state(beliefs)
                 }
             )
-            return ("dose_ladder_coarse", {
-                "reason": reason,
-            })
+            return (candidate_template, candidate_kwargs)
 
+        # Final fallback: calibration maintenance
         reason = "Continue calibration maintenance"
+        candidate_template = "baseline_replicates"
+        candidate_kwargs = {"reason": reason, "n_reps": 12}
+
+        # Enforce template gates (baseline_replicates requires no gates, so this is a no-op)
+        actual_template, actual_kwargs = self._enforce_template_gates(
+            beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle
+        )
+
+        if actual_template != candidate_template:
+            return (actual_template, actual_kwargs)
+
         self._set_last_decision(
             cycle=cycle,
-            selected="baseline_replicates",
+            selected=candidate_template,
             selected_score=1.0,
             reason=reason,
             selected_candidate={
-                "template": "baseline_replicates",
+                "template": candidate_template,
                 "forced": False,
                 "trigger": "scoring",
                 "regime": "in_gate",
@@ -409,7 +515,4 @@ class TemplateChooser:
                 "n_reps": 12
             }
         )
-        return ("baseline_replicates", {
-            "reason": reason,
-            "n_reps": 12
-        })
+        return (candidate_template, candidate_kwargs)

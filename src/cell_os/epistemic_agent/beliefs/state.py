@@ -813,7 +813,34 @@ class BeliefState:
         else:
             new_stable = not (rel_width is not None and rel_width >= exit_threshold)
 
-        # Record belief change
+        # v0.5.0: Prevent scRNA gate from earning with proxy metrics
+        # scRNA uses expensive transcriptional readouts - can't earn with cheap morphology proxy
+        # Keep updating shadow stats (df, rel_width) but never mark stable=True until real assay exists
+        if assay == "scrna":
+            if new_stable and not current_stable:
+                # Would have earned gate, but proxy metrics don't count for scRNA
+                # Update shadow stats but keep stable=False
+                rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "N/A"
+                self._set(
+                    stable_field,
+                    False,  # Force False for proxy scRNA
+                    evidence={
+                        "df": total_df,
+                        "rel_width": rel_width,
+                        "enter_threshold": enter_threshold,
+                        "exit_threshold": exit_threshold,
+                        "df_min_sanity": df_min_sanity,
+                        "assay": assay,
+                        "metric_source": "proxy:noisy_morphology",
+                        "gate_blocked": "scRNA gate not earnable with proxy metrics (requires real transcriptional readout)",
+                    },
+                    supporting_conditions=[cond_key(c) for c in dmso_conditions],
+                    note=f"scrna shadow stats updated (df={total_df}, rel_width={rel_width_str}, proxy:noisy_morphology, gate_blocked)",
+                )
+                setattr(self, stable_field, False)
+                return  # Don't emit gate_event
+
+        # Record belief change (for ldh, cell_paint, or if scrna already stable)
         rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "N/A"
         self._set(
             stable_field,

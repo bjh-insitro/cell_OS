@@ -297,5 +297,79 @@ def test_scrna_template_allowed_without_scrna_gate():
     # This is enforced by _required_gates_for_template returning {"cell_paint"} only
 
 
+def test_template_gate_override_blocks_biology_until_gates():
+    """Test that biology templates are overridden to calibration when gates missing."""
+    beliefs = BeliefState()
+    chooser = TemplateChooser()
+
+    # Noise gate earned, but LDH + CP gates missing
+    beliefs.noise_sigma_stable = True
+    beliefs.noise_df_total = 150
+    beliefs.noise_rel_width = 0.20
+
+    beliefs.ldh_sigma_stable = False
+    beliefs.cell_paint_sigma_stable = False
+    beliefs.scrna_sigma_stable = False
+
+    # Force chooser to want dose_ladder_coarse by having few tested compounds
+    beliefs.tested_compounds = {'DMSO'}  # Triggers "len(tested) < 5" branch
+
+    # Choose next: should override dose_ladder_coarse to calibrate_ldh_baseline
+    template_name, template_kwargs = chooser.choose_next(
+        beliefs=beliefs,
+        budget_remaining_wells=384,
+        cycle=5
+    )
+
+    # Should have been overridden to LDH calibration
+    assert template_name == "calibrate_ldh_baseline"
+    assert template_kwargs["assay"] == "ldh"
+
+    # Check decision provenance
+    # Note: enforcement loop catches this before biology template is selected
+    # So trigger is "must_calibrate" (from enforcement loop) not "must_calibrate_for_template"
+    decision = chooser.last_decision_event
+    assert decision.selected_candidate["trigger"] == "must_calibrate"
+    assert decision.selected_candidate["assay"] == "ldh"
+
+
+def test_scrna_gate_not_earnable_with_proxy():
+    """Test that scRNA gate never earns with proxy metrics."""
+    beliefs = BeliefState()
+    beliefs.begin_cycle(1)
+
+    # Create conditions with enough df and low noise to "earn" gate
+    conditions = []
+    for i in range(15):  # Lots of cycles to ensure df > 40 and rel_width < 0.25
+        conditions.append(MockConditionSummary(
+            n_wells=12,
+            mean=1.0,
+            std=0.15,  # Very low noise → would earn gate for other assays
+            cv=0.15
+        ))
+
+    observation = MockObservation(conditions=conditions)
+
+    for cycle in range(15):
+        beliefs.begin_cycle(cycle + 1)
+        events, diagnostics = beliefs.update(observation, cycle=cycle + 1)
+
+    # Check that LDH and CP gates are earned (proxy is OK for them)
+    assert beliefs.ldh_sigma_stable == True, "LDH should earn with proxy"
+    assert beliefs.cell_paint_sigma_stable == True, "CP should earn with proxy"
+
+    # Check that scRNA gate is NOT earned (proxy blocked)
+    assert beliefs.scrna_sigma_stable == False, "scRNA must NOT earn with proxy metrics"
+
+    # Check that scRNA shadow stats are updated
+    assert beliefs.scrna_df_total > 0, "scRNA df should be tracked"
+    assert beliefs.scrna_rel_width is not None, "scRNA rel_width should be tracked"
+    assert beliefs.scrna_rel_width < 0.25, "scRNA metrics should be good enough (if not proxy)"
+
+    # Check that no gate_event:scrna was emitted
+    scrna_gate_events = [e for e in events if e.belief == "gate_event:scrna"]
+    assert len(scrna_gate_events) == 0, "No gate_event:scrna should be emitted with proxy"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
