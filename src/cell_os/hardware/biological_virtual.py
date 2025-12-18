@@ -303,7 +303,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         # --- 2. Spatial Edge Effects ---
         # Penalty for edge wells (evaporation/temp gradients)
         edge_penalty = 0.0
-        if self._is_edge_well(vessel.vessel_id):
+        # Extract well position from vessel_id (e.g., 'Plate1_A01' -> 'A01')
+        import re
+        well_match = re.search(r'([A-P]\d{1,2})$', vessel.vessel_id)
+        well_position = well_match.group(1) if well_match else vessel.vessel_id
+        is_edge = self._is_edge_well(well_position)
+        if is_edge:
             edge_penalty = params.get("edge_penalty", self.defaults.get("edge_penalty", 0.15))
 
         # --- 3. Viability factor ---
@@ -322,27 +327,6 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel.cell_count *= np.exp(effective_growth_rate * hours * growth_factor)
         vessel.confluence = vessel.cell_count / vessel.vessel_capacity
             
-    def _is_edge_well(self, vessel_id: str) -> bool:
-        """
-        Check if vessel is an edge well (Rows A/H, Cols 1/12).
-        Assumes format like 'Plate1_A01' or just 'A01'.
-        """
-        # Extract the well part (last 3 chars usually)
-        # Try to find pattern [A-H][0-9]{2}
-        import re
-        match = re.search(r'([A-P])(\d{1,2})$', vessel_id)
-        if match:
-            row = match.group(1)
-            col = int(match.group(2))
-
-            # Standard 96-well plate definition
-            is_row_edge = (row == 'A') or (row == 'H')
-            is_col_edge = (col == 1) or (col == 12)
-
-            return is_row_edge or is_col_edge
-
-        return False
-
     def _apply_compound_attrition(self, vessel: VesselState, hours: float):
         """
         Apply time-dependent compound attrition.

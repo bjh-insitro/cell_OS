@@ -85,10 +85,11 @@ class TestBiologicalVirtualMachine:
     def test_compound_treatment(self):
         """Test dose-response to compound treatment."""
         self.vm.seed_vessel("well_A1", "HEK293T", initial_count=1e5)
-        
+
         # Treat with staurosporine at IC50 (should give ~50% viability)
-        result = self.vm.treat_with_compound("well_A1", "staurosporine", dose_uM=0.05)
-        
+        # IC50 for staurosporine is 0.1 µM (from cell_thalamus_params.yaml)
+        result = self.vm.treat_with_compound("well_A1", "staurosporine", dose_uM=0.1)
+
         assert result["status"] == "success"
         assert 0.4 < result["viability_effect"] < 0.6  # ~50% with noise
         
@@ -99,32 +100,34 @@ class TestBiologicalVirtualMachine:
         
     def test_dose_response_curve(self):
         """Test that we get a proper dose-response curve."""
-        doses = [0.001, 0.01, 0.05, 0.1, 1.0]  # IC50 for HEK293T/stauro is 0.05
+        # IC50 for staurosporine is 0.1 µM (from cell_thalamus_params.yaml)
+        doses = [0.001, 0.01, 0.1, 0.5, 1.0]
         viabilities = []
-        
+
         for i, dose in enumerate(doses):
             vessel_id = f"well_{i}"
             self.vm.seed_vessel(vessel_id, "HEK293T", initial_count=1e5)
             result = self.vm.treat_with_compound(vessel_id, "staurosporine", dose_uM=dose)
             viabilities.append(result["viability_effect"])
-            
+
         # Check monotonic decrease
         assert viabilities[0] > viabilities[-1]
-        # Check IC50 gives ~50% viability
+        # Check IC50 (0.1 µM) gives ~50% viability
         assert 0.3 < viabilities[2] < 0.7
         
     def test_confluence_effects(self):
-        """Test that over-confluence reduces viability."""
+        """Test that over-confluence caps growth (contact inhibition)."""
         self.vm.seed_vessel("T75_1", "HEK293T", initial_count=1e6, capacity=1e7)
-        
-        # Grow for 5 doubling times (32x growth -> over-confluent)
+
+        # Grow for 5 doubling times (would be 32x growth if uncapped)
         self.vm.incubate(5 * 24 * 3600, 37.0)
-        
+
         result = self.vm.count_cells("T75_1", vessel_id="T75_1")
-        
-        # Should be over-confluent and viability should drop
-        assert result["confluence"] > 0.9
-        assert result["viability"] < 0.95  # Some viability loss
+
+        # Should reach max confluence and stop growing (contact inhibition)
+        # Current design: do NOT kill cells from over-confluence (prevents logistics death)
+        assert result["confluence"] >= 0.9
+        assert result["viability"] >= 0.95  # No viability loss from confluence alone
         
     def test_multiple_vessels(self):
         """Test tracking multiple vessels simultaneously."""
