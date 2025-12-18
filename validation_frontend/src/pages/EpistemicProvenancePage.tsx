@@ -270,7 +270,7 @@ const EpistemicProvenancePage: React.FC = () => {
                             Understanding Gate Metrics
                         </h3>
                         <div className={`text-sm space-y-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
-                            <p><strong>Gate Slack:</strong> How much "room" the system had when earning the gate. High slack (>0.10) = comfortable margin. Low slack (<0.05) = barely made it.</p>
+                            <p><strong>Gate Slack:</strong> How much "room" the system had when earning the gate. High slack (&gt;0.10) = comfortable margin. Low slack (&lt;0.05) = barely made it.</p>
                             <p><strong>Gate Flapping:</strong> Number of times the gate was lost after earning. Zero losses = stable calibration.</p>
                             <p><strong>Forced Rate:</strong> Percentage of decisions where the system had no choice (constraints forced the action). High forced rate = tight constraints.</p>
                             <p><strong>Time in Gate:</strong> What fraction of the run was spent with valid statistical confidence. Higher is better.</p>
