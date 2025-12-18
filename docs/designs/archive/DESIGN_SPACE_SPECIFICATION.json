@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "specification_type": "phase0_design_space_for_llm",
+    "version": "1.0.0",
+    "purpose": "Reference document explaining what parameters can be configured and what they mean. Use this to understand the design space and suggest parameter changes.",
+    "last_updated": "2025-12-18"
+  },
+  "parameters": {
+    "cell_lines": {
+      "description": "Which cell lines to test. Each cell line gets separate plates (no mixing).",
+      "type": "list[string]",
+      "available_options": [
+        {
+          "value": "A549",
+          "description": "Lung cancer cell line. NRF2-primed (oxidative resistant), fast cycling (microtubule sensitive)."
+        },
+        {
+          "value": "HepG2",
+          "description": "Hepatoma cell line. High ER load, OXPHOS-dependent, H2O2 resistant."
+        },
+        {
+          "value": "iPSC_NGN2",
+          "description": "Neurons (post-mitotic). Extreme OXPHOS dependence, transport-critical."
+        },
+        {
+          "value": "iPSC_Microglia",
+          "description": "Immune cells. High ROS resistance, phagocytic, pro-inflammatory."
+        }
+      ],
+      "phase0_default": ["A549", "HepG2"],
+      "constraints": [
+        "Cell lines are SEPARATE: each cell line gets its own plates",
+        "No mixing within plate (invariant: batch_separate_factor_violation)"
+      ],
+      "impact": "Adding cell lines multiplies plate count by N"
+    },
+    "compounds": {
+      "description": "Which compounds to test. Phase 0 uses 10 compounds split into 2 groups of 5 (to fit 96-well format).",
+      "type": "list[string]",
+      "available_options": [
+        {
+          "value": "tBHQ",
+          "mechanism": "Oxidative stress (NRF2 activation)",
+          "ic50_uM": 30.0
+        },
+        {
+          "value": "H2O2",
+          "mechanism": "Oxidative stress (direct ROS)",
+          "ic50_uM": 100.0
+        },
+        {
+          "value": "tunicamycin",
+          "mechanism": "ER stress (N-glycosylation inhibitor)",
+          "ic50_uM": 1.0
+        },
+        {
+          "value": "thapsigargin",
+          "mechanism": "ER stress (SERCA inhibitor)",
+          "ic50_uM": 0.5
+        },
+        {
+          "value": "CCCP",
+          "mechanism": "Mitochondrial uncoupler",
+          "ic50_uM": 5.0
+        },
+        {
+          "value": "oligomycin",
+          "mechanism": "Mitochondrial ATP synthase inhibitor",
+          "ic50_uM": 1.0
+        },
+        {
+          "value": "etoposide",
+          "mechanism": "DNA damage (topoisomerase II inhibitor)",
+          "ic50_uM": 10.0
+        },
+        {
+          "value": "MG132",
+          "mechanism": "Proteostasis (proteasome inhibitor)",
+          "ic50_uM": 1.0
+        },
+        {
+          "value": "nocodazole",
+          "mechanism": "Microtubule depolymerizer",
+          "ic50_uM": 0.5
+        },
+        {
+          "value": "paclitaxel",
+          "mechanism": "Microtubule stabilizer",
+          "ic50_uM": 0.01
+        }
+      ],
+      "phase0_default": {
+        "group_1": ["tBHQ", "H2O2", "tunicamycin", "thapsigargin", "CCCP"],
+        "group_2": ["oligomycin", "etoposide", "MG132", "nocodazole", "paclitaxel"],
+        "note": "A549 gets group 1, HepG2 gets group 2 (arbitrary but deterministic)"
+      },
+      "constraints": [
+        "96-well format fits 5 compounds × 6 doses × 2 replicates = 60 experimental + 28 sentinels = 88 wells",
+        "384-well could fit all 10 compounds per plate"
+      ],
+      "impact": "More compounds requires larger plate format or splits into groups"
+    },
+    "doses": {
+      "description": "Dose multipliers relative to IC50. Each compound gets tested at these multiples of its IC50.",
+      "type": "list[float]",
+      "phase0_default": [0.1, 0.3, 1.0, 3.0, 10.0, 30.0],
+      "interpretation": "dose_uM = multiplier × ic50. Example: tunicamycin IC50=1.0, so doses are [0.1, 0.3, 1.0, 3.0, 10.0, 30.0] µM",
+      "constraints": [
+        "More doses = more wells needed per compound",
+        "6 doses × 2 replicates × 5 compounds = 60 wells (fits 96-well with 28 sentinels)"
+      ],
+      "impact": "More doses requires fewer compounds or larger plate format"
+    },
+    "replicates": {
+      "description": "Technical replicates per dose (within same plate)",
+      "type": "integer",
+      "phase0_default": 2,
+      "constraints": [
+        "More replicates = more wells needed per condition",
+        "Replicates are WITHIN plate (not across plates)"
+      ],
+      "impact": "Doubling replicates doubles well count per condition"
+    },
+    "timepoints_h": {
+      "description": "Measurement timepoints in hours. Each timepoint gets its own set of plates.",
+      "type": "list[float]",
+      "phase0_default": [12.0, 24.0, 48.0],
+      "constraints": [
+        "Each timepoint multiplies plate count",
+        "Condition multiset must be IDENTICAL across timepoints (invariant: condition_multiset_mismatch)"
+      ],
+      "impact": "3 timepoints × 2 cell lines × 2 days × 2 operators = 24 plates"
+    },
+    "days": {
+      "description": "Experimental days (batch factor). Used for batch orthogonality.",
+      "type": "list[integer]",
+      "phase0_default": [1, 2],
+      "constraints": [
+        "Days are ORTHOGONAL to other factors (not confounded)",
+        "Each day multiplies plate count"
+      ],
+      "impact": "Days × operators × timepoints = batches per cell line"
+    },
+    "operators": {
+      "description": "Operators performing experiment (batch factor). Used for batch orthogonality.",
+      "type": "list[string]",
+      "phase0_default": ["Operator_A", "Operator_B"],
+      "constraints": [
+        "Operators are ORTHOGONAL to other factors (not confounded)",
+        "Each operator multiplies plate count"
+      ],
+      "impact": "Days × operators × timepoints = batches per cell line"
+    },
+    "plate_format": {
+      "description": "Well plate format (96 or 384)",
+      "type": "integer",
+      "available_options": [96, 384],
+      "phase0_default": 96,
+      "constraints": [
+        "96-well: 88 available after exclusions (8 corners + midrow)",
+        "384-well: more capacity but different exclusion pattern"
+      ],
+      "impact": "Determines how many conditions fit per plate"
+    },
+    "exclusions": {
+      "description": "Which wells to exclude from use (reserved for controls, edge effects, etc.)",
+      "type": "object",
+      "phase0_default": {
+        "corners": true,
+        "midRow": true,
+        "edges": false
+      },
+      "available_options": {
+        "corners": "Exclude A1, A12, H1, H12 (4 wells)",
+        "midRow": "Exclude A6, A7, H6, H7 (4 wells)",
+        "edges": "Exclude entire border (28 wells on 96-well)"
+      },
+      "phase0_specific": [
+        "A01", "A06", "A07", "A12",
+        "H01", "H06", "H07", "H12"
+      ],
+      "constraints": [
+        "Excluded wells reduce available capacity",
+        "Phase 0 uses custom 8-well exclusion (not standard corners)"
+      ],
+      "impact": "More exclusions = fewer wells available = fewer conditions fit"
+    },
+    "sentinel_schema": {
+      "description": "Fixed sentinel wells for drift detection and quality control",
+      "type": "object",
+      "phase0_default": {
+        "policy": "fixed_scaffold",
+        "scaffold_id": "phase0_v2_scaffold_v1",
+        "scaffold_hash": "901ffeb4603019fe",
+        "total_per_plate": 28,
+        "types": {
+          "vehicle": 8,
+          "ER_mid": 5,
+          "mito_mid": 5,
+          "proteostasis": 5,
+          "oxidative": 5
+        }
+      },
+      "constraints": [
+        "FIXED positions on all plates (same 28 positions everywhere)",
+        "Scaffold hash must match byte-for-byte (invariant: scaffold_well_derived_hash_mismatch)",
+        "Policy must be 'fixed_scaffold' for Phase 0 (invariant: sentinel_policy_unsupported)"
+      ],
+      "impact": "Sentinels reduce available wells for experimental conditions"
+    },
+    "randomization": {
+      "description": "How experimental wells are assigned to positions",
+      "type": "object",
+      "phase0_default": {
+        "seed": 42,
+        "method": "per_cell_line_shuffle"
+      },
+      "available_methods": {
+        "sequential": "FORBIDDEN - creates spatial confounding (invariant: spatial_clustering)",
+        "per_cell_line_shuffle": "CURRENT - same position = same condition within cell line, but spatially scattered",
+        "per_plate_shuffle": "ALTERNATIVE - breaks position stability (invariant: experimental_position_instability)"
+      },
+      "constraints": [
+        "Must eliminate spatial confounding (compounds scattered, not clustered)",
+        "Must preserve position stability within cell line (same pos = same condition across plates)"
+      ],
+      "impact": "Wrong method triggers spatial_clustering or position_instability violations"
+    }
+  },
+  "invariants": {
+    "description": "Constraints that designs must satisfy. Violations are caught by validation.",
+    "checks": [
+      {
+        "name": "sentinel_scaffold_exact_match",
+        "severity": "error",
+        "description": "Scaffold ID, hash, and positions must match expected values exactly"
+      },
+      {
+        "name": "plate_capacity",
+        "severity": "error",
+        "description": "No ghost wells, no duplicates, exact fill required"
+      },
+      {
+        "name": "condition_multiset_identical",
+        "severity": "error",
+        "description": "Same conditions on every plate within a cell line (across all timepoints)"
+      },
+      {
+        "name": "experimental_position_stability",
+        "severity": "error",
+        "description": "Same position = same condition across all plates within a cell line"
+      },
+      {
+        "name": "spatial_dispersion",
+        "severity": "error",
+        "description": "Compounds must be spatially scattered (bbox area ≥ 40, not clustered)"
+      },
+      {
+        "name": "sentinel_placement_quality",
+        "severity": "warning",
+        "description": "Sentinels should be evenly distributed (not all in one corner)"
+      },
+      {
+        "name": "batch_balance",
+        "severity": "error",
+        "description": "Batch factors (day, operator, timepoint) must be orthogonal, cell_line must be separate"
+      }
+    ]
+  },
+  "design_goals": {
+    "phase0_specific": [
+      "Maximum identifiability: position = identity within cell line",
+      "Batch orthogonality: confounding factors can be separated",
+      "Spatial scatter: eliminate gradient-based confounding",
+      "Position stability: reproducible mapping for tracking over time"
+    ],
+    "tradeoffs": [
+      "Per-cell-line shuffle makes design readable but rigid (position carries plate-specific artifacts)",
+      "Fixed scaffold uses 28 wells for sentinels (reduces experimental capacity)",
+      "Separate cell lines doubles plate count (but eliminates cell-line confounding)"
+    ]
+  },
+  "common_permutations": {
+    "add_cell_line": {
+      "parameters": {"cell_lines": ["A549", "HepG2", "iPSC_NGN2"]},
+      "impact": "24 plates → 36 plates (50% increase)",
+      "considerations": "Neurons are post-mitotic, very different biology from cancer lines"
+    },
+    "increase_replicates": {
+      "parameters": {"replicates": 3},
+      "impact": "60 experimental wells → 90 experimental wells (doesn't fit 96-well!)",
+      "solution": "Need 384-well format OR reduce doses/compounds"
+    },
+    "add_timepoint": {
+      "parameters": {"timepoints_h": [12.0, 24.0, 48.0, 72.0]},
+      "impact": "24 plates → 32 plates (33% increase)",
+      "considerations": "Multiset must match across ALL timepoints (invariant enforces this)"
+    },
+    "reduce_doses": {
+      "parameters": {"doses": [0.3, 1.0, 3.0, 10.0]},
+      "impact": "60 experimental wells → 40 experimental wells (fits easily)",
+      "considerations": "Lose low and high ends of dose response curve"
+    },
+    "use_384_well": {
+      "parameters": {"plate_format": 384},
+      "impact": "Can fit all 10 compounds per plate (no splitting into groups)",
+      "considerations": "Different exclusion pattern, different edge effects"
+    }
+  },
+  "how_to_use": {
+    "for_llm_feedback": "1) Generate design report with export_design_report.py\n2) Feed both design_report.json and this specification to LLM\n3) Ask: 'Does this design satisfy the goals? What would you change?'",
+    "for_llm_suggestion": "1) Feed this specification to LLM\n2) Describe your experimental goals\n3) Ask: 'What parameter combination would you recommend?'\n4) LLM returns JSON with suggested parameters\n5) Generate design with those parameters"
+  }
+}
