@@ -51,9 +51,9 @@ class ConditionSummary:
     assay: str
     position_tag: str
 
-    # Summary statistics
+    # Summary statistics (scalar convenience)
     n_wells: int                # Number of replicates
-    mean: float                 # Mean response (viability or morphology)
+    mean: float                 # Mean response (scalar: average of all morphology channels)
     std: float                  # Standard deviation
     sem: float                  # Standard error of mean
     cv: float                   # Coefficient of variation (std/mean)
@@ -61,6 +61,11 @@ class ConditionSummary:
     # Minimal distribution info (helps detect outliers without raw wells)
     min_val: float
     max_val: float
+
+    # Multivariate features (morphology channels)
+    # Agent can discover channel-specific effects, edge artifacts, compound signatures
+    feature_means: Dict[str, float]  # {'er': 0.98, 'mito': 1.02, 'nucleus': 1.01, ...}
+    feature_stds: Dict[str, float]   # Per-channel variability
 
     # QC flags (agent must interpret these)
     n_failed: int               # Number of wells flagged as failed

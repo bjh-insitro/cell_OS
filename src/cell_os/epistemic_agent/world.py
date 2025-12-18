@@ -212,15 +212,26 @@ class ExperimentalWorld:
 
             # Extract response from measured signal (not "true" viability)
             # Agent should see noisy measurements like a real experimentalist
-            # Use morphology mean (has biological + technical noise)
             morph = res['morphology']
+
+            # Scalar response (convenience for scalar analyses)
             response = np.mean([morph['er'], morph['mito'], morph['nucleus'],
                                 morph['actin'], morph['rna']])
+
+            # Multivariate features (enables channel-specific learning)
+            features = {
+                'er': morph['er'],
+                'mito': morph['mito'],
+                'nucleus': morph['nucleus'],
+                'actin': morph['actin'],
+                'rna': morph['rna'],
+            }
 
             # Note: LDH signal is zero for DMSO (healthy cells), not useful for baseline noise
 
             conditions[key].append({
                 'response': response,
+                'features': features,
                 'well_id': well_id,
                 'failed': False,  # TODO: detect failures
             })
@@ -230,7 +241,7 @@ class ExperimentalWorld:
         for key, values in conditions.items():
             cell_line, compound, dose, time, assay, pos = key
 
-            # Extract responses
+            # Extract responses (scalar)
             responses = [v['response'] for v in values]
             n = len(responses)
 
@@ -244,7 +255,18 @@ class ExperimentalWorld:
             min_val = np.min(responses)
             max_val = np.max(responses)
 
-            # Outlier detection (simple Z-score > 3)
+            # Extract features (multivariate)
+            # For each channel, compute mean and std across replicates
+            channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+            feature_means = {}
+            feature_stds = {}
+
+            for ch in channels:
+                ch_values = [v['features'][ch] for v in values]
+                feature_means[ch] = float(np.mean(ch_values))
+                feature_stds[ch] = float(np.std(ch_values, ddof=1)) if n > 1 else 0.0
+
+            # Outlier detection (simple Z-score > 3 on scalar response)
             n_outliers = 0
             if n > 2:
                 z_scores = np.abs((responses - mean_val) / std_val) if std_val > 0 else np.zeros(n)
@@ -264,6 +286,8 @@ class ExperimentalWorld:
                 cv=cv_val,
                 min_val=min_val,
                 max_val=max_val,
+                feature_means=feature_means,
+                feature_stds=feature_stds,
                 n_failed=0,  # TODO: track actual failures
                 n_outliers=n_outliers,
             )
