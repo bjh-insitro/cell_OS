@@ -1,0 +1,32 @@
+{
+  "paramsHash": "2f4e2bf9",
+  "invariantsVersion": "1.0.0",
+  "plateFormat": 96,
+  "exclusions": {
+    "corners": true,
+    "midRow": true,
+    "edges": false
+  },
+  "timestamp": "2025-12-18T05:02:26.608Z",
+  "violations": [],
+  "stats": {
+    "totalWells": 2112,
+    "sentinelWells": 672,
+    "experimentalWells": 1440,
+    "nPlates": 24
+  },
+  "scaffoldMetadata": {
+    "expected": {
+      "scaffoldId": "phase0_v2_scaffold_v1",
+      "scaffoldHash": "901ffeb4603019fe",
+      "scaffoldSize": 28
+    },
+    "observed": {
+      "scaffoldId": "phase0_v2_scaffold_v1",
+      "scaffoldHash": "901ffeb4603019fe",
+      "scaffoldSize": 28,
+      "wellDerivedHash": "901ffeb4603019fe",
+      "wellDerivedMatchesExpected": true
+    }
+  }
+}
