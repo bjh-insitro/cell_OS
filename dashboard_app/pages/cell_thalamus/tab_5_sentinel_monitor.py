@@ -154,7 +154,7 @@ def render_tab_5():
         showlegend=True
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"sentinel_control_chart_{sentinel_compound}")
 
     # Statistics
     col_a, col_b, col_c, col_d = st.columns(4)

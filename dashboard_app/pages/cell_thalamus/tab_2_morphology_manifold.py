@@ -180,7 +180,7 @@ def render_tab_2():
         fig.update_traces(marker=dict(size=4, opacity=0.6))
 
     fig.update_layout(height=600)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"morphology_manifold_{plot_mode}_{color_by}")
 
     # Component loadings
     with st.expander("📊 PCA Component Loadings"):

@@ -156,7 +156,7 @@ def render_tab_3():
         hovermode='closest'
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="dose_response_curve_main")
 
     # Statistics table
     st.subheader("Dose-Response Statistics")
@@ -202,4 +202,4 @@ def render_tab_3():
                 height=400
             )
 
-            st.plotly_chart(fig_multi, use_container_width=True)
+            st.plotly_chart(fig_multi, use_container_width=True, key=f"dose_response_multi_{compound}_{cell_line}")

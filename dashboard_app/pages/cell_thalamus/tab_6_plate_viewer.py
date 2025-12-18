@@ -114,7 +114,7 @@ def render_tab_6():
         yaxis=dict(autorange='reversed')  # A at top
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"plate_heatmap_{plate_id}_{metric}")
 
     # Edge effect analysis
     st.subheader("Edge Effect Analysis")
@@ -169,7 +169,7 @@ def render_tab_6():
             height=300
         )
 
-        st.plotly_chart(fig_compounds, use_container_width=True)
+        st.plotly_chart(fig_compounds, use_container_width=True, key=f"compound_distribution_{plate_id}")
 
     # Sentinel positions
     with st.expander("🎯 Sentinel Positions"):

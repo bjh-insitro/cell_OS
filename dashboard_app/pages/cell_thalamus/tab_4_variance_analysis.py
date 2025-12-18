@@ -146,7 +146,7 @@ def render_tab_4():
         yaxis=dict(range=[0, 100])
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="variance_analysis_summary")
 
     # Detailed components
     st.subheader("Detailed Variance Components")
@@ -178,7 +178,7 @@ def render_tab_4():
         height=350
     )
 
-    st.plotly_chart(fig_detail, use_container_width=True)
+    st.plotly_chart(fig_detail, use_container_width=True, key="variance_analysis_detail")
 
     # Component table
     components_df = pd.DataFrame([
