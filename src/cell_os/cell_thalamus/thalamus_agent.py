@@ -82,9 +82,11 @@ class CellThalamusAgent:
             phase=self.phase,
             cell_lines=used_cell_lines,
             compounds=used_compounds,
-            doses=[0.0, 0.1, 1.0, 10.0],  # Relative to EC50
-            timepoints=[12.0, 48.0],
-            metadata={'summary': summary}
+            metadata={
+                'summary': summary,
+                'doses': [0.0, 0.1, 1.0, 10.0],  # Relative to EC50
+                'timepoints': [12.0, 48.0]
+            }
         )
 
         # Execute all wells and save results incrementally for live updates
