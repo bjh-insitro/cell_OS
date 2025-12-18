@@ -148,18 +148,46 @@ class TemplateChooser:
         # (cheap calibration before expensive biology)
         return {"ldh", "cell_paint"}
 
+    def _validate_template_selection(
+        self,
+        template_name: str,
+        allow_expensive_calibration: bool,
+        cycle: int,
+        beliefs: BeliefState
+    ) -> Tuple[bool, Optional[str]]:
+        """Validate template selection against policy boundaries.
+
+        Returns:
+            (is_valid, abort_reason): is_valid=False if policy violated
+        """
+        # Policy: calibrate_scrna_baseline requires explicit authorization
+        # (expensive, manual-only template)
+        if template_name == "calibrate_scrna_baseline" and not allow_expensive_calibration:
+            reason = (
+                "ABORT: calibrate_scrna_baseline requires explicit authorization "
+                "(set allow_expensive_calibration=True). This is an expensive, manual-only "
+                "template not eligible for autonomous selection."
+            )
+            return (False, reason)
+
+        return (True, None)
+
     def _enforce_template_gates(
         self,
         beliefs: BeliefState,
         template_name: str,
         template_kwargs: dict,
         remaining_wells: int,
-        cycle: int
+        cycle: int,
+        allow_expensive_calibration: bool = False
     ) -> Tuple[str, dict]:
         """Enforce gate requirements before returning a template.
 
         v0.5.0: Authoritative gate enforcement at decision point.
         If template requires gates that are missing, override to calibration.
+
+        Args:
+            allow_expensive_calibration: Passed through to policy validation
 
         Returns:
             (actual_template_name, actual_template_kwargs): May override if gates missing
@@ -195,6 +223,7 @@ class TemplateChooser:
                     "forced": True,
                     "trigger": "abort",
                     "regime": "pre_gate",
+                    "enforcement_layer": "template_safety_net",
                     "gate_state": self._get_gate_state(beliefs),
                     "calibration_plan": calib_plan,
                     "assay": first_missing,
@@ -206,6 +235,30 @@ class TemplateChooser:
 
         # Override to calibration
         calibration_template = f"calibrate_{first_missing}_baseline"
+
+        # Policy check: validate template selection
+        is_valid, abort_reason = self._validate_template_selection(
+            calibration_template, allow_expensive_calibration, cycle, beliefs
+        )
+        if not is_valid:
+            self._set_last_decision(
+                cycle=cycle,
+                selected="abort_policy_violation",
+                selected_score=0.0,
+                reason=abort_reason,
+                selected_candidate={
+                    "template": "abort_policy_violation",
+                    "forced": True,
+                    "trigger": "policy_boundary",
+                    "regime": "pre_gate",
+                    "enforcement_layer": "template_safety_net",
+                    "gate_state": self._get_gate_state(beliefs),
+                    "attempted_template": calibration_template,
+                    "blocked_template": template_name,
+                }
+            )
+            return ("abort", {"reason": abort_reason})
+
         reason = f"Earn {first_missing} gate (required for {template_name})"
         self._set_last_decision(
             cycle=cycle,
@@ -217,6 +270,7 @@ class TemplateChooser:
                 "forced": True,
                 "trigger": "must_calibrate_for_template",
                 "regime": "pre_gate",
+                "enforcement_layer": "template_safety_net",
                 "gate_state": self._get_gate_state(beliefs),
                 "calibration_plan": calib_plan,
                 "assay": first_missing,
@@ -235,11 +289,20 @@ class TemplateChooser:
         self,
         beliefs: BeliefState,
         budget_remaining_wells: int = 384,
-        cycle: int = 0
+        cycle: int = 0,
+        allow_expensive_calibration: bool = False
     ) -> Tuple[str, dict]:
         """Choose next experiment template.
 
         v0.4.2: PAY-FOR-CALIBRATION REGIME with gate lock invariant.
+
+        Args:
+            beliefs: Current belief state
+            budget_remaining_wells: Remaining well budget
+            cycle: Current cycle number
+            allow_expensive_calibration: If False (default), block autonomous selection of
+                expensive calibration templates like calibrate_scrna_baseline. Requires
+                explicit user intent to enable.
 
         Returns:
             (template_name, template_kwargs): What to run next
@@ -409,6 +472,7 @@ class TemplateChooser:
                             "forced": True,
                             "trigger": "abort",
                             "regime": "pre_gate",
+                            "enforcement_layer": "global_pre_biology",
                             "gate_state": self._get_gate_state(beliefs),
                             "calibration_plan": calib_plan,
                             "assay": assay,
@@ -419,6 +483,29 @@ class TemplateChooser:
 
                 # Force calibration for this assay
                 template_name = f"calibrate_{assay}_baseline"
+
+                # Policy check: validate template selection
+                is_valid, abort_reason = self._validate_template_selection(
+                    template_name, allow_expensive_calibration, cycle, beliefs
+                )
+                if not is_valid:
+                    self._set_last_decision(
+                        cycle=cycle,
+                        selected="abort_policy_violation",
+                        selected_score=0.0,
+                        reason=abort_reason,
+                        selected_candidate={
+                            "template": "abort_policy_violation",
+                            "forced": True,
+                            "trigger": "policy_boundary",
+                            "regime": "pre_gate",
+                            "enforcement_layer": "global_pre_biology",
+                            "gate_state": self._get_gate_state(beliefs),
+                            "attempted_template": template_name,
+                        }
+                    )
+                    return ("abort", {"reason": abort_reason})
+
                 reason = f"Earn {assay} gate ({block_reason})"
                 self._set_last_decision(
                     cycle=cycle,
@@ -430,6 +517,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "must_calibrate",
                         "regime": "pre_gate",
+                        "enforcement_layer": "global_pre_biology",
                         "gate_state": self._get_gate_state(beliefs),
                         "calibration_plan": calib_plan,
                         "assay": assay,
@@ -465,7 +553,8 @@ class TemplateChooser:
 
             # Enforce template gates (may override to calibration if gates missing)
             actual_template, actual_kwargs = self._enforce_template_gates(
-                beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle
+                beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle,
+                allow_expensive_calibration
             )
 
             # If gates were missing, _enforce_template_gates already set decision
@@ -495,7 +584,8 @@ class TemplateChooser:
 
         # Enforce template gates (baseline_replicates requires no gates, so this is a no-op)
         actual_template, actual_kwargs = self._enforce_template_gates(
-            beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle
+            beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle,
+            allow_expensive_calibration
         )
 
         if actual_template != candidate_template:

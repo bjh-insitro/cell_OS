@@ -128,6 +128,7 @@ class BeliefState:
     scrna_df_total: int = 0
     scrna_rel_width: Optional[float] = None
     scrna_sigma_stable: bool = False
+    scrna_metric_source: str = "proxy:noisy_morphology"  # Marks that stats are non-actionable until real assay exists
 
     baseline_cv_scalar: Optional[float] = None
     baseline_cv_by_channel: Dict[str, float] = field(default_factory=dict)
@@ -358,6 +359,38 @@ class BeliefState:
         )
         self._events.append(event)
 
+    def _emit_gate_shadow(
+        self,
+        gate_name: str,
+        *,
+        evidence: Dict[str, Any],
+        supporting_conditions: List[str],
+        note: Optional[str] = None,
+    ):
+        """
+        Emit a gate shadow event for non-actionable stats tracking.
+        Used when metrics are tracked but gate cannot be earned (e.g., scRNA with proxy).
+        UI can show these as "shadow stats" without claiming the gate is earned.
+        """
+        from datetime import datetime
+
+        event = EvidenceEvent(
+            cycle=self._cycle,
+            belief=f"gate_shadow:{gate_name}",
+            prev=None,
+            new=None,
+            evidence={
+                **(evidence or {}),
+                "gate": gate_name,
+                "event_type": "gate_shadow",
+                "actionable": False,
+                "emitted_at": datetime.now().isoformat(timespec="seconds"),
+            },
+            supporting_conditions=list(supporting_conditions or []),
+            note=note,
+        )
+        self._events.append(event)
+
     def to_dict(self) -> dict:
         """Serialize beliefs to dict (for JSON persistence)."""
         return {
@@ -377,6 +410,7 @@ class BeliefState:
             'scrna_df_total': self.scrna_df_total,
             'scrna_rel_width': self.scrna_rel_width,
             'scrna_sigma_stable': self.scrna_sigma_stable,
+            'scrna_metric_source': self.scrna_metric_source,
             # Legacy fields
             'baseline_cv_scalar': self.baseline_cv_scalar,
             'baseline_cv_by_channel': dict(self.baseline_cv_by_channel),
@@ -819,11 +853,10 @@ class BeliefState:
         if assay == "scrna":
             if new_stable and not current_stable:
                 # Would have earned gate, but proxy metrics don't count for scRNA
-                # Update shadow stats but keep stable=False
+                # Emit gate_shadow event to track non-actionable stats
                 rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "N/A"
-                self._set(
-                    stable_field,
-                    False,  # Force False for proxy scRNA
+                self._emit_gate_shadow(
+                    "scrna",
                     evidence={
                         "df": total_df,
                         "rel_width": rel_width,
@@ -835,10 +868,9 @@ class BeliefState:
                         "gate_blocked": "scRNA gate not earnable with proxy metrics (requires real transcriptional readout)",
                     },
                     supporting_conditions=[cond_key(c) for c in dmso_conditions],
-                    note=f"scrna shadow stats updated (df={total_df}, rel_width={rel_width_str}, proxy:noisy_morphology, gate_blocked)",
+                    note=f"scrna shadow stats (df={total_df}, rel_width={rel_width_str}, source=proxy:noisy_morphology, actionable=false)",
                 )
-                setattr(self, stable_field, False)
-                return  # Don't emit gate_event
+                return  # Don't update stable field or emit gate_event
 
         # Record belief change (for ldh, cell_paint, or if scrna already stable)
         rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "N/A"

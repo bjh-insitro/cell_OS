@@ -371,5 +371,53 @@ def test_scrna_gate_not_earnable_with_proxy():
     assert len(scrna_gate_events) == 0, "No gate_event:scrna should be emitted with proxy"
 
 
+def test_scrna_calibration_blocked_autonomously():
+    """Test that calibrate_scrna_baseline cannot be selected without explicit authorization.
+
+    Policy: calibrate_scrna_baseline is expensive and manual-only.
+    Autonomous chooser must never select it (allow_expensive_calibration=False by default).
+    """
+    beliefs = BeliefState()
+    chooser = TemplateChooser()
+
+    # Hack the enforcement loop to try forcing scRNA calibration
+    # (This simulates a bug where someone adds "scrna" to the loop)
+    # We'll directly test _validate_template_selection instead
+
+    # Test 1: Validation should block calibrate_scrna_baseline with default flag
+    is_valid, abort_reason = chooser._validate_template_selection(
+        "calibrate_scrna_baseline",
+        allow_expensive_calibration=False,
+        cycle=5,
+        beliefs=beliefs
+    )
+
+    assert is_valid == False, "Should block calibrate_scrna_baseline by default"
+    assert "explicit authorization" in abort_reason, "Abort reason should mention authorization"
+    assert "expensive" in abort_reason, "Abort reason should mention expensive"
+
+    # Test 2: Validation should allow with explicit flag
+    is_valid, abort_reason = chooser._validate_template_selection(
+        "calibrate_scrna_baseline",
+        allow_expensive_calibration=True,
+        cycle=5,
+        beliefs=beliefs
+    )
+
+    assert is_valid == True, "Should allow with explicit authorization"
+    assert abort_reason is None, "No abort reason when valid"
+
+    # Test 3: Cheap calibration templates should always be allowed
+    is_valid, abort_reason = chooser._validate_template_selection(
+        "calibrate_ldh_baseline",
+        allow_expensive_calibration=False,
+        cycle=5,
+        beliefs=beliefs
+    )
+
+    assert is_valid == True, "Cheap templates should be allowed"
+    assert abort_reason is None, "No abort reason for cheap templates"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
