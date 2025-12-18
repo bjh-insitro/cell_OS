@@ -124,3 +124,18 @@ export type IntegrityStatus =
     | 'integrity_error'
     | 'missing_decisions_legacy'
     | 'no_data';
+
+/**
+ * Run summary for picker display - answers "which story?" not "which file?"
+ */
+export interface RunSummary {
+    filename: string;
+    timestamp: string; // Human-readable: "2025-12-18 13:08"
+    status: 'gate_earned' | 'aborted' | 'integrity_error' | 'completed_no_gate' | 'legacy';
+    regime_summary: string; // e.g., "pre_gate → in_gate" or "pre_gate (abort)"
+    reason_line: string | null; // Abort reason (first line) or gate cycle info
+    budget: number;
+    cycles_completed: number;
+    gate_slack: number | null; // Only for gate_earned runs
+    time_in_gate_percent: number | null; // Only for gate_earned runs
+}

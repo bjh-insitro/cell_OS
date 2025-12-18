@@ -10,6 +10,7 @@ import type {
     IntegrityStatus,
     GateEvent,
     EvidenceEvent,
+    RunSummary,
 } from '../types/provenance.types';
 import {
     parseJSONL,
@@ -158,4 +159,94 @@ export function computeIntegrityStatus(artifacts: RunArtifacts): IntegrityStatus
     }
 
     return 'ok';
+}
+
+/**
+ * Compute rich run summary for picker display.
+ * Answers "which story?" - success/abort/integrity, regime, why it ended this way.
+ */
+export async function computeRunSummary(filename: string): Promise<RunSummary> {
+    const metadata = await loadRunMetadata(filename);
+
+    // Parse timestamp from run_id (e.g., "run_20251218_130825" -> "2025-12-18 13:08")
+    const timestampMatch = metadata.run_id.match(/run_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+    const timestamp = timestampMatch
+        ? `${timestampMatch[1]}-${timestampMatch[2]}-${timestampMatch[3]} ${timestampMatch[4]}:${timestampMatch[5]}`
+        : metadata.run_id;
+
+    // Load minimal artifacts to determine status
+    const artifacts = await loadRunArtifacts(metadata);
+    const { decisions, gate_events } = artifacts;
+
+    // Determine status
+    let status: RunSummary['status'];
+    let regime_summary = '';
+    let reason_line: string | null = null;
+    let gate_slack: number | null = null;
+    let time_in_gate_percent: number | null = null;
+
+    // Check for integrity errors first
+    if (metadata.integrity_warnings && metadata.integrity_warnings.length > 0) {
+        status = 'integrity_error';
+        regime_summary = 'integrity_error';
+        reason_line = metadata.integrity_warnings[0];
+    }
+    // Check for legacy (no decisions)
+    else if (metadata.cycles_completed > 0 && decisions.data.length === 0) {
+        status = 'legacy';
+        regime_summary = 'legacy (no decisions)';
+        reason_line = 'Pre-v0.4.2 run without decision provenance';
+    }
+    // Check for abort
+    else if (metadata.abort_reason) {
+        status = 'aborted';
+        const firstDecision = decisions.data[0] as any;
+        const abortRegime = firstDecision?.selected_candidate?.regime || 'pre_gate';
+        regime_summary = `${abortRegime} (abort)`;
+        // Extract first line of abort reason
+        reason_line = metadata.abort_reason.split('\n')[0].replace('ABORT EXPERIMENT: ', '');
+    }
+    // Check for gate earned
+    else {
+        const noiseGateEarned = gate_events.find(
+            ev => ev.gate_name === 'noise_sigma' && ev.event_type === 'gate_event'
+        );
+
+        if (noiseGateEarned) {
+            status = 'gate_earned';
+
+            // Compute regime transitions
+            const regimes = decisions.data.map((d: any) => d.selected_candidate?.regime).filter(Boolean);
+            const uniqueRegimes = Array.from(new Set(regimes));
+            regime_summary = uniqueRegimes.join(' → ');
+
+            // Compute gate slack
+            const diagAtGate = artifacts.diagnostics.data.find(d => d.cycle === noiseGateEarned.cycle);
+            if (diagAtGate && diagAtGate.rel_width !== null) {
+                gate_slack = 0.25 - Math.abs(diagAtGate.rel_width);
+            }
+
+            // Compute time in gate
+            const inGateCycles = decisions.data.filter((d: any) => d.selected_candidate?.regime === 'in_gate').length;
+            time_in_gate_percent = (inGateCycles / metadata.cycles_completed) * 100;
+
+            reason_line = `Gate earned at cycle ${noiseGateEarned.cycle}`;
+        } else {
+            status = 'completed_no_gate';
+            regime_summary = 'pre_gate (no gate earned)';
+            reason_line = null;
+        }
+    }
+
+    return {
+        filename,
+        timestamp,
+        status,
+        regime_summary,
+        reason_line,
+        budget: metadata.budget,
+        cycles_completed: metadata.cycles_completed,
+        gate_slack,
+        time_in_gate_percent,
+    };
 }

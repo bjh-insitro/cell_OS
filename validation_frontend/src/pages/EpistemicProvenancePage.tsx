@@ -15,31 +15,62 @@ import RunPicker from './EpistemicProvenance/components/RunPicker';
 import TimelineTracks from './EpistemicProvenance/components/TimelineTracks';
 import DecisionReceiptPanel from './EpistemicProvenance/components/DecisionReceiptPanel';
 import GateSlackPanel from './EpistemicProvenance/components/GateSlackPanel';
-import type { RunArtifacts, IntegrityStatus, DecisionEvent } from '../types/provenance.types';
+import type { RunArtifacts, IntegrityStatus, DecisionEvent, RunSummary } from '../types/provenance.types';
 import {
     listAvailableRuns,
     loadRunMetadata,
     loadRunArtifacts,
     computeIntegrityStatus,
+    computeRunSummary,
 } from '../utils/provenanceLoader';
 import { calculateGateKPIs, calculateDecisionKPIs } from '../utils/kpiCalculator';
+
+// Semantic sort: gate_earned → aborted → completed_no_gate → legacy → integrity_error, newest first within each group
+function sortRunsSemantically(summaries: RunSummary[]): RunSummary[] {
+    const statusPriority: Record<string, number> = {
+        gate_earned: 1,
+        aborted: 2,
+        completed_no_gate: 3,
+        legacy: 4,
+        integrity_error: 5,
+    };
+
+    return [...summaries].sort((a, b) => {
+        const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
+        if (priorityDiff !== 0) return priorityDiff;
+        // Within same status, newest first (reverse timestamp order)
+        return b.timestamp.localeCompare(a.timestamp);
+    });
+}
 
 const EpistemicProvenancePage: React.FC = () => {
     const navigate = useNavigate();
     const [isDarkMode, setIsDarkMode] = useState(false);
 
-    const [runs, setRuns] = useState<string[]>([]);
+    const [runs, setRuns] = useState<RunSummary[]>([]);
     const [selectedRun, setSelectedRun] = useState<string | null>(null);
     const [artifacts, setArtifacts] = useState<RunArtifacts | null>(null);
     const [integrityStatus, setIntegrityStatus] = useState<IntegrityStatus>('no_data');
     const [loading, setLoading] = useState(false);
+    const [loadingSummaries, setLoadingSummaries] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const [selectedCycle, setSelectedCycle] = useState<number | null>(null);
 
-    // Load available runs on mount
+    // Load available runs on mount (with summaries)
     useEffect(() => {
-        listAvailableRuns().then(setRuns);
+        setLoadingSummaries(true);
+        listAvailableRuns()
+            .then(async (filenames) => {
+                const summaries = await Promise.all(filenames.map(f => computeRunSummary(f)));
+                const sorted = sortRunsSemantically(summaries);
+                setRuns(sorted);
+                setLoadingSummaries(false);
+            })
+            .catch((err) => {
+                console.error('Failed to load run summaries:', err);
+                setLoadingSummaries(false);
+            });
     }, []);
 
     // Load artifacts when run is selected
@@ -130,13 +161,19 @@ const EpistemicProvenancePage: React.FC = () => {
             {/* Content */}
             <div className="container mx-auto px-6 py-6">
                 {/* Run Picker */}
-                <RunPicker
-                    runs={runs}
-                    selectedRun={selectedRun}
-                    onSelectRun={setSelectedRun}
-                    integrityStatus={integrityStatus}
-                    isDarkMode={isDarkMode}
-                />
+                {loadingSummaries ? (
+                    <div className={`p-4 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-zinc-200'}`}>
+                        <p className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Loading runs...</p>
+                    </div>
+                ) : (
+                    <RunPicker
+                        runs={runs}
+                        selectedRun={selectedRun}
+                        onSelectRun={setSelectedRun}
+                        integrityStatus={integrityStatus}
+                        isDarkMode={isDarkMode}
+                    />
+                )}
 
                 {/* Loading/Error States */}
                 {loading && (
