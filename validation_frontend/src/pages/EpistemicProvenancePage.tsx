@@ -182,9 +182,17 @@ const EpistemicProvenancePage: React.FC = () => {
                         <h2 className={`text-2xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
                             How the Epistemic Agent Decides
                         </h2>
-                        <p className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                            Each cycle, the system evaluates what it can do given constraints, chooses an action, and updates its confidence.
+                        <p className={`text-sm mb-3 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                            Unlike traditional automated labs that blindly execute experiments, the epistemic agent treats <strong>measurement reliability</strong> as a constraint.
+                            It won't make biological claims until it has statistical justification. This is called <strong>"pay-for-calibration"</strong> - you must earn the right to act.
                         </p>
+                        <div className={`p-3 rounded ${isDarkMode ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'bg-blue-100 border-l-4 border-blue-600'}`}>
+                            <p className={`text-xs ${isDarkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+                                <strong>Core principle:</strong> The system tracks its own measurement noise. If noise is too high (rel_width &gt; 0.25),
+                                it cannot distinguish real biological effects from experimental variability. In this state, it <em>must</em> calibrate before
+                                making claims. If it can't afford calibration, it aborts rather than producing unreliable data.
+                            </p>
+                        </div>
                     </div>
 
                     {/* Walkthrough Example */}
@@ -195,27 +203,42 @@ const EpistemicProvenancePage: React.FC = () => {
                                 Step 1: Check Current State
                             </div>
                             <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <p className={`text-sm mb-4 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                    The agent begins each cycle by checking four critical variables that determine what actions are valid:
+                                </p>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Budget</div>
                                         <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>384 wells</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Physical constraint</div>
                                     </div>
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Gate Status</div>
                                         <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>❌ Not earned</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Epistemic lock</div>
                                     </div>
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Noise (rel_width)</div>
                                         <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>0.38</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Calibration quality</div>
                                     </div>
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Regime</div>
                                         <div className={`font-mono text-orange-600`}>pre_gate</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Decision mode</div>
                                     </div>
                                 </div>
-                                <p className={`mt-3 text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                    <strong>Interpretation:</strong> Noise is too high (0.38 &gt; 0.25 threshold). System cannot make reliable biological conclusions yet.
-                                </p>
+                                <div className={`p-3 rounded ${isDarkMode ? 'bg-orange-900/30 border-l-4 border-orange-500' : 'bg-orange-100 border-l-4 border-orange-600'}`}>
+                                    <p className={`text-xs mb-2 ${isDarkMode ? 'text-orange-300' : 'text-orange-800'}`}>
+                                        <strong>What this means:</strong>
+                                    </p>
+                                    <ul className={`text-xs space-y-1 ml-4 list-disc ${isDarkMode ? 'text-orange-300' : 'text-orange-800'}`}>
+                                        <li><strong>rel_width = 0.38</strong> means the 95% confidence interval on measurements is 38% of the mean. This is too wide to distinguish signal from noise.</li>
+                                        <li><strong>Gate not earned</strong> is the consequence: the system has not proven it can make reliable measurements.</li>
+                                        <li><strong>pre_gate regime</strong> means all biological experiments are blocked. Only calibration actions are allowed.</li>
+                                        <li><strong>Budget = 384 wells</strong> determines whether the system can afford to calibrate. Calibration requires ~156 wells (12 dose levels × 13 replicates for degrees of freedom).</li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
 
@@ -225,34 +248,55 @@ const EpistemicProvenancePage: React.FC = () => {
                                 Step 2: Evaluate Options
                             </div>
                             <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
+                                <p className={`text-sm mb-4 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                    The agent evaluates all available templates (experiment types) and applies policy rules to determine which are allowed:
+                                </p>
                                 <div className="space-y-3">
                                     <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-orange-500' : 'bg-orange-50 border-orange-500'}`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>calibrate_noise_sigma</div>
-                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-200 text-orange-800'}`}>Must do this first</div>
+                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-200 text-orange-800'}`}>FORCED (only option)</div>
+                                        </div>
+                                        <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Cost:</strong> 156 wells (12 doses × 13 replicates) → Will reduce rel_width from 0.38 to ~0.22
                                         </div>
                                         <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            Cost: 156 wells (12 doses × 13 replicates) • Will reduce rel_width to ~0.22
+                                            <strong>Why forced:</strong> Pre-gate regime locks out biological experiments. This is the <em>only</em> way to earn the gate.
+                                            The 13 replicates give enough degrees of freedom (df=140) to achieve rel_width &lt; 0.25.
                                         </div>
                                     </div>
                                     <div className={`p-3 rounded border-l-4 opacity-50 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-zinc-50 border-zinc-300'}`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>measure_biomarker</div>
-                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'}`}>Blocked</div>
+                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'}`}>BLOCKED by gate</div>
+                                        </div>
+                                        <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Why blocked:</strong> This template measures biological responses (e.g., protein expression, cell viability).
                                         </div>
                                         <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            Cannot run: Gate not earned. Would produce unreliable results.
+                                            <strong>Gate lock:</strong> With rel_width=0.38, any biological measurement would have a confidence interval too wide to be meaningful.
+                                            The system <em>refuses</em> to generate unreliable data. This becomes available only after gate is earned.
                                         </div>
                                     </div>
                                     <div className={`p-3 rounded border-l-4 opacity-50 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-zinc-50 border-zinc-300'}`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>abort</div>
-                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-zinc-200 text-zinc-700'}`}>Available</div>
+                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-zinc-200 text-zinc-700'}`}>Available (not triggered)</div>
+                                        </div>
+                                        <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Trigger condition:</strong> Budget &lt; 156 wells (cost of calibration)
                                         </div>
                                         <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            Would trigger if: Budget insufficient for calibration (need 156, have less)
+                                            <strong>Why it exists:</strong> If the system cannot afford to calibrate, it has no path to reliable data.
+                                            Rather than proceeding with unreliable measurements, it explicitly aborts with a reason. This is a <em>first-class decision</em>, not an error.
                                         </div>
                                     </div>
+                                </div>
+                                <div className={`mt-4 p-3 rounded ${isDarkMode ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'bg-blue-100 border-l-4 border-blue-600'}`}>
+                                    <p className={`text-xs ${isDarkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+                                        <strong>Policy summary:</strong> In pre_gate regime, biological experiments are blocked. If budget allows, the system must calibrate.
+                                        If budget is insufficient, the system must abort. There is no "run anyway and hope" option.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -314,10 +358,27 @@ const EpistemicProvenancePage: React.FC = () => {
                     </div>
 
                     <div className={`p-4 border-t ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-zinc-200 bg-zinc-50'}`}>
-                        <p className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                            <strong>Key insight:</strong> The system doesn't just execute experiments—it decides <em>whether to act at all</em>.
-                            If budget had been 100 wells instead of 384, it would have chosen <strong>abort</strong>, refusing to proceed with unreliable data.
-                        </p>
+                        <div className="space-y-3">
+                            <div>
+                                <p className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                    Key Insights
+                                </p>
+                                <ul className={`text-xs space-y-2 ml-4 list-disc ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                    <li><strong>The system decides whether to act:</strong> If budget had been 100 wells instead of 384, it would have chosen <strong>abort</strong>, explicitly refusing to proceed with unreliable data.</li>
+                                    <li><strong>Constraints encode values:</strong> The gate threshold (rel_width &lt; 0.25) isn't arbitrary—it's the point where confidence intervals become narrow enough for biological interpretation.</li>
+                                    <li><strong>Regimes are epistemic states:</strong> pre_gate = "I cannot make reliable claims", in_gate = "I can make reliable claims", gate_revoked = "I lost calibration and must recalibrate".</li>
+                                    <li><strong>Forced decisions aren't failures:</strong> When a decision is marked "forced", it means the system had only one valid option given constraints. This is transparency, not an error.</li>
+                                    <li><strong>Aborts are accountability:</strong> Traditional systems fail silently or produce bad data. This system explicitly refuses to act when it cannot justify reliability.</li>
+                                </ul>
+                            </div>
+                            <div className={`p-3 rounded ${isDarkMode ? 'bg-purple-900/30 border-l-4 border-purple-500' : 'bg-purple-100 border-l-4 border-purple-600'}`}>
+                                <p className={`text-xs ${isDarkMode ? 'text-purple-300' : 'text-purple-800'}`}>
+                                    <strong>What happens next?</strong> After earning the gate, the agent enters <strong>in_gate regime</strong>. Now biological templates unlock.
+                                    It can measure biomarkers, run dose-response curves, test conditions—as long as it maintains rel_width &lt; 0.40 (exit threshold).
+                                    If noise drifts above 0.40, the gate is <strong>revoked</strong> and it must recalibrate before continuing.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
