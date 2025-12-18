@@ -285,6 +285,82 @@ class TemplateChooser:
             "n_reps": 12
         })
 
+    def _finalize_selection(
+        self,
+        beliefs: BeliefState,
+        template_name: str,
+        template_kwargs: dict,
+        remaining_wells: int,
+        cycle: int,
+        allow_expensive_calibration: bool,
+        selected_score: float,
+        reason: str,
+        forced: bool,
+        trigger: str,
+        regime: str,
+        additional_candidate_fields: Optional[dict] = None
+    ) -> Tuple[str, dict]:
+        """Single choke point for all template selection returns.
+
+        Enforces:
+        1. Policy validation (_validate_template_selection)
+        2. Gate enforcement (_enforce_template_gates)
+        3. Decision recording (_set_last_decision)
+
+        This prevents any template from "sneaking through" without validation.
+
+        Returns:
+            (actual_template_name, actual_template_kwargs): May override if policy/gates violated
+        """
+        # Step 1: Policy validation (expensive templates, etc.)
+        is_valid, abort_reason = self._validate_template_selection(
+            template_name, allow_expensive_calibration, cycle, beliefs
+        )
+        if not is_valid:
+            self._set_last_decision(
+                cycle=cycle,
+                selected="abort_policy_violation",
+                selected_score=0.0,
+                reason=abort_reason,
+                selected_candidate={
+                    "template": "abort_policy_violation",
+                    "forced": True,
+                    "trigger": "policy_boundary",
+                    "regime": regime,
+                    "gate_state": self._get_gate_state(beliefs),
+                    "attempted_template": template_name,
+                }
+            )
+            return ("abort", {"reason": abort_reason})
+
+        # Step 2: Gate enforcement (may override to calibration)
+        actual_template, actual_kwargs = self._enforce_template_gates(
+            beliefs, template_name, template_kwargs, remaining_wells, cycle,
+            allow_expensive_calibration
+        )
+
+        # If gates forced an override, enforcement already set decision
+        if actual_template != template_name:
+            return (actual_template, actual_kwargs)
+
+        # Step 3: Record successful selection decision
+        candidate_fields = {
+            "template": template_name,
+            "forced": forced,
+            "trigger": trigger,
+            "regime": regime,
+            "gate_state": self._get_gate_state(beliefs),
+            **(additional_candidate_fields or {})
+        }
+        self._set_last_decision(
+            cycle=cycle,
+            selected=template_name,
+            selected_score=selected_score,
+            reason=reason,
+            selected_candidate=candidate_fields
+        )
+        return (template_name, template_kwargs)
+
     def choose_next(
         self,
         beliefs: BeliefState,
@@ -548,61 +624,33 @@ class TemplateChooser:
         tested = beliefs.tested_compounds - {'DMSO'}
         if not tested or len(tested) < 5:
             reason = "Explore compounds with dose-response"
-            candidate_template = "dose_ladder_coarse"
-            candidate_kwargs = {"reason": reason}
-
-            # Enforce template gates (may override to calibration if gates missing)
-            actual_template, actual_kwargs = self._enforce_template_gates(
-                beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle,
-                allow_expensive_calibration
-            )
-
-            # If gates were missing, _enforce_template_gates already set decision
-            if actual_template != candidate_template:
-                return (actual_template, actual_kwargs)
-
-            # Gates OK, proceed with original template
-            self._set_last_decision(
+            return self._finalize_selection(
+                beliefs=beliefs,
+                template_name="dose_ladder_coarse",
+                template_kwargs={"reason": reason},
+                remaining_wells=remaining_wells,
                 cycle=cycle,
-                selected=candidate_template,
+                allow_expensive_calibration=allow_expensive_calibration,
                 selected_score=1.0,
                 reason=reason,
-                selected_candidate={
-                    "template": candidate_template,
-                    "forced": False,
-                    "trigger": "scoring",
-                    "regime": "in_gate",
-                    "gate_state": self._get_gate_state(beliefs)
-                }
+                forced=False,
+                trigger="scoring",
+                regime="in_gate"
             )
-            return (candidate_template, candidate_kwargs)
 
         # Final fallback: calibration maintenance
         reason = "Continue calibration maintenance"
-        candidate_template = "baseline_replicates"
-        candidate_kwargs = {"reason": reason, "n_reps": 12}
-
-        # Enforce template gates (baseline_replicates requires no gates, so this is a no-op)
-        actual_template, actual_kwargs = self._enforce_template_gates(
-            beliefs, candidate_template, candidate_kwargs, remaining_wells, cycle,
-            allow_expensive_calibration
-        )
-
-        if actual_template != candidate_template:
-            return (actual_template, actual_kwargs)
-
-        self._set_last_decision(
+        return self._finalize_selection(
+            beliefs=beliefs,
+            template_name="baseline_replicates",
+            template_kwargs={"reason": reason, "n_reps": 12},
+            remaining_wells=remaining_wells,
             cycle=cycle,
-            selected=candidate_template,
+            allow_expensive_calibration=allow_expensive_calibration,
             selected_score=1.0,
             reason=reason,
-            selected_candidate={
-                "template": candidate_template,
-                "forced": False,
-                "trigger": "scoring",
-                "regime": "in_gate",
-                "gate_state": self._get_gate_state(beliefs),
-                "n_reps": 12
-            }
+            forced=False,
+            trigger="scoring",
+            regime="in_gate",
+            additional_candidate_fields={"n_reps": 12}
         )
-        return (candidate_template, candidate_kwargs)

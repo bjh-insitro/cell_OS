@@ -371,6 +371,76 @@ def test_scrna_gate_not_earnable_with_proxy():
     assert len(scrna_gate_events) == 0, "No gate_event:scrna should be emitted with proxy"
 
 
+def test_enforcement_layer_appears_in_decisions():
+    """Test that enforcement_layer field appears in decision receipts.
+
+    Proves that the policy layer distinction is actually emitted in provenance.
+    """
+    beliefs = BeliefState()
+    chooser = TemplateChooser()
+
+    # Test 1: Force global_pre_biology enforcement
+    # Noise gate earned, but LDH gate missing
+    beliefs.noise_sigma_stable = True
+    beliefs.noise_df_total = 150
+    beliefs.noise_rel_width = 0.20
+    beliefs.ldh_sigma_stable = False
+    beliefs.cell_paint_sigma_stable = False
+
+    template_name, template_kwargs = chooser.choose_next(
+        beliefs=beliefs,
+        budget_remaining_wells=384,
+        cycle=5
+    )
+
+    # Should force LDH calibration via global loop
+    assert template_name == "calibrate_ldh_baseline"
+
+    # Check that enforcement_layer is present in decision receipt
+    decision = chooser.last_decision_event
+    assert "enforcement_layer" in decision.selected_candidate, "enforcement_layer must be in decision"
+    assert decision.selected_candidate["enforcement_layer"] == "global_pre_biology", \
+        "Global loop should mark enforcement_layer as global_pre_biology"
+
+    # Test 2: Force template_safety_net enforcement
+    # This is harder to trigger - need to bypass global loop but hit template enforcement
+    # Reset beliefs: all gates earned except we'll manually check a template that requires more
+    beliefs2 = BeliefState()
+    chooser2 = TemplateChooser()
+
+    beliefs2.noise_sigma_stable = True
+    beliefs2.noise_df_total = 150
+    beliefs2.noise_rel_width = 0.20
+    beliefs2.ldh_sigma_stable = True
+    beliefs2.ldh_df_total = 150
+    beliefs2.ldh_rel_width = 0.22
+    beliefs2.cell_paint_sigma_stable = True
+    beliefs2.cell_paint_df_total = 150
+    beliefs2.cell_paint_rel_width = 0.21
+
+    # Directly test _enforce_template_gates with a template that requires CP gate
+    # but pretend CP gate is missing to trigger safety net
+    beliefs2.cell_paint_sigma_stable = False  # Temporarily lose gate
+
+    actual_template, actual_kwargs = chooser2._enforce_template_gates(
+        beliefs2,
+        "dose_ladder_coarse",  # Requires CP gate
+        {"reason": "test"},
+        remaining_wells=384,
+        cycle=10,
+        allow_expensive_calibration=False
+    )
+
+    # Should override to CP calibration via safety net
+    assert actual_template == "calibrate_cell_paint_baseline"
+
+    # Check that enforcement_layer is template_safety_net
+    decision2 = chooser2.last_decision_event
+    assert "enforcement_layer" in decision2.selected_candidate, "enforcement_layer must be in decision"
+    assert decision2.selected_candidate["enforcement_layer"] == "template_safety_net", \
+        "Template enforcement should mark enforcement_layer as template_safety_net"
+
+
 def test_scrna_calibration_blocked_autonomously():
     """Test that calibrate_scrna_baseline cannot be selected without explicit authorization.
 

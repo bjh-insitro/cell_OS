@@ -128,7 +128,7 @@ class BeliefState:
     scrna_df_total: int = 0
     scrna_rel_width: Optional[float] = None
     scrna_sigma_stable: bool = False
-    scrna_metric_source: str = "proxy:noisy_morphology"  # Marks that stats are non-actionable until real assay exists
+    scrna_metric_source: Optional[str] = None  # Set explicitly during updates: "proxy:noisy_morphology" or "scrna:transcriptome"
 
     baseline_cv_scalar: Optional[float] = None
     baseline_cv_by_channel: Dict[str, float] = field(default_factory=dict)
@@ -870,10 +870,18 @@ class BeliefState:
                     supporting_conditions=[cond_key(c) for c in dmso_conditions],
                     note=f"scrna shadow stats (df={total_df}, rel_width={rel_width_str}, source=proxy:noisy_morphology, actionable=false)",
                 )
+                # Set metric_source explicitly (derived, not static default)
+                self.scrna_metric_source = "proxy:noisy_morphology"
                 return  # Don't update stable field or emit gate_event
 
         # Record belief change (for ldh, cell_paint, or if scrna already stable)
         rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "N/A"
+
+        # Determine metric_source based on actual measurement type
+        # TODO: When real assays exist, detect from observation.assay field
+        # For now, all measurements use proxy morphology
+        metric_source = "proxy:noisy_morphology"
+
         self._set(
             stable_field,
             new_stable,
@@ -884,9 +892,13 @@ class BeliefState:
                 "exit_threshold": exit_threshold,
                 "df_min_sanity": df_min_sanity,
                 "assay": assay,
-                "metric_source": "proxy:noisy_morphology",  # Honest labeling: using morphology as proxy until real assay models exist
+                "metric_source": metric_source,  # Honest labeling: using morphology as proxy until real assay models exist
             },
             supporting_conditions=[cond_key(c) for c in dmso_conditions],
-            note=f"{assay}_sigma_stable={new_stable} (df={total_df}, rel_width={rel_width_str}, proxy:noisy_morphology)",
+            note=f"{assay}_sigma_stable={new_stable} (df={total_df}, rel_width={rel_width_str}, {metric_source})",
         )
         setattr(self, stable_field, new_stable)
+
+        # Set metric_source explicitly for scRNA (future: also set for real transcriptome measurements)
+        if assay == "scrna":
+            self.scrna_metric_source = metric_source  # When real scRNA exists, this will be "scrna:transcriptome"
