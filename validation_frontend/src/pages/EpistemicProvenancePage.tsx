@@ -11,6 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Moon, Sun } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import RunPicker from './EpistemicProvenance/components/RunPicker';
 import TimelineTracks from './EpistemicProvenance/components/TimelineTracks';
 import DecisionReceiptPanel from './EpistemicProvenance/components/DecisionReceiptPanel';
@@ -56,6 +57,7 @@ const EpistemicProvenancePage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const [selectedCycle, setSelectedCycle] = useState<number | null>(null);
+    const [walkthroughStep, setWalkthroughStep] = useState<number>(1);
 
     // Load available runs on mount (with summaries)
     useEffect(() => {
@@ -197,14 +199,40 @@ const EpistemicProvenancePage: React.FC = () => {
 
                     {/* Walkthrough Example */}
                     <div className="p-6 space-y-6">
-                        {/* Step 1: Starting State */}
+                        {/* Step Progress Indicator */}
+                        <div className="flex items-center justify-center gap-2 mb-6">
+                            {[1, 2, 3, 4].map((step) => (
+                                <button
+                                    key={step}
+                                    onClick={() => setWalkthroughStep(step)}
+                                    className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold transition-all ${
+                                        walkthroughStep === step
+                                            ? isDarkMode
+                                                ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                                                : 'bg-blue-600 text-white ring-2 ring-blue-400'
+                                            : walkthroughStep > step
+                                            ? isDarkMode
+                                                ? 'bg-green-700 text-white'
+                                                : 'bg-green-500 text-white'
+                                            : isDarkMode
+                                            ? 'bg-slate-700 text-slate-400'
+                                            : 'bg-zinc-200 text-zinc-500'
+                                    }`}
+                                >
+                                    {walkthroughStep > step ? '✓' : step}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Step 1: Starting State (First Boot) */}
+                        {walkthroughStep === 1 && (
                         <div>
                             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-indigo-900 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>
-                                Step 1: Check Current State
+                                Step 1: Initial State (Cycle 0)
                             </div>
                             <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
                                 <p className={`text-sm mb-4 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
-                                    The agent begins each cycle by checking four critical variables that determine what actions are valid:
+                                    The agent starts with no experimental history. It has never run a plate, so it has no noise estimate yet:
                                 </p>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                                     <div>
@@ -215,116 +243,251 @@ const EpistemicProvenancePage: React.FC = () => {
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Gate Status</div>
                                         <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>❌ Not earned</div>
-                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Epistemic lock</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>No data yet</div>
                                     </div>
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Noise (rel_width)</div>
-                                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>0.38</div>
-                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Calibration quality</div>
+                                        <div className={`font-mono text-slate-500`}>Unknown</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>No measurements</div>
                                     </div>
                                     <div>
                                         <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Regime</div>
                                         <div className={`font-mono text-orange-600`}>pre_gate</div>
-                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Decision mode</div>
+                                        <div className={`text-xs mt-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-600'}`}>Must calibrate first</div>
                                     </div>
                                 </div>
-                                <div className={`p-3 rounded ${isDarkMode ? 'bg-orange-900/30 border-l-4 border-orange-500' : 'bg-orange-100 border-l-4 border-orange-600'}`}>
-                                    <p className={`text-xs mb-2 ${isDarkMode ? 'text-orange-300' : 'text-orange-800'}`}>
+                                <div className={`p-3 rounded mb-4 ${isDarkMode ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'bg-blue-100 border-l-4 border-blue-600'}`}>
+                                    <p className={`text-xs mb-2 ${isDarkMode ? 'text-blue-300' : 'text-blue-800'}`}>
                                         <strong>What this means:</strong>
                                     </p>
-                                    <ul className={`text-xs space-y-1 ml-4 list-disc ${isDarkMode ? 'text-orange-300' : 'text-orange-800'}`}>
-                                        <li><strong>rel_width = 0.38</strong> means the 95% confidence interval on measurements is 38% of the mean. This is too wide to distinguish signal from noise.</li>
-                                        <li><strong>Gate not earned</strong> is the consequence: the system has not proven it can make reliable measurements.</li>
-                                        <li><strong>pre_gate regime</strong> means all biological experiments are blocked. Only calibration actions are allowed.</li>
-                                        <li><strong>Budget = 384 wells</strong> determines whether the system can afford to calibrate. Calibration requires ~156 wells (12 dose levels × 13 replicates for degrees of freedom).</li>
+                                    <ul className={`text-xs space-y-1 ml-4 list-disc ${isDarkMode ? 'text-blue-300' : 'text-blue-800'}`}>
+                                        <li><strong>No noise estimate:</strong> The system hasn't run any experiments, so it doesn't know its measurement noise yet.</li>
+                                        <li><strong>Gate not earned:</strong> Without noise calibration, the system cannot make reliable biological claims.</li>
+                                        <li><strong>pre_gate regime:</strong> All biological experiments are blocked. The first action must be calibration.</li>
+                                        <li><strong>Budget = 384 wells:</strong> Determines what experiments are affordable. Must choose wisely.</li>
                                     </ul>
+                                </div>
+
+                                {/* Visualization: No data yet */}
+                                <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                    <div className={`text-xs font-semibold mb-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                        Noise Level (No Data Yet)
+                                    </div>
+                                    <ResponsiveContainer width="100%" height={120}>
+                                        <BarChart data={[{ name: 'Current', value: null }]} layout="vertical" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#374151' : '#e5e7eb'} />
+                                            <XAxis type="number" domain={[0, 0.5]} stroke={isDarkMode ? '#94a3b8' : '#71717a'} tick={{ fontSize: 11 }} />
+                                            <YAxis type="category" dataKey="name" stroke={isDarkMode ? '#94a3b8' : '#71717a'} tick={{ fontSize: 11 }} />
+                                            <ReferenceLine x={0.25} stroke="#10b981" strokeWidth={2} strokeDasharray="3 3" label={{ value: 'Enter Gate (0.25)', position: 'top', fontSize: 10, fill: '#10b981' }} />
+                                            <ReferenceLine x={0.40} stroke="#ef4444" strokeWidth={2} strokeDasharray="3 3" label={{ value: 'Exit Gate (0.40)', position: 'top', fontSize: 10, fill: '#ef4444' }} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                    <p className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                        No noise measurement yet. The system must run calibration experiments to learn its measurement noise and earn the gate (rel_width &lt; 0.25).
+                                    </p>
                                 </div>
                             </div>
                         </div>
+                        )}
 
-                        {/* Step 2: Available Options */}
+                        {/* Step 2: Choose Experimental Parameters */}
+                        {walkthroughStep === 2 && (
                         <div>
                             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>
-                                Step 2: Evaluate Options
+                                Step 2: Choose Experimental Parameters
                             </div>
                             <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
                                 <p className={`text-sm mb-4 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
-                                    The agent evaluates all available templates (experiment types) and applies policy rules to determine which are allowed:
+                                    For the first calibration experiment, the agent must choose all experimental parameters. Here's what's available and what it selects:
                                 </p>
-                                <div className="space-y-3">
-                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-orange-500' : 'bg-orange-50 border-orange-500'}`}>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>calibrate_noise_sigma</div>
-                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-200 text-orange-800'}`}>FORCED (only option)</div>
+
+                                {/* Parameter Selection Grid */}
+                                <div className="space-y-4">
+                                    {/* Cell Line Selection */}
+                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                        <div className={`font-semibold text-sm mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                            1. Cell Line
                                         </div>
                                         <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            <strong>Cost:</strong> 156 wells (12 doses × 13 replicates) → Will reduce rel_width from 0.38 to ~0.22
+                                            <strong>Available:</strong> HEK293, A549, HepG2, MCF7
                                         </div>
-                                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            <strong>Why forced:</strong> Pre-gate regime locks out biological experiments. This is the <em>only</em> way to earn the gate.
-                                            The 13 replicates give enough degrees of freedom (df=140) to achieve rel_width &lt; 0.25.
+                                        <div className={`text-xs px-2 py-1 rounded inline-block ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-200 text-green-800'}`}>
+                                            ✓ Selected: <strong>HEK293</strong>
+                                        </div>
+                                        <div className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Why:</strong> HEK293 cells are robust, fast-growing, and have well-characterized morphology for calibration.
                                         </div>
                                     </div>
-                                    <div className={`p-3 rounded border-l-4 opacity-50 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-zinc-50 border-zinc-300'}`}>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>measure_biomarker</div>
-                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'}`}>BLOCKED by gate</div>
+
+                                    {/* Compound Selection */}
+                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                        <div className={`font-semibold text-sm mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                            2. Compound/Control
                                         </div>
                                         <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            <strong>Why blocked:</strong> This template measures biological responses (e.g., protein expression, cell viability).
+                                            <strong>Available:</strong> DMSO (vehicle control), Doxorubicin, Paclitaxel, Staurosporine
                                         </div>
-                                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            <strong>Gate lock:</strong> With rel_width=0.38, any biological measurement would have a confidence interval too wide to be meaningful.
-                                            The system <em>refuses</em> to generate unreliable data. This becomes available only after gate is earned.
+                                        <div className={`text-xs px-2 py-1 rounded inline-block ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-200 text-green-800'}`}>
+                                            ✓ Selected: <strong>Staurosporine (dose-response)</strong>
+                                        </div>
+                                        <div className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Why:</strong> Staurosporine is a well-characterized compound with predictable dose-response. Using 12 dose levels creates a calibration curve that spans the measurement range.
                                         </div>
                                     </div>
-                                    <div className={`p-3 rounded border-l-4 opacity-50 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-zinc-50 border-zinc-300'}`}>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>abort</div>
-                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-zinc-200 text-zinc-700'}`}>Available (not triggered)</div>
+
+                                    {/* Plate Size */}
+                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                        <div className={`font-semibold text-sm mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                            3. Plate Format
                                         </div>
                                         <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            <strong>Trigger condition:</strong> Budget &lt; 156 wells (cost of calibration)
+                                            <strong>Available:</strong> 96-well, 384-well, 1536-well
                                         </div>
-                                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                                            <strong>Why it exists:</strong> If the system cannot afford to calibrate, it has no path to reliable data.
-                                            Rather than proceeding with unreliable measurements, it explicitly aborts with a reason. This is a <em>first-class decision</em>, not an error.
+                                        <div className={`text-xs px-2 py-1 rounded inline-block ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-200 text-green-800'}`}>
+                                            ✓ Selected: <strong>384-well</strong>
+                                        </div>
+                                        <div className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Why:</strong> 384-well plates balance well density (can fit 12 doses × 13 replicates = 156 wells) with measurement reliability.
+                                        </div>
+                                    </div>
+
+                                    {/* Plate Layout */}
+                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                        <div className={`font-semibold text-sm mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                            4. Plate Layout
+                                        </div>
+                                        <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Available:</strong> Single dose (high replicates), Dose-response curve, Sparse sampling
+                                        </div>
+                                        <div className={`text-xs px-2 py-1 rounded inline-block ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-200 text-green-800'}`}>
+                                            ✓ Selected: <strong>Dose-response curve (12 doses × 13 replicates)</strong>
+                                        </div>
+                                        <div className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Why:</strong> 13 replicates per dose level gives df=140 degrees of freedom (13-1 per dose × 12 doses). This high df is necessary to achieve rel_width &lt; 0.25.
+                                        </div>
+                                    </div>
+
+                                    {/* Readout Method */}
+                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                        <div className={`font-semibold text-sm mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                            5. Measurement Readout
+                                        </div>
+                                        <div className={`text-xs mb-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Available:</strong> Morphology (image-based), Fluorescence intensity, Luminescence
+                                        </div>
+                                        <div className={`text-xs px-2 py-1 rounded inline-block ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-200 text-green-800'}`}>
+                                            ✓ Selected: <strong>Morphology (noisy_morphology signal)</strong>
+                                        </div>
+                                        <div className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            <strong>Why:</strong> Morphology is the primary observable. The system measures cell shape, size, and texture features - these have inherent measurement noise that must be calibrated.
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`mt-4 p-3 rounded ${isDarkMode ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'bg-blue-100 border-l-4 border-blue-600'}`}>
-                                    <p className={`text-xs ${isDarkMode ? 'text-blue-300' : 'text-blue-800'}`}>
-                                        <strong>Policy summary:</strong> In pre_gate regime, biological experiments are blocked. If budget allows, the system must calibrate.
-                                        If budget is insufficient, the system must abort. There is no "run anyway and hope" option.
+
+                                <div className={`mt-4 p-3 rounded ${isDarkMode ? 'bg-purple-900/30 border-l-4 border-purple-500' : 'bg-purple-100 border-l-4 border-purple-600'}`}>
+                                    <p className={`text-xs ${isDarkMode ? 'text-purple-300' : 'text-purple-800'}`}>
+                                        <strong>Decision summary:</strong> The agent selected parameters to maximize statistical power for calibration:
+                                        12 dose levels × 13 replicates = 156 wells, giving df=140. This high replicate count is necessary to narrow the confidence
+                                        interval on noise measurements to rel_width &lt; 0.25.
+                                    </p>
+                                </div>
+
+                                {/* Visualization: Budget Allocation */}
+                                <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                    <div className={`text-xs font-semibold mb-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                        Budget vs Calibration Cost
+                                    </div>
+                                    <ResponsiveContainer width="100%" height={150}>
+                                        <BarChart data={[
+                                            { name: 'Available Budget', value: 384, fill: '#3b82f6' },
+                                            { name: 'Calibration Cost', value: 156, fill: '#f97316' },
+                                            { name: 'Remaining After', value: 228, fill: '#10b981' }
+                                        ]} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#374151' : '#e5e7eb'} />
+                                            <XAxis dataKey="name" stroke={isDarkMode ? '#94a3b8' : '#71717a'} tick={{ fontSize: 10 }} angle={-15} textAnchor="end" height={60} />
+                                            <YAxis stroke={isDarkMode ? '#94a3b8' : '#71717a'} tick={{ fontSize: 11 }} label={{ value: 'Wells', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+                                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                                {[
+                                                    { name: 'Available Budget', value: 384, fill: '#3b82f6' },
+                                                    { name: 'Calibration Cost', value: 156, fill: '#f97316' },
+                                                    { name: 'Remaining After', value: 228, fill: '#10b981' }
+                                                ].map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                    <p className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                        Budget (384) &gt; Cost (156) = <strong className="text-green-600">Can afford</strong>. If budget were 100 wells, calibration would be impossible → forced abort.
                                     </p>
                                 </div>
                             </div>
                         </div>
+                        )}
 
-                        {/* Step 3: Decision */}
+                        {/* Step 3: Run Experiment & Measure */}
+                        {walkthroughStep === 3 && (
                         <div>
                             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                                Step 3: Choose Action
+                                Step 3: Run Experiment & Measure
                             </div>
-                            <div className={`p-4 rounded-lg border-2 ${isDarkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
-                                <div className="flex items-start gap-4">
-                                    <div className="text-3xl">✓</div>
-                                    <div className="flex-1">
-                                        <div className={`font-bold text-lg mb-1 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
-                                            Selected: calibrate_noise_sigma
+                            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
+                                <p className={`text-sm mb-4 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                    The system executes the calibration experiment with the chosen parameters:
+                                </p>
+
+                                {/* Experiment Execution */}
+                                <div className={`p-4 rounded-lg border-2 mb-4 ${isDarkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                    <div className="flex items-start gap-4">
+                                        <div className="text-3xl">🔬</div>
+                                        <div className="flex-1">
+                                            <div className={`font-bold text-lg mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                                Executing: calibrate_noise_sigma
+                                            </div>
+                                            <div className={`text-sm space-y-1 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                                <div>• Plate 384 wells with HEK293 cells</div>
+                                                <div>• Apply Staurosporine at 12 dose levels (13 replicates each)</div>
+                                                <div>• Incubate 24 hours</div>
+                                                <div>• Image all wells (morphology readout)</div>
+                                                <div>• Extract morphology features (cell area, shape, texture)</div>
+                                            </div>
                                         </div>
-                                        <div className={`text-sm mb-2 ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                                            <strong>Reason:</strong> Pre-gate regime forces calibration. Budget allows (384 &gt; 156). Must earn gate before biological measurements.
+                                    </div>
+                                </div>
+
+                                {/* Measurement Results */}
+                                <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                    <div className={`text-sm font-semibold mb-3 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                        Measurement Results
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                                        <div>
+                                            <div className={`text-xs uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Wells Measured</div>
+                                            <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>156 / 156 ✓</div>
                                         </div>
-                                        <div className={`text-xs font-mono p-2 rounded ${isDarkMode ? 'bg-slate-900 text-slate-300' : 'bg-white text-zinc-700'}`}>
-                                            trigger: must_calibrate | forced: true | regime: pre_gate
+                                        <div>
+                                            <div className={`text-xs uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Degrees of Freedom</div>
+                                            <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>140 (12 × 12)</div>
                                         </div>
+                                        <div>
+                                            <div className={`text-xs uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Pooled σ</div>
+                                            <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>0.18</div>
+                                        </div>
+                                        <div>
+                                            <div className={`text-xs uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Mean Signal</div>
+                                            <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>0.82</div>
+                                        </div>
+                                    </div>
+                                    <div className={`p-2 rounded text-xs ${isDarkMode ? 'bg-slate-900 text-slate-400' : 'bg-zinc-100 text-zinc-600'}`}>
+                                        <strong>Computed rel_width:</strong> (2 × 0.18) / 0.82 = <strong className="text-green-600">0.22</strong> &lt; 0.25 threshold
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        )}
 
-                        {/* Step 4: Outcome */}
+                        {/* Step 4: Analyze Results */}
+                        {walkthroughStep === 4 && (
                         <div>
                             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>
                                 Step 4: Update State
@@ -348,12 +511,79 @@ const EpistemicProvenancePage: React.FC = () => {
                                         <div className={`font-mono text-green-600`}>in_gate</div>
                                     </div>
                                 </div>
-                                <div className={`p-3 rounded ${isDarkMode ? 'bg-green-900/30 border-l-4 border-green-500' : 'bg-green-100 border-l-4 border-green-600'}`}>
+                                <div className={`p-3 rounded mb-4 ${isDarkMode ? 'bg-green-900/30 border-l-4 border-green-500' : 'bg-green-100 border-l-4 border-green-600'}`}>
                                     <p className={`text-sm ${isDarkMode ? 'text-green-300' : 'text-green-800'}`}>
                                         <strong>Gate Event:</strong> noise_sigma earned (0.22 &lt; 0.25). System can now make reliable biological measurements. Gate slack = 0.03.
                                     </p>
                                 </div>
+
+                                {/* Visualization: Before/After Comparison */}
+                                <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                    <div className={`text-xs font-semibold mb-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                                        Before vs After Calibration
+                                    </div>
+                                    <ResponsiveContainer width="100%" height={180}>
+                                        <BarChart data={[
+                                            { metric: 'Noise (rel_width)', Before: 0.38, After: 0.22 },
+                                            { metric: 'Budget (wells)', Before: 384, After: 228 },
+                                        ]} margin={{ top: 5, right: 20, left: 70, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#374151' : '#e5e7eb'} />
+                                            <XAxis dataKey="metric" stroke={isDarkMode ? '#94a3b8' : '#71717a'} tick={{ fontSize: 10 }} />
+                                            <YAxis stroke={isDarkMode ? '#94a3b8' : '#71717a'} tick={{ fontSize: 11 }} />
+                                            <Bar dataKey="Before" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="After" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                            <ReferenceLine y={0.25} stroke="#10b981" strokeWidth={1} strokeDasharray="3 3" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                    <div className="flex items-center gap-4 mt-2 text-xs">
+                                        <div className="flex items-center gap-1">
+                                            <div className="w-3 h-3 rounded bg-red-500"></div>
+                                            <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Before (pre-gate)</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <div className="w-3 h-3 rounded bg-green-500"></div>
+                                            <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>After (in-gate)</span>
+                                        </div>
+                                    </div>
+                                    <p className={`text-xs mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                        Noise dropped below enter threshold (0.25) → gate earned. Budget consumed 156 wells, 228 remaining for biological experiments.
+                                    </p>
+                                </div>
                             </div>
+                        </div>
+                        )}
+
+                        {/* Navigation Buttons */}
+                        <div className="flex items-center justify-between pt-6 border-t" style={{ borderColor: isDarkMode ? '#334155' : '#e5e7eb' }}>
+                            <button
+                                onClick={() => setWalkthroughStep(Math.max(1, walkthroughStep - 1))}
+                                disabled={walkthroughStep === 1}
+                                className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all ${
+                                    walkthroughStep === 1
+                                        ? 'opacity-50 cursor-not-allowed bg-zinc-300 text-zinc-500'
+                                        : isDarkMode
+                                        ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                                        : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+                                }`}
+                            >
+                                ← Previous
+                            </button>
+                            <div className={`text-sm font-semibold ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                Step {walkthroughStep} of 4
+                            </div>
+                            <button
+                                onClick={() => setWalkthroughStep(Math.min(4, walkthroughStep + 1))}
+                                disabled={walkthroughStep === 4}
+                                className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all ${
+                                    walkthroughStep === 4
+                                        ? 'opacity-50 cursor-not-allowed bg-zinc-300 text-zinc-500'
+                                        : isDarkMode
+                                        ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                        : 'bg-blue-600 hover:bg-blue-500 text-white'
+                                }`}
+                            >
+                                Next →
+                            </button>
                         </div>
                     </div>
 
