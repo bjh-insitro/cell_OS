@@ -126,6 +126,28 @@ class TemplateChooser:
             "rel_width": rel_width,
         }
 
+    def _required_gates_for_template(self, template_name: str) -> set:
+        """Return which assay gates are required before running this template.
+
+        v0.5.0: Template-aware gate enforcement.
+        - Calibration templates require nothing (they establish gates)
+        - Biology templates require LDH + CP gates (cheap calibration first)
+        - scRNA templates require CP gate (ladder prereq) but NOT scrna gate
+        """
+        # Calibration templates: no prerequisites (they establish the gates)
+        if template_name in ["calibrate_ldh_baseline", "calibrate_cell_paint_baseline",
+                              "calibrate_scrna_baseline", "baseline_replicates", "edge_center_test"]:
+            return set()
+
+        # scRNA templates: require CP gate (ladder), but NOT scrna gate
+        # (scrna gate is optional, earned by explicit calibration or after upgrade)
+        if template_name in ["scrna_upgrade_probe"]:
+            return {"cell_paint"}  # Ladder prerequisite
+
+        # All other biology templates: require LDH + CP gates
+        # (cheap calibration before expensive biology)
+        return {"ldh", "cell_paint"}
+
     def choose_next(
         self,
         beliefs: BeliefState,
@@ -281,46 +303,75 @@ class TemplateChooser:
                 "reason": reason,
                 "n_reps": 12
             })
-        
-        # Gate earned - allow biology
-        # v0.5.0: Check for CP → scRNA upgrade opportunity first
-        if beliefs.cell_paint_sigma_stable and not beliefs.scrna_sigma_stable:
-            # Placeholder novelty score (proxy from observation variance)
-            # TODO: Replace with real CP feature novelty when available
-            novelty_score = 0.0  # Will be populated by observation context
-            ldh_viable = True  # Placeholder: assume viable unless LDH says otherwise
 
-            # For now, don't trigger upgrade in every cycle (placeholder threshold)
-            novelty_threshold = 0.8
-            if novelty_score >= novelty_threshold and ldh_viable:
-                # Check affordability for scRNA calibration
-                scrna_plan = self._compute_assay_calibration_plan(beliefs, "scrna")
-                wells_needed = scrna_plan.get("wells_needed", 0)
+        # Noise gate earned - now check cheap assay gates (LDH, CP) before biology
+        # v0.5.0: Force LDH + CP calibration (never force scRNA unless explicitly requested)
+        for assay in ["ldh", "cell_paint"]:  # Priority order: cheap gates first
+            gate_ok, block_reason = self._check_assay_gate(beliefs, assay, require_ladder=False)
+            if not gate_ok:
+                # Compute calibration plan
+                calib_plan = self._compute_assay_calibration_plan(beliefs, assay)
+                wells_needed = calib_plan.get("wells_needed", 0)
 
-                if remaining_wells >= wells_needed:
-                    reason = f"Upgrade to scRNA: novelty={novelty_score:.3f}, ldh_viable={ldh_viable}"
+                # Fail-fast if can't afford
+                if remaining_wells < wells_needed:
+                    reason = f"ABORT: Cannot afford {assay} gate ({block_reason}, need {wells_needed} wells, have {remaining_wells})"
                     self._set_last_decision(
                         cycle=cycle,
-                        selected="scrna_upgrade_probe",
-                        selected_score=1.0,
+                        selected="abort_insufficient_assay_gate_budget",
+                        selected_score=0.0,
                         reason=reason,
                         selected_candidate={
-                            "template": "scrna_upgrade_probe",
-                            "forced": False,
-                            "trigger": "upgrade",
-                            "regime": "in_gate",
+                            "template": "abort_insufficient_assay_gate_budget",
+                            "forced": True,
+                            "trigger": "abort",
+                            "regime": "pre_gate",
                             "gate_state": self._get_gate_state(beliefs),
-                            "novelty_score": novelty_score,
-                            "novelty_threshold": novelty_threshold,
-                            "ldh_viable": ldh_viable,
-                            "budget_remaining": remaining_wells,
+                            "calibration_plan": calib_plan,
+                            "assay": assay,
+                            "block_reason": block_reason,
                         }
                     )
-                    return ("scrna_upgrade_probe", {
-                        "reason": reason,
-                        "novelty_score": novelty_score,
-                        "ldh_viable": ldh_viable,
-                    })
+                    return ("abort", {"reason": reason})
+
+                # Force calibration for this assay
+                template_name = f"calibrate_{assay}_baseline"
+                reason = f"Earn {assay} gate ({block_reason})"
+                self._set_last_decision(
+                    cycle=cycle,
+                    selected=template_name,
+                    selected_score=1.0,
+                    reason=reason,
+                    selected_candidate={
+                        "template": template_name,
+                        "forced": True,
+                        "trigger": "must_calibrate",
+                        "regime": "pre_gate",
+                        "gate_state": self._get_gate_state(beliefs),
+                        "calibration_plan": calib_plan,
+                        "assay": assay,
+                        "n_reps": 12
+                    }
+                )
+                return (template_name, {
+                    "reason": reason,
+                    "assay": assay,
+                    "n_reps": 12
+                })
+
+        # Gate earned - allow biology
+        # v0.5.0: CP → scRNA upgrade trigger (DISABLED until real novelty metric exists)
+        # Currently disabled: novelty_score computation requires real CP feature extraction
+        # When enabled, this should check:
+        #   - novelty_score from CP morphology embeddings (e.g., Mahalanobis distance)
+        #   - ldh_viable from real LDH assay (viability > threshold)
+        #   - budget affordability for scRNA probe
+        # TODO: Enable when CP feature extraction is implemented
+        # if beliefs.cell_paint_sigma_stable and not beliefs.scrna_sigma_stable:
+        #     novelty_score = compute_morphology_novelty(latest_observation)
+        #     ldh_viable = check_ldh_viability(latest_observation)
+        #     if novelty_score >= 0.8 and ldh_viable and remaining_wells >= scrna_cost:
+        #         return ("scrna_upgrade_probe", {...})
 
         # Simple fallback: test compounds with dose ladder
         tested = beliefs.tested_compounds - {'DMSO'}

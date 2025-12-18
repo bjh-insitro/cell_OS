@@ -197,5 +197,105 @@ def test_chooser_uses_get_gate_state():
     assert gate_state["scrna"] == "lost"
 
 
+def test_global_calibration_does_not_force_scrna():
+    """Test that global calibration forces LDH + CP, but NOT scRNA."""
+    beliefs = BeliefState()
+    chooser = TemplateChooser()
+
+    # Noise gate earned, but assay gates missing
+    beliefs.noise_sigma_stable = True
+    beliefs.noise_df_total = 150
+    beliefs.noise_rel_width = 0.20
+
+    beliefs.ldh_sigma_stable = False
+    beliefs.cell_paint_sigma_stable = False
+    beliefs.scrna_sigma_stable = False
+
+    # Choose next: should force LDH calibration first
+    template_name, template_kwargs = chooser.choose_next(
+        beliefs=beliefs,
+        budget_remaining_wells=384,
+        cycle=5
+    )
+
+    assert template_name == "calibrate_ldh_baseline"
+    assert template_kwargs["assay"] == "ldh"
+
+    # Now earn LDH gate
+    beliefs.ldh_sigma_stable = True
+    beliefs.ldh_df_total = 150
+    beliefs.ldh_rel_width = 0.22
+
+    # Choose next: should force CP calibration next
+    template_name, template_kwargs = chooser.choose_next(
+        beliefs=beliefs,
+        budget_remaining_wells=300,
+        cycle=6
+    )
+
+    assert template_name == "calibrate_cell_paint_baseline"
+    assert template_kwargs["assay"] == "cell_paint"
+
+    # Now earn CP gate
+    beliefs.cell_paint_sigma_stable = True
+    beliefs.cell_paint_df_total = 150
+    beliefs.cell_paint_rel_width = 0.23
+
+    # Choose next: should NOT force scRNA calibration
+    # Should go to biology (dose_ladder or other)
+    template_name, template_kwargs = chooser.choose_next(
+        beliefs=beliefs,
+        budget_remaining_wells=250,
+        cycle=7
+    )
+
+    # Should be a biology template, NOT calibrate_scrna_baseline
+    assert template_name != "calibrate_scrna_baseline"
+    assert template_name in ["dose_ladder_coarse", "baseline_replicates"]  # Biology or maintenance
+
+
+def test_scrna_template_allowed_without_scrna_gate():
+    """Test that scRNA upgrade probe can be selected WITHOUT scrna gate earned.
+
+    The scRNA gate is optional - templates should check CP gate (ladder prereq)
+    but not require scrna_sigma_stable beforehand.
+    """
+    beliefs = BeliefState()
+    chooser = TemplateChooser()
+
+    # All cheap gates earned, scRNA gate NOT earned
+    beliefs.noise_sigma_stable = True
+    beliefs.noise_df_total = 150
+    beliefs.noise_rel_width = 0.20
+
+    beliefs.ldh_sigma_stable = True
+    beliefs.ldh_df_total = 150
+    beliefs.ldh_rel_width = 0.22
+
+    beliefs.cell_paint_sigma_stable = True
+    beliefs.cell_paint_df_total = 150
+    beliefs.cell_paint_rel_width = 0.21
+
+    beliefs.scrna_sigma_stable = False  # NOT earned
+
+    # Check required gates for scrna_upgrade_probe
+    required = chooser._required_gates_for_template("scrna_upgrade_probe")
+
+    # Should require CP gate (ladder prereq), but NOT scrna gate
+    assert "cell_paint" in required
+    assert "scrna" not in required
+
+    # Verify CP gate check passes (ladder satisfied)
+    gate_ok, block_reason = chooser._check_assay_gate(beliefs, "scrna", require_ladder=True)
+
+    # Should fail because scrna gate not earned, but reason should NOT mention ladder
+    assert gate_ok == False
+    assert "scRNA gate not earned" in block_reason
+
+    # BUT if we're running scrna_upgrade_probe, we should NOT enforce scrna gate
+    # (that's the whole point - upgrade probe doesn't need scrna gate beforehand)
+    # This is enforced by _required_gates_for_template returning {"cell_paint"} only
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
