@@ -2,6 +2,11 @@
 Unit tests for ActiveLearner.
 
 Tests posterior rebuilding and update logic.
+
+NOTE: These tests are currently skipped because run_loop.py has been archived
+to scripts/archive/demos/run_loop.py. If ActiveLearner functionality is needed
+in production, it should be extracted from the archive into a proper module
+(e.g., src/cell_os/active_learning/learner.py), and these tests should be updated.
 """
 
 
@@ -10,6 +15,9 @@ from pathlib import Path
 
 import pytest
 import pandas as pd
+
+
+pytestmark = pytest.mark.skip(reason="run_loop.py archived to scripts/archive/demos/")
 
 
 def _load_run_loop_module():
