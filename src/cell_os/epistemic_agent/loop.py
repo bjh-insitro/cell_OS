@@ -8,6 +8,8 @@ This runs cycles of:
 4. Log everything for narrative
 
 The logging is crucial - this is how we watch the agent learn.
+
+v0.4.2: Evidence ledgers (evidence.jsonl, decisions.jsonl, diagnostics.jsonl)
 """
 
 import json
@@ -19,6 +21,7 @@ from typing import Optional
 from .world import ExperimentalWorld
 from .agent.policy_rules import RuleBasedPolicy
 from .schemas import Observation
+from .beliefs.ledger import append_events_jsonl, append_decisions_jsonl, append_noise_diagnostics_jsonl
 
 
 class EpistemicLoop:
@@ -43,8 +46,14 @@ class EpistemicLoop:
 
         # Create run-specific log file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = self.log_dir / f"run_{timestamp}.log"
-        self.json_file = self.log_dir / f"run_{timestamp}.json"
+        self.run_id = f"run_{timestamp}"
+        self.log_file = self.log_dir / f"{self.run_id}.log"
+        self.json_file = self.log_dir / f"{self.run_id}.json"
+
+        # v0.4.2: Evidence ledgers
+        self.evidence_file = self.log_dir / f"{self.run_id}_evidence.jsonl"
+        self.decisions_file = self.log_dir / f"{self.run_id}_decisions.jsonl"
+        self.diagnostics_file = self.log_dir / f"{self.run_id}_diagnostics.jsonl"
 
         # Initialize world and agent
         self.world = ExperimentalWorld(budget_wells=budget, seed=seed)
@@ -52,6 +61,7 @@ class EpistemicLoop:
 
         # Run history
         self.history = []
+        self.abort_reason = None
 
     def run(self):
         """Run the full experiment loop."""
@@ -71,11 +81,23 @@ class EpistemicLoop:
             self._log(f"CYCLE {cycle}/{self.max_cycles}")
             self._log("="*60)
 
+            # v0.4.2: Begin cycle for evidence tracking
+            self.agent.beliefs.begin_cycle(cycle)
+
             # Agent proposes experiment
-            proposal = self.agent.propose_next_experiment(
-                capabilities,
-                previous_observation=self.history[-1] if self.history else None
-            )
+            try:
+                proposal = self.agent.propose_next_experiment(
+                    capabilities,
+                    previous_observation=self.history[-1] if self.history else None
+                )
+            except RuntimeError as e:
+                # Handle abort from policy (e.g., insufficient budget)
+                if "ABORT" in str(e):
+                    self._log(f"\n⛔ POLICY ABORT: {e}")
+                    self.abort_reason = str(e)
+                    break
+                else:
+                    raise
 
             self._log_proposal(proposal)
 
@@ -87,8 +109,18 @@ class EpistemicLoop:
 
                 self._log_observation(observation, elapsed)
 
-                # Agent updates
+                # Agent updates beliefs
                 self.agent.update_from_observation(observation)
+
+                # v0.4.2: Extract evidence and diagnostics from beliefs
+                events = self.agent.beliefs.end_cycle()
+                diagnostics = self.agent.last_diagnostics or []
+
+                # Write to ledgers
+                if events:
+                    append_events_jsonl(self.evidence_file, events)
+                if diagnostics:
+                    append_noise_diagnostics_jsonl(self.diagnostics_file, diagnostics)
 
                 # Save to history
                 self.history.append({
@@ -113,6 +145,7 @@ class EpistemicLoop:
 
             except Exception as e:
                 self._log(f"\n❌ ERROR: {e}")
+                self.abort_reason = f"Exception: {e}"
                 break
 
         self._log_summary()
@@ -208,33 +241,73 @@ class EpistemicLoop:
         self._log(f"Total wells used: {self.budget - self.world.budget_remaining}")
         self._log(f"Budget remaining: {self.world.budget_remaining}")
 
-        # What did the agent learn?
+        if self.abort_reason:
+            self._log(f"\n⛔ Run aborted: {self.abort_reason}")
+
+        # What did the agent learn? (v0.4.2: use BeliefState)
+        beliefs = self.agent.beliefs
         self._log("\n" + "-"*60)
-        self._log("AGENT STATE (What It Learned)")
+        self._log("AGENT BELIEFS (What It Learned)")
         self._log("-"*60)
-        self._log(f"Baseline measured: {self.agent.baseline_measured}")
-        self._log(f"Edge effects tested: {self.agent.edge_tested}")
-        self._log(f"Time effects tested: {self.agent.time_tested}")
-        self._log(f"Dose-response curves: {len(self.agent.dose_responses)} compounds")
+        self._log(f"Noise gate earned: {beliefs.noise_sigma_stable}")
+        if beliefs.noise_sigma_hat is not None:
+            self._log(f"  Pooled sigma: {beliefs.noise_sigma_hat:.4f} (df={beliefs.noise_df_total})")
+            if beliefs.noise_rel_width is not None:
+                self._log(f"  Rel CI width: {beliefs.noise_rel_width:.4f}")
+            if beliefs.noise_drift_metric is not None:
+                self._log(f"  Drift metric: {beliefs.noise_drift_metric:.4f}")
+        self._log(f"Edge effects confident: {beliefs.edge_effect_confident} (tests={beliefs.edge_tests_run})")
+        self._log(f"Dose curvature seen: {beliefs.dose_curvature_seen}")
+        self._log(f"Time dependence seen: {beliefs.time_dependence_seen}")
+        self._log(f"Compounds tested: {len(beliefs.tested_compounds)}")
 
         # Success metrics
         self._log("\n" + "-"*60)
-        self._log("SUCCESS METRICS (To Be Evaluated)")
+        self._log("SUCCESS METRICS (v0.4.2 Pay-for-Calibration)")
         self._log("-"*60)
-        self._log("[ ] Calibration: Estimated baseline CV within 20% error?")
-        self._log("[ ] Edge detection: Detected edge bias with confidence?")
-        self._log("[ ] Sample efficiency: Used <384 wells to learn?")
-        self._log("[ ] Mid-dose discovery: Allocated >60% to mid-dose range?")
+        self._log(f"[{'✓' if beliefs.noise_sigma_stable else ' '}] Noise gate: rel_width ≤ 0.25")
+        self._log(f"[{'✓' if beliefs.edge_effect_confident else ' '}] Edge effects: Detected with confidence")
+        self._log(f"[{'✓' if len(beliefs.tested_compounds) >= 2 else ' '}] Exploration: Tested ≥2 compounds")
+        self._log(f"[{'✓' if self.world.budget_remaining > 0 else ' '}] Efficiency: Budget remaining")
 
         self._log(f"\nFull log: {self.log_file}")
         self._log(f"JSON data: {self.json_file}")
+        self._log(f"Evidence: {self.evidence_file}")
+        self._log(f"Diagnostics: {self.diagnostics_file}")
 
     def _save_json(self):
-        """Save history to JSON for analysis."""
+        """Save history to JSON for analysis.
+
+        v0.4.2: Add beliefs snapshot, paths dict, and integrity checks.
+        """
+        # Integrity checks: verify evidence files exist if they should
+        integrity_warnings = []
+        if len(self.history) > 0:
+            if not self.evidence_file.exists():
+                integrity_warnings.append(f"Missing evidence file: {self.evidence_file.name}")
+            if not self.diagnostics_file.exists():
+                integrity_warnings.append(f"Missing diagnostics file: {self.diagnostics_file.name}")
+
+        # Build output
+        output = {
+            'run_id': self.run_id,
+            'budget': self.budget,
+            'max_cycles': self.max_cycles,
+            'seed': self.seed,
+            'cycles_completed': len(self.history),
+            'abort_reason': self.abort_reason,
+            'history': self.history,
+            'beliefs_final': self.agent.beliefs.to_dict(),
+            'paths': {
+                'log': str(self.log_file.name),
+                'json': str(self.json_file.name),
+                'evidence': str(self.evidence_file.name),
+                'diagnostics': str(self.diagnostics_file.name),
+            },
+        }
+
+        if integrity_warnings:
+            output['integrity_warnings'] = integrity_warnings
+
         with open(self.json_file, 'w') as f:
-            json.dump({
-                'budget': self.budget,
-                'max_cycles': self.max_cycles,
-                'seed': self.seed,
-                'history': self.history,
-            }, f, indent=2)
+            json.dump(output, f, indent=2)

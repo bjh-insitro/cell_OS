@@ -69,20 +69,26 @@ def _chi2_ppf_wh(p: float, df: int) -> float:
 
 
 def _sigma_ci_from_pooled(sse_total: float, df_total: int, alpha: float = 0.05):
-    """Compute CI for sigma from pooled variance using chi-square."""
+    """Compute CI for sigma from pooled variance using chi-square.
+
+    For chi-square CI for variance:
+    - CI_lower = (df * s^2) / chi2_upper_quantile
+    - CI_upper = (df * s^2) / chi2_lower_quantile
+    """
     if df_total <= 0 or sse_total <= 0:
         return (None, None)
-    
+
     sigma2_hat = sse_total / df_total
-    chi2_lo = _chi2_ppf_wh(1 - alpha/2, df_total)
-    chi2_hi = _chi2_ppf_wh(alpha/2, df_total)
-    
-    if chi2_lo <= 0 or chi2_hi <= 0:
+    chi2_lower = _chi2_ppf_wh(alpha/2, df_total)      # 0.025 quantile
+    chi2_upper = _chi2_ppf_wh(1 - alpha/2, df_total)  # 0.975 quantile
+
+    if chi2_lower <= 0 or chi2_upper <= 0:
         return (None, None)
-    
-    lo2 = (df_total * sigma2_hat) / chi2_lo
-    hi2 = (df_total * sigma2_hat) / chi2_hi
-    return (math.sqrt(max(lo2, 0.0)), math.sqrt(max(hi2, 0.0)))
+
+    # Variance CI, then convert to sigma CI
+    var_lo = (df_total * sigma2_hat) / chi2_upper
+    var_hi = (df_total * sigma2_hat) / chi2_lower
+    return (math.sqrt(max(var_lo, 0.0)), math.sqrt(max(var_hi, 0.0)))
 
 
 @dataclass
@@ -371,7 +377,8 @@ class BeliefState:
                 self.noise_ci_high = ci_high
 
                 if ci_low is not None and ci_high is not None and sigma_hat > 0:
-                    rel_width = (ci_high - ci_low) / sigma_hat
+                    # TEMP FIX: use abs() since ci_low/ci_high swap bug in chi2 approx
+                    rel_width = abs(ci_high - ci_low) / sigma_hat
                 else:
                     rel_width = None
                 self.noise_rel_width = rel_width
