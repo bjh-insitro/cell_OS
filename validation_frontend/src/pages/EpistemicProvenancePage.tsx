@@ -176,6 +176,151 @@ const EpistemicProvenancePage: React.FC = () => {
 
             {/* Content */}
             <div className="container mx-auto px-6 py-6">
+                {/* How It Works - Always visible first */}
+                <div className={`mb-6 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-zinc-200'} shadow-lg overflow-hidden`}>
+                    <div className={`p-6 border-b ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-zinc-200 bg-zinc-50'}`}>
+                        <h2 className={`text-2xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                            How the Epistemic Agent Decides
+                        </h2>
+                        <p className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                            Each cycle, the system evaluates what it can do given constraints, chooses an action, and updates its confidence.
+                        </p>
+                    </div>
+
+                    {/* Walkthrough Example */}
+                    <div className="p-6 space-y-6">
+                        {/* Step 1: Starting State */}
+                        <div>
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-indigo-900 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>
+                                Step 1: Check Current State
+                            </div>
+                            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Budget</div>
+                                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>384 wells</div>
+                                    </div>
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Gate Status</div>
+                                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>❌ Not earned</div>
+                                    </div>
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Noise (rel_width)</div>
+                                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>0.38</div>
+                                    </div>
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Regime</div>
+                                        <div className={`font-mono text-orange-600`}>pre_gate</div>
+                                    </div>
+                                </div>
+                                <p className={`mt-3 text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                    <strong>Interpretation:</strong> Noise is too high (0.38 &gt; 0.25 threshold). System cannot make reliable biological conclusions yet.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Step 2: Available Options */}
+                        <div>
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>
+                                Step 2: Evaluate Options
+                            </div>
+                            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
+                                <div className="space-y-3">
+                                    <div className={`p-3 rounded border-l-4 ${isDarkMode ? 'bg-slate-800 border-orange-500' : 'bg-orange-50 border-orange-500'}`}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>calibrate_noise_sigma</div>
+                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-200 text-orange-800'}`}>Must do this first</div>
+                                        </div>
+                                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            Cost: 156 wells (12 doses × 13 replicates) • Will reduce rel_width to ~0.22
+                                        </div>
+                                    </div>
+                                    <div className={`p-3 rounded border-l-4 opacity-50 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-zinc-50 border-zinc-300'}`}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>measure_biomarker</div>
+                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'}`}>Blocked</div>
+                                        </div>
+                                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            Cannot run: Gate not earned. Would produce unreliable results.
+                                        </div>
+                                    </div>
+                                    <div className={`p-3 rounded border-l-4 opacity-50 ${isDarkMode ? 'bg-slate-800 border-slate-600' : 'bg-zinc-50 border-zinc-300'}`}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>abort</div>
+                                            <div className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-zinc-200 text-zinc-700'}`}>Available</div>
+                                        </div>
+                                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                                            Would trigger if: Budget insufficient for calibration (need 156, have less)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Step 3: Decision */}
+                        <div>
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                                Step 3: Choose Action
+                            </div>
+                            <div className={`p-4 rounded-lg border-2 ${isDarkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                                <div className="flex items-start gap-4">
+                                    <div className="text-3xl">✓</div>
+                                    <div className="flex-1">
+                                        <div className={`font-bold text-lg mb-1 ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                            Selected: calibrate_noise_sigma
+                                        </div>
+                                        <div className={`text-sm mb-2 ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                                            <strong>Reason:</strong> Pre-gate regime forces calibration. Budget allows (384 &gt; 156). Must earn gate before biological measurements.
+                                        </div>
+                                        <div className={`text-xs font-mono p-2 rounded ${isDarkMode ? 'bg-slate-900 text-slate-300' : 'bg-white text-zinc-700'}`}>
+                                            trigger: must_calibrate | forced: true | regime: pre_gate
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Step 4: Outcome */}
+                        <div>
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>
+                                Step 4: Update State
+                            </div>
+                            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Budget</div>
+                                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>228 wells <span className="text-red-600">(-156)</span></div>
+                                    </div>
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Gate Status</div>
+                                        <div className={`font-mono text-green-600`}>✓ Earned</div>
+                                    </div>
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Noise (rel_width)</div>
+                                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>0.22 <span className="text-green-600">(-0.16)</span></div>
+                                    </div>
+                                    <div>
+                                        <div className={`text-xs font-semibold uppercase mb-1 ${isDarkMode ? 'text-slate-500' : 'text-zinc-500'}`}>Regime</div>
+                                        <div className={`font-mono text-green-600`}>in_gate</div>
+                                    </div>
+                                </div>
+                                <div className={`p-3 rounded ${isDarkMode ? 'bg-green-900/30 border-l-4 border-green-500' : 'bg-green-100 border-l-4 border-green-600'}`}>
+                                    <p className={`text-sm ${isDarkMode ? 'text-green-300' : 'text-green-800'}`}>
+                                        <strong>Gate Event:</strong> noise_sigma earned (0.22 &lt; 0.25). System can now make reliable biological measurements. Gate slack = 0.03.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className={`p-4 border-t ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-zinc-200 bg-zinc-50'}`}>
+                        <p className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                            <strong>Key insight:</strong> The system doesn't just execute experiments—it decides <em>whether to act at all</em>.
+                            If budget had been 100 wells instead of 384, it would have chosen <strong>abort</strong>, refusing to proceed with unreliable data.
+                        </p>
+                    </div>
+                </div>
+
                 {/* Concept Guide */}
                 {!selectedRun && !loadingSummaries && runs.length > 0 && (
                     <div className={`mb-6 p-6 rounded-lg border-l-4 ${isDarkMode ? 'bg-indigo-900/20 border-indigo-500' : 'bg-indigo-50 border-indigo-600'}`}>
