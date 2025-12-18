@@ -1,0 +1,371 @@
+{
+  "run_id": "run_20251218_130825",
+  "budget": 384,
+  "max_cycles": 20,
+  "seed": 42,
+  "cycles_completed": 20,
+  "abort_reason": null,
+  "history": [
+    {
+      "cycle": 1,
+      "proposal": {
+        "design_id": "baseline_8b9c69fd",
+        "hypothesis": "Earn noise gate (df=0, need~140). Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_8b9c69fd",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 372,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0009760856628417969
+    },
+    {
+      "cycle": 2,
+      "proposal": {
+        "design_id": "baseline_6e2c657a",
+        "hypothesis": "Earn noise gate (df=11, need~5). Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_6e2c657a",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 360,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0008890628814697266
+    },
+    {
+      "cycle": 3,
+      "proposal": {
+        "design_id": "baseline_25d624c0",
+        "hypothesis": "Earn noise gate (df=22, need~5). Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_25d624c0",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 348,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0009660720825195312
+    },
+    {
+      "cycle": 4,
+      "proposal": {
+        "design_id": "baseline_37e7dbc5",
+        "hypothesis": "Earn noise gate (df=33, need~5). Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_37e7dbc5",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 336,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0008878707885742188
+    },
+    {
+      "cycle": 5,
+      "proposal": {
+        "design_id": "dose_ladder_6da91f36",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for CCCP across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_6da91f36",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 324,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0010747909545898438
+    },
+    {
+      "cycle": 6,
+      "proposal": {
+        "design_id": "dose_ladder_569ee003",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for H2O2 across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_569ee003",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 312,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.001214742660522461
+    },
+    {
+      "cycle": 7,
+      "proposal": {
+        "design_id": "dose_ladder_4e1f9274",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for MG132 across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_4e1f9274",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 300,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0010671615600585938
+    },
+    {
+      "cycle": 8,
+      "proposal": {
+        "design_id": "dose_ladder_52971415",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for etoposide across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_52971415",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 288,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0011358261108398438
+    },
+    {
+      "cycle": 9,
+      "proposal": {
+        "design_id": "dose_ladder_58bb17c6",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for nocodazole across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_58bb17c6",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 276,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0013058185577392578
+    },
+    {
+      "cycle": 10,
+      "proposal": {
+        "design_id": "baseline_a638223e",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_a638223e",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 264,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.001155853271484375
+    },
+    {
+      "cycle": 11,
+      "proposal": {
+        "design_id": "baseline_d4365e96",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_d4365e96",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 252,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.001107931137084961
+    },
+    {
+      "cycle": 12,
+      "proposal": {
+        "design_id": "baseline_a6171abb",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_a6171abb",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 240,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.00092315673828125
+    },
+    {
+      "cycle": 13,
+      "proposal": {
+        "design_id": "baseline_f10a4300",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_f10a4300",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 228,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0008039474487304688
+    },
+    {
+      "cycle": 14,
+      "proposal": {
+        "design_id": "baseline_3f320948",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_3f320948",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 216,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.00078582763671875
+    },
+    {
+      "cycle": 15,
+      "proposal": {
+        "design_id": "baseline_da0ca694",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_da0ca694",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 204,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0009610652923583984
+    },
+    {
+      "cycle": 16,
+      "proposal": {
+        "design_id": "baseline_47214539",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_47214539",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 192,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0009601116180419922
+    },
+    {
+      "cycle": 17,
+      "proposal": {
+        "design_id": "baseline_82ad8020",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_82ad8020",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 180,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0009739398956298828
+    },
+    {
+      "cycle": 18,
+      "proposal": {
+        "design_id": "baseline_22c0bc3c",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_22c0bc3c",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 168,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0009007453918457031
+    },
+    {
+      "cycle": 19,
+      "proposal": {
+        "design_id": "baseline_6edf0976",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_6edf0976",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 156,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0008409023284912109
+    },
+    {
+      "cycle": 20,
+      "proposal": {
+        "design_id": "baseline_36722c2b",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_36722c2b",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 144,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0007469654083251953
+    }
+  ],
+  "beliefs_final": {
+    "noise_sigma_hat": 0.013550419833038655,
+    "noise_ci_low": 0.01385307673392185,
+    "noise_ci_high": 0.013311599305569324,
+    "noise_rel_width": 0.0399601957005269,
+    "noise_sigma_stable": true,
+    "noise_df_total": 165,
+    "baseline_cv_scalar": 0.015709267093682526,
+    "baseline_cv_by_channel": {
+      "er": 0.025972078580943265,
+      "mito": 0.030058584513494104,
+      "nucleus": 0.02366748818244119,
+      "actin": 0.02264637893443128,
+      "rna": 0.026468448779461546
+    },
+    "calibration_reps": 180,
+    "edge_effect_strength_by_channel": {},
+    "edge_effect_confident": false,
+    "edge_tests_run": 0,
+    "dose_curvature_seen": true,
+    "time_dependence_seen": false,
+    "tested_compounds": [
+      "nocodazole",
+      "CCCP",
+      "DMSO",
+      "etoposide",
+      "H2O2",
+      "MG132"
+    ],
+    "tested_cell_lines": [
+      "A549"
+    ],
+    "total_observations": 20
+  },
+  "paths": {
+    "log": "run_20251218_130825.log",
+    "json": "run_20251218_130825.json",
+    "evidence": "run_20251218_130825_evidence.jsonl",
+    "decisions": "run_20251218_130825_decisions.jsonl",
+    "diagnostics": "run_20251218_130825_diagnostics.jsonl"
+  }
+}

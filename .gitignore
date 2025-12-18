@@ -29,3 +29,9 @@ logs/
 *.pyo
 *.log
 .vite/
+
+# Local run results (exclude from git, use demo dataset in validation_frontend/public/demo_results/)
+results/epistemic_agent/*.json
+results/epistemic_agent/*.jsonl
+results/epistemic_agent/*.log
+results/epistemic_agent/runs_manifest.json

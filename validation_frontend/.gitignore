@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local results symlink (use demo_results/ or configure VITE_RESULTS_BASE)
+public/results

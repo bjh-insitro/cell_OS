@@ -18,7 +18,8 @@ import {
     validateDiagnosticEvent,
 } from './jsonlParser';
 
-const RESULTS_BASE = '/results/epistemic_agent';
+// Configurable base path: defaults to demo dataset, override with VITE_RESULTS_BASE
+const RESULTS_BASE = import.meta.env.VITE_RESULTS_BASE ?? '/demo_results/epistemic_agent';
 
 export async function listAvailableRuns(): Promise<string[]> {
     try {
