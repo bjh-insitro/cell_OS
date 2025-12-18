@@ -341,6 +341,18 @@ class TemplateChooser:
 
         # If gates forced an override, enforcement already set decision
         if actual_template != template_name:
+            # Invariant: enforcement must have written the decision receipt
+            if self.last_decision_event is None:
+                raise AssertionError(
+                    f"INTERNAL ERROR: Gate enforcement overrode {template_name} → {actual_template}, "
+                    f"but did not set last_decision_event. This is a contract violation."
+                )
+            if "enforcement_layer" not in self.last_decision_event.selected_candidate:
+                raise AssertionError(
+                    f"INTERNAL ERROR: Gate enforcement overrode {template_name} → {actual_template}, "
+                    f"but decision receipt missing 'enforcement_layer' field. "
+                    f"Receipt: {self.last_decision_event.selected_candidate.keys()}"
+                )
             return (actual_template, actual_kwargs)
 
         # Step 3: Record successful selection decision

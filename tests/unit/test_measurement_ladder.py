@@ -10,6 +10,7 @@ from cell_os.epistemic_agent.acquisition.chooser import TemplateChooser
 from cell_os.epistemic_agent.beliefs.ledger import EvidenceEvent
 from dataclasses import dataclass
 from typing import List
+from unittest.mock import patch
 
 
 @dataclass
@@ -487,6 +488,67 @@ def test_scrna_calibration_blocked_autonomously():
 
     assert is_valid == True, "Cheap templates should be allowed"
     assert abort_reason is None, "No abort reason for cheap templates"
+
+
+def test_safety_net_catches_regression_through_choose_next():
+    """Hostile test: Prove safety net catches missing gates even when global loop fails.
+
+    Simulates a regression where the global enforcement loop is broken (or thinks gates
+    are earned when they're not). The template safety net should still catch it.
+
+    This is the "driver falls asleep, seatbelt saves you" test.
+    """
+    beliefs = BeliefState()
+    chooser = TemplateChooser()
+
+    # Set up: noise gate earned, but cell_paint gate actually missing
+    beliefs.noise_sigma_stable = True
+    beliefs.noise_df_total = 150
+    beliefs.noise_rel_width = 0.20
+    beliefs.ldh_sigma_stable = True
+    beliefs.ldh_df_total = 150
+    beliefs.ldh_rel_width = 0.22
+    beliefs.cell_paint_sigma_stable = False  # Actually missing
+    beliefs.cell_paint_df_total = 10
+    beliefs.cell_paint_rel_width = 0.50  # Too wide
+    beliefs.tested_compounds = {'DMSO'}  # Triggers dose_ladder_coarse
+
+    # Hostile monkeypatch: Make _check_assay_gate lie during global loop phase
+    # It will return True (gate earned) during global loop, but False during safety net
+    original_check = chooser._check_assay_gate
+    call_count = [0]  # Mutable to track across closure
+
+    def hostile_check_gate(beliefs_arg, assay, require_ladder=True):
+        call_count[0] += 1
+        if assay == "cell_paint":
+            # First 2 calls: lie (during global loop checking ldh, cell_paint)
+            # Later calls: tell truth (during safety net)
+            if call_count[0] <= 2:
+                return (True, None)  # Lie: pretend gate is earned
+            else:
+                return (False, "Cell Painting gate not earned (simulated regression)")
+        return original_check(beliefs_arg, assay, require_ladder)
+
+    with patch.object(chooser, '_check_assay_gate', side_effect=hostile_check_gate):
+        template_name, template_kwargs = chooser.choose_next(
+            beliefs=beliefs,
+            budget_remaining_wells=384,
+            cycle=10
+        )
+
+    # Safety net should have caught the missing CP gate and overridden
+    assert template_name == "calibrate_cell_paint_baseline", \
+        "Safety net should override to CP calibration when gate missing"
+
+    # Verify decision receipt has template_safety_net enforcement_layer
+    decision = chooser.last_decision_event
+    assert decision is not None, "Decision must be recorded"
+    assert "enforcement_layer" in decision.selected_candidate, \
+        "Decision must include enforcement_layer"
+    assert decision.selected_candidate["enforcement_layer"] == "template_safety_net", \
+        "Should be caught by safety net, not global loop (driver fell asleep, seatbelt saved us)"
+    assert decision.selected_candidate["blocked_template"] == "dose_ladder_coarse", \
+        "Should record which template was blocked"
 
 
 if __name__ == "__main__":
