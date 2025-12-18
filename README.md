@@ -1,12 +1,10 @@
 # cell_OS
 
-**An Autonomous Operating System for Cell Biology** 🧬
+**Autonomous Operating System for Cell Biology Research** 🧬
 
-`cell_OS` is a production-ready platform for autonomous scientific discovery. It designs experiments, executes them (via simulation or real hardware), fits models, makes decisions, and generates reports—all without human intervention.
+A production-ready platform for simulating and discovering optimal experimental conditions through autonomous active learning. Built on a deterministic, biologically-grounded world model (Cell Thalamus) with pay-for-calibration epistemic agents.
 
-[![Tests](https://img.shields.io/badge/tests-432%20passing-brightgreen)]() 
-[![CI](https://github.com/brighart/cell_OS/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/brighart/cell_OS/actions/workflows/tests.yml)
-[![Python](https://img.shields.io/badge/python-3.9+-blue)]()
+[![Python](https://img.shields.io/badge/python-3.8+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 
 ---
@@ -15,31 +13,46 @@
 
 ```bash
 # Clone and install
-git clone https://github.com/brighart/cell_OS.git
+git clone https://github.com/your-org/cell_OS.git
 cd cell_OS
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
-# Dashboard UI dependencies (Streamlit, pandas, etc.)
-pip install -e .[dashboard]
 
-# Run an autonomous titration campaign
-cell-os-run --config config/campaign_example.yaml
+# Run the epistemic agent (Phase 1)
+python scripts/run_epistemic_agent.py --cycles 10 --budget 200 --seed 42
 
 # Launch the dashboard
 streamlit run dashboard_app/app.py
+
+# Run Cell Thalamus simulation (Phase 0)
+python standalone_cell_thalamus.py --mode full --seed 0
 ```
 
-Example configs:
-- `config/campaign_example.yaml` – end-to-end autonomous campaign.
-- `config/titration_example.yaml` – LV titration loop template.
-- `config/posh_screen_example.yaml` – POSH screen planning skeleton.
+---
 
-📌 Need the latest roadmap? Check `docs/STATUS.md` for the consolidated status + next steps digest. Historical summaries now live under `docs/archive/status/`.
+## 📖 What is cell_OS?
 
-**That's it!** The agent will autonomously titrate lentiviral vectors, fit models, make GO/NO-GO decisions, and generate an interactive report.
+cell_OS is a **research platform** for autonomous experimental design in cell biology, consisting of:
 
-📖 **[Read the Full User Guide →](docs/guides/USER_GUIDE.md)**
+### 🧪 Cell Thalamus (Phase 0)
+**Biologically-grounded world simulator** for cell-based assays
+- Deterministic simulation of 2,304 wells (96-well plates × 24 replicates)
+- Cell line-specific responses (A549, HepG2, iPSC neurons, iPSC microglia)
+- 10 stress compounds (oxidative, ER, mitochondrial, DNA damage, proteasome, microtubule)
+- Cell Painting morphology (5 channels: DNA, ER, Actin, Mitochondria, AGP)
+- LDH cytotoxicity readout
+- **Fixed sentinel scaffolding** for statistical process control
+- **50-100× speedup** on JupyterHub (72 CPUs: ~5 minutes for full campaign)
+
+### 🤖 Epistemic Agent (Phase 1)
+**Active learning agent** that discovers optimal experimental conditions
+- **Pay-for-calibration regime**: Must earn "noise gate" before biology experiments
+- **Gate lock invariant**: Enforces calibration quality (rel_width ≤ 0.25)
+- **Evidence ledgers**: Complete provenance tracking (JSONL receipts)
+- **Observer-independent**: Physics-based attrition (no Schrödinger's cat)
+- **Autonomous**: Proposes experiments, updates beliefs, manages budget
+- **Deterministic**: Same seed → same results (cross-machine verified)
 
 ---
 
@@ -47,85 +60,85 @@ Example configs:
 
 ```mermaid
 graph TB
-    subgraph "User Interfaces"
-        CLI[CLI Tool<br/>YAML Configs] 
-        Dashboard[Streamlit Dashboard<br/>8 Tabs]
+    subgraph "Phase 1: Epistemic Agent"
+        Agent[EpistemicLoop]
+        Policy[RuleBasedPolicy]
+        Beliefs[BeliefState]
+        Chooser[TemplateChooser]
     end
-    
-    subgraph "Autonomous Agents"
-        TitrationAgent[Titration Agent<br/>LV Optimization]
-        ImagingLoop[Imaging Loop<br/>Dose Finding]
-        POSHDesigner[POSH Designer<br/>Screen Planning]
+
+    subgraph "Phase 0: Cell Thalamus"
+        World[ExperimentalWorld]
+        Hardware[BiologicalVirtualMachine]
+        Biology[biology_core]
     end
-    
-    subgraph "Core Architecture"
-        HAL[Hardware Abstraction Layer<br/>MockSimulator | LabController]
-        StateManager[State Manager<br/>Crash Recovery]
-        ExperimentDB[(ExperimentDB<br/>SQLite)]
+
+    subgraph "Evidence System"
+        Evidence[evidence.jsonl]
+        Diagnostics[diagnostics.jsonl]
+        Decisions[decisions.jsonl]
     end
-    
-    subgraph "World Model"
-        GP[Gaussian Processes<br/>Dose-Response]
-        Bayesian[Bayesian Optimization<br/>Active Learning]
-    end
-    
-    CLI --> TitrationAgent
-    Dashboard --> ImagingLoop
-    Dashboard --> POSHDesigner
-    
-    TitrationAgent --> StateManager
-    TitrationAgent --> HAL
-    ImagingLoop --> GP
-    POSHDesigner --> Bayesian
-    
-    StateManager --> ExperimentDB
-    HAL --> ExperimentDB
-    
-    style TitrationAgent fill:#e1f5ff
-    style ExperimentDB fill:#f0e1ff
-    style HAL fill:#fff4e1
-    style GP fill:#e1ffe1
+
+    Agent --> Policy
+    Policy --> Beliefs
+    Policy --> Chooser
+    Agent --> World
+    World --> Hardware
+    Hardware --> Biology
+
+    Beliefs --> Evidence
+    Beliefs --> Diagnostics
+    Policy --> Decisions
+
+    style Agent fill:#e1f5ff
+    style World fill:#fff4e1
+    style Beliefs fill:#e1ffe1
+    style Biology fill:#f0e1ff
 ```
 
-### **Core Components**
+### Core Components
 
 | Component | Purpose |
 |-----------|---------|
-| **Hardware Abstraction Layer** | Switch between simulation (`MockSimulator`) and real hardware (`LabController`) |
-| **ExperimentDB** | SQLite database: `designs` → `batches` → `results` + agent state |
-| **Agents** | Autonomous decision-makers (titration, imaging, POSH design) |
-| **State Manager** | Crash recovery - agents checkpoint after every round |
-| **Dashboard** | 8-tab Streamlit interface for monitoring and control |
+| **Cell Thalamus** | Biologically-realistic simulation engine with morphology + viability |
+| **Epistemic Agent** | Active learning agent with calibration requirements |
+| **BeliefState** | Tracks what agent knows with evidence receipts |
+| **TemplateChooser** | Decides next experiment (baseline, edge test, dose ladder) |
+| **Hardware Abstraction** | Switch between virtual and real lab execution |
+| **Evidence Ledgers** | JSONL logs for complete provenance |
 
 ---
 
 ## ✨ Key Features
 
-### 🤖 Autonomous Agents
-- **Titration Agent**: Designs 7-point titrations, fits Poisson models, makes GO/NO-GO decisions
-- **Imaging Loop**: Finds optimal stress-window doses using Bayesian optimization
-- **POSH Designer**: Generates libraries, plans screens, simulates outcomes
+### 🔬 Biological Realism (Cell Thalamus)
+- **Cell line-specific sensitivity**: iPSC neurons resist microtubule drugs, cancer cells die
+- **Morphology-first principle**: Transport disruption → attrition → death (72-96h timeline)
+- **Observer independence**: Cell fate identical whether you measure or not
+- **IC50 coupling**: Proliferation-dependent sensitivity (mitotic catastrophe)
+- **Attrition feedback**: Morphology disruption scales death rate
+- **Death accounting**: Track instant vs cumulative death separately
 
-### 💾 Enterprise-Grade Persistence
-- **Crash Recovery**: Resume campaigns from any point
-- **Full Audit Trail**: Every decision logged to SQLite
-- **Query API**: Complex queries like "find all screens with D_M > 2.0"
+### 🧠 Epistemic Guarantees (Phase 1 v0.4.2)
+- **Pay-for-calibration**: Biology experiments forbidden until noise gate earned
+- **Gate criteria**: Pooled variance CI width ≤ 25% of estimate (rel_width ≤ 0.25)
+- **Hysteresis control**: enter_threshold=0.25, exit_threshold=0.40 (prevent flapping)
+- **Drift detection**: Compare recent vs historical noise estimates
+- **Fail-fast**: Abort if insufficient budget to earn gate
+- **Symmetric receipts**: Both gate_event (earned) and gate_loss (revoked) logged
+
+### 📊 Provenance & Reproducibility
+- **Evidence ledgers**: Every belief change logged with supporting data
+- **SHA-256 scaffold hashing**: Cryptographic integrity for fixed scaffolds
+- **Cross-machine determinism**: Same seed → bit-identical results
+- **Worker determinism**: 1 CPU == 64 CPUs (parallel aggregation correct)
+- **Stream isolation**: RNG independence verified (assay calls don't perturb physics)
 
 ### 🎛️ Multi-Interface
-- **CLI**: `cell-os-run --config my_config.yaml`
-- **Dashboard**: Interactive Streamlit app with 8 tabs
-- **Programmatic**: Import agents as Python modules
-
-### 📊 Rich Reporting
-- **HTML Reports**: Titration curves, cost breakdowns, decision manifests
-- **Budget Calculator**: Pre-flight cost estimation
-- **QC Dashboards**: Outlier detection, plate effects
-
-### 🗂️ Data Sources & CLI
-- **SQLite-first**: Cell-line protocols (`data/cell_lines.db`) and inventory/pricing (`data/inventory.db`) are loaded from SQLite by default for consistency with the automation stack.
-- **Legacy YAML fallback**: Passing explicit YAML paths (e.g., `Inventory("data/raw/pricing.yaml")`) still works and seeds the historical stock defaults, which keeps notebooks/tests reproducible.
-- **Protocol resolver**: Automatically falls back to the SQLite database when the deprecated `data/cell_lines.yaml` is absent, so fresh clones don’t need to restore archived YAML.
-- **Installable CLI**: `pip install -e .` exposes the `cell-os-run` entry point, so you can run `cell-os-run --config ...` from anywhere without relying on repo-relative Python paths.
+- **CLI scripts**: `run_epistemic_agent.py`, `standalone_cell_thalamus.py`
+- **Dashboard**: Streamlit web UI (work in progress for Phase 1 integration)
+- **API**: FastAPI endpoints (background task execution)
+- **Programmatic**: Import as Python modules
 
 ---
 
@@ -133,177 +146,230 @@ graph TB
 
 ```
 cell_OS/
-├── cli/                    # Command-line tools
-│   └── run_campaign.py
-├── config/                 # YAML configurations
-│   └── campaign_example.yaml
-├── dashboard_app/          # Streamlit dashboard (8 tabs)
-│   ├── dashboard.py
-│   └── app_main.py
-├── src/
-│   ├── core/              # Infrastructure
-│   │   ├── experiment_db.py       # Unified database
-│   │   ├── hardware_interface.py  # HAL
-│   │   └── state_manager.py       # Persistence
-│   ├── cell_os/           # Science modules
-│   │   ├── titration_loop.py      # Autonomous agent
-│   │   ├── posh_lv_moi.py         # LV modeling
-│   │   └── budget_manager.py      # Cost tracking
-├── tests/                 # 186 passing tests
-└── docs/guides/           # Documentation
-    └── USER_GUIDE.md
+├── src/cell_os/
+│   ├── epistemic_agent/           # Phase 1 agent (v0.4.2)
+│   │   ├── agent/                 # Policy rules + templates
+│   │   ├── beliefs/               # BeliefState + evidence ledgers
+│   │   ├── acquisition/           # TemplateChooser (pay-for-calibration)
+│   │   ├── loop.py                # Main orchestration
+│   │   ├── world.py               # Experimental world wrapper
+│   │   └── schemas.py             # Data structures
+│   ├── cell_thalamus/             # Phase 0 world simulator
+│   │   ├── epistemic_agent.py     # Active learning (deprecated, see above)
+│   │   ├── design_generator.py   # Fixed scaffold generation
+│   │   └── parallel_runner.py    # Multi-CPU execution
+│   ├── hardware/                  # Hardware abstraction layer
+│   │   └── biological_virtual.py # Virtual lab (simulation)
+│   ├── sim/                       # Simulation core
+│   │   └── biology_core.py        # Pure biology functions
+│   ├── lab_world_model/           # Lab modeling (resources, costs)
+│   └── simulation/                # Legacy simulation components
+├── scripts/
+│   ├── run_epistemic_agent.py     # Phase 1 runner
+│   ├── benchmark_multiseed.py     # Multi-seed validation
+│   └── design_generator_*.py     # Scaffold generators
+├── standalone_cell_thalamus.py    # Phase 0 standalone runner
+├── dashboard_app/                 # Streamlit web interface
+├── tests/                         # Test suite
+├── docs/                          # Consolidated documentation
+│   ├── BIOLOGY_SIMULATION_EVOLUTION.md
+│   ├── PROVENANCE_AND_SCAFFOLDING.md
+│   ├── OBSERVER_INDEPENDENCE_COMPLETE.md
+│   ├── deployment/JUPYTERHUB_DEPLOYMENT.md
+│   └── guides/                    # Usage guides
+└── data/                          # Configurations and results
 ```
 
 ---
 
-## 🔬 Example: Run a Campaign
+## 🔬 Example: Run Epistemic Agent
 
-Create `my_campaign.yaml`:
-```yaml
-experiment_id: "MY_EXP_001"
-cell_lines:
-  - name: "U2OS"
-    true_titer: 150000
-    true_alpha: 0.92
-  - name: "HEK293T"
-    true_titer: 200000
-    true_alpha: 0.88
+The Phase 1 agent learns optimal experimental conditions through active learning with calibration requirements:
 
-screen_config:
-  max_titration_rounds: 5
-  target_bfp: 0.30
-
-budget:
-  max_titration_budget_usd: 5000.0
-```
-
-Run it:
 ```bash
-cell-os-run --config my_campaign.yaml
+# Run with 20 cycles, 384-well budget, seed 42
+python scripts/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
 ```
 
-View results:
-- **HTML Report**: `results/campaigns/MY_EXP_001_report.html`
-- **Database**: Query `data/experiments.db`
-- **Dashboard**: Tab 7 "Campaign Reports"
+**What it does:**
+1. Proposes baseline DMSO replicates (calibration)
+2. Measures noise, computes pooled variance CI
+3. Checks if gate earned (rel_width ≤ 0.25)
+4. If gate earned: runs edge tests, then dose-response experiments
+5. If gate lost: returns to calibration
+6. Logs all decisions to evidence ledgers
+
+**Output files:**
+```
+results/epistemic_agent/
+├── run_20251218_115051.json           # Run summary + beliefs
+├── run_20251218_115051.log            # Human-readable log
+├── run_20251218_115051_evidence.jsonl # Belief changes
+└── run_20251218_115051_diagnostics.jsonl # Noise model telemetry
+```
+
+**Success criteria:**
+- ✅ Noise gate earned (rel_width ≤ 0.25)
+- ✅ Edge effects tested
+- ✅ Compounds explored (≥2)
+- ✅ Budget remaining
 
 ---
 
-## 📊 Dashboard Tabs
+## 🧪 Example: Cell Thalamus Simulation
 
-Launch with: `streamlit run dashboard_app/app.py`
+Phase 0 provides the world model for agent testing:
 
-1. **🚀 Mission Control** - Budget, cycle count, recent activity
-2. **🔬 Science** - Dose-response curves with GP fits
-3. **💰 Economics** - Cost tracking and inventory
-4. **🕸️ Workflow Visualizer** - Interactive workflow graphs
-5. **🧭 POSH Decision Assistant** - Configuration recommendations
-6. **🧪 POSH Screen Designer** - Design libraries and titrations
-7. **📊 Campaign Reports** - View generated HTML reports
-8. **🧮 Budget Calculator** - Estimate costs before running
+```bash
+# Run full 2304-well campaign
+python standalone_cell_thalamus.py --mode full --seed 0 --workers 32
+
+# Quick benchmark (48 wells)
+python standalone_cell_thalamus.py --mode benchmark --seed 0
+
+# Self-test (verify observer independence)
+python standalone_cell_thalamus.py --self-test
+```
+
+**Validation results:**
+- **Determinism**: `workers=1` == `workers=64` (bit-identical)
+- **Observer independence**: Cell fate identical with/without assay calls
+- **Biological realism**: Neurons resist microtubule drugs 72-96h longer than cancer
+- **LDH validation**: Proper dose-response, cell-line specificity
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Run the full suite (379 tests, ~40 seconds on a laptop)
-python3 -m pytest -v
+# Run full test suite
+pytest
 
-# Target a suite
-python3 -m pytest tests/integration/test_persistence.py -v
+# Run specific test modules
+pytest tests/unit/test_active_learner.py
+pytest tests/integration/test_simulation_realism.py
 
-# Run the focused static-analysis checks (pylint)
-make lint
+# Run with coverage
+pytest --cov=src/cell_os --cov-report=html
 ```
 
-All tests passing ✅ (`python3 -m pytest -v`)
-
-### Linting & Static Analysis
-
-Run `make lint` to execute `tests/static/test_code_analysis.py`, which shells out to `pylint`
-using the curated rules in [.pylintrc](.pylintrc). This keeps dashboard code free of
-undefined/unused variables without forcing contributors to remember the exact pylintrc flags.
-CI runs the same pytest target, so keep it green before opening a PR.
-
-### Bootstrapping Local Databases
-
-Fresh clones need the SQLite fixtures seeded from the authoritative YAML files. Use:
-
-```bash
-make bootstrap-data
-# or: python3 scripts/bootstrap_data.py
-
-# Populate the inventory catalog with common reagents/consumables
-python3 scripts/seed_inventory_resources.py
-```
-
-The helper script runs both seeding utilities:
-
-1. `scripts/seed_cell_line_protocols.py` → `data/cell_lines.db`
-2. `scripts/seed_simulation_params.py` → `data/simulation_params.db`
-
-Re-run it whenever the YAML fixtures change so protocol resolver and simulation tests stay in sync.
+**Test categories:**
+- `tests/unit/` - Unit tests for individual modules
+- `tests/integration/` - Integration tests (agent + world)
+- `tests/simulation/` - Biological realism validation
 
 ---
 
 ## 📚 Documentation
 
-- **[User Guide](docs/guides/USER_GUIDE.md)** - Installation, CLI usage, troubleshooting
-- **Architecture Notes** - See `docs/architecture/` for subsystem deep dives
-- **Tutorial Notebooks** - Explore `notebooks/` for hands-on examples
+### Quick References
+- **[Phase 0 Milestone](PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md)** - Fixed scaffold design
+- **[Phase 1 Milestone](PHASE1_AGENT_SUMMARY.md)** - Epistemic agent implementation
+- **[Developer Reference](docs/DEVELOPER_REFERENCE.md)** - Local development guide
+
+### Comprehensive Guides
+- **[Biology Simulation Evolution](docs/BIOLOGY_SIMULATION_EVOLUTION.md)** - Complete history of world model development
+- **[Provenance & Scaffolding](docs/PROVENANCE_AND_SCAFFOLDING.md)** - Cryptographic integrity guarantees
+- **[Observer Independence](docs/OBSERVER_INDEPENDENCE_COMPLETE.md)** - Physics-based simulation architecture
+- **[JupyterHub Deployment](docs/deployment/JUPYTERHUB_DEPLOYMENT.md)** - 50-100× speedup guide
+
+### Organized Documentation
+```
+docs/
+├── testing/          # Hardening, RNG, determinism
+├── architecture/     # Death accounting, provenance
+├── results/          # Validation reports
+├── designs/          # Cell Thalamus, scaffolding
+├── guides/           # Usage, code review
+├── meta/             # Maintenance, cleanup
+└── archive/          # Historical documents
+```
 
 ---
 
-## 🛠️ Advanced Features
+## 🎯 Phase Milestones
 
-### Multi-Fidelity Learning
-Transfer knowledge from cheap assays to expensive ones:
-```python
-reporter_gp = DoseResponseGP.from_dataframe(df_reporter, ...)
+### ✅ Phase 0: Cell Thalamus World Model
+**Status**: Production complete
 
-primary_gp = DoseResponseGP.from_dataframe_with_prior(
-    df_primary, ..., 
-    prior_model=reporter_gp,
-    prior_weight=0.3
-)
+- Biologically-grounded simulation (2,304 wells)
+- Fixed sentinel scaffolding (28 positions, 0 errors/warnings)
+- Cell Painting + LDH readouts
+- Deterministic execution (cross-machine verified)
+- JupyterHub deployment (50-100× speedup)
+
+### ✅ Phase 1: Epistemic Agent (v0.4.2)
+**Status**: Core complete, validation in progress
+
+- Pay-for-calibration regime enforced
+- Gate lock invariant (rel_width ≤ 0.25)
+- Evidence ledgers (complete provenance)
+- Symmetric gate events (earned + lost)
+- Template library (baseline, edge, dose-ladder)
+
+### 🚧 Phase 2: Advanced Discovery (Planned)
+- Multi-fidelity learning
+- Hit calling pipeline
+- DINO embedding analysis
+- Real hardware integration
+
+---
+
+## 🛠️ Advanced Usage
+
+### Multi-Seed Validation
+
+Verify determinism and gate statistics across seeds:
+
+```bash
+python scripts/benchmark_multiseed.py --seeds 10 --budget 384 --cycles 20
 ```
 
-### Inventory Depletion
-Track reagent consumption:
-```python
-inventory = Inventory("data/raw/pricing.yaml")
-inventory.consume("DMEM_MEDIA", 500.0, "mL")
+**Output:**
+```
+Gate earned: 8/10 (80%)
+Rel width: mean=0.0782, min=0.0651, max=0.0893
+DF: mean=44, min=44, max=44
+Cycles to gate: mean=4.2, min=4, max=5
 ```
 
-### Custom Agents
-Extend the platform:
-```python
-from core.state_manager import StateManager
+### Custom Templates
 
-class MyAgent:
-    def __init__(self, config, experiment_id=None):
-        self.state_manager = StateManager(experiment_id)
-        
-    def run(self):
-        state = self.state_manager.load_state("MyAgent_v1")
-        # Your logic here
-        self.state_manager.save_state("MyAgent_v1", {"status": "done"})
+Extend the agent with new experiment templates:
+
+```python
+from cell_os.epistemic_agent.agent.policy_rules import RuleBasedPolicy
+
+class MyPolicy(RuleBasedPolicy):
+    def _template_my_experiment(self, cap: dict, reason: str):
+        # Your custom experiment design
+        return Proposal(...)
 ```
 
 ---
 
 ## 🎯 Roadmap
 
-- [x] Hardware Abstraction Layer
-- [x] Unified ExperimentDB
-- [x] Agent Persistence & Crash Recovery
-- [x] CLI Tools with YAML configs
-- [x] 8-Tab Dashboard
-- [ ] Real hardware integration (SiLA2/vendor APIs)
-- [ ] DINO embedding analysis
+### Completed ✅
+- [x] Cell Thalamus world simulator (Phase 0)
+- [x] Fixed sentinel scaffolding with provenance
+- [x] Epistemic agent with pay-for-calibration (Phase 1)
+- [x] Evidence ledgers + gate events
+- [x] Observer-independent physics
+- [x] JupyterHub deployment (determinism verified)
+- [x] Documentation consolidation
+
+### In Progress 🚧
+- [ ] Phase 1 validation campaigns
+- [ ] Dashboard integration for v0.4.2
+- [ ] Benchmark suite for gate statistics
+
+### Planned 📋
+- [ ] Multi-fidelity learning (transfer from cheap → expensive assays)
 - [ ] Hit calling pipeline
-- [ ] Notification system (Slack/Email)
+- [ ] DINO embedding analysis
+- [ ] Real hardware integration (SiLA2/vendor APIs)
+- [ ] Notification system (Slack/email)
 
 ---
 
@@ -313,8 +379,15 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Credits
+## 🙏 Acknowledgments
 
-Built by the cell_OS team. Inspired by the vision of autonomous biology.
+Built with careful attention to biological realism, statistical rigor, and epistemic honesty.
 
-**Questions?** Open an issue or read the [User Guide](docs/guides/USER_GUIDE.md).
+**Design Principles** (from Phase 0 discoveries):
+- Morphology-first principle (transport collapse → attrition → death)
+- Pay-for-calibration (earn noise gate before biology)
+- Observer independence (physics-based, not measurement-dependent)
+- Provenance tracking (every claim has receipts)
+- Gate lock invariant (once earned, verify still valid)
+
+**Questions?** See [docs/DEVELOPER_REFERENCE.md](docs/DEVELOPER_REFERENCE.md) or open an issue.
