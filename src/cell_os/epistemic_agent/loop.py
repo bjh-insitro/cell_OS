@@ -124,6 +124,9 @@ class EpistemicLoop:
                                 reason=str(e),
                             )
                             append_decisions_jsonl(self.decisions_file, [abort_decision])
+
+                    # Save JSON metadata before exiting
+                    self._save_json()
                     break
                 else:
                     raise

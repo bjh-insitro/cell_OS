@@ -6,6 +6,7 @@ import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
 import ViewingPage from './pages/CellThalamus/ViewingPage';
 import AutonomousLoopPage from './pages/AutonomousLoopPage';
+import EpistemicProvenancePage from './pages/EpistemicProvenancePage';
 
 function App() {
     return (
@@ -17,6 +18,7 @@ function App() {
                 <Route path="/cell-thalamus" element={<CellThalamusPage />} />
                 <Route path="/cell-thalamus/viewing" element={<ViewingPage />} />
                 <Route path="/autonomous-loop" element={<AutonomousLoopPage />} />
+                <Route path="/epistemic-provenance" element={<EpistemicProvenancePage />} />
                 <Route path="/under-development" element={<UnderDevelopmentPage />} />
             </Routes>
         </Router>

@@ -131,6 +131,13 @@ const LandingPage: React.FC = () => {
                             <span>🔄</span>
                             <span>Autonomous Loop</span>
                         </button>
+                        <button
+                            onClick={() => navigate('/epistemic-provenance')}
+                            className="px-8 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-full shadow-lg hover:shadow-amber-500/25 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 justify-center"
+                        >
+                            <span>🔬</span>
+                            <span>Epistemic Provenance</span>
+                        </button>
                     </div>
                 </div>
 
