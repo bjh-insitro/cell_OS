@@ -951,22 +951,23 @@ class BiologicalVirtualMachine(VirtualMachine):
         Detect if a well is on the edge of a plate (evaporation/temperature artifacts).
 
         Args:
-            well_position: Well position like 'A1', 'H12'
+            well_position: Well position like 'A1', 'H12', or 'Plate1_A01'
             plate_format: 96 or 384
 
         Returns:
             True if well is on edge (row A or H, column 1 or 12 for 96-well)
         """
-        if not well_position or len(well_position) < 2:
+        if not well_position:
             return False
 
-        row = well_position[0]
-        col_str = well_position[1:]
-
-        try:
-            col = int(col_str)
-        except ValueError:
+        # Extract well position from formats like "Plate1_A01" or just "A01"
+        import re
+        match = re.search(r'([A-P])(\d{1,2})$', well_position)
+        if not match:
             return False
+
+        row = match.group(1)
+        col = int(match.group(2))
 
         if plate_format == 96:
             # 96-well: 8 rows (A-H), 12 columns (1-12)
@@ -1040,6 +1041,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         }
 
         # Apply compound effects via stress axes
+        stress_axis = None  # Track the stress axis for transport dysfunction calculation
         for compound_name, dose_uM in vessel.compounds.items():
             if dose_uM == 0:
                 continue
@@ -1102,14 +1104,18 @@ class BiologicalVirtualMachine(VirtualMachine):
         morph_struct = morph.copy()
 
         # Compute dysfunction using biology_core (single source of truth)
-        transport_dysfunction_score = biology_core.compute_transport_dysfunction_score(
-            cell_line=cell_line,
-            stress_axis=stress_axis,
-            actin_signal=morph['actin'],
-            mito_signal=morph['mito'],
-            baseline_actin=baseline['actin'],
-            baseline_mito=baseline['mito']
-        )
+        # If no compounds, no dysfunction
+        if stress_axis is not None:
+            transport_dysfunction_score = biology_core.compute_transport_dysfunction_score(
+                cell_line=cell_line,
+                stress_axis=stress_axis,
+                actin_signal=morph['actin'],
+                mito_signal=morph['mito'],
+                baseline_actin=baseline['actin'],
+                baseline_mito=baseline['mito']
+            )
+        else:
+            transport_dysfunction_score = 0.0
 
         # Store for attrition calculation during advance_time
         vessel.transport_dysfunction = transport_dysfunction_score

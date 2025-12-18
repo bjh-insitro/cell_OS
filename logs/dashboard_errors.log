@@ -253,3 +253,45 @@ Traceback (most recent call last):
 TypeError: VendorVialSpec.__init__() got an unexpected keyword argument 'vendor'
 
 ------------------------------------------------------------
+[2025-12-18T07:17:18.773843] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/cell_OS/dashboard_app/pages/tab_campaign_posh/main.py", line 189, in render_posh_campaign_manager
+    result = _cached_mcb_simulation(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/caching/cache_utils.py", line 219, in __call__
+    return self._get_or_create_cached_value(args, kwargs, spinner_message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/caching/cache_utils.py", line 261, in _get_or_create_cached_value
+    return self._handle_cache_miss(cache, value_key, func_args, func_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/caching/cache_utils.py", line 320, in _handle_cache_miss
+    computed_value = self._info.func(*func_args, **func_kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bjh/cell_OS/dashboard_app/pages/tab_campaign_posh/main.py", line 58, in _cached_mcb_simulation
+    VendorVialSpec(
+TypeError: VendorVialSpec.__init__() got an unexpected keyword argument 'vendor'
+
+------------------------------------------------------------
+[2025-12-18T07:17:19.228909] POSH Campaign Sim
+Traceback (most recent call last):
+  File "/Users/bjh/cell_OS/dashboard_app/app.py", line 147, in render_page
+    page_config.render_function(df, pricing)
+  File "/Users/bjh/cell_OS/dashboard_app/pages/tab_campaign_posh/main.py", line 189, in render_posh_campaign_manager
+    result = _cached_mcb_simulation(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/caching/cache_utils.py", line 219, in __call__
+    return self._get_or_create_cached_value(args, kwargs, spinner_message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/caching/cache_utils.py", line 261, in _get_or_create_cached_value
+    return self._handle_cache_miss(cache, value_key, func_args, func_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/lib/python3.11/site-packages/streamlit/runtime/caching/cache_utils.py", line 320, in _handle_cache_miss
+    computed_value = self._info.func(*func_args, **func_kwargs)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bjh/cell_OS/dashboard_app/pages/tab_campaign_posh/main.py", line 58, in _cached_mcb_simulation
+    VendorVialSpec(
+TypeError: VendorVialSpec.__init__() got an unexpected keyword argument 'vendor'
+
+------------------------------------------------------------
