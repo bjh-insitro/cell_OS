@@ -1,0 +1,181 @@
+"""
+Tests for mechanistic death models in BiologicalVirtualMachine.
+
+These tests verify that nutrient depletion and mitotic catastrophe
+create "new controllable knobs" for the agent to plan around.
+"""
+
+import pytest
+from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+
+
+def test_nutrient_depletion_causes_time_dependence():
+    """
+    Test that nutrient depletion causes time-dependent death,
+    and feeding rescues viability.
+
+    Setup: Two identical wells (A and B), no compound
+    - Simulate 72h
+    - Well A: feed at 48h
+    - Well B: no feed (starves)
+
+    Expected: viability_A > viability_B by clear margin
+    """
+    # Create two identical VMs
+    vm_fed = BiologicalVirtualMachine(seed=0)
+    vm_unfed = BiologicalVirtualMachine(seed=0)
+
+    # Seed identical vessels (high density to accelerate nutrient depletion)
+    initial_count = 5e6  # Half capacity, will grow and deplete nutrients
+    vm_fed.seed_vessel("well_A", "A549", initial_count, capacity=1e7)
+    vm_unfed.seed_vessel("well_B", "A549", initial_count, capacity=1e7)
+
+    # Advance 48h (nutrients should be getting low)
+    vm_fed.advance_time(48.0)
+    vm_unfed.advance_time(48.0)
+
+    # Feed well A (resets nutrients)
+    vm_fed.feed_vessel("well_A", glucose_mM=25.0, glutamine_mM=4.0)
+
+    # Continue for another 24h (total 72h)
+    vm_fed.advance_time(24.0)
+    vm_unfed.advance_time(24.0)
+
+    # Check final viability
+    vessel_fed = vm_fed.vessel_states["well_A"]
+    vessel_unfed = vm_unfed.vessel_states["well_B"]
+
+    print(f"Fed viability: {vessel_fed.viability:.3f}")
+    print(f"Unfed viability: {vessel_unfed.viability:.3f}")
+    print(f"Fed death_starvation: {vessel_fed.death_starvation:.3f}")
+    print(f"Unfed death_starvation: {vessel_unfed.death_starvation:.3f}")
+    print(f"Fed glucose: {vessel_fed.media_glucose_mM:.1f} mM")
+    print(f"Unfed glucose: {vessel_unfed.media_glucose_mM:.1f} mM")
+
+    # Fed vessel should have higher viability
+    assert vessel_fed.viability > vessel_unfed.viability, (
+        f"Feeding should rescue viability: fed={vessel_fed.viability:.3f} vs unfed={vessel_unfed.viability:.3f}"
+    )
+
+    # Margin should be substantial (at least 5% viability difference)
+    viability_margin = vessel_fed.viability - vessel_unfed.viability
+    assert viability_margin > 0.05, (
+        f"Feeding should rescue by >5%: margin={viability_margin:.3f}"
+    )
+
+    # Unfed vessel should show starvation death
+    assert vessel_unfed.death_starvation > 0.01, (
+        f"Unfed vessel should show starvation: {vessel_unfed.death_starvation:.3f}"
+    )
+
+    # Fed vessel should show less starvation (or none if feeding was effective)
+    assert vessel_fed.death_starvation < vessel_unfed.death_starvation, (
+        f"Fed vessel should have less starvation: fed={vessel_fed.death_starvation:.3f} vs unfed={vessel_unfed.death_starvation:.3f}"
+    )
+
+
+def test_mitotic_catastrophe_spares_quiescent():
+    """
+    Test that mitotic catastrophe specifically targets dividing cells.
+
+    Setup: Two vessels with different doubling times (18h vs 72h)
+    - Apply same microtubule drug dose (e.g., paclitaxel)
+    - Simulate 24h
+
+    Expected: Fast cycler (18h) loses MORE viability than slow cycler (72h)
+    because more cells attempt mitosis and fail.
+    """
+    vm = BiologicalVirtualMachine(seed=0)
+
+    # Seed two vessels with same cell line but different doubling times
+    vm.seed_vessel("fast_cycler", "A549", initial_count=1e6, capacity=1e7)
+    vm.seed_vessel("slow_cycler", "A549", initial_count=1e6, capacity=1e7)
+
+    # Override doubling times to create fast vs slow cyclers
+    vm.vessel_states["fast_cycler"].doubling_time_h = 18.0  # Fast
+    vm.vessel_states["slow_cycler"].doubling_time_h = 72.0  # Slow/quiescent
+
+    # Use low dose (0.1× IC50) to keep cells mostly viable
+    # This lets us see differential mitotic catastrophe without overwhelming attrition
+    dose_uM = 0.001  # 0.1× IC50 (paclitaxel IC50 ~0.01 µM)
+
+    vm.treat_with_compound("fast_cycler", "paclitaxel", dose_uM)
+    vm.treat_with_compound("slow_cycler", "paclitaxel", dose_uM)
+
+    # Simulate 24h (fast cycler will attempt ~1.3 divisions, slow cycler ~0.33)
+    vm.advance_time(24.0)
+
+    # Check viability and mitotic catastrophe death
+    fast = vm.vessel_states["fast_cycler"]
+    slow = vm.vessel_states["slow_cycler"]
+
+    print(f"Fast cycler (18h doubling) viability: {fast.viability:.3f}")
+    print(f"Slow cycler (72h doubling) viability: {slow.viability:.3f}")
+    print(f"Fast death_mitotic_catastrophe: {fast.death_mitotic_catastrophe:.3f}")
+    print(f"Slow death_mitotic_catastrophe: {slow.death_mitotic_catastrophe:.3f}")
+    print(f"Fast death_compound: {fast.death_compound:.3f}")
+    print(f"Slow death_compound: {slow.death_compound:.3f}")
+
+    # Fast cycler should show MORE mitotic catastrophe death
+    assert fast.death_mitotic_catastrophe > slow.death_mitotic_catastrophe, (
+        f"Fast cycler should have more mitotic catastrophe: "
+        f"fast={fast.death_mitotic_catastrophe:.3f} vs slow={slow.death_mitotic_catastrophe:.3f}"
+    )
+
+    # At low dose, even a 0.5% difference is meaningful (typical: ~4-6% for fast, ~2% for slow)
+    mitotic_margin = fast.death_mitotic_catastrophe - slow.death_mitotic_catastrophe
+    assert mitotic_margin > 0.005, (
+        f"Mitotic catastrophe should be >0.5% higher in fast cycler: margin={mitotic_margin:.3f}"
+    )
+
+    # Fast cycler should have lower viability overall
+    assert fast.viability < slow.viability, (
+        f"Fast cycler should have lower viability: fast={fast.viability:.3f} vs slow={slow.viability:.3f}"
+    )
+
+
+def test_feature_flags_disable_mechanisms():
+    """
+    Test that feature flags can disable mechanisms.
+
+    This ensures mechanisms are truly opt-in and don't break existing code.
+    """
+    import cell_os.hardware.biological_virtual as bio_vm_module
+
+    # Save original flags
+    orig_nutrient = bio_vm_module.ENABLE_NUTRIENT_DEPLETION
+    orig_mitotic = bio_vm_module.ENABLE_MITOTIC_CATASTROPHE
+
+    try:
+        # Disable both mechanisms
+        bio_vm_module.ENABLE_NUTRIENT_DEPLETION = False
+        bio_vm_module.ENABLE_MITOTIC_CATASTROPHE = False
+
+        vm = BiologicalVirtualMachine(seed=0)
+        vm.seed_vessel("test", "A549", initial_count=5e6, capacity=1e7)
+
+        # Advance without feeding (would normally cause starvation)
+        vm.advance_time(72.0)
+
+        vessel = vm.vessel_states["test"]
+
+        # No starvation death should occur
+        assert vessel.death_starvation == 0.0, (
+            f"With ENABLE_NUTRIENT_DEPLETION=False, no starvation should occur: "
+            f"{vessel.death_starvation:.3f}"
+        )
+
+        # Treat with microtubule drug
+        vm.treat_with_compound("test", "paclitaxel", 0.05)
+        vm.advance_time(24.0)
+
+        # No mitotic catastrophe should occur
+        assert vessel.death_mitotic_catastrophe == 0.0, (
+            f"With ENABLE_MITOTIC_CATASTROPHE=False, no mitotic catastrophe should occur: "
+            f"{vessel.death_mitotic_catastrophe:.3f}"
+        )
+
+    finally:
+        # Restore original flags
+        bio_vm_module.ENABLE_NUTRIENT_DEPLETION = orig_nutrient
+        bio_vm_module.ENABLE_MITOTIC_CATASTROPHE = orig_mitotic

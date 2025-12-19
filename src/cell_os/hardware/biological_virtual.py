@@ -28,6 +28,27 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+###############################################################################
+# Mechanism feature flags (keep simple, no config plumbing needed yet)
+###############################################################################
+ENABLE_NUTRIENT_DEPLETION = True
+ENABLE_MITOTIC_CATASTROPHE = True
+
+# Nutrient defaults (DMEM-ish, intentionally coarse)
+DEFAULT_MEDIA_GLUCOSE_mM = 25.0
+DEFAULT_MEDIA_GLUTAMINE_mM = 4.0
+
+# Nutrient stress thresholds (below these, stress begins)
+GLUCOSE_STRESS_THRESHOLD_mM = 5.0
+GLUTAMINE_STRESS_THRESHOLD_mM = 1.0
+
+# Max starvation death intensity (per hour) at full depletion
+MAX_STARVATION_RATE_PER_H = 0.05
+
+# Mitosis model
+DEFAULT_DOUBLING_TIME_H = 24.0
+
+
 def stable_u32(s: str) -> int:
     """
     Stable deterministic hash for RNG seeding.
@@ -71,6 +92,18 @@ class VesselState:
         self.death_confluence = 0.0  # Fraction killed by overconfluence
         self.death_unknown = 0.0  # Fraction killed by unknown causes (seeding stress, etc.)
         self.death_mode = None  # "compound", "confluence", "mixed", "unknown", None
+
+        # Mechanistic biology state
+        # Media nutrients (simple scalars). last_feed_time already exists as the clock anchor.
+        self.media_glucose_mM = DEFAULT_MEDIA_GLUCOSE_mM
+        self.media_glutamine_mM = DEFAULT_MEDIA_GLUTAMINE_mM
+
+        # Per-cell-line kinetics hook (can be overwritten elsewhere if you already do this)
+        self.doubling_time_h = DEFAULT_DOUBLING_TIME_H
+
+        # Additional death accounting (cumulative fractions)
+        self.death_starvation = 0.0
+        self.death_mitotic_catastrophe = 0.0
 
 
 class BiologicalVirtualMachine(VirtualMachine):
@@ -246,26 +279,106 @@ class BiologicalVirtualMachine(VirtualMachine):
         for vessel in self.vessel_states.values():
             self._step_vessel(vessel, hours)
 
+    def _apply_survival(self, vessel: VesselState, survival: float, death_field: str):
+        """
+        Apply multiplicative survival to both viability and cell_count,
+        and increment a cumulative death accounting field by delta viability.
+        """
+        survival = float(np.clip(survival, 0.0, 1.0))
+        prev_viability = vessel.viability
+        vessel.viability *= survival
+        vessel.cell_count *= survival
+        killed_fraction = prev_viability - vessel.viability
+        current = getattr(vessel, death_field, 0.0)
+        current += killed_fraction
+        setattr(vessel, death_field, min(1.0, max(0.0, current)))
+
+    def _update_nutrient_depletion(self, vessel: VesselState, hours: float):
+        """
+        Nutrient depletion driven by viable cell load.
+        Uses last_feed_time as the reset clock, but maintains explicit nutrient levels.
+        """
+        # If feeding was never called, we still treat media as aging since seed.
+        # last_feed_time already exists; it becomes meaningful with feed_vessel().
+        viable_cells = vessel.cell_count * vessel.viability
+
+        # Convert vessel_capacity into a coarse proxy for "media volume"
+        # Higher capacity means effectively more media buffering.
+        # This keeps the model stable without adding a new volume field everywhere.
+        media_buffer = max(1.0, float(vessel.vessel_capacity) / 1e7)  # ~1.0 at default capacity
+
+        # Consumption rates in mM per hour, scaled by viable cell load.
+        # These are intentionally simple and tunable.
+        # Scaling chosen so depletion happens on multi-day timescales near confluence.
+        glucose_drop = (viable_cells / 1e7) * (0.8 / media_buffer) * hours   # mM
+        glutamine_drop = (viable_cells / 1e7) * (0.12 / media_buffer) * hours # mM
+
+        vessel.media_glucose_mM = max(0.0, vessel.media_glucose_mM - glucose_drop)
+        vessel.media_glutamine_mM = max(0.0, vessel.media_glutamine_mM - glutamine_drop)
+
+        glucose_stress = max(0.0, (GLUCOSE_STRESS_THRESHOLD_mM - vessel.media_glucose_mM) / GLUCOSE_STRESS_THRESHOLD_mM)
+        glutamine_stress = max(0.0, (GLUTAMINE_STRESS_THRESHOLD_mM - vessel.media_glutamine_mM) / GLUTAMINE_STRESS_THRESHOLD_mM)
+        nutrient_stress = max(glucose_stress, glutamine_stress)
+
+        if nutrient_stress <= 0.0:
+            return
+
+        starvation_rate = MAX_STARVATION_RATE_PER_H * nutrient_stress
+        survival = float(np.exp(-starvation_rate * hours))
+        self._apply_survival(vessel, survival, "death_starvation")
+
+    def _apply_mitotic_catastrophe(self, vessel: VesselState, stress_axis: str, dose_uM: float, ic50_uM: float, hours: float):
+        """
+        Mitotic catastrophe: only affects dividing cells and only for microtubule-axis stress.
+        Implemented as additional death beyond generic attrition.
+        """
+        if stress_axis != "microtubule":
+            return
+        viable_cells = vessel.cell_count * vessel.viability
+        if viable_cells <= 0:
+            return
+
+        dt = max(1e-6, float(getattr(vessel, "doubling_time_h", DEFAULT_DOUBLING_TIME_H)))
+        mitosis_rate = float(np.log(2.0) / dt)  # fraction attempting division per hour
+
+        # Fraction attempting mitosis in this interval
+        attempting = viable_cells * (1.0 - float(np.exp(-mitosis_rate * hours)))
+
+        # Failure probability is dose-dependent; bounded [0,1]
+        ic50 = max(1e-9, float(ic50_uM))
+        p_fail = float(dose_uM / (dose_uM + ic50))
+
+        # Convert dead cells to a survival multiplier on the whole population
+        dead_cells = attempting * p_fail
+        frac_dead = dead_cells / max(1.0, vessel.cell_count)
+        survival = float(np.clip(1.0 - frac_dead, 0.0, 1.0))
+        self._apply_survival(vessel, survival, "death_mitotic_catastrophe")
+
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
 
         Order matters:
         1. Growth (viable cells only)
-        2. Compound attrition (time-dependent death)
-        3. Confluence management (cap growth, no killing)
-        4. Update death mode label
+        2. Nutrient depletion (time-dependent death, logistics coupling)
+        3. Compound attrition (time-dependent death)
+        4. Confluence management (cap growth, no killing)
+        5. Update death mode label
         """
         # 1) Growth (viable cells only - dead cells don't grow)
         self._update_vessel_growth(vessel, hours)
 
-        # 2) Apply compound attrition (time-dependent)
+        # 2) Nutrient depletion (opt-in)
+        if ENABLE_NUTRIENT_DEPLETION:
+            self._update_nutrient_depletion(vessel, hours)
+
+        # 3) Apply compound attrition (time-dependent)
         self._apply_compound_attrition(vessel, hours)
 
-        # 3) Manage confluence (cap growth, but don't kill cells)
+        # 4) Manage confluence (cap growth, but don't kill cells)
         self._manage_confluence(vessel)
 
-        # 4) Update death mode label
+        # 5) Update death mode label
         self._update_death_mode(vessel)
 
         vessel.last_update_time = self.simulated_time
@@ -371,6 +484,18 @@ class BiologicalVirtualMachine(VirtualMachine):
                 params=self.thalamus_params
             )
 
+            # Mechanism-specific add-on: mitotic catastrophe for microtubule stress
+            # IMPORTANT: This happens BEFORE attrition check because it's independent
+            # (dividing cells can fail mitosis even if they haven't committed to death yet)
+            if ENABLE_MITOTIC_CATASTROPHE:
+                self._apply_mitotic_catastrophe(
+                    vessel=vessel,
+                    stress_axis=stress_axis,
+                    dose_uM=float(dose_uM),
+                    ic50_uM=float(ic50_uM),
+                    hours=hours,
+                )
+
             # Compute attrition rate using biology_core (single source of truth)
             attrition_rate = biology_core.compute_attrition_rate(
                 cell_line=vessel.cell_line,
@@ -389,19 +514,12 @@ class BiologicalVirtualMachine(VirtualMachine):
                 continue
 
             # Apply attrition over this time interval (exponential survival)
-            prev_viability = vessel.viability
-            survival = np.exp(-attrition_rate * hours)
-            vessel.viability *= survival
-            vessel.cell_count *= survival
-
-            # Track death accounting (capped at [0, 1])
-            killed_fraction = prev_viability - vessel.viability
-            vessel.death_compound += killed_fraction
-            vessel.death_compound = min(1.0, max(0.0, vessel.death_compound))  # Cap cumulative fraction
+            survival = float(np.exp(-attrition_rate * hours))
+            self._apply_survival(vessel, survival, "death_compound")
 
             logger.debug(
                 f"{vessel.vessel_id}: Attrition rate={attrition_rate:.4f}/h, "
-                f"dys={transport_dysfunction:.3f}, killed={killed_fraction:.1%} over {hours:.1f}h"
+                f"dys={transport_dysfunction:.3f}, survival={survival:.3f} over {hours:.1f}h"
             )
 
     def _manage_confluence(self, vessel: VesselState):
@@ -430,7 +548,13 @@ class BiologicalVirtualMachine(VirtualMachine):
         """
         Update death mode label and partition death into known causes.
 
-        Enforces complete accounting: death_compound + death_confluence + death_unknown = 1 - viability
+        Enforces complete accounting: sum of all death causes = 1 - viability
+
+        Known death causes:
+        - death_compound: Instant viability effect + attrition
+        - death_starvation: Nutrient depletion
+        - death_mitotic_catastrophe: Mitotic failure under microtubule stress
+        - death_confluence: Overconfluence stress
 
         Unknown death includes:
         - Seeding stress (initial viability < 1.0)
@@ -439,7 +563,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         """
         # Compute total death and currently tracked causes
         total_dead = 1.0 - vessel.viability
-        tracked_causes = vessel.death_compound + vessel.death_confluence
+        tracked_causes = (
+            vessel.death_compound
+            + vessel.death_starvation
+            + vessel.death_mitotic_catastrophe
+            + vessel.death_confluence
+        )
         untracked = max(0.0, total_dead - tracked_causes)
 
         # Partition untracked death into death_unknown bucket
@@ -464,6 +593,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             logger.warning(
                 f"{vessel.vessel_id}: Unknown death ({vessel.death_unknown:.1%}) exceeds seeding baseline. "
                 f"Total dead: {total_dead:.1%}, compound: {vessel.death_compound:.1%}, "
+                f"starvation: {vessel.death_starvation:.1%}, "
+                f"mitotic: {vessel.death_mitotic_catastrophe:.1%}, "
                 f"confluence: {vessel.death_confluence:.1%}. Suggests delta tracking error."
             )
 
@@ -508,7 +639,34 @@ class BiologicalVirtualMachine(VirtualMachine):
         state.seed_time = self.simulated_time
         self.vessel_states[vessel_id] = state
         logger.info(f"Seeded {vessel_id} with {initial_count:.2e} {cell_line} cells (viability={state.viability:.1%})")
-        
+
+    def feed_vessel(
+        self,
+        vessel_id: str,
+        glucose_mM: float = DEFAULT_MEDIA_GLUCOSE_mM,
+        glutamine_mM: float = DEFAULT_MEDIA_GLUTAMINE_mM,
+    ) -> Dict[str, Any]:
+        """
+        Media change / feed: resets nutrient levels and last_feed_time.
+        This gives the agent an actual intervention for nutrient stress.
+        """
+        if vessel_id not in self.vessel_states:
+            return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
+
+        vessel = self.vessel_states[vessel_id]
+        vessel.media_glucose_mM = float(max(0.0, glucose_mM))
+        vessel.media_glutamine_mM = float(max(0.0, glutamine_mM))
+        vessel.last_feed_time = self.simulated_time
+        logger.info(f"Fed {vessel_id} (glucose={vessel.media_glucose_mM:.1f}mM, glutamine={vessel.media_glutamine_mM:.1f}mM)")
+        return {
+            "status": "success",
+            "action": "feed",
+            "vessel_id": vessel_id,
+            "media_glucose_mM": vessel.media_glucose_mM,
+            "media_glutamine_mM": vessel.media_glutamine_mM,
+            "time": self.simulated_time,
+        }
+
     def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:
         """Count cells with realistic biological variation."""
         vessel_id = kwargs.get("vessel_id", sample_loc)
