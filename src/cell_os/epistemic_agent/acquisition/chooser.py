@@ -13,6 +13,7 @@ v0.4.2: Baseline noise gate implementation.
 from typing import Tuple, Optional, Any, Dict, List
 from ..beliefs.state import BeliefState
 from ..beliefs.ledger import DecisionEvent
+from ..exceptions import DecisionReceiptInvariantError
 
 
 class TemplateChooser:
@@ -20,6 +21,96 @@ class TemplateChooser:
 
     def __init__(self):
         self.last_decision_event: Optional[DecisionEvent] = None
+
+    # Required fields for all decision receipts (Covenant 6)
+    REQUIRED_DECISION_FIELDS = {"template", "forced", "trigger", "regime", "gate_state"}
+
+    def _assert_decision_receipt(self) -> None:
+        """Enforce Covenant 6: Every Decision Must Have a Receipt.
+
+        This invariant check ensures no code path can return from choose_next()
+        without writing a complete decision receipt with provenance.
+
+        Raises:
+            DecisionReceiptInvariantError: If receipt is missing or incomplete
+        """
+        ev = self.last_decision_event
+        if ev is None:
+            raise DecisionReceiptInvariantError(
+                "choose_next() returned without writing last_decision_event. "
+                "This is a Covenant 6 violation."
+            )
+
+        cand = getattr(ev, "selected_candidate", None)
+        if not isinstance(cand, dict):
+            raise DecisionReceiptInvariantError(
+                f"last_decision_event.selected_candidate must be dict, got {type(cand)}"
+            )
+
+        # Check required fields
+        missing = self.REQUIRED_DECISION_FIELDS - set(cand.keys())
+        if missing:
+            raise DecisionReceiptInvariantError(
+                f"Decision receipt missing required fields: {sorted(missing)}. "
+                f"Present: {sorted(cand.keys())}"
+            )
+
+        # If forced calibration or abort, enforcement_layer should be present
+        if cand.get("forced") is True:
+            if "enforcement_layer" not in cand:
+                raise DecisionReceiptInvariantError(
+                    f"Forced decision (template={cand.get('template')}) missing enforcement_layer field. "
+                    "This makes it impossible to distinguish which policy layer enforced the decision."
+                )
+
+        # enforcement_layer semantic consistency
+        enforcement = cand.get("enforcement_layer")
+        trigger = cand.get("trigger")
+
+        allowed_layers = {"global_pre_biology", "template_safety_net", "policy_boundary"}
+        if enforcement is not None and enforcement not in allowed_layers:
+            raise DecisionReceiptInvariantError(
+                f"Invalid enforcement_layer={enforcement}. Allowed: {sorted(allowed_layers)}"
+            )
+
+        # If trigger is policy boundary, enforcement layer must be policy boundary
+        if trigger == "policy_boundary":
+            if enforcement != "policy_boundary":
+                raise DecisionReceiptInvariantError(
+                    f"trigger=policy_boundary requires enforcement_layer=policy_boundary, got {enforcement}"
+                )
+
+        # If we have an explicit blocked/override story, require template_safety_net semantics
+        has_override_provenance = any(k in cand for k in ("blocked_template", "missing_gates"))
+        if has_override_provenance:
+            if enforcement not in ("global_pre_biology", "template_safety_net"):
+                raise DecisionReceiptInvariantError(
+                    "Decision includes override provenance (blocked_template/missing_gates) "
+                    "but enforcement_layer is missing or not an enforcement layer."
+                )
+            # If missing_gates exists, it must be a non-empty list
+            if "missing_gates" in cand:
+                mg = cand.get("missing_gates")
+                if not isinstance(mg, list) or len(mg) == 0:
+                    raise DecisionReceiptInvariantError(
+                        f"missing_gates must be a non-empty list when present, got {mg}"
+                    )
+
+        # Non-forced scoring decisions should not claim enforcement_layer
+        if cand.get("forced") is not True and trigger == "scoring":
+            if enforcement is not None:
+                raise DecisionReceiptInvariantError(
+                    f"Non-forced scoring decision must not set enforcement_layer, got {enforcement}"
+                )
+
+        # If abort, must have provenance showing what was attempted
+        selected = getattr(ev, "selected", "")
+        if "abort" in selected.lower():
+            if "attempted_template" not in cand and "calibration_plan" not in cand:
+                raise DecisionReceiptInvariantError(
+                    f"Abort decision (selected={selected}) missing attempted_template or calibration_plan. "
+                    "Refusals must explain what was refused and why."
+                )
 
     def _set_last_decision(
         self,
@@ -371,6 +462,10 @@ class TemplateChooser:
             reason=reason,
             selected_candidate=candidate_fields
         )
+
+        # Covenant 6 invariant: Ensure receipt was written correctly
+        self._assert_decision_receipt()
+
         return (template_name, template_kwargs)
 
     def choose_next(
@@ -422,6 +517,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "abort",
                         "regime": "integrity_error",
+                        "enforcement_layer": "global_pre_biology",
                         "gate_state": self._get_gate_state(beliefs)
                     }
                 )
@@ -446,6 +542,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "gate_lock",
                         "regime": "gate_revoked",
+                        "enforcement_layer": "global_pre_biology",
                         "gate_state": self._get_gate_state(beliefs),
                         "n_reps": 12
                     }
@@ -488,6 +585,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "abort",
                         "regime": "pre_gate",
+                        "enforcement_layer": "global_pre_biology",
                         "gate_state": self._get_gate_state(beliefs),
                         "calibration_plan": calibration_plan
                     }
@@ -509,6 +607,7 @@ class TemplateChooser:
                         "forced": True,
                         "trigger": "must_calibrate",
                         "regime": "pre_gate",
+                        "enforcement_layer": "global_pre_biology",
                         "gate_state": self._get_gate_state(beliefs),
                         "calibration_plan": calibration_plan
                     }
@@ -528,6 +627,7 @@ class TemplateChooser:
                     "forced": True,
                     "trigger": "must_calibrate",
                     "regime": "pre_gate",
+                    "enforcement_layer": "global_pre_biology",
                     "gate_state": self._get_gate_state(beliefs),
                     "calibration_plan": calibration_plan,
                     "n_reps": 12

@@ -1,17 +1,25 @@
 """
-Epistemic Covenant Violation Tests
+Epistemic Covenant Violation Tests (Tightened v2)
 
 Each test intentionally violates one of the Seven Covenants from EPISTEMIC_CHARTER.md
-and verifies that the system refuses the violation with the correct reason.
+and verifies that the system refuses the violation with the correct reason AND provenance.
 
-These are not tests of correct behavior. These are tests of correct *refusal*.
+These tests now check:
+- `trigger`, `enforcement_layer`, `blocked_template`, `missing_gates`, `calibration_plan`
+- Stable substrings in `reason` field
+- Specific gate states for relevant gates
+- Custom exception types where applicable
 
-The goal: prove the system knows why it's honest, not just that it is honest.
+Goal: Prove the system knows WHY it refused, not just THAT it refused.
 """
 
 import pytest
 from cell_os.epistemic_agent.beliefs.state import BeliefState
 from cell_os.epistemic_agent.acquisition.chooser import TemplateChooser
+from cell_os.epistemic_agent.exceptions import (
+    DecisionReceiptInvariantError,
+    BeliefLedgerInvariantError
+)
 from dataclasses import dataclass
 from typing import List
 
@@ -46,7 +54,12 @@ def test_covenant1_refuses_biology_without_instrument_gate():
     Violation: Attempt to run biology template (dose_ladder) before proving
     we understand the measurement instrument (LDH gate not earned).
 
-    Expected: System refuses with "must earn LDH gate" reason.
+    Expected: System refuses with "must earn LDH gate" reason, provenance shows:
+    - trigger="must_calibrate"
+    - enforcement_layer="global_pre_biology" (dominant enforcement path)
+    - assay="ldh"
+    - calibration_plan with df_needed, wells_needed
+    - gate_state shows ldh="lost"
     """
     beliefs = BeliefState()
     chooser = TemplateChooser()
@@ -80,12 +93,22 @@ def test_covenant1_refuses_biology_without_instrument_gate():
     assert template_name == "calibrate_ldh_baseline", \
         "Covenant 1 violation: Biology without instrument gate must be refused"
 
-    # Check decision receipt explains refusal
+    # Check decision receipt explains refusal with full provenance
     decision = chooser.last_decision_event
-    assert "ldh" in decision.selected_candidate.get("assay", ""), \
+    cand = decision.selected_candidate
+
+    assert cand["trigger"] == "must_calibrate", \
+        "Refusal must cite calibration requirement (trigger field)"
+    assert cand["enforcement_layer"] == "global_pre_biology", \
+        "Refusal must identify which policy layer enforced it"
+    assert cand["assay"] == "ldh", \
         "Refusal must explain which instrument gate is missing"
-    assert decision.selected_candidate["trigger"] == "must_calibrate", \
-        "Refusal must cite calibration requirement"
+    assert "calibration_plan" in cand, \
+        "Refusal must include calibration plan (cost estimate)"
+    assert cand["gate_state"]["ldh"] == "lost", \
+        "Refusal must record LDH gate status"
+    assert "ldh" in decision.reason.lower(), \
+        "Refusal reason must mention LDH"
 
 
 def test_covenant2_refuses_to_skip_calibration_as_first_experiment():
@@ -94,7 +117,11 @@ def test_covenant2_refuses_to_skip_calibration_as_first_experiment():
     Violation: Attempt to start with biology (compound testing) instead of
     establishing baseline measurement repeatability.
 
-    Expected: System forces baseline replicates as first action.
+    Expected: System forces baseline replicates as first action, provenance shows:
+    - trigger="must_calibrate"
+    - regime="pre_gate"
+    - calibration_plan with df_needed
+    - gate_state shows noise_sigma="lost"
     """
     beliefs = BeliefState()
     chooser = TemplateChooser()
@@ -116,10 +143,18 @@ def test_covenant2_refuses_to_skip_calibration_as_first_experiment():
 
     # Check decision receipt cites noise gate requirement
     decision = chooser.last_decision_event
-    assert decision.selected_candidate["trigger"] == "must_calibrate", \
+    cand = decision.selected_candidate
+
+    assert cand["trigger"] == "must_calibrate", \
         "First experiment refusal must cite calibration requirement"
-    assert decision.selected_candidate["regime"] == "pre_gate", \
+    assert cand["regime"] == "pre_gate", \
         "First experiment must be in pre-gate regime"
+    assert "calibration_plan" in cand, \
+        "First experiment refusal must include calibration plan"
+    assert cand["gate_state"]["noise_sigma"] == "lost", \
+        "Refusal must record noise gate status"
+    assert "noise" in decision.reason.lower() or "gate" in decision.reason.lower(), \
+        "Refusal reason must mention noise/gate"
 
 
 def test_covenant3_refuses_expensive_truth_before_cheap_truth():
@@ -128,7 +163,10 @@ def test_covenant3_refuses_expensive_truth_before_cheap_truth():
     Violation: Attempt to run scRNA calibration (expensive) before earning
     Cell Painting gate (cheap). Economic logic says earn cheap gates first.
 
-    Expected: System refuses scRNA calibration autonomously.
+    Expected: System refuses scRNA calibration autonomously, provenance shows:
+    - trigger="policy_boundary"
+    - attempted_template="calibrate_scrna_baseline"
+    - reason contains "expensive" and "authorization"
     """
     beliefs = BeliefState()
     chooser = TemplateChooser()
@@ -163,6 +201,8 @@ def test_covenant3_refuses_expensive_truth_before_cheap_truth():
         "Refusal must explain economic constraint"
     assert "manual" in abort_reason.lower() or "authorization" in abort_reason.lower(), \
         "Refusal must explain policy boundary"
+    assert "calibrate_scrna_baseline" in abort_reason, \
+        "Refusal must name the template being blocked"
 
 
 def test_covenant4_refuses_action_on_shadow_knowledge():
@@ -172,7 +212,10 @@ def test_covenant4_refuses_action_on_shadow_knowledge():
     running scRNA experiments (action), even though metrics look excellent.
 
     Expected: System tracks shadow stats but never sets gate to True,
-    preventing action despite good knowledge.
+    preventing action despite good knowledge. Shadow event must show:
+    - actionable=False
+    - metric_source contains "proxy"
+    - belief field scrna_metric_source="proxy:noisy_morphology"
     """
     beliefs = BeliefState()
     beliefs.begin_cycle(1)
@@ -205,12 +248,14 @@ def test_covenant4_refuses_action_on_shadow_knowledge():
 
     # Verify shadow event was emitted (knowledge tracked)
     scrna_shadow_events = [e for e in events if e.belief == "gate_shadow:scrna"]
-    if scrna_shadow_events:
-        shadow_event = scrna_shadow_events[0]
-        assert shadow_event.evidence.get("actionable") == False, \
-            "Shadow event must mark knowledge as non-actionable"
-        assert "proxy" in shadow_event.evidence.get("metric_source", ""), \
-            "Shadow event must explain why action is blocked"
+    assert len(scrna_shadow_events) > 0, \
+        "Shadow event must be emitted to track non-actionable knowledge"
+
+    shadow_event = scrna_shadow_events[0]
+    assert shadow_event.evidence.get("actionable") == False, \
+        "Shadow event must mark knowledge as non-actionable"
+    assert "proxy" in shadow_event.evidence.get("metric_source", ""), \
+        "Shadow event must explain why action is blocked (proxy metric)"
 
     # Verify metric_source field marks knowledge as proxy
     assert beliefs.scrna_metric_source == "proxy:noisy_morphology", \
@@ -223,7 +268,12 @@ def test_covenant5_refuses_to_proceed_when_economically_unjustified():
     Violation: Attempt to proceed with an experiment that we cannot afford,
     rather than explicitly refusing with budget provenance.
 
-    Expected: System aborts with calibration plan showing the gap.
+    Expected: System aborts with calibration plan showing the gap, provenance shows:
+    - template="abort_insufficient_calibration_budget"
+    - trigger="abort"
+    - forced=True
+    - calibration_plan with wells_needed > budget_remaining
+    - reason contains "Cannot afford"
     """
     beliefs = BeliefState()
     chooser = TemplateChooser()
@@ -252,14 +302,18 @@ def test_covenant5_refuses_to_proceed_when_economically_unjustified():
 
     # Check decision receipt includes calibration plan
     decision = chooser.last_decision_event
-    assert "calibration_plan" in decision.selected_candidate, \
-        "Refusal must show what we cannot afford"
-    assert decision.selected_candidate["trigger"] == "abort", \
-        "Refusal must be marked as abort trigger"
+    cand = decision.selected_candidate
 
-    # Verify refusal is recorded as scientific act (not silent skip)
-    assert decision.selected == "abort_insufficient_calibration_budget", \
+    assert cand["template"] == "abort_insufficient_calibration_budget", \
         "Refusal must have specific abort type"
+    assert cand["trigger"] == "abort", \
+        "Refusal must be marked as abort trigger"
+    assert cand["forced"] == True, \
+        "Abort is a forced decision (no choice)"
+    assert "calibration_plan" in cand, \
+        "Refusal must show what we cannot afford"
+    assert cand["calibration_plan"]["wells_needed"] > low_budget, \
+        "Calibration plan must show wells needed exceeds budget"
 
 
 def test_covenant6_refuses_to_act_without_recording_receipt():
@@ -268,7 +322,8 @@ def test_covenant6_refuses_to_act_without_recording_receipt():
     Violation: If enforcement overrides a template but forgets to write
     the decision receipt, the split-brain contract should fail-loud.
 
-    Expected: System crashes with AssertionError explaining contract violation.
+    Expected: System crashes with DecisionReceiptInvariantError explaining
+    contract violation.
     """
     beliefs = BeliefState()
     chooser = TemplateChooser()
@@ -279,7 +334,7 @@ def test_covenant6_refuses_to_act_without_recording_receipt():
     beliefs.noise_rel_width = 0.20
     beliefs.ldh_sigma_stable = False  # Missing gate
 
-    # Manually corrupt the contract: make _check_assay_gate return wrong result
+    # Manually corrupt the contract: make _enforce_template_gates return wrong result
     # but don't let enforcement write a receipt
     original_enforce = chooser._enforce_template_gates
 
@@ -290,7 +345,7 @@ def test_covenant6_refuses_to_act_without_recording_receipt():
     # This should trigger the invariant check
     from unittest.mock import patch
     with patch.object(chooser, '_enforce_template_gates', side_effect=corrupt_enforce_no_receipt):
-        try:
+        with pytest.raises(AssertionError) as exc_info:
             # _finalize_selection calls _enforce_template_gates, gets override,
             # checks invariant, should raise AssertionError
             chooser._finalize_selection(
@@ -306,11 +361,10 @@ def test_covenant6_refuses_to_act_without_recording_receipt():
                 trigger="scoring",
                 regime="in_gate"
             )
-            pytest.fail("Covenant 6 violation: Override without receipt should fail-loud")
-        except AssertionError as e:
-            # Expected: invariant check catches missing receipt
-            assert "did not set last_decision_event" in str(e), \
-                "Failure must explain missing receipt"
+
+        # Expected: invariant check catches missing receipt
+        assert "did not set last_decision_event" in str(exc_info.value), \
+            "Failure must explain missing receipt (contract violation)"
 
 
 def test_covenant7_refuses_to_update_beliefs_without_evidence():
@@ -321,6 +375,7 @@ def test_covenant7_refuses_to_update_beliefs_without_evidence():
     impossible later.
 
     Expected: _set() method forces evidence recording, or belief doesn't update.
+    Direct mutation bypasses evidence recording (this is the violation we're testing).
     """
     beliefs = BeliefState()
     beliefs.begin_cycle(1)
@@ -368,8 +423,20 @@ def test_covenant7_refuses_to_update_beliefs_without_evidence():
     assert len(belief_events2) == 0, \
         "Direct mutation bypasses evidence recording (this is the violation we're testing)"
 
-    # In production, we should catch this via code review / linting
-    # The test demonstrates that bypassing _set() loses provenance
+    # In production, assert_no_undocumented_mutation() would catch this
+    # Test that it does:
+    beliefs3 = BeliefState()
+    beliefs3.begin_cycle(1)
+    before = beliefs3.snapshot()
+    beliefs3.dose_curvature_seen = True  # Direct mutation
+    after = beliefs3.snapshot()
+
+    # Should raise BeliefLedgerInvariantError
+    with pytest.raises(BeliefLedgerInvariantError) as exc_info:
+        beliefs3.assert_no_undocumented_mutation(before, after, cycle=1)
+
+    assert "without any evidence events" in str(exc_info.value), \
+        "Invariant must detect direct mutation and explain violation"
 
 
 if __name__ == "__main__":

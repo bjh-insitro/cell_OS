@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 import math
 import numpy as np
 from .ledger import EvidenceEvent, cond_key
+from ..exceptions import BeliefLedgerInvariantError
 
 
 def _inv_norm_cdf(p: float) -> float:
@@ -180,6 +181,22 @@ class BeliefState:
 
         if prev_value == new_value:
             return  # No change, no event
+
+        # Covenant 7: Field-level provenance
+        # Tag exactly which belief field(s) this EvidenceEvent just changed.
+        # This prevents a single unrelated event from "laundering" other mutations.
+        if evidence is None:
+            evidence = {}
+        else:
+            # Avoid mutating caller-owned dicts
+            evidence = dict(evidence)
+
+        existing = evidence.get("fields_changed")
+        if existing is None:
+            evidence["fields_changed"] = [field_name]
+        else:
+            # Allow upstream callers to pre-populate this, but guarantee inclusion
+            evidence["fields_changed"] = sorted(set(list(existing) + [field_name]))
 
         setattr(self, field_name, new_value)
 
@@ -424,6 +441,83 @@ class BeliefState:
             'tested_cell_lines': list(self.tested_cell_lines),
             'total_observations': self.total_observations,
         }
+
+    def snapshot(self) -> dict:
+        """Capture current belief state for mutation tracking (Covenant 7)."""
+        return self.to_dict()
+
+    def assert_no_undocumented_mutation(
+        self,
+        before: dict,
+        after: dict,
+        *,
+        cycle: int
+    ) -> None:
+        """Enforce Covenant 7: We Optimize for Causal Discoverability, Not Throughput.
+
+        All belief changes must be accompanied by evidence events. This invariant
+        check prevents direct mutation (beliefs.field = value) that bypasses _set().
+
+        Args:
+            before: Snapshot before cycle
+            after: Snapshot after cycle
+            cycle: Cycle number for diagnostics
+
+        Raises:
+            BeliefLedgerInvariantError: If beliefs changed without evidence events
+        """
+        # Find what changed
+        changed = {k for k in after.keys() if before.get(k) != after.get(k)}
+        if not changed:
+            return  # No changes, all good
+
+        # Get evidence events from this cycle
+        cycle_events = [e for e in self._events if e.cycle == cycle]
+        beliefs_logged = {e.belief for e in cycle_events}
+
+        # If beliefs changed but no events emitted, this is a violation
+        if not cycle_events:
+            raise BeliefLedgerInvariantError(
+                f"Beliefs mutated without any evidence events (cycle={cycle}). "
+                f"Changed keys: {sorted(changed)[:15]}. "
+                f"This violates Covenant 7: all belief updates must call _set() to emit evidence."
+            )
+
+        # Covenant 7: field-level mapping
+        # Each changed field must be explicitly accounted for by at least one EvidenceEvent
+        # via evidence["fields_changed"].
+        accounted = set()
+        for ev in cycle_events:
+            ev_evidence = getattr(ev, "evidence", None) or {}
+            fc = ev_evidence.get("fields_changed") or []
+            # tolerate old events that lack fields_changed by falling back to ev.belief
+            if not fc and getattr(ev, "belief", None):
+                fc = [ev.belief]
+            accounted |= set(fc)
+
+        missing_fields = changed - accounted
+        if missing_fields:
+            raise BeliefLedgerInvariantError(
+                f"Beliefs mutated without evidence mapping (cycle={cycle}). "
+                f"Unaccounted fields: {sorted(missing_fields)[:15]}. "
+                f"Changed fields: {sorted(changed)[:15]}. "
+                f"Accounted by events: {sorted(accounted)[:15]}. "
+                "This violates Covenant 7: every changed belief field must be claimed by an EvidenceEvent."
+            )
+
+        # Special check: gate changes require gate_* events
+        gate_fields = [k for k in changed if k.endswith("_sigma_stable")]
+        if gate_fields:
+            gate_events = [
+                b for b in beliefs_logged
+                if b and (b.startswith("gate_event:") or b.startswith("gate_shadow:") or b.startswith("gate_loss:"))
+            ]
+            if not gate_events:
+                raise BeliefLedgerInvariantError(
+                    f"Gate field(s) changed without gate_* event (cycle={cycle}). "
+                    f"Changed gates: {sorted(gate_fields)}. "
+                    f"This violates Covenant 7: gate changes must emit gate_event/gate_loss/gate_shadow."
+                )
 
     def update(self, observation, cycle: int = 0):
         """Update beliefs from a new observation.

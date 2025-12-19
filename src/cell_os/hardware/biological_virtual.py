@@ -65,6 +65,15 @@ ER_STRESS_DEATH_WIDTH = 0.08  # Sigmoid width for death transition
 ER_STRESS_H_MAX = 0.03  # Max death hazard (per hour) at full stress
 ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
 
+# Mito dysfunction dynamics (morphology-first, death-later mechanism)
+ENABLE_MITO_DYSFUNCTION = True
+MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
+MITO_DYSFUNCTION_K_OFF = 0.05  # Decay rate constant (per hour)
+MITO_DYSFUNCTION_DEATH_THETA = 0.6  # Stress level for death onset (lower than ER)
+MITO_DYSFUNCTION_DEATH_WIDTH = 0.1  # Sigmoid width for death transition
+MITO_DYSFUNCTION_H_MAX = 0.05  # Max death hazard (per hour) at full stress (nastier than ER)
+MITO_DYSFUNCTION_MORPH_ALPHA = 0.4  # Morphology scaling factor (40% loss at S=1)
+
 
 def stable_u32(s: str) -> int:
     """
@@ -122,9 +131,11 @@ class VesselState:
         self.death_starvation = 0.0
         self.death_mitotic_catastrophe = 0.0
         self.death_er_stress = 0.0
+        self.death_mito_dysfunction = 0.0
 
         # Latent stress states (morphology-first, death-later)
         self.er_stress = 0.0  # ER stress level (0-1)
+        self.mito_dysfunction = 0.0  # Mito dysfunction level (0-1)
 
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
@@ -424,6 +435,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             + max(0.0, vessel.death_starvation)
             + max(0.0, vessel.death_mitotic_catastrophe)
             + max(0.0, vessel.death_er_stress)
+            + max(0.0, vessel.death_mito_dysfunction)
             + max(0.0, vessel.death_confluence)
         )
         if tracked > total_dead + 1e-6:
@@ -433,6 +445,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_starvation *= scale
             vessel.death_mitotic_catastrophe *= scale
             vessel.death_er_stress *= scale
+            vessel.death_mito_dysfunction *= scale
             vessel.death_confluence *= scale
         else:
             vessel._step_ledger_scale = 1.0
@@ -580,6 +593,84 @@ class BiologicalVirtualMachine(VirtualMachine):
                 )
         # Note: With compounds, we allow decrease if decay dominates induction (no check needed)
 
+    def _update_mito_dysfunction(self, vessel: VesselState, hours: float):
+        """
+        Update mito dysfunction latent state and propose death hazard if stressed.
+
+        Mito dysfunction is a morphology-first, death-later mechanism:
+        - Morphology shifts early (mito channel decreases)
+        - Death hazard kicks in only after sustained high stress
+
+        Dynamics:
+        - dS/dt = k_on * f_axis(dose) * (1-S) - k_off * S
+        - f_axis = dose/(dose + ic50) for mitochondrial axis compounds
+        - Death hazard = h_max * sigmoid((S - theta)/width)
+
+        This creates temporal coupling and reversibility.
+
+        Invariant: Monotone sanity
+        - No compounds → Mito dysfunction should not increase (decay or flat)
+        - Compounds present → Mito dysfunction should not decrease unless decay dominates
+        """
+        S_before = vessel.mito_dysfunction
+
+        if not vessel.compounds:
+            # No compounds, just decay
+            if vessel.mito_dysfunction > 0:
+                decay = MITO_DYSFUNCTION_K_OFF * vessel.mito_dysfunction * hours
+                vessel.mito_dysfunction = float(max(0.0, vessel.mito_dysfunction - decay))
+            return
+
+        # Compute induction term from all mitochondrial compounds
+        induction_total = 0.0
+        for compound, dose_uM in vessel.compounds.items():
+            if dose_uM <= 0:
+                continue
+
+            meta = vessel.compound_meta.get(compound)
+            if not meta:
+                continue
+
+            stress_axis = meta['stress_axis']
+            ic50_uM = meta['ic50_uM']
+
+            # Only mitochondrial axis induces mito dysfunction
+            if stress_axis != "mitochondrial":
+                continue
+
+            # Dose-response: f_axis = dose / (dose + ic50)
+            f_axis = float(dose_uM / (dose_uM + ic50_uM))
+            induction_total += f_axis
+
+        # Clamp induction to [0, 1] if multiple compounds
+        induction_total = float(min(1.0, induction_total))
+
+        # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S
+        S = vessel.mito_dysfunction
+        dS_dt = MITO_DYSFUNCTION_K_ON * induction_total * (1.0 - S) - MITO_DYSFUNCTION_K_OFF * S
+        vessel.mito_dysfunction = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
+
+        # Propose death hazard if stress is high
+        # hazard_mito = h_max * sigmoid((S - theta)/width)
+        S_new = vessel.mito_dysfunction
+        if S_new > MITO_DYSFUNCTION_DEATH_THETA:
+            # Sigmoid: 1 / (1 + exp(-(S - theta)/width))
+            x = (S_new - MITO_DYSFUNCTION_DEATH_THETA) / MITO_DYSFUNCTION_DEATH_WIDTH
+            sigmoid = float(1.0 / (1.0 + np.exp(-x)))
+            hazard_mito = MITO_DYSFUNCTION_H_MAX * sigmoid
+            self._propose_hazard(vessel, hazard_mito, "death_mito_dysfunction")
+
+        # Monotone sanity check (catches sign errors in dynamics)
+        S_after = vessel.mito_dysfunction
+        if not vessel.compounds:
+            # No compounds → dysfunction should not increase
+            if S_after > S_before + 1e-9:
+                raise RuntimeError(
+                    f"Mito dysfunction increased without compounds: {S_before:.6f} → {S_after:.6f} "
+                    f"(vessel_id={vessel.vessel_id})"
+                )
+        # Note: With compounds, we allow decrease if decay dominates induction (no check needed)
+
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
@@ -608,6 +699,9 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         if ENABLE_ER_STRESS:
             self._update_er_stress(vessel, hours)
+
+        if ENABLE_MITO_DYSFUNCTION:
+            self._update_mito_dysfunction(vessel, hours)
 
         self._apply_compound_attrition(vessel, hours)
 
@@ -792,6 +886,8 @@ class BiologicalVirtualMachine(VirtualMachine):
         - death_compound: Instant viability effect + attrition
         - death_starvation: Nutrient depletion
         - death_mitotic_catastrophe: Mitotic failure under microtubule stress
+        - death_er_stress: ER stress accumulation
+        - death_mito_dysfunction: Mitochondrial dysfunction
         - death_confluence: Overconfluence stress
 
         Unknown death includes:
@@ -806,6 +902,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             + vessel.death_starvation
             + vessel.death_mitotic_catastrophe
             + vessel.death_er_stress
+            + vessel.death_mito_dysfunction
             + vessel.death_confluence
         )
 
@@ -817,12 +914,14 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_starvation *= scale
             vessel.death_mitotic_catastrophe *= scale
             vessel.death_er_stress *= scale
+            vessel.death_mito_dysfunction *= scale
             vessel.death_confluence *= scale
             tracked_causes = (
                 vessel.death_compound
                 + vessel.death_starvation
                 + vessel.death_mitotic_catastrophe
                 + vessel.death_er_stress
+                + vessel.death_mito_dysfunction
                 + vessel.death_confluence
             )
 
@@ -836,6 +935,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             "death_starvation",
             "death_mitotic_catastrophe",
             "death_er_stress",
+            "death_mito_dysfunction",
             "death_confluence",
             "death_unknown",
         ]:
@@ -848,6 +948,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             + vessel.death_starvation
             + vessel.death_mitotic_catastrophe
             + vessel.death_er_stress
+            + vessel.death_mito_dysfunction
             + vessel.death_confluence
             + vessel.death_unknown
         )
@@ -857,7 +958,7 @@ class BiologicalVirtualMachine(VirtualMachine):
                 f"tracked={tracked_total:.6f} > total_dead={total_dead:.6f} "
                 f"(vessel_id={vessel.vessel_id}, compound={vessel.death_compound:.6f}, "
                 f"starvation={vessel.death_starvation:.6f}, mitotic={vessel.death_mitotic_catastrophe:.6f}, "
-                f"er_stress={vessel.death_er_stress:.6f}, "
+                f"er_stress={vessel.death_er_stress:.6f}, mito={vessel.death_mito_dysfunction:.6f}, "
                 f"confluence={vessel.death_confluence:.6f}, unknown={vessel.death_unknown:.6f})"
             )
 
@@ -870,12 +971,13 @@ class BiologicalVirtualMachine(VirtualMachine):
         starvation_death = vessel.death_starvation > threshold
         mitotic_death = vessel.death_mitotic_catastrophe > threshold
         er_stress_death = vessel.death_er_stress > threshold
+        mito_dysfunction_death = vessel.death_mito_dysfunction > threshold
         confluence_death = vessel.death_confluence > threshold
         unknown_death = vessel.death_unknown > unknown_threshold
 
         # Priority: known causes > unknown > none
         # Count number of active causes
-        active_causes = sum([compound_death, starvation_death, mitotic_death, er_stress_death, confluence_death])
+        active_causes = sum([compound_death, starvation_death, mitotic_death, er_stress_death, mito_dysfunction_death, confluence_death])
 
         if active_causes > 1:
             vessel.death_mode = "mixed"
@@ -887,6 +989,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_mode = "mitotic"
         elif er_stress_death:
             vessel.death_mode = "er_stress"
+        elif mito_dysfunction_death:
+            vessel.death_mode = "mito_dysfunction"
         elif confluence_death:
             vessel.death_mode = "confluence"
         elif unknown_death:
@@ -1611,6 +1715,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         if ENABLE_ER_STRESS and vessel.er_stress > 0:
             morph['er'] *= (1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress)
 
+        # Apply mito dysfunction latent state to mito channel (morphology-first mechanism)
+        # Mito dysfunction decreases mito signal (contrast with ER increase)
+        if ENABLE_MITO_DYSFUNCTION and vessel.mito_dysfunction > 0:
+            morph['mito'] *= max(0.1, 1.0 - MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction)
+
         # CRITICAL: Compute transport dysfunction from STRUCTURAL morphology (before viability scaling)
         # Uses biology_core for consistent dysfunction computation
         # This prevents measurement attenuation (dead cells are dim) from masquerading as
@@ -1873,6 +1982,19 @@ class BiologicalVirtualMachine(VirtualMachine):
         upr_marker *= total_tech_factor
         upr_marker = max(0.0, upr_marker)
 
+        # ATP signal (mito dysfunction proxy) - decreases with mito dysfunction
+        # Baseline ~100, decreases to ~30 at full dysfunction
+        baseline_atp = 100.0
+        atp_signal = baseline_atp * max(0.3, 1.0 - 0.7 * vessel.mito_dysfunction)
+
+        # Add biological noise to ATP signal
+        if effective_bio_cv > 0:
+            atp_signal *= self.rng_assay.normal(1.0, effective_bio_cv)
+
+        # Add technical noise
+        atp_signal *= total_tech_factor
+        atp_signal = max(0.0, atp_signal)
+
         self._simulate_delay(0.5)  # LDH assay is quick
 
         result = {
@@ -1881,7 +2003,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             "vessel_id": vessel_id,
             "cell_line": cell_line,
             "ldh_signal": ldh_signal,
-            "atp_signal": ldh_signal,  # Keep for backward compatibility
+            "atp_signal": atp_signal,  # Mito dysfunction proxy (100 baseline, 30 at full dysfunction)
             "upr_marker": upr_marker,  # ER stress proxy (100 baseline, 300 at full stress)
             "viability": vessel.viability,
             "cell_count": vessel.cell_count,
