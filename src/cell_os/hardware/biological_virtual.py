@@ -516,7 +516,13 @@ class BiologicalVirtualMachine(VirtualMachine):
         - Death hazard = h_max * sigmoid((S - theta)/width)
 
         This creates temporal coupling and reversibility.
+
+        Invariant: Monotone sanity
+        - No compounds → ER stress should not increase (decay or flat)
+        - Compounds present → ER stress should not decrease unless decay dominates
         """
+        S_before = vessel.er_stress
+
         if not vessel.compounds:
             # No compounds, just decay
             if vessel.er_stress > 0:
@@ -562,6 +568,17 @@ class BiologicalVirtualMachine(VirtualMachine):
             sigmoid = float(1.0 / (1.0 + np.exp(-x)))
             hazard_er = ER_STRESS_H_MAX * sigmoid
             self._propose_hazard(vessel, hazard_er, "death_er_stress")
+
+        # Monotone sanity check (catches sign errors in dynamics)
+        S_after = vessel.er_stress
+        if not vessel.compounds:
+            # No compounds → stress should not increase
+            if S_after > S_before + 1e-9:
+                raise RuntimeError(
+                    f"ER stress increased without compounds: {S_before:.6f} → {S_after:.6f} "
+                    f"(vessel_id={vessel.vessel_id})"
+                )
+        # Note: With compounds, we allow decrease if decay dominates induction (no check needed)
 
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
@@ -952,6 +969,56 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         logger.info(f"Fed {vessel_id} (glucose={vessel.media_glucose_mM:.1f}mM, glutamine={vessel.media_glutamine_mM:.1f}mM)")
         return result
+
+    def washout_compound(self, vessel_id: str, compound: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Remove compound(s) from vessel (media change / washout).
+
+        Enables intervention policies like pulse dosing, compound removal, etc.
+        Latent states (ER stress, etc.) will decay naturally after washout.
+
+        Args:
+            vessel_id: Vessel identifier
+            compound: Specific compound to remove, or None to remove all compounds
+
+        Returns:
+            Dict with status and removed compounds
+        """
+        if vessel_id not in self.vessel_states:
+            return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
+
+        vessel = self.vessel_states[vessel_id]
+
+        if compound is None:
+            # Remove all compounds
+            removed = list(vessel.compounds.keys())
+            vessel.compounds.clear()
+            vessel.compound_meta.clear()
+            vessel.compound_start_time.clear()
+            logger.info(f"Washed out all compounds from {vessel_id}: {removed}")
+        else:
+            # Remove specific compound
+            if compound not in vessel.compounds:
+                return {
+                    "status": "error",
+                    "message": f"Compound {compound} not present in vessel",
+                    "vessel_id": vessel_id
+                }
+            removed = [compound]
+            del vessel.compounds[compound]
+            vessel.compound_meta.pop(compound, None)
+            vessel.compound_start_time.pop(compound, None)
+            logger.info(f"Washed out {compound} from {vessel_id}")
+
+        self._simulate_delay(0.5)  # Media change takes time
+
+        return {
+            "status": "success",
+            "action": "washout",
+            "vessel_id": vessel_id,
+            "removed_compounds": removed,
+            "time": self.simulated_time,
+        }
 
     def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:
         """Count cells with realistic biological variation."""
@@ -1666,6 +1733,10 @@ class BiologicalVirtualMachine(VirtualMachine):
         """
         Simulate LDH cytotoxicity assay (orthogonal scalar readout).
 
+        Also returns UPR_marker (unfolded protein response proxy) which scales
+        linearly with ER stress latent state. This creates a second sensor
+        for ER stress beyond morphology.
+
         LDH (lactate dehydrogenase) release measures membrane integrity - only rises
         when cells die and membranes rupture. Orthogonal to Cell Painting morphology.
 
@@ -1788,6 +1859,20 @@ class BiologicalVirtualMachine(VirtualMachine):
             failure_mode = None
             qc_flag = None
 
+        # UPR marker (unfolded protein response proxy) - second ER stress sensor
+        # Scales linearly with ER stress latent state
+        # Baseline ~100, increases to ~300 at full ER stress
+        baseline_upr = 100.0
+        upr_marker = baseline_upr * (1.0 + 2.0 * vessel.er_stress)
+
+        # Add biological noise to UPR marker
+        if effective_bio_cv > 0:
+            upr_marker *= self.rng_assay.normal(1.0, effective_bio_cv)
+
+        # Add technical noise
+        upr_marker *= total_tech_factor
+        upr_marker = max(0.0, upr_marker)
+
         self._simulate_delay(0.5)  # LDH assay is quick
 
         result = {
@@ -1797,6 +1882,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             "cell_line": cell_line,
             "ldh_signal": ldh_signal,
             "atp_signal": ldh_signal,  # Keep for backward compatibility
+            "upr_marker": upr_marker,  # ER stress proxy (100 baseline, 300 at full stress)
             "viability": vessel.viability,
             "cell_count": vessel.cell_count,
             "death_mode": vessel.death_mode,
