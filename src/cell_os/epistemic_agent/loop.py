@@ -22,6 +22,7 @@ from .world import ExperimentalWorld
 from .agent.policy_rules import RuleBasedPolicy
 from .schemas import Observation
 from .beliefs.ledger import append_events_jsonl, append_decisions_jsonl, append_noise_diagnostics_jsonl, DecisionEvent
+from .exceptions import InvalidDesignError
 
 
 class EpistemicLoop:
@@ -82,6 +83,8 @@ class EpistemicLoop:
             self._log("="*60)
 
             # v0.4.2: Begin cycle for evidence tracking
+            # Covenant 7: Snapshot beliefs before cycle for mutation tracking
+            beliefs_before = self.agent.beliefs.snapshot()
             self.agent.beliefs.begin_cycle(cycle)
 
             # Agent proposes experiment
@@ -148,6 +151,12 @@ class EpistemicLoop:
                 events = self.agent.beliefs.end_cycle()
                 diagnostics = self.agent.last_diagnostics or []
 
+                # Covenant 7: Assert no undocumented mutations
+                beliefs_after = self.agent.beliefs.snapshot()
+                self.agent.beliefs.assert_no_undocumented_mutation(
+                    beliefs_before, beliefs_after, cycle=cycle
+                )
+
                 # Write to ledgers
                 if events:
                     append_events_jsonl(self.evidence_file, events)
@@ -175,6 +184,64 @@ class EpistemicLoop:
                 # Save incremental JSON
                 self._save_json()
 
+            except InvalidDesignError as e:
+                # Covenant 5: Agent refused to execute invalid design
+                # Write refusal receipt FIRST, then handle abort/retry
+                self._log(f"\n🛑 DESIGN REFUSAL: {e}")
+
+                # Extract provenance from error message
+                error_msg = str(e)
+                rejected_path = None
+                validator_mode = "unknown"
+                violation_code = "unknown"
+
+                # Parse error message for provenance
+                if "Rejected design:" in error_msg:
+                    for line in error_msg.split('\n'):
+                        if "Rejected design:" in line:
+                            rejected_path = line.split("Rejected design:")[1].strip()
+                        if "Validator mode:" in line:
+                            validator_mode = line.split("Validator mode:")[1].strip()
+                        if "invalid_well_position" in error_msg:
+                            violation_code = "invalid_well_position"
+                        elif "duplicate_well_positions" in error_msg:
+                            violation_code = "duplicate_well_positions"
+
+                # Create refusal receipt (DecisionEvent with abort)
+                refusal_receipt = DecisionEvent(
+                    cycle=cycle,
+                    candidates=[],  # No valid candidates when design fails validation
+                    selected="abort_invalid_design",
+                    selected_score=0.0,
+                    selected_candidate={
+                        "template": "abort_invalid_design",
+                        "forced": True,
+                        "trigger": "design_validation_failed",
+                        "regime": "aborted",
+                        "enforcement_layer": "design_bridge",
+                        "attempted_template": proposal.design_id,
+                        "invalid_design_path": str(rejected_path) if rejected_path else "unknown",
+                        "constraint_violation": violation_code,
+                        "validator_mode": validator_mode,
+                        "retry_policy": "no_retry_on_validation_failure",  # Theology: no automatic retries
+                    },
+                    reason=f"Design validation failed: {violation_code} ({validator_mode} validator)"
+                )
+
+                # Receipt first, then die (Covenant 6)
+                append_decisions_jsonl(self.decisions_file, [refusal_receipt])
+
+                # Log and abort (no automatic retry for validation failures)
+                self.abort_reason = f"Invalid design (cycle {cycle}): {violation_code}"
+                self._save_json()
+                break
+
+            # NOTE:
+            # We quarantine only validation failures (Covenant 5: InvalidDesignError).
+            # If execution fails after a design passes validation, we do NOT write a _REJECTED artifact,
+            # because the design itself was valid and the failure is operational/runtime.
+            # Runtime failures indicate simulator bugs, infrastructure issues, or unexpected conditions,
+            # not agent constraint violations.
             except Exception as e:
                 self._log(f"\n❌ ERROR: {e}")
                 self.abort_reason = f"Exception: {e}"

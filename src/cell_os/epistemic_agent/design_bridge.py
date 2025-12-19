@@ -18,10 +18,17 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from .schemas import Proposal, WellSpec
+from .exceptions import InvalidDesignError
 
 
-class DesignValidationError(Exception):
-    """Raised when a design violates lab constraints."""
+class RefusalPersistenceError(RuntimeError):
+    """Raised when refusal artifacts fail to write.
+
+    This is distinct from InvalidDesignError because:
+    - The refusal is still enforced (agent still refuses)
+    - But the audit trail is degraded (receipt write failed)
+    - Caller must surface this degradation explicitly
+    """
     pass
 
 
@@ -110,23 +117,49 @@ def validate_design(
         strict: If True, enforce all constraints. If False, warn only.
 
     Raises:
-        DesignValidationError: If design violates constraints
+        InvalidDesignError: If design violates constraints (structured, no parsing needed)
+
+    IMPORTANT: This is currently PLACEHOLDER validation that only checks
+    structural requirements (required fields, well format, duplicates).
+    Full validation (compound library, dose ranges, plate capacity,
+    multi-day constraints) is NOT ACTIVE.
 
     TODO: Import actual validation logic from src/cell_os/simulation/design_validation.py
-    For now, implements basic structural validation.
     """
+    design_id = design.get("design_id", "unknown")
+    cycle = design.get("metadata", {}).get("cycle")
+
     # Required top-level fields
     required_fields = ["design_id", "design_type", "description", "metadata", "wells"]
     for field in required_fields:
         if field not in design:
-            raise DesignValidationError(f"Missing required field: {field}")
+            raise InvalidDesignError(
+                message=f"Missing required field: {field}",
+                violation_code="missing_required_field",
+                design_id=design_id,
+                cycle=cycle,
+                validator_mode="placeholder",
+                details={"missing_field": field}
+            )
 
     # Validate wells structure
     if not isinstance(design["wells"], list):
-        raise DesignValidationError("'wells' must be a list")
+        raise InvalidDesignError(
+            message="'wells' must be a list",
+            violation_code="invalid_wells_structure",
+            design_id=design_id,
+            cycle=cycle,
+            validator_mode="placeholder"
+        )
 
     if len(design["wells"]) == 0:
-        raise DesignValidationError("Design must contain at least one well")
+        raise InvalidDesignError(
+            message="Design must contain at least one well",
+            violation_code="empty_design",
+            design_id=design_id,
+            cycle=cycle,
+            validator_mode="placeholder"
+        )
 
     # Validate each well
     required_well_fields = [
@@ -136,8 +169,13 @@ def validate_design(
     for i, well in enumerate(design["wells"]):
         for field in required_well_fields:
             if field not in well:
-                raise DesignValidationError(
-                    f"Well {i} missing required field: {field}"
+                raise InvalidDesignError(
+                    message=f"Well {i} missing required field: {field}",
+                    violation_code="missing_well_field",
+                    design_id=design_id,
+                    cycle=cycle,
+                    validator_mode="placeholder",
+                    details={"well_index": i, "missing_field": field}
                 )
 
         # Validate well position format (A01-H12 for 96-well)
@@ -147,28 +185,48 @@ def validate_design(
                 well_pos[1:].isdigit() and
                 1 <= int(well_pos[1:]) <= 12):
             if strict:
-                raise DesignValidationError(
-                    f"Well {i} has invalid well_pos: {well_pos} (expected A01-H12)"
+                raise InvalidDesignError(
+                    message=f"Well {i} has invalid well_pos: {well_pos} (expected A01-H12)",
+                    violation_code="invalid_well_position",
+                    design_id=design_id,
+                    cycle=cycle,
+                    validator_mode="placeholder",
+                    details={"well_index": i, "well_pos": well_pos}
                 )
 
         # Validate dose is non-negative
         if well["dose_uM"] < 0:
-            raise DesignValidationError(
-                f"Well {i} has negative dose: {well['dose_uM']}"
+            raise InvalidDesignError(
+                message=f"Well {i} has negative dose: {well['dose_uM']}",
+                violation_code="negative_dose",
+                design_id=design_id,
+                cycle=cycle,
+                validator_mode="placeholder",
+                details={"well_index": i, "dose_uM": well["dose_uM"]}
             )
 
         # Validate timepoint is positive
         if well["timepoint_h"] <= 0:
-            raise DesignValidationError(
-                f"Well {i} has non-positive timepoint: {well['timepoint_h']}"
+            raise InvalidDesignError(
+                message=f"Well {i} has non-positive timepoint: {well['timepoint_h']}",
+                violation_code="invalid_timepoint",
+                design_id=design_id,
+                cycle=cycle,
+                validator_mode="placeholder",
+                details={"well_index": i, "timepoint_h": well["timepoint_h"]}
             )
 
     # Check for well position collisions
     well_positions = [w["well_pos"] for w in design["wells"]]
     duplicates = [pos for pos in set(well_positions) if well_positions.count(pos) > 1]
     if duplicates:
-        raise DesignValidationError(
-            f"Duplicate well positions: {duplicates}"
+        raise InvalidDesignError(
+            message=f"Duplicate well positions: {duplicates}",
+            violation_code="duplicate_well_positions",
+            design_id=design_id,
+            cycle=cycle,
+            validator_mode="placeholder",
+            details={"duplicates": duplicates}
         )
 
     # Passed validation
@@ -207,8 +265,83 @@ def persist_design(
     return filepath
 
 
+def persist_rejected_design(
+    design: Dict[str, Any],
+    output_dir: Path,
+    run_id: str,
+    cycle: int,
+    violation_code: str,
+    violation_message: str,
+    validator_mode: str = "placeholder",
+    git_sha: Optional[str] = None
+) -> tuple[Path, Path]:
+    """Write rejected design to quarantine directory with reason file.
+
+    This ensures refusal is auditable and replayable, not just righteous.
+
+    Args:
+        design: Invalid design JSON (before validation failure)
+        output_dir: Base directory for design artifacts
+        run_id: Run identifier
+        cycle: Cycle number
+        violation_code: Machine-readable constraint violation code
+        violation_message: Human-readable error message
+        validator_mode: "placeholder" or "full" (indicates which validator caught it)
+        git_sha: Optional git commit hash for reproducibility
+
+    Returns:
+        (design_path, reason_path): Paths to rejected design and reason files
+    """
+    # Quarantine directory
+    rejected_dir = Path(output_dir) / "rejected"
+
+    try:
+        rejected_dir.mkdir(parents=True, exist_ok=True)
+
+        # Filename with REJECTED suffix
+        design_id_short = design.get("design_id", "unknown")[:8]
+        base_filename = f"{run_id}_cycle_{cycle:03d}_{design_id_short}_REJECTED"
+
+        # Write invalid design
+        design_path = rejected_dir / f"{base_filename}.json"
+        with open(design_path, 'w') as f:
+            json.dump(design, f, indent=2, sort_keys=True)
+
+        # Compute hash even for rejected design (for diff tracking)
+        design_hash = compute_design_hash(design)
+
+        # Write rejection reason (sibling file)
+        reason_path = rejected_dir / f"{base_filename}.reason.json"
+        reason = {
+            "violation_code": violation_code,
+            "violation_message": violation_message,
+            "validator_mode": validator_mode,
+            "design_hash": design_hash,
+            "caught_at": {
+                "cycle": cycle,
+                "run_id": run_id,
+                "timestamp": datetime.now().isoformat(),
+                "git_sha": git_sha,
+            },
+            "design_path": str(design_path),
+        }
+        with open(reason_path, 'w') as f:
+            json.dump(reason, f, indent=2, sort_keys=True)
+
+        return design_path, reason_path
+
+    except Exception as ex:
+        raise RefusalPersistenceError(
+            f"Failed to persist refusal artifacts: {ex}"
+        ) from ex
+
+
 def compute_design_hash(design: Dict[str, Any]) -> str:
     """Compute deterministic hash of design for replay verification.
+
+    Hashes ONLY execution-relevant fields. Changes to metadata, timestamps,
+    or paths will NOT affect the hash. Changes to cell line, dose, timepoint,
+    plate_id, day, operator, or sentinel status WILL change the hash.
 
     Args:
         design: Design JSON dict
@@ -219,7 +352,7 @@ def compute_design_hash(design: Dict[str, Any]) -> str:
     # Sort wells by position to ensure deterministic ordering
     wells_sorted = sorted(design["wells"], key=lambda w: w["well_pos"])
 
-    # Extract only execution-relevant fields (ignore metadata)
+    # Extract only execution-relevant fields (ignore metadata, timestamps, paths)
     canonical = {
         "design_id": design["design_id"],
         "wells": [
@@ -229,6 +362,10 @@ def compute_design_hash(design: Dict[str, Any]) -> str:
                 "dose_uM": w["dose_uM"],
                 "timepoint_h": w["timepoint_h"],
                 "well_pos": w["well_pos"],
+                "plate_id": w["plate_id"],
+                "day": w["day"],
+                "operator": w["operator"],
+                "is_sentinel": w["is_sentinel"],
             }
             for w in wells_sorted
         ]
@@ -276,7 +413,8 @@ __all__ = [
     "proposal_to_design_json",
     "validate_design",
     "persist_design",
+    "persist_rejected_design",
     "compute_design_hash",
     "load_design_from_catalog",
-    "DesignValidationError",
+    "RefusalPersistenceError",
 ]

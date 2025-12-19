@@ -22,9 +22,11 @@ from .design_bridge import (
     proposal_to_design_json,
     validate_design,
     persist_design,
+    persist_rejected_design,
     compute_design_hash,
-    DesignValidationError,
+    RefusalPersistenceError,
 )
+from .exceptions import InvalidDesignError
 
 
 def run_experiment_with_bridge(
@@ -55,7 +57,7 @@ def run_experiment_with_bridge(
 
     Raises:
         ValueError: If proposal exceeds budget or has invalid parameters
-        DesignValidationError: If design violates lab constraints
+        InvalidDesignError: If design violates lab constraints (Covenant 5)
     """
     # Validate budget
     wells_requested = len(proposal.wells)
@@ -65,8 +67,10 @@ def run_experiment_with_bridge(
             f"remaining {self.budget_remaining}"
         )
 
-    # Allocate well positions (same as original, but capture positions)
-    well_assignments, well_positions = self._convert_proposal_to_assignments_with_positions(
+    # Allocate well positions for design JSON generation
+    # Note: This still uses proposal → assignments temporarily for position allocation
+    # but the EXECUTION path uses design_json as canonical source (see Step 4)
+    _, well_positions = self._convert_proposal_to_assignments_with_positions(
         proposal
     )
 
@@ -88,10 +92,46 @@ def run_experiment_with_bridge(
     if validate:
         try:
             validate_design(design_json, strict=True)
-        except DesignValidationError as e:
-            # This is Covenant 6: agent must not execute invalid designs
-            raise DesignValidationError(
-                f"Agent proposed invalid design (cycle {cycle}): {e}"
+        except InvalidDesignError as e:
+            # This is Covenant 5: agent must refuse what it cannot guarantee
+            # CRITICAL: Persist rejected design BEFORE raising
+            # (Receipt first, then die)
+            if design_output_dir is None:
+                design_output_dir = Path("results/designs") / run_id
+
+            # Try to persist refusal artifacts
+            # If persistence fails, we still refuse but mark audit as degraded
+            try:
+                rejected_path, reason_path = persist_rejected_design(
+                    design=design_json,
+                    output_dir=design_output_dir,
+                    run_id=run_id,
+                    cycle=cycle,
+                    violation_code=e.violation_code,
+                    violation_message=e.message,
+                    validator_mode=e.validator_mode or "unknown",
+                )
+                audit_degraded = False
+                audit_error = None
+            except RefusalPersistenceError as persist_ex:
+                # Persistence failed, but refusal is still enforced
+                rejected_path = None
+                reason_path = None
+                audit_degraded = True
+                audit_error = str(persist_ex)
+
+            # Now raise with full provenance (structured, no string parsing)
+            raise InvalidDesignError(
+                message=f"Agent proposed invalid design (cycle {cycle}): {e.message}",
+                violation_code=e.violation_code,
+                design_id=e.design_id,
+                rejected_path=str(rejected_path) if rejected_path else None,
+                reason_path=str(reason_path) if reason_path else None,
+                validator_mode=e.validator_mode,
+                cycle=cycle,
+                details=e.details,
+                audit_degraded=audit_degraded,
+                audit_error=audit_error,
             ) from e
 
     # Step 3: Persist design for provenance
@@ -107,10 +147,10 @@ def run_experiment_with_bridge(
 
     # === END: Design artifact pipeline ===
 
-    # Step 4: Execute from design (simulator now, robot later)
-    # For now, execution still uses well_assignments directly
-    # In future: execution engine should load design_json and execute from that
-    results = self._simulate_wells(well_assignments, proposal.design_id)
+    # Step 4: Execute from design (design_json is now canonical source)
+    # Convert design_json → WellAssignments to enforce that design is ground truth
+    well_assignments_from_design = _design_to_well_assignments(design_json)
+    results = self._simulate_wells(well_assignments_from_design, proposal.design_id)
 
     # Aggregate results into summary statistics
     observation = self._aggregate_results(
@@ -128,6 +168,35 @@ def run_experiment_with_bridge(
     self.history.append(observation)
 
     return observation
+
+
+def _design_to_well_assignments(design_json: Dict[str, Any]) -> List[Any]:
+    """Convert design JSON to WellAssignments for simulator execution.
+
+    This is the ONLY function that should convert design → execution format.
+    By making this the sole path, we enforce that design_json is canonical.
+
+    Args:
+        design_json: Validated, persisted design artifact
+
+    Returns:
+        List of WellAssignment objects for simulator
+    """
+    assignments = []
+    for well in design_json["wells"]:
+        assignment = sim.WellAssignment(
+            well_id=well["well_pos"],
+            cell_line=well["cell_line"],
+            compound=well["compound"],
+            dose_uM=well["dose_uM"],
+            timepoint_h=well["timepoint_h"],
+            plate_id=well["plate_id"],
+            day=well["day"],
+            operator=well["operator"],
+            is_sentinel=well["is_sentinel"]
+        )
+        assignments.append(assignment)
+    return assignments
 
 
 def _convert_proposal_to_assignments_with_positions(
