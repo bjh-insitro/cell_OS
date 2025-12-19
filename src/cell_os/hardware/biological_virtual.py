@@ -56,6 +56,15 @@ ENABLE_FEEDING_COSTS = True
 FEEDING_TIME_COST_H = 0.25  # Operator time per feed operation
 FEEDING_CONTAMINATION_RISK = 0.002  # 0.2% chance of introducing contamination
 
+# ER stress dynamics (morphology-first, death-later mechanism)
+ENABLE_ER_STRESS = True
+ER_STRESS_K_ON = 0.25  # Induction rate constant (per hour)
+ER_STRESS_K_OFF = 0.05  # Decay rate constant (per hour)
+ER_STRESS_DEATH_THETA = 0.7  # Stress level for death onset
+ER_STRESS_DEATH_WIDTH = 0.08  # Sigmoid width for death transition
+ER_STRESS_H_MAX = 0.03  # Max death hazard (per hour) at full stress
+ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
+
 
 def stable_u32(s: str) -> int:
     """
@@ -112,6 +121,10 @@ class VesselState:
         # Additional death accounting (cumulative fractions)
         self.death_starvation = 0.0
         self.death_mitotic_catastrophe = 0.0
+        self.death_er_stress = 0.0
+
+        # Latent stress states (morphology-first, death-later)
+        self.er_stress = 0.0  # ER stress level (0-1)
 
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
@@ -410,6 +423,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             max(0.0, vessel.death_compound)
             + max(0.0, vessel.death_starvation)
             + max(0.0, vessel.death_mitotic_catastrophe)
+            + max(0.0, vessel.death_er_stress)
             + max(0.0, vessel.death_confluence)
         )
         if tracked > total_dead + 1e-6:
@@ -418,6 +432,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_compound *= scale
             vessel.death_starvation *= scale
             vessel.death_mitotic_catastrophe *= scale
+            vessel.death_er_stress *= scale
             vessel.death_confluence *= scale
         else:
             vessel._step_ledger_scale = 1.0
@@ -487,6 +502,67 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         self._propose_hazard(vessel, hazard_mitotic, "death_mitotic_catastrophe")
 
+    def _update_er_stress(self, vessel: VesselState, hours: float):
+        """
+        Update ER stress latent state and propose death hazard if stressed.
+
+        ER stress is a morphology-first, death-later mechanism:
+        - Morphology shifts early (ER channel increases)
+        - Death hazard kicks in only after sustained high stress
+
+        Dynamics:
+        - dS/dt = k_on * f_axis(dose) * (1-S) - k_off * S
+        - f_axis = dose/(dose + ic50) for ER-stress axis compounds
+        - Death hazard = h_max * sigmoid((S - theta)/width)
+
+        This creates temporal coupling and reversibility.
+        """
+        if not vessel.compounds:
+            # No compounds, just decay
+            if vessel.er_stress > 0:
+                decay = ER_STRESS_K_OFF * vessel.er_stress * hours
+                vessel.er_stress = float(max(0.0, vessel.er_stress - decay))
+            return
+
+        # Compute induction term from all ER-stress compounds
+        induction_total = 0.0
+        for compound, dose_uM in vessel.compounds.items():
+            if dose_uM <= 0:
+                continue
+
+            meta = vessel.compound_meta.get(compound)
+            if not meta:
+                continue
+
+            stress_axis = meta['stress_axis']
+            ic50_uM = meta['ic50_uM']
+
+            # Only ER-stress and proteostasis axes induce ER stress
+            if stress_axis not in ["er_stress", "proteostasis"]:
+                continue
+
+            # Dose-response: f_axis = dose / (dose + ic50)
+            f_axis = float(dose_uM / (dose_uM + ic50_uM))
+            induction_total += f_axis
+
+        # Clamp induction to [0, 1] if multiple compounds
+        induction_total = float(min(1.0, induction_total))
+
+        # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S
+        S = vessel.er_stress
+        dS_dt = ER_STRESS_K_ON * induction_total * (1.0 - S) - ER_STRESS_K_OFF * S
+        vessel.er_stress = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
+
+        # Propose death hazard if stress is high
+        # hazard_er = h_max * sigmoid((S - theta)/width)
+        S_new = vessel.er_stress
+        if S_new > ER_STRESS_DEATH_THETA:
+            # Sigmoid: 1 / (1 + exp(-(S - theta)/width))
+            x = (S_new - ER_STRESS_DEATH_THETA) / ER_STRESS_DEATH_WIDTH
+            sigmoid = float(1.0 / (1.0 + np.exp(-x)))
+            hazard_er = ER_STRESS_H_MAX * sigmoid
+            self._propose_hazard(vessel, hazard_er, "death_er_stress")
+
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
@@ -512,6 +588,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         # 2) Death proposal phase - mechanisms propose hazards without mutating viability
         if ENABLE_NUTRIENT_DEPLETION:
             self._update_nutrient_depletion(vessel, hours)
+
+        if ENABLE_ER_STRESS:
+            self._update_er_stress(vessel, hours)
 
         self._apply_compound_attrition(vessel, hours)
 
@@ -709,6 +788,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_compound
             + vessel.death_starvation
             + vessel.death_mitotic_catastrophe
+            + vessel.death_er_stress
             + vessel.death_confluence
         )
 
@@ -719,11 +799,13 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_compound *= scale
             vessel.death_starvation *= scale
             vessel.death_mitotic_catastrophe *= scale
+            vessel.death_er_stress *= scale
             vessel.death_confluence *= scale
             tracked_causes = (
                 vessel.death_compound
                 + vessel.death_starvation
                 + vessel.death_mitotic_catastrophe
+                + vessel.death_er_stress
                 + vessel.death_confluence
             )
 
@@ -736,6 +818,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             "death_compound",
             "death_starvation",
             "death_mitotic_catastrophe",
+            "death_er_stress",
             "death_confluence",
             "death_unknown",
         ]:
@@ -747,6 +830,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_compound
             + vessel.death_starvation
             + vessel.death_mitotic_catastrophe
+            + vessel.death_er_stress
             + vessel.death_confluence
             + vessel.death_unknown
         )
@@ -756,6 +840,7 @@ class BiologicalVirtualMachine(VirtualMachine):
                 f"tracked={tracked_total:.6f} > total_dead={total_dead:.6f} "
                 f"(vessel_id={vessel.vessel_id}, compound={vessel.death_compound:.6f}, "
                 f"starvation={vessel.death_starvation:.6f}, mitotic={vessel.death_mitotic_catastrophe:.6f}, "
+                f"er_stress={vessel.death_er_stress:.6f}, "
                 f"confluence={vessel.death_confluence:.6f}, unknown={vessel.death_unknown:.6f})"
             )
 
@@ -767,12 +852,13 @@ class BiologicalVirtualMachine(VirtualMachine):
         compound_death = vessel.death_compound > threshold
         starvation_death = vessel.death_starvation > threshold
         mitotic_death = vessel.death_mitotic_catastrophe > threshold
+        er_stress_death = vessel.death_er_stress > threshold
         confluence_death = vessel.death_confluence > threshold
         unknown_death = vessel.death_unknown > unknown_threshold
 
         # Priority: known causes > unknown > none
         # Count number of active causes
-        active_causes = sum([compound_death, starvation_death, mitotic_death, confluence_death])
+        active_causes = sum([compound_death, starvation_death, mitotic_death, er_stress_death, confluence_death])
 
         if active_causes > 1:
             vessel.death_mode = "mixed"
@@ -782,6 +868,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_mode = "starvation"
         elif mitotic_death:
             vessel.death_mode = "mitotic"
+        elif er_stress_death:
+            vessel.death_mode = "er_stress"
         elif confluence_death:
             vessel.death_mode = "confluence"
         elif unknown_death:
@@ -1450,6 +1538,11 @@ class BiologicalVirtualMachine(VirtualMachine):
                 elif cell_line == 'iPSC_Microglia':
                     # Microglia: moderate actin disruption (migration/phagocytosis impaired)
                     morph['actin'] *= (1.0 - 0.4 * morph_penalty)
+
+        # Apply ER stress latent state to ER channel (morphology-first mechanism)
+        # ER stress increases ER channel intensity before death kicks in
+        if ENABLE_ER_STRESS and vessel.er_stress > 0:
+            morph['er'] *= (1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress)
 
         # CRITICAL: Compute transport dysfunction from STRUCTURAL morphology (before viability scaling)
         # Uses biology_core for consistent dysfunction computation
