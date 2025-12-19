@@ -28,6 +28,15 @@ from .exit_criteria import (
     assert_phase0_exit,
 )
 from .exceptions import Phase0ExitCriteriaFailed, Phase0GateFailure
+from .config import (
+    Phase0Thresholds,
+    DEFAULT_PHASE0_THRESHOLDS,
+    get_threshold,
+    get_sentinel_drift_cv,
+    get_measurement_cv,
+    get_edge_effect_rel,
+    get_positive_effect_rel,
+)
 
 __all__ = [
     "RunSummary",
@@ -41,4 +50,11 @@ __all__ = [
     "assert_phase0_exit",
     "Phase0ExitCriteriaFailed",
     "Phase0GateFailure",
+    "Phase0Thresholds",
+    "DEFAULT_PHASE0_THRESHOLDS",
+    "get_threshold",
+    "get_sentinel_drift_cv",
+    "get_measurement_cv",
+    "get_edge_effect_rel",
+    "get_positive_effect_rel",
 ]

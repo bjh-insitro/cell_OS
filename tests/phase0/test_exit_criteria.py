@@ -114,7 +114,10 @@ def test_measurement_cv_fails_when_noise_high():
 
 def test_edge_effect_passes():
     run = _make_good_run()
+    # Test with absolute threshold
     assert_plate_edge_effect_detectable_or_absent(run, max_abs_edge_center_delta=2.0)
+    # Test with relative threshold (5% of center mean = 5.0 for center=100)
+    assert_plate_edge_effect_detectable_or_absent(run, max_rel_edge_center_delta=0.05)
 
 
 def test_edge_effect_fails_when_delta_large():
@@ -131,6 +134,7 @@ def test_edge_effect_fails_when_delta_large():
         positive_controls=run.positive_controls,
         measurement_replicates=run.measurement_replicates,
     )
+    # Test with absolute threshold
     if pytest:
         with pytest.raises(Phase0GateFailure) as exc:
             assert_plate_edge_effect_detectable_or_absent(run2, max_abs_edge_center_delta=2.0)
@@ -142,10 +146,25 @@ def test_edge_effect_fails_when_delta_large():
         except Phase0GateFailure as e:
             assert e.criterion == "plate_edge_effects"
 
+    # Test with relative threshold
+    if pytest:
+        with pytest.raises(Phase0GateFailure) as exc:
+            assert_plate_edge_effect_detectable_or_absent(run2, max_rel_edge_center_delta=0.05)
+        assert exc.value.criterion == "plate_edge_effects"
+    else:
+        try:
+            assert_plate_edge_effect_detectable_or_absent(run2, max_rel_edge_center_delta=0.05)
+            raise AssertionError("Should have failed")
+        except Phase0GateFailure as e:
+            assert e.criterion == "plate_edge_effects"
+
 
 def test_positive_control_passes():
     run = _make_good_run()
+    # Test with absolute threshold
     assert_effect_recovery_for_known_controls(run, min_abs_effect=20.0)
+    # Test with relative threshold (40% effect)
+    assert_effect_recovery_for_known_controls(run, min_rel_effect=0.40)
 
 
 def test_positive_control_fails_when_effect_small():
@@ -158,6 +177,7 @@ def test_positive_control_fails_when_effect_small():
         ],
         measurement_replicates=run.measurement_replicates,
     )
+    # Test with absolute threshold
     if pytest:
         with pytest.raises(Phase0GateFailure) as exc:
             assert_effect_recovery_for_known_controls(run2, min_abs_effect=20.0)
@@ -169,15 +189,36 @@ def test_positive_control_fails_when_effect_small():
         except Phase0GateFailure as e:
             assert e.criterion == "positive_controls"
 
+    # Test with relative threshold
+    if pytest:
+        with pytest.raises(Phase0GateFailure) as exc:
+            assert_effect_recovery_for_known_controls(run2, min_rel_effect=0.10)
+        assert exc.value.criterion == "positive_controls"
+    else:
+        try:
+            assert_effect_recovery_for_known_controls(run2, min_rel_effect=0.10)
+            raise AssertionError("Should have failed")
+        except Phase0GateFailure as e:
+            assert e.criterion == "positive_controls"
+
 
 def test_assert_phase0_exit_runs_all():
     run = _make_good_run()
+    # Test with absolute thresholds (backward compat)
     assert_phase0_exit(
         run,
         sentinel_drift_cv=0.02,
         measurement_cv=0.03,
         max_edge_center_delta=2.0,
         min_positive_effect=20.0,
+    )
+    # Test with relative thresholds (preferred)
+    assert_phase0_exit(
+        run,
+        sentinel_drift_cv=0.02,
+        measurement_cv=0.03,
+        max_rel_edge_center_delta=0.05,
+        min_rel_positive_effect=0.40,
     )
 
 

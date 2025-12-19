@@ -241,20 +241,35 @@ def assert_measurement_cv_below(
 def assert_plate_edge_effect_detectable_or_absent(
     run: RunSummary,
     *,
-    max_abs_edge_center_delta: float,
+    max_abs_edge_center_delta: Optional[float] = None,
+    max_rel_edge_center_delta: Optional[float] = None,
     metrics: Optional[Sequence[str]] = None,
     min_obs_per_region: int = 8,
 ) -> None:
     """
     Criterion #3: Plate edge effects are either controlled (small) or at least measurable.
 
-    Here we enforce "small": for each metric and plate, compare mean(edge) vs mean(center).
-    Fail if abs(delta) > max_abs_edge_center_delta for any plate+metric.
+    For each metric and plate, compare mean(edge) vs mean(center).
+    Fail if delta exceeds threshold (absolute or relative).
 
-    Later you can add a "detectable" mode if you purposely spike an edge sentinel pattern.
+    Args:
+        max_abs_edge_center_delta: Absolute threshold (e.g., 2.0 units)
+        max_rel_edge_center_delta: Relative threshold (e.g., 0.05 = 5% of center mean)
+
+    Exactly one of max_abs_edge_center_delta or max_rel_edge_center_delta must be provided.
+    Relative thresholds are preferred (scale-invariant).
     """
-    if max_abs_edge_center_delta < 0:
-        raise ValueError("max_abs_edge_center_delta must be >= 0")
+    if max_abs_edge_center_delta is not None and max_rel_edge_center_delta is not None:
+        raise ValueError("Provide either max_abs_edge_center_delta or max_rel_edge_center_delta, not both")
+
+    if max_abs_edge_center_delta is None and max_rel_edge_center_delta is None:
+        raise ValueError("Must provide either max_abs_edge_center_delta or max_rel_edge_center_delta")
+
+    use_relative = max_rel_edge_center_delta is not None
+    threshold = max_rel_edge_center_delta if use_relative else max_abs_edge_center_delta
+
+    if threshold < 0:
+        raise ValueError("Edge center delta threshold must be >= 0")
 
     obs = list(run.edge_effects)
     if metrics is not None:
@@ -265,9 +280,9 @@ def assert_plate_edge_effect_detectable_or_absent(
         raise Phase0GateFailure(
             criterion="plate_edge_effects",
             measured=float("nan"),
-            threshold=max_abs_edge_center_delta,
+            threshold=threshold,
             message="No edge effect observations provided",
-            details={"min_obs_per_region": min_obs_per_region, "metrics": metrics},
+            details={"min_obs_per_region": min_obs_per_region, "metrics": metrics, "use_relative": use_relative},
         )
 
     by_plate_metric = _group_by(obs, lambda o: f"{o.plate_id}::{o.metric_name}")
@@ -282,7 +297,7 @@ def assert_plate_edge_effect_detectable_or_absent(
             raise Phase0GateFailure(
                 criterion="plate_edge_effects",
                 measured=float("nan"),
-                threshold=max_abs_edge_center_delta,
+                threshold=threshold,
                 message=f"Not enough edge/center observations for plate={plate_id} metric={metric}",
                 details={
                     "plate_id": plate_id,
@@ -290,41 +305,82 @@ def assert_plate_edge_effect_detectable_or_absent(
                     "edge_n": len(edge_vals),
                     "center_n": len(center_vals),
                     "min_obs_per_region": min_obs_per_region,
+                    "use_relative": use_relative,
                 },
             )
 
-        delta = statistics.mean(edge_vals) - statistics.mean(center_vals)
-        measured = abs(delta)
+        edge_mean = statistics.mean(edge_vals)
+        center_mean = statistics.mean(center_vals)
+        abs_delta = abs(edge_mean - center_mean)
 
-        if measured > max_abs_edge_center_delta:
-            failures.append((plate_id, metric, measured, delta))
+        if use_relative:
+            # Relative threshold: abs(delta) / abs(center_mean) must be < threshold
+            if center_mean == 0:
+                measured = float("inf")
+            else:
+                measured = abs_delta / abs(center_mean)
+        else:
+            # Absolute threshold: abs(delta) must be < threshold
+            measured = abs_delta
+
+        if measured > threshold:
+            failures.append((plate_id, metric, measured, edge_mean, center_mean))
 
     if failures:
         worst = max(failures, key=lambda t: t[2])
-        plate_id, metric, measured, delta = worst
+        plate_id, metric, measured, edge_mean, center_mean = worst
+        if use_relative:
+            msg = f"Edge effect too large on plate={plate_id} metric={metric}: rel_delta={measured:.4f} > {threshold:.4f}"
+        else:
+            msg = f"Edge effect too large on plate={plate_id} metric={metric}: abs_delta={measured:.4f} > {threshold:.4f}"
         raise Phase0GateFailure(
             criterion="plate_edge_effects",
             measured=measured,
-            threshold=max_abs_edge_center_delta,
-            message=f"Edge effect too large on plate={plate_id} metric={metric}: abs(delta)={measured:.4f} > {max_abs_edge_center_delta:.4f}",
-            details={"plate_id": plate_id, "metric": metric, "delta": delta, "all_failures": failures},
+            threshold=threshold,
+            message=msg,
+            details={
+                "plate_id": plate_id,
+                "metric": metric,
+                "edge_mean": edge_mean,
+                "center_mean": center_mean,
+                "use_relative": use_relative,
+                "all_failures": failures,
+            },
         )
 
 
 def assert_effect_recovery_for_known_controls(
     run: RunSummary,
     *,
-    min_abs_effect: float,
+    min_abs_effect: Optional[float] = None,
+    min_rel_effect: Optional[float] = None,
     metrics: Optional[Sequence[str]] = None,
 ) -> None:
     """
     Criterion #4: Positive control validation.
-    Fail if any positive control does not separate from baseline by at least min_abs_effect.
+    Fail if any positive control does not separate from baseline by threshold.
 
-    This is intentionally crude. It forces you to maintain at least one known-good signal.
+    Args:
+        min_abs_effect: Absolute threshold (e.g., 20.0 units)
+        min_rel_effect: Relative threshold (e.g., 0.50 = 50% effect = 1.5x fold change)
+
+    Exactly one of min_abs_effect or min_rel_effect must be provided.
+    Relative thresholds are preferred (scale-invariant).
+
+    For relative: abs(control - baseline) / abs(baseline) >= threshold
+    Example: baseline=100, control=150, threshold=0.50 → (150-100)/100 = 0.50 (50% increase)
     """
-    if min_abs_effect <= 0:
-        raise ValueError("min_abs_effect must be > 0")
+    if min_abs_effect is not None and min_rel_effect is not None:
+        raise ValueError("Provide either min_abs_effect or min_rel_effect, not both")
+
+    if min_abs_effect is None and min_rel_effect is None:
+        raise ValueError("Must provide either min_abs_effect or min_rel_effect")
+
+    use_relative = min_rel_effect is not None
+    threshold = min_rel_effect if use_relative else min_abs_effect
+
+    if threshold <= 0:
+        raise ValueError("Effect threshold must be > 0")
 
     obs = list(run.positive_controls)
     if metrics is not None:
@@ -335,26 +391,49 @@ def assert_effect_recovery_for_known_controls(
         raise Phase0GateFailure(
             criterion="positive_controls",
             measured=float("nan"),
-            threshold=min_abs_effect,
+            threshold=threshold,
             message="No positive control observations provided",
-            details={"min_abs_effect": min_abs_effect, "metrics": metrics},
+            details={"threshold": threshold, "metrics": metrics, "use_relative": use_relative},
         )
 
     failures = []
     for o in obs:
-        effect = abs(float(o.control_value) - float(o.baseline_value))
-        if effect < min_abs_effect:
-            failures.append((o.metric_name, o.control_name, o.baseline_name, effect))
+        abs_effect = abs(float(o.control_value) - float(o.baseline_value))
+
+        if use_relative:
+            # Relative threshold: abs(control - baseline) / abs(baseline) must be >= threshold
+            if o.baseline_value == 0:
+                measured = float("inf") if abs_effect > 0 else 0.0
+            else:
+                measured = abs_effect / abs(o.baseline_value)
+        else:
+            # Absolute threshold: abs(control - baseline) must be >= threshold
+            measured = abs_effect
+
+        if measured < threshold:
+            failures.append((o.metric_name, o.control_name, o.baseline_name, measured, o.control_value, o.baseline_value))
 
     if failures:
         worst = min(failures, key=lambda t: t[3])
-        metric, ctrl, base, effect = worst
+        metric, ctrl, base, measured, ctrl_val, base_val = worst
+        if use_relative:
+            msg = f"Positive control effect too small for metric={metric} control={ctrl} vs baseline={base}: rel_effect={measured:.4f} < {threshold:.4f}"
+        else:
+            msg = f"Positive control effect too small for metric={metric} control={ctrl} vs baseline={base}: abs_effect={measured:.4f} < {threshold:.4f}"
         raise Phase0GateFailure(
             criterion="positive_controls",
-            measured=effect,
-            threshold=min_abs_effect,
-            message=f"Positive control effect too small for metric={metric} control={ctrl} vs baseline={base}: {effect:.4f} < {min_abs_effect:.4f}",
-            details={"worst": worst, "all_failures": failures},
+            measured=measured,
+            threshold=threshold,
+            message=msg,
+            details={
+                "metric": metric,
+                "control_name": ctrl,
+                "baseline_name": base,
+                "control_value": ctrl_val,
+                "baseline_value": base_val,
+                "use_relative": use_relative,
+                "all_failures": failures,
+            },
         )
 
 
@@ -363,14 +442,39 @@ def assert_phase0_exit(
     *,
     sentinel_drift_cv: float,
     measurement_cv: float,
-    max_edge_center_delta: float,
-    min_positive_effect: float,
+    max_edge_center_delta: Optional[float] = None,
+    max_rel_edge_center_delta: Optional[float] = None,
+    min_positive_effect: Optional[float] = None,
+    min_rel_positive_effect: Optional[float] = None,
     metrics: Optional[Sequence[str]] = None,
 ) -> None:
     """
     Convenience: run all Phase 0 gates.
+
+    For edge effects and positive controls, prefer relative thresholds (scale-invariant).
+
+    Args:
+        sentinel_drift_cv: CV threshold for sentinel plate-to-plate drift
+        measurement_cv: CV threshold for technical replicate precision
+        max_edge_center_delta: Absolute edge effect threshold (deprecated, use max_rel_edge_center_delta)
+        max_rel_edge_center_delta: Relative edge effect threshold (preferred)
+        min_positive_effect: Absolute positive control threshold (deprecated, use min_rel_positive_effect)
+        min_rel_positive_effect: Relative positive control threshold (preferred)
+        metrics: Optional list of metrics to check (default: all metrics)
     """
     assert_sentinel_drift_below(sentinel_drift_cv, run, metrics=metrics)
     assert_measurement_cv_below(measurement_cv, run, metrics=metrics)
-    assert_plate_edge_effect_detectable_or_absent(run, max_abs_edge_center_delta=max_edge_center_delta, metrics=metrics)
-    assert_effect_recovery_for_known_controls(run, min_abs_effect=min_positive_effect, metrics=metrics)
+
+    assert_plate_edge_effect_detectable_or_absent(
+        run,
+        max_abs_edge_center_delta=max_edge_center_delta,
+        max_rel_edge_center_delta=max_rel_edge_center_delta,
+        metrics=metrics,
+    )
+
+    assert_effect_recovery_for_known_controls(
+        run,
+        min_abs_effect=min_positive_effect,
+        min_rel_effect=min_rel_positive_effect,
+        metrics=metrics,
+    )
