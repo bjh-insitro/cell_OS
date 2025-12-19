@@ -354,6 +354,7 @@ def assert_effect_recovery_for_known_controls(
     *,
     min_abs_effect: Optional[float] = None,
     min_rel_effect: Optional[float] = None,
+    baseline_floor: Optional[Dict[str, float]] = None,
     metrics: Optional[Sequence[str]] = None,
 ) -> None:
     """
@@ -363,12 +364,14 @@ def assert_effect_recovery_for_known_controls(
     Args:
         min_abs_effect: Absolute threshold (e.g., 20.0 units)
         min_rel_effect: Relative threshold (e.g., 0.50 = 50% effect = 1.5x fold change)
+        baseline_floor: Per-metric denominator floor to prevent explosion when baseline ≈ 0
+        metrics: Optional list of metrics to check
 
     Exactly one of min_abs_effect or min_rel_effect must be provided.
     Relative thresholds are preferred (scale-invariant).
 
-    For relative: abs(control - baseline) / abs(baseline) >= threshold
-    Example: baseline=100, control=150, threshold=0.50 → (150-100)/100 = 0.50 (50% increase)
+    For relative: abs(control - baseline) / max(abs(baseline), floor) >= threshold
+    Example: baseline=100, control=150, threshold=0.50 → (150-100)/max(100,floor) = 0.50
     """
     if min_abs_effect is not None and min_rel_effect is not None:
         raise ValueError("Provide either min_abs_effect or min_rel_effect, not both")
@@ -381,6 +384,11 @@ def assert_effect_recovery_for_known_controls(
 
     if threshold <= 0:
         raise ValueError("Effect threshold must be > 0")
+
+    # Import baseline floor defaults if not provided
+    if baseline_floor is None:
+        from cell_os.phase0.config import BASELINE_FLOOR
+        baseline_floor = BASELINE_FLOOR
 
     obs = list(run.positive_controls)
     if metrics is not None:
@@ -401,11 +409,11 @@ def assert_effect_recovery_for_known_controls(
         abs_effect = abs(float(o.control_value) - float(o.baseline_value))
 
         if use_relative:
-            # Relative threshold: abs(control - baseline) / abs(baseline) must be >= threshold
-            if o.baseline_value == 0:
-                measured = float("inf") if abs_effect > 0 else 0.0
-            else:
-                measured = abs_effect / abs(o.baseline_value)
+            # Relative threshold with denominator floor
+            # Prevents explosion when baseline is near zero
+            floor = baseline_floor.get(o.metric_name, baseline_floor.get("_default", 1.0))
+            denominator = max(abs(o.baseline_value), floor)
+            measured = abs_effect / denominator
         else:
             # Absolute threshold: abs(control - baseline) must be >= threshold
             measured = abs_effect

@@ -31,11 +31,22 @@ from .exceptions import Phase0ExitCriteriaFailed, Phase0GateFailure
 from .config import (
     Phase0Thresholds,
     DEFAULT_PHASE0_THRESHOLDS,
+    BASELINE_FLOOR,
     get_threshold,
     get_sentinel_drift_cv,
     get_measurement_cv,
     get_edge_effect_rel,
     get_positive_effect_rel,
+    get_baseline_floor,
+)
+from .fingerprint import (
+    compute_thresholds_fingerprint,
+    verify_thresholds_fingerprint,
+)
+from .distribution import (
+    DistributionSnapshot,
+    compute_distribution_snapshot,
+    assert_distribution_stability,
 )
 
 __all__ = [
@@ -52,9 +63,16 @@ __all__ = [
     "Phase0GateFailure",
     "Phase0Thresholds",
     "DEFAULT_PHASE0_THRESHOLDS",
+    "BASELINE_FLOOR",
     "get_threshold",
     "get_sentinel_drift_cv",
     "get_measurement_cv",
     "get_edge_effect_rel",
     "get_positive_effect_rel",
+    "get_baseline_floor",
+    "compute_thresholds_fingerprint",
+    "verify_thresholds_fingerprint",
+    "DistributionSnapshot",
+    "compute_distribution_snapshot",
+    "assert_distribution_stability",
 ]

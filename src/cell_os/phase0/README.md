@@ -213,14 +213,75 @@ except Phase0GateFailure as e:
 - **Wasted cycles:** Agent explores biology on a broken measurement system
 - **Haunted data:** "It worked once" but you can't reproduce it
 
+## Provenance and Calibration
+
+### Thresholds Fingerprint
+
+Every Phase 0 exit decision includes a `thresholds_fingerprint` for provenance:
+
+```python
+from cell_os.phase0 import compute_thresholds_fingerprint, DEFAULT_PHASE0_THRESHOLDS
+
+fingerprint = compute_thresholds_fingerprint(
+    DEFAULT_PHASE0_THRESHOLDS,
+    simulator_version="standalone_cell_thalamus_v1.0",
+    noise_model_params={"biological_cv": 0.15, "technical_cv": 0.02}
+)
+# fingerprint: '0bc79bcc6c786f54'
+```
+
+When someone says "Phase 0 used to pass," you can answer with a hash, not a story.
+
+### Distribution Sanity Gate
+
+Enforces that simulator distributions haven't drifted across changes:
+
+```python
+from cell_os.phase0 import compute_distribution_snapshot, assert_distribution_stability
+
+# After running N seeds
+values = [0.020, 0.022, 0.018, 0.021, 0.019]  # sentinel drift CVs
+baseline = compute_distribution_snapshot(values, "LDH", "sentinel_drift")
+
+# On future runs
+current = compute_distribution_snapshot(new_values, "LDH", "sentinel_drift")
+assert_distribution_stability(current, baseline, max_p95_shift_rel=0.10)  # 10% threshold
+```
+
+Fails if p95 shifts by more than 10% relative, preventing silent changes to what "good" means.
+
+### Baseline Floor Protection
+
+Positive control calculations use denominator floors to prevent explosion when baseline ≈ 0:
+
+```python
+# For relative threshold: abs(control - baseline) / max(abs(baseline), floor) >= threshold
+# LDH floor: 100.0 (1% of typical baseline ~2,500)
+# CP floor: 0.01 (normalized units)
+```
+
+### Strict Mode
+
+Optional strict mode fails on unknown metrics instead of using `_default`:
+
+```python
+from cell_os.phase0 import get_threshold
+
+# Raises ValueError if metric not explicitly listed
+threshold = get_threshold("unknown_metric", threshold_dict, strict=True)
+```
+
+Use strict mode in CI to catch metric scope creep.
+
 ## Current Status
 
-**⚠️  THRESHOLDS ARE PLACEHOLDERS ⚠️**
+**Thresholds calibrated to simulator (commit 7bc4ec2)**
 
-You MUST calibrate these against your actual noise model:
-- `sentinel_drift_cv = 0.02` (2%)
-- `measurement_cv = 0.03` (3%)
-- `max_edge_center_delta = 2.0` (absolute units)
-- `min_positive_effect = 20.0` (absolute units)
+- Sentinel drift: 2.5% CV (LDH), 3.0% CV (CP), 3.5% CV (morphology)
+- Measurement CV: 3.5% CV (LDH), 4.5% CV (CP), 5.0% CV (morphology)
+- Edge effect: 5% relative (LDH), 6% (CP), 8% (morphology)
+- Positive control: 500% (LDH), 30% (CP), 40% (morphology)
 
-Until calibration is complete, Phase 0 is not done.
+**Thresholds fingerprint:** `0bc79bcc6c786f54`
+
+Next step: Run distribution-based calibration to set thresholds at 95th percentile of "good" runs.

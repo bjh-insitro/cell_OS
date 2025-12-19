@@ -12,10 +12,26 @@ DO NOT relax these thresholds without:
 1. Updating the simulator's noise model first
 2. Regenerating thresholds from distributions
 3. Documenting why the change is necessary
+
+SIMULATOR VERSION: standalone_cell_thalamus (commit: 7bc4ec2)
+NOISE MODEL: biological_cv=0.15, technical_cv=0.02-0.03
+CALIBRATION DATE: 2025-12-19
 """
 
 from dataclasses import dataclass
 from typing import Dict, Optional
+
+# Baseline floor for positive control denominator
+# Prevents division by near-zero when baseline is anomalous
+BASELINE_FLOOR = {
+    "LDH": 100.0,          # 1% of typical vehicle baseline (~2,500)
+    "CP_PC1": 0.01,        # Normalized units, 1% of typical range
+    "CP_PC2": 0.01,
+    "CP_PC3": 0.01,
+    "nuc_area": 10.0,      # Typical area in pixels
+    "nuc_intensity": 1.0,  # Typical intensity units
+    "_default": 1.0,       # Conservative default
+}
 
 
 @dataclass(frozen=True)
@@ -88,6 +104,7 @@ DEFAULT_PHASE0_THRESHOLDS = Phase0Thresholds(
 def get_threshold(
     metric_name: str,
     threshold_dict: Dict[str, float],
+    strict: bool = False,
 ) -> float:
     """
     Get threshold for a specific metric, falling back to _default if not found.
@@ -95,11 +112,24 @@ def get_threshold(
     Args:
         metric_name: Name of the metric (e.g., "LDH", "CP_PC1")
         threshold_dict: Dict mapping metric names to thresholds
+        strict: If True, raise ValueError for unknown metrics instead of using _default
 
     Returns:
         Threshold value for the metric
+
+    Raises:
+        ValueError: If strict=True and metric not explicitly listed
     """
-    return threshold_dict.get(metric_name, threshold_dict.get("_default", 0.05))
+    if metric_name in threshold_dict:
+        return threshold_dict[metric_name]
+
+    if strict and metric_name != "_default":
+        raise ValueError(
+            f"Unknown metric '{metric_name}' and strict mode enabled. "
+            f"Add explicit threshold for this metric or disable strict mode."
+        )
+
+    return threshold_dict.get("_default", 0.05)
 
 
 # Convenience: extract per-gate defaults
@@ -117,3 +147,11 @@ def get_edge_effect_rel(metric_name: str) -> float:
 
 def get_positive_effect_rel(metric_name: str) -> float:
     return get_threshold(metric_name, DEFAULT_PHASE0_THRESHOLDS.positive_effect_rel)
+
+
+def get_baseline_floor(metric_name: str) -> float:
+    """
+    Get denominator floor for positive control calculations.
+    Prevents explosion when baseline is near zero.
+    """
+    return BASELINE_FLOOR.get(metric_name, BASELINE_FLOOR["_default"])
