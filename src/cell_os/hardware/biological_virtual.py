@@ -333,6 +333,23 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel._step_hazard_proposals[death_field] = vessel._step_hazard_proposals.get(death_field, 0.0) + hazard
 
+    def _propose_hazard(self, vessel: VesselState, hazard_per_h: float, death_field: str):
+        """
+        Directly propose a hazard rate (deaths per hour) for a death cause.
+
+        This is the preferred interface for mechanisms that naturally compute rates.
+        Skips the exp(-rate*hours) → ln(survival)/hours roundtrip.
+
+        Args:
+            vessel: Vessel state
+            hazard_per_h: Hazard rate (deaths per hour, >= 0)
+            death_field: Which cumulative death field to credit
+        """
+        hazard = float(max(0.0, hazard_per_h))
+        if not hasattr(vessel, "_step_hazard_proposals") or vessel._step_hazard_proposals is None:
+            vessel._step_hazard_proposals = {}
+        vessel._step_hazard_proposals[death_field] = vessel._step_hazard_proposals.get(death_field, 0.0) + hazard
+
     def _commit_step_death(self, vessel: VesselState, hours: float):
         """
         Apply combined survival once and update cumulative death buckets proportionally.
@@ -436,35 +453,39 @@ class BiologicalVirtualMachine(VirtualMachine):
             return
 
         starvation_rate = MAX_STARVATION_RATE_PER_H * nutrient_stress
-        survival = float(np.exp(-starvation_rate * hours))
-        self._apply_survival(vessel, survival, "death_starvation", hours)
+        self._propose_hazard(vessel, starvation_rate, "death_starvation")
 
     def _apply_mitotic_catastrophe(self, vessel: VesselState, stress_axis: str, dose_uM: float, ic50_uM: float, hours: float):
         """
         Mitotic catastrophe: only affects dividing cells and only for microtubule-axis stress.
-        Implemented as additional death beyond generic attrition.
+
+        Hazard formulation:
+        - Cells attempt mitosis at rate = ln(2) / doubling_time (per hour)
+        - Each attempt fails with probability p_fail = dose / (dose + IC50)
+        - Instantaneous mitotic death rate = mitosis_rate * p_fail (deaths per hour)
+
+        This composes cleanly with competing risks without interval probability math.
         """
         if stress_axis != "microtubule":
             return
+
         viable_cells = vessel.cell_count * vessel.viability
         if viable_cells <= 0:
             return
 
+        # Mitosis attempt rate (per hour)
         dt = max(1e-6, float(getattr(vessel, "doubling_time_h", DEFAULT_DOUBLING_TIME_H)))
-        mitosis_rate = float(np.log(2.0) / dt)  # fraction attempting division per hour
+        mitosis_rate = float(np.log(2.0) / dt)
 
-        # Fraction attempting mitosis in this interval
-        attempting = viable_cells * (1.0 - float(np.exp(-mitosis_rate * hours)))
-
-        # Failure probability is dose-dependent; bounded [0,1]
+        # Failure probability per mitotic attempt [0-1]
         ic50 = max(1e-9, float(ic50_uM))
         p_fail = float(dose_uM / (dose_uM + ic50))
 
-        # Convert dead cells to a survival multiplier on the whole population
-        dead_cells = attempting * p_fail
-        frac_dead = dead_cells / max(1.0, vessel.cell_count)
-        survival = float(np.clip(1.0 - frac_dead, 0.0, 1.0))
-        self._apply_survival(vessel, survival, "death_mitotic_catastrophe", hours)
+        # Instantaneous mitotic death hazard (deaths per hour)
+        # Future extension: multiply by proliferative_fraction if tracking senescence
+        hazard_mitotic = mitosis_rate * p_fail
+
+        self._propose_hazard(vessel, hazard_mitotic, "death_mitotic_catastrophe")
 
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
@@ -635,13 +656,12 @@ class BiologicalVirtualMachine(VirtualMachine):
             if attrition_rate <= 0:
                 continue
 
-            # Apply attrition over this time interval (exponential survival)
-            survival = float(np.exp(-attrition_rate * hours))
-            self._apply_survival(vessel, survival, "death_compound", hours)
+            # Propose attrition hazard (deaths per hour)
+            self._propose_hazard(vessel, attrition_rate, "death_compound")
 
             logger.debug(
-                f"{vessel.vessel_id}: Attrition rate={attrition_rate:.4f}/h, "
-                f"dys={transport_dysfunction:.3f}, survival={survival:.3f} over {hours:.1f}h"
+                f"{vessel.vessel_id}: Attrition hazard={attrition_rate:.4f}/h, "
+                f"dys={transport_dysfunction:.3f}"
             )
 
     def _manage_confluence(self, vessel: VesselState):
