@@ -51,6 +51,11 @@ MAX_STARVATION_RATE_PER_H = 0.05
 # Mitosis model
 DEFAULT_DOUBLING_TIME_H = 24.0
 
+# Feeding costs (prevents "feed every hour" dominant strategy)
+ENABLE_FEEDING_COSTS = True
+FEEDING_TIME_COST_H = 0.25  # Operator time per feed operation
+FEEDING_CONTAMINATION_RISK = 0.002  # 0.2% chance of introducing contamination
+
 
 def stable_u32(s: str) -> int:
     """
@@ -794,7 +799,12 @@ class BiologicalVirtualMachine(VirtualMachine):
     ) -> Dict[str, Any]:
         """
         Media change / feed: resets nutrient levels and last_feed_time.
-        This gives the agent an actual intervention for nutrient stress.
+
+        Costs (if ENABLE_FEEDING_COSTS=True):
+        - Time: Consumes FEEDING_TIME_COST_H operator hours
+        - Contamination risk: Small probability of introducing contamination (death_unknown bump)
+
+        These costs prevent "feed every hour" from being a dominant strategy.
         """
         if vessel_id not in self.vessel_states:
             return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
@@ -803,8 +813,8 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel.media_glucose_mM = float(max(0.0, glucose_mM))
         vessel.media_glutamine_mM = float(max(0.0, glutamine_mM))
         vessel.last_feed_time = self.simulated_time
-        logger.info(f"Fed {vessel_id} (glucose={vessel.media_glucose_mM:.1f}mM, glutamine={vessel.media_glutamine_mM:.1f}mM)")
-        return {
+
+        result = {
             "status": "success",
             "action": "feed",
             "vessel_id": vessel_id,
@@ -812,6 +822,28 @@ class BiologicalVirtualMachine(VirtualMachine):
             "media_glutamine_mM": vessel.media_glutamine_mM,
             "time": self.simulated_time,
         }
+
+        if ENABLE_FEEDING_COSTS:
+            # Time cost (operator hours)
+            result["time_cost_h"] = FEEDING_TIME_COST_H
+
+            # Contamination risk (probabilistic)
+            contamination_roll = self.rng_assay.random()
+            if contamination_roll < FEEDING_CONTAMINATION_RISK:
+                # Small contamination introduces minor death (1-3% viability loss)
+                contamination_severity = self.rng_assay.uniform(0.01, 0.03)
+                vessel.viability *= (1.0 - contamination_severity)
+                vessel.cell_count *= (1.0 - contamination_severity)
+                vessel.death_unknown += contamination_severity
+                vessel.death_unknown = min(1.0, vessel.death_unknown)
+                result["contamination"] = True
+                result["contamination_severity"] = contamination_severity
+                logger.warning(f"Feeding {vessel_id} introduced contamination ({contamination_severity:.1%} loss)")
+            else:
+                result["contamination"] = False
+
+        logger.info(f"Fed {vessel_id} (glucose={vessel.media_glucose_mM:.1f}mM, glutamine={vessel.media_glutamine_mM:.1f}mM)")
+        return result
 
     def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:
         """Count cells with realistic biological variation."""

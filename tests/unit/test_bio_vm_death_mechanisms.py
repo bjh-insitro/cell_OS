@@ -5,7 +5,6 @@ These tests verify that nutrient depletion and mitotic catastrophe
 create "new controllable knobs" for the agent to plan around.
 """
 
-import pytest
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 
 
@@ -132,6 +131,51 @@ def test_mitotic_catastrophe_spares_quiescent():
     assert fast.viability < slow.viability, (
         f"Fast cycler should have lower viability: fast={fast.viability:.3f} vs slow={slow.viability:.3f}"
     )
+
+
+def test_sparse_culture_no_starvation():
+    """
+    Test that low-density cultures remain stable without feeding.
+
+    Setup: Low initial count (10% capacity), no compound, no feeding, 72h
+    Expected: Minimal starvation (< 1%), viability stays near baseline
+
+    This prevents parameter drift where someone tweaks depletion rates
+    and suddenly all sparse cultures starve.
+    """
+    vm = BiologicalVirtualMachine(seed=0)
+
+    # Seed at 1% capacity (truly sparse culture)
+    # Even with exponential growth, this should stay below starvation threshold
+    initial_count = 1e5  # 1% of 1e7 capacity
+    vm.seed_vessel("sparse", "A549", initial_count, capacity=1e7, initial_viability=0.98)
+
+    # Advance 72h without feeding or compound
+    vm.advance_time(72.0)
+
+    vessel = vm.vessel_states["sparse"]
+
+    print(f"Sparse culture viability after 72h: {vessel.viability:.3f}")
+    print(f"Sparse culture death_starvation: {vessel.death_starvation:.3f}")
+    print(f"Sparse culture final count: {vessel.cell_count:.2e}")
+    print(f"Sparse culture glucose: {vessel.media_glucose_mM:.1f} mM")
+
+    # Viability should remain near baseline (allow growth-related small losses)
+    assert vessel.viability > 0.90, (
+        f"Sparse culture viability dropped too much: {vessel.viability:.3f}"
+    )
+
+    # Starvation death should be minimal (< 1%)
+    assert vessel.death_starvation < 0.01, (
+        f"Sparse culture shows starvation despite low density: {vessel.death_starvation:.3f}"
+    )
+
+    # Cells should have grown (not starved)
+    assert vessel.cell_count > initial_count, (
+        f"Cells didn't grow: {vessel.cell_count:.2e} vs initial {initial_count:.2e}"
+    )
+
+    print("✓ PASSED: Sparse culture stability test")
 
 
 def test_feature_flags_disable_mechanisms():
