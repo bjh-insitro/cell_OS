@@ -14,6 +14,9 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from .virtual import VirtualMachine
 
+# Death accounting epsilon (for conservation law enforcement)
+DEATH_EPS = 1e-9
+
 # Import shared biology core (single source of truth)
 from ..sim import biology_core
 
@@ -104,6 +107,16 @@ class VesselState:
         # Additional death accounting (cumulative fractions)
         self.death_starvation = 0.0
         self.death_mitotic_catastrophe = 0.0
+
+        # Transient per-step bookkeeping (not persisted across steps)
+        # These are intentionally prefixed to signal "internal mechanics"
+        self._step_hazard_proposals: Dict[str, float] = {}
+        self._step_viability_start: float = 0.0
+        self._step_cell_count_start: float = 0.0
+        self._step_total_hazard: float = 0.0
+        self._step_total_kill: float = 0.0
+        # Signal when we had to renormalize ledger (should be ~never)
+        self._step_ledger_scale: float = 1.0
 
 
 class BiologicalVirtualMachine(VirtualMachine):
@@ -279,19 +292,113 @@ class BiologicalVirtualMachine(VirtualMachine):
         for vessel in self.vessel_states.values():
             self._step_vessel(vessel, hours)
 
-    def _apply_survival(self, vessel: VesselState, survival: float, death_field: str):
+    def _apply_survival(self, vessel: VesselState, survival: float, death_field: str, hours: float):
         """
-        Apply multiplicative survival to both viability and cell_count,
-        and increment a cumulative death accounting field by delta viability.
+        Proposal-mode survival application.
+
+        Instead of mutating viability/cell_count immediately (which creates implicit ordering
+        and makes accounting brittle), convert the survival fraction into a hazard rate over
+        this interval and accumulate it into vessel._step_hazard_proposals.
+
+        At the end of _step_vessel, we apply the combined survival once and allocate the realized
+        death back to causes proportionally to hazard contribution (competing risks).
+
+        Args:
+            vessel: Vessel state
+            survival: Survival fraction over this interval (0-1)
+            death_field: Which cumulative death field to credit (e.g., "death_starvation")
+            hours: Time interval (hours) over which this survival applies
         """
         survival = float(np.clip(survival, 0.0, 1.0))
-        prev_viability = vessel.viability
-        vessel.viability *= survival
-        vessel.cell_count *= survival
-        killed_fraction = prev_viability - vessel.viability
-        current = getattr(vessel, death_field, 0.0)
-        current += killed_fraction
-        setattr(vessel, death_field, min(1.0, max(0.0, current)))
+        hours = float(max(DEATH_EPS, hours))
+
+        # Convert per-interval survival to hazard rate (per hour)
+        # survival == 1 → hazard 0
+        if survival >= 1.0:
+            hazard = 0.0
+        elif survival <= 0.0:
+            # Treat zero survival as extremely large hazard (still finite for math)
+            hazard = 1e9
+        else:
+            hazard = float(-np.log(survival) / hours)
+
+        # Accumulate hazard proposal for this death cause
+        if not hasattr(vessel, "_step_hazard_proposals") or vessel._step_hazard_proposals is None:
+            vessel._step_hazard_proposals = {}
+
+        vessel._step_hazard_proposals[death_field] = vessel._step_hazard_proposals.get(death_field, 0.0) + hazard
+
+    def _commit_step_death(self, vessel: VesselState, hours: float):
+        """
+        Apply combined survival once and update cumulative death buckets proportionally.
+
+        This is where competing-risks semantics happen:
+        1. Sum all hazard proposals into total_hazard
+        2. Compute combined survival = exp(-total_hazard * hours)
+        3. Apply to viability/cell_count once
+        4. Allocate realized death to buckets proportionally to hazard share
+        5. Enforce conservation law: sum(death_*) <= 1 - viability + epsilon
+
+        Args:
+            vessel: Vessel state
+            hours: Time interval (hours)
+        """
+        hours = float(max(DEATH_EPS, hours))
+        hazards = vessel._step_hazard_proposals or {}
+
+        # Sum hazard contributions (per hour)
+        total_hazard = float(sum(max(0.0, h) for h in hazards.values()))
+        vessel._step_total_hazard = total_hazard
+
+        v0 = float(np.clip(vessel._step_viability_start, 0.0, 1.0))
+        c0 = float(max(0.0, vessel._step_cell_count_start))
+
+        if total_hazard <= DEATH_EPS or v0 <= DEATH_EPS:
+            # No proposed death this step
+            vessel.viability = v0
+            vessel.cell_count = c0
+            vessel._step_total_kill = 0.0
+            vessel._step_ledger_scale = 1.0
+            return
+
+        # Combined survival from competing risks
+        survival_total = float(np.exp(-total_hazard * hours))
+        v1 = float(np.clip(v0 * survival_total, 0.0, 1.0))
+        c1 = float(max(0.0, c0 * survival_total))
+
+        vessel.viability = v1
+        vessel.cell_count = c1
+
+        kill_total = float(max(0.0, v0 - v1))
+        vessel._step_total_kill = kill_total
+
+        # Allocate realized kill across causes in proportion to hazard share
+        for field, h in hazards.items():
+            h = float(max(0.0, h))
+            if h <= 0.0:
+                continue
+            share = h / total_hazard
+            d = kill_total * share
+            current = getattr(vessel, field, 0.0)
+            setattr(vessel, field, float(np.clip(current + d, 0.0, 1.0)))
+
+        # Conservation: tracked <= total_dead (+eps). If we drift, renormalize tracked.
+        total_dead = 1.0 - float(np.clip(vessel.viability, 0.0, 1.0))
+        tracked = float(
+            max(0.0, vessel.death_compound)
+            + max(0.0, vessel.death_starvation)
+            + max(0.0, vessel.death_mitotic_catastrophe)
+            + max(0.0, vessel.death_confluence)
+        )
+        if tracked > total_dead + 1e-6:
+            scale = float(max(0.0, total_dead) / max(DEATH_EPS, tracked))
+            vessel._step_ledger_scale = scale
+            vessel.death_compound *= scale
+            vessel.death_starvation *= scale
+            vessel.death_mitotic_catastrophe *= scale
+            vessel.death_confluence *= scale
+        else:
+            vessel._step_ledger_scale = 1.0
 
     def _update_nutrient_depletion(self, vessel: VesselState, hours: float):
         """
@@ -325,7 +432,7 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         starvation_rate = MAX_STARVATION_RATE_PER_H * nutrient_stress
         survival = float(np.exp(-starvation_rate * hours))
-        self._apply_survival(vessel, survival, "death_starvation")
+        self._apply_survival(vessel, survival, "death_starvation", hours)
 
     def _apply_mitotic_catastrophe(self, vessel: VesselState, stress_axis: str, dose_uM: float, ic50_uM: float, hours: float):
         """
@@ -352,7 +459,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         dead_cells = attempting * p_fail
         frac_dead = dead_cells / max(1.0, vessel.cell_count)
         survival = float(np.clip(1.0 - frac_dead, 0.0, 1.0))
-        self._apply_survival(vessel, survival, "death_mitotic_catastrophe")
+        self._apply_survival(vessel, survival, "death_mitotic_catastrophe", hours)
 
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
@@ -360,25 +467,35 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         Order matters:
         1. Growth (viable cells only)
-        2. Nutrient depletion (time-dependent death, logistics coupling)
-        3. Compound attrition (time-dependent death)
+        2. Death proposal phase (nutrient depletion, compound attrition, mitotic catastrophe)
+        3. Commit death (apply combined survival, allocate to ledgers)
         4. Confluence management (cap growth, no killing)
         5. Update death mode label
         """
         # 1) Growth (viable cells only - dead cells don't grow)
         self._update_vessel_growth(vessel, hours)
 
-        # 2) Nutrient depletion (opt-in)
+        # Begin death proposal phase: initialize per-step hazard proposals AFTER growth
+        vessel._step_hazard_proposals = {}
+        vessel._step_viability_start = float(np.clip(vessel.viability, 0.0, 1.0))
+        vessel._step_cell_count_start = float(max(0.0, vessel.cell_count))
+        vessel._step_total_hazard = 0.0
+        vessel._step_total_kill = 0.0
+        vessel._step_ledger_scale = 1.0
+
+        # 2) Death proposal phase - mechanisms propose hazards without mutating viability
         if ENABLE_NUTRIENT_DEPLETION:
             self._update_nutrient_depletion(vessel, hours)
 
-        # 3) Apply compound attrition (time-dependent)
         self._apply_compound_attrition(vessel, hours)
+
+        # 3) Commit death once (combined survival + proportional allocation)
+        self._commit_step_death(vessel, hours)
 
         # 4) Manage confluence (cap growth, but don't kill cells)
         self._manage_confluence(vessel)
 
-        # 5) Update death mode label
+        # 5) Update death mode label and enforce conservation law
         self._update_death_mode(vessel)
 
         vessel.last_update_time = self.simulated_time
@@ -515,7 +632,7 @@ class BiologicalVirtualMachine(VirtualMachine):
 
             # Apply attrition over this time interval (exponential survival)
             survival = float(np.exp(-attrition_rate * hours))
-            self._apply_survival(vessel, survival, "death_compound")
+            self._apply_survival(vessel, survival, "death_compound", hours)
 
             logger.debug(
                 f"{vessel.vessel_id}: Attrition rate={attrition_rate:.4f}/h, "
@@ -546,9 +663,9 @@ class BiologicalVirtualMachine(VirtualMachine):
 
     def _update_death_mode(self, vessel: VesselState):
         """
-        Update death mode label and partition death into known causes.
+        Update death mode label and enforce conservation law.
 
-        Enforces complete accounting: sum of all death causes = 1 - viability
+        Enforces complete accounting: sum of all death causes = 1 - viability (+epsilon)
 
         Known death causes:
         - death_compound: Instant viability effect + attrition
@@ -569,48 +686,77 @@ class BiologicalVirtualMachine(VirtualMachine):
             + vessel.death_mitotic_catastrophe
             + vessel.death_confluence
         )
-        untracked = max(0.0, total_dead - tracked_causes)
 
-        # Partition untracked death into death_unknown bucket
-        # This maintains the invariant without inventing causality
-        vessel.death_unknown = untracked
-
-        # Clamp individual causes to not exceed total death
-        vessel.death_compound = min(vessel.death_compound, total_dead)
-        vessel.death_confluence = min(vessel.death_confluence, total_dead - vessel.death_compound)
-        vessel.death_unknown = min(vessel.death_unknown, total_dead - vessel.death_compound - vessel.death_confluence)
-
-        # All clamped to [0, 1]
-        vessel.death_compound = min(1.0, max(0.0, vessel.death_compound))
-        vessel.death_confluence = min(1.0, max(0.0, vessel.death_confluence))
-        vessel.death_unknown = min(1.0, max(0.0, vessel.death_unknown))
-
-        # Warn if unknown death INCREASES after treatment (suggests accounting bug)
-        # But don't warn about baseline seeding stress - that's legitimate unknown death
-        seeding_stress_baseline = 0.025  # Tolerate up to 2.5% seeding stress without warning
-        if vessel.death_unknown > seeding_stress_baseline and vessel.compounds:
-            # Significant unknown death beyond seeding stress, despite tracking compounds
-            logger.warning(
-                f"{vessel.vessel_id}: Unknown death ({vessel.death_unknown:.1%}) exceeds seeding baseline. "
-                f"Total dead: {total_dead:.1%}, compound: {vessel.death_compound:.1%}, "
-                f"starvation: {vessel.death_starvation:.1%}, "
-                f"mitotic: {vessel.death_mitotic_catastrophe:.1%}, "
-                f"confluence: {vessel.death_confluence:.1%}. Suggests delta tracking error."
+        # If tracked exceeds total_dead due to numerical drift, renormalize
+        # (This should be rare because _commit_step_death already guards it)
+        if tracked_causes > total_dead + 1e-6:
+            scale = float(max(0.0, total_dead) / max(DEATH_EPS, tracked_causes))
+            vessel.death_compound *= scale
+            vessel.death_starvation *= scale
+            vessel.death_mitotic_catastrophe *= scale
+            vessel.death_confluence *= scale
+            tracked_causes = (
+                vessel.death_compound
+                + vessel.death_starvation
+                + vessel.death_mitotic_catastrophe
+                + vessel.death_confluence
             )
 
+        # Unknown is whatever is left
+        vessel.death_unknown = float(max(0.0, total_dead - tracked_causes))
+
+        # Final clamps
+        vessel.viability = float(np.clip(vessel.viability, 0.0, 1.0))
+        for field in [
+            "death_compound",
+            "death_starvation",
+            "death_mitotic_catastrophe",
+            "death_confluence",
+            "death_unknown",
+        ]:
+            setattr(vessel, field, float(np.clip(getattr(vessel, field, 0.0), 0.0, 1.0)))
+
+        # Conservation law (epsilon tolerance)
+        total_dead = 1.0 - vessel.viability
+        tracked_total = (
+            vessel.death_compound
+            + vessel.death_starvation
+            + vessel.death_mitotic_catastrophe
+            + vessel.death_confluence
+            + vessel.death_unknown
+        )
+        if tracked_total > total_dead + 1e-5:
+            raise RuntimeError(
+                f"Death ledger violates conservation law: "
+                f"tracked={tracked_total:.6f} > total_dead={total_dead:.6f} "
+                f"(vessel_id={vessel.vessel_id}, compound={vessel.death_compound:.6f}, "
+                f"starvation={vessel.death_starvation:.6f}, mitotic={vessel.death_mitotic_catastrophe:.6f}, "
+                f"confluence={vessel.death_confluence:.6f}, unknown={vessel.death_unknown:.6f})"
+            )
+
+        # Death mode labeling (based on thresholds)
         threshold = 0.05  # 5% death required to label
         # Lower threshold for unknown death if no other causes (seeding stress detection)
         unknown_threshold = 0.01 if vessel.death_compound == 0 and vessel.death_confluence == 0 else threshold
 
         compound_death = vessel.death_compound > threshold
+        starvation_death = vessel.death_starvation > threshold
+        mitotic_death = vessel.death_mitotic_catastrophe > threshold
         confluence_death = vessel.death_confluence > threshold
         unknown_death = vessel.death_unknown > unknown_threshold
 
         # Priority: known causes > unknown > none
-        if compound_death and confluence_death:
+        # Count number of active causes
+        active_causes = sum([compound_death, starvation_death, mitotic_death, confluence_death])
+
+        if active_causes > 1:
             vessel.death_mode = "mixed"
         elif compound_death:
             vessel.death_mode = "compound"
+        elif starvation_death:
+            vessel.death_mode = "starvation"
+        elif mitotic_death:
+            vessel.death_mode = "mitotic"
         elif confluence_death:
             vessel.death_mode = "confluence"
         elif unknown_death:
