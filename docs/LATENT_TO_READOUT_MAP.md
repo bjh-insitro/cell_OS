@@ -83,16 +83,27 @@ This document defines the ontology for latent biological states and their observ
 
 ## Morphology Features (Cell Painting)
 
-Available channels in `morph` dict:
+**Two-layer architecture:**
+- **`morphology_struct`**: Structural features (latent-driven, before viability scaling)
+- **`morphology_measured`**: Measured features (after viability scaling + noise)
+- **`signal_intensity`**: Explicit intensity scaling factor (viability-driven)
+
+Available channels in both `morphology_struct` and `morphology_measured`:
 - `er`: Endoplasmic reticulum
 - `mito`: Mitochondria
 - `nucleus`: Nuclear morphology
 - `actin`: Cytoskeleton
 - `rna`: Translation sites
 
-Current latent → morphology mappings:
-- `er_stress` → `morph['er']` (already implemented)
-- (Next: `mito_dysfunction` → `morph['mito']`)
+**Use structural features for latent inference** (what biology is doing):
+- `er_stress` → `morphology_struct['er']` (increases)
+- `mito_dysfunction` → `morphology_struct['mito']` (decreases)
+
+**Measured features include both biology + intensity:**
+- `morphology_measured = morphology_struct × signal_intensity`
+- `signal_intensity = 0.3 + 0.7 × viability` (dead cells retain 30% signal)
+
+This separation prevents viability-driven artifacts from masquerading as biological signals.
 
 ---
 
