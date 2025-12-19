@@ -189,23 +189,20 @@ class EpistemicLoop:
                 # Write refusal receipt FIRST, then handle abort/retry
                 self._log(f"\n🛑 DESIGN REFUSAL: {e}")
 
-                # Extract provenance from error message
-                error_msg = str(e)
-                rejected_path = None
-                validator_mode = "unknown"
-                violation_code = "unknown"
+                # CRITICAL: Check for audit trail degradation
+                if e.audit_degraded:
+                    # Audit trail is compromised - emit loud ERROR-level event
+                    self._log(
+                        f"\n⚠️  AUDIT TRAIL DEGRADED ⚠️\n"
+                        f"Refusal artifacts failed to write: {e.audit_error}\n"
+                        f"Refusal is ENFORCED (agent still refuses), but receipt write failed.\n"
+                        f"This must be investigated and resolved before next run."
+                    )
 
-                # Parse error message for provenance
-                if "Rejected design:" in error_msg:
-                    for line in error_msg.split('\n'):
-                        if "Rejected design:" in line:
-                            rejected_path = line.split("Rejected design:")[1].strip()
-                        if "Validator mode:" in line:
-                            validator_mode = line.split("Validator mode:")[1].strip()
-                        if "invalid_well_position" in error_msg:
-                            violation_code = "invalid_well_position"
-                        elif "duplicate_well_positions" in error_msg:
-                            violation_code = "duplicate_well_positions"
+                # Extract structured provenance (no parsing!)
+                rejected_path = e.rejected_path
+                validator_mode = e.validator_mode or "unknown"
+                violation_code = e.violation_code
 
                 # Create refusal receipt (DecisionEvent with abort)
                 refusal_receipt = DecisionEvent(
@@ -224,6 +221,9 @@ class EpistemicLoop:
                         "constraint_violation": violation_code,
                         "validator_mode": validator_mode,
                         "retry_policy": "no_retry_on_validation_failure",  # Theology: no automatic retries
+                        # Audit trail status
+                        "audit_degraded": e.audit_degraded,
+                        "audit_error": e.audit_error if e.audit_degraded else None,
                     },
                     reason=f"Design validation failed: {violation_code} ({validator_mode} validator)"
                 )
@@ -233,6 +233,8 @@ class EpistemicLoop:
 
                 # Log and abort (no automatic retry for validation failures)
                 self.abort_reason = f"Invalid design (cycle {cycle}): {violation_code}"
+                if e.audit_degraded:
+                    self.abort_reason += " [AUDIT DEGRADED]"
                 self._save_json()
                 break
 

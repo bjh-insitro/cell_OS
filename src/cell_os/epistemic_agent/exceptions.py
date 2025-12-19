@@ -43,6 +43,19 @@ class DecisionReceiptInvariantError(EpistemicInvariantError):
     def __post_init__(self) -> None:
         super().__init__(self.message)
 
+    def __reduce__(self):
+        """Enable pickle serialization for multiprocessing and persistence."""
+        return (
+            self.__class__,
+            (
+                self.message,
+                self.receipt_path,
+                self.missing_fields,
+                self.covenant_id,
+                self.details,
+            ),
+        )
+
 
 @dataclass
 class BeliefLedgerInvariantError(EpistemicInvariantError):
@@ -64,6 +77,19 @@ class BeliefLedgerInvariantError(EpistemicInvariantError):
 
     def __post_init__(self) -> None:
         super().__init__(self.message)
+
+    def __reduce__(self):
+        """Enable pickle serialization for multiprocessing and persistence."""
+        return (
+            self.__class__,
+            (
+                self.message,
+                self.mutated_fields,
+                self.evidence_event_ids,
+                self.covenant_id,
+                self.details,
+            ),
+        )
 
 
 @dataclass
@@ -105,3 +131,22 @@ class InvalidDesignError(EpistemicInvariantError):
 
     def __post_init__(self) -> None:
         super().__init__(self.message)
+
+    def __reduce__(self):
+        """Enable pickle serialization for multiprocessing and persistence."""
+        return (
+            self.__class__,
+            (
+                self.message,
+                self.violation_code,
+                self.design_id,
+                self.rejected_path,
+                self.reason_path,
+                self.validator_mode,
+                self.cycle,
+                self.covenant_id,
+                self.details,
+                self.audit_degraded,
+                self.audit_error,
+            ),
+        )

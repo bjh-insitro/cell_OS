@@ -585,6 +585,12 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"✗ test_rejected_design_hash_is_computed FAILED: {e}")
 
+        try:
+            test3.test_persistence_failure_sets_audit_degraded()
+            print("✓ test_persistence_failure_sets_audit_degraded PASSED")
+        except Exception as e:
+            print(f"✗ test_persistence_failure_sets_audit_degraded FAILED: {e}")
+
         print("\n=== TestValidationPlaceholder ===")
         test4 = TestValidationPlaceholder()
         try:
