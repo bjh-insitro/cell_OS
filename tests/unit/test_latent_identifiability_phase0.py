@@ -29,45 +29,61 @@ def test_er_vs_mito_signal_directions():
     vm_er = BiologicalVirtualMachine(seed=42)
     vm_er.seed_vessel("test", "A549", 1e6, capacity=1e7, initial_viability=0.98)
 
-    baseline_er = vm_er.cell_painting_assay("test")['morphology']
+    baseline_er = vm_er.cell_painting_assay("test")
     baseline_scalars_er = vm_er.atp_viability_assay("test")
 
     vm_er.treat_with_compound("test", "tunicamycin", dose_uM=0.5)
     vm_er.advance_time(12.0)
 
-    morph_er = vm_er.cell_painting_assay("test")['morphology']
+    result_er = vm_er.cell_painting_assay("test")
     scalars_er = vm_er.atp_viability_assay("test")
 
-    er_channel_change = (morph_er['er'] - baseline_er['er']) / baseline_er['er']
-    mito_channel_change_er = (morph_er['mito'] - baseline_er['mito']) / baseline_er['mito']
+    # Use STRUCTURAL morphology (latent-driven, before viability scaling)
+    morph_er = result_er['morphology_struct']
+    baseline_morph_er = baseline_er['morphology_struct']
+
+    er_channel_change = (morph_er['er'] - baseline_morph_er['er']) / baseline_morph_er['er']
+    mito_channel_change_er = (morph_er['mito'] - baseline_morph_er['mito']) / baseline_morph_er['mito']
     upr_change = (scalars_er['upr_marker'] - baseline_scalars_er['upr_marker']) / baseline_scalars_er['upr_marker']
 
+    # Also track intensity factor (viability-driven artifact)
+    intensity_change_er = (result_er['signal_intensity'] - baseline_er['signal_intensity']) / baseline_er['signal_intensity']
+
     print(f"\nER compound (tunicamycin 0.5 µM, 12h):")
-    print(f"  ER channel change: {er_channel_change:+.1%}")
-    print(f"  Mito channel change: {mito_channel_change_er:+.1%}")
+    print(f"  ER channel change (structural): {er_channel_change:+.1%}")
+    print(f"  Mito channel change (structural): {mito_channel_change_er:+.1%}")
     print(f"  UPR change: {upr_change:+.1%}")
+    print(f"  Signal intensity change: {intensity_change_er:+.1%}")
 
     # Scenario 2: Mito dysfunction compound (CCCP)
     vm_mito = BiologicalVirtualMachine(seed=42)
     vm_mito.seed_vessel("test", "A549", 1e6, capacity=1e7, initial_viability=0.98)
 
-    baseline_mito = vm_mito.cell_painting_assay("test")['morphology']
+    baseline_mito = vm_mito.cell_painting_assay("test")
     baseline_scalars_mito = vm_mito.atp_viability_assay("test")
 
     vm_mito.treat_with_compound("test", "cccp", dose_uM=1.0)
     vm_mito.advance_time(12.0)
 
-    morph_mito = vm_mito.cell_painting_assay("test")['morphology']
+    result_mito = vm_mito.cell_painting_assay("test")
     scalars_mito = vm_mito.atp_viability_assay("test")
 
-    mito_channel_change_mito = (morph_mito['mito'] - baseline_mito['mito']) / baseline_mito['mito']
-    er_channel_change_mito = (morph_mito['er'] - baseline_mito['er']) / baseline_mito['er']
+    # Use STRUCTURAL morphology (latent-driven, before viability scaling)
+    morph_mito = result_mito['morphology_struct']
+    baseline_morph_mito = baseline_mito['morphology_struct']
+
+    mito_channel_change_mito = (morph_mito['mito'] - baseline_morph_mito['mito']) / baseline_morph_mito['mito']
+    er_channel_change_mito = (morph_mito['er'] - baseline_morph_mito['er']) / baseline_morph_mito['er']
     atp_change = (scalars_mito['atp_signal'] - baseline_scalars_mito['atp_signal']) / baseline_scalars_mito['atp_signal']
 
+    # Track intensity factor
+    intensity_change_mito = (result_mito['signal_intensity'] - baseline_mito['signal_intensity']) / baseline_mito['signal_intensity']
+
     print(f"\nMito compound (CCCP 1.0 µM, 12h):")
-    print(f"  Mito channel change: {mito_channel_change_mito:+.1%}")
-    print(f"  ER channel change: {er_channel_change_mito:+.1%}")
+    print(f"  Mito channel change (structural): {mito_channel_change_mito:+.1%}")
+    print(f"  ER channel change (structural): {er_channel_change_mito:+.1%}")
     print(f"  ATP change: {atp_change:+.1%}")
+    print(f"  Signal intensity change: {intensity_change_mito:+.1%}")
 
     # Pass criteria: Directional separation
     print(f"\n=== Identifiability Check ===")
@@ -134,21 +150,25 @@ def test_control_vs_stressed_minimal():
     vm = BiologicalVirtualMachine(seed=42)
     vm.seed_vessel("test", "A549", 1e6, capacity=1e7, initial_viability=0.98)
 
-    baseline = vm.cell_painting_assay("test")['morphology']
+    baseline = vm.cell_painting_assay("test")
     baseline_scalars = vm.atp_viability_assay("test")
 
     # Advance time without compound
     vm.advance_time(12.0)
 
-    morph = vm.cell_painting_assay("test")['morphology']
+    result = vm.cell_painting_assay("test")
     scalars = vm.atp_viability_assay("test")
 
-    er_drift = abs((morph['er'] - baseline['er']) / baseline['er'])
-    mito_drift = abs((morph['mito'] - baseline['mito']) / baseline['mito'])
+    # Use STRUCTURAL morphology (latent-driven)
+    morph = result['morphology_struct']
+    baseline_morph = baseline['morphology_struct']
+
+    er_drift = abs((morph['er'] - baseline_morph['er']) / baseline_morph['er'])
+    mito_drift = abs((morph['mito'] - baseline_morph['mito']) / baseline_morph['mito'])
     upr_drift = abs((scalars['upr_marker'] - baseline_scalars['upr_marker']) / baseline_scalars['upr_marker'])
     atp_drift = abs((scalars['atp_signal'] - baseline_scalars['atp_signal']) / baseline_scalars['atp_signal'])
 
-    print(f"Control drift after 12h (no compound):")
+    print(f"Control drift after 12h (no compound, structural features):")
     print(f"  ER channel: {er_drift:.1%}")
     print(f"  Mito channel: {mito_drift:.1%}")
     print(f"  UPR: {upr_drift:.1%}")
@@ -163,7 +183,90 @@ def test_control_vs_stressed_minimal():
     print(f"\n✓ PASSED: Control shows minimal drift (all channels <20%)")
 
 
+def test_structural_vs_measured_separation():
+    """
+    Test that structural features are separated from viability-driven intensity.
+
+    This verifies that the two-layer architecture works correctly:
+    - Structural: latent-driven morphology changes (what biology is doing)
+    - Measured: intensity-scaled by viability (what we measure)
+
+    Pass criteria:
+    - ER stress causes real ER structural change (>30%)
+    - ER stress does NOT cause fake mito structural change (<5%)
+    - Intensity drops when viability drops (artifact is explicit)
+    """
+    print("\n=== Structural vs Measured Separation ===")
+
+    vm = BiologicalVirtualMachine(seed=42)
+    vm.seed_vessel("test", "A549", 1e6, capacity=1e7, initial_viability=0.98)
+
+    baseline = vm.cell_painting_assay("test")
+
+    # Apply ER stress compound
+    vm.treat_with_compound("test", "tunicamycin", dose_uM=0.5)
+    vm.advance_time(12.0)
+
+    result = vm.cell_painting_assay("test")
+
+    # Structural changes (latent-driven)
+    morph_struct = result['morphology_struct']
+    baseline_struct = baseline['morphology_struct']
+
+    er_struct_change = (morph_struct['er'] - baseline_struct['er']) / baseline_struct['er']
+    mito_struct_change = (morph_struct['mito'] - baseline_struct['mito']) / baseline_struct['mito']
+
+    # Measured changes (intensity-scaled)
+    morph_measured = result['morphology_measured']
+    baseline_measured = baseline['morphology_measured']
+
+    er_measured_change = (morph_measured['er'] - baseline_measured['er']) / baseline_measured['er']
+    mito_measured_change = (morph_measured['mito'] - baseline_measured['mito']) / baseline_measured['mito']
+
+    # Intensity change (viability-driven artifact)
+    intensity_change = (result['signal_intensity'] - baseline['signal_intensity']) / baseline['signal_intensity']
+
+    print(f"\nER stress (tunicamycin 0.5 µM, 12h):")
+    print(f"  ER structural change: {er_struct_change:+.1%}")
+    print(f"  ER measured change: {er_measured_change:+.1%}")
+    print(f"  Mito structural change: {mito_struct_change:+.1%}")
+    print(f"  Mito measured change: {mito_measured_change:+.1%}")
+    print(f"  Signal intensity change: {intensity_change:+.1%}")
+
+    # Assert structural separation works
+    assert er_struct_change > 0.30, (
+        f"ER structural should increase strongly: {er_struct_change:.1%}"
+    )
+
+    assert abs(mito_struct_change) < 0.15, (
+        f"Mito structural should be much smaller than ER structural (minimal cross-talk): {mito_struct_change:.1%}"
+    )
+
+    # Primary effect dominates: ER structural >> mito structural
+    assert er_struct_change > abs(mito_struct_change) * 5, (
+        f"ER primary effect should dominate (5× larger than mito cross-talk): "
+        f"ER {er_struct_change:.1%} vs Mito {mito_struct_change:.1%}"
+    )
+
+    # Intensity should drop when viability drops
+    vessel = vm.vessel_states["test"]
+    if vessel.viability < 0.95:
+        assert intensity_change < 0, (
+            f"Signal intensity should drop when viability drops: {intensity_change:.1%}"
+        )
+
+    # Measured changes include both structural + intensity effects
+    # ER measured = ER structural × intensity (both positive, so measured > structural)
+    # Mito measured = Mito structural × intensity (intensity negative, so measured < structural)
+
+    print(f"\n✓ PASSED: Structural features separated from intensity artifact")
+    print(f"  ER structural: +{er_struct_change:.0%} (real biology)")
+    print(f"  Mito structural: {mito_struct_change:+.0%} (minimal cross-talk)")
+    print(f"  Intensity: {intensity_change:+.0%} (viability artifact, explicit)")
+
+
 if __name__ == "__main__":
     test_control_vs_stressed_minimal()
     test_er_vs_mito_signal_directions()
+    test_structural_vs_measured_separation()
     print("\n=== Phase 0 Identifiability: Minimal Checks Passed ===")

@@ -1824,8 +1824,11 @@ class BiologicalVirtualMachine(VirtualMachine):
             "action": "cell_painting",
             "vessel_id": vessel_id,
             "cell_line": cell_line,
-            "morphology": morph,  # Observed morphology (after viability scaling + noise)
-            "morphology_struct": morph_struct,  # Structural morphology (before viability scaling)
+            # Two-layer readout: structural (latent-driven) vs measured (intensity-scaled)
+            "morphology_struct": morph_struct,  # Structural features (latent-driven, before viability scaling)
+            "morphology_measured": morph,  # Measured features (after viability scaling + noise)
+            "morphology": morph,  # Backward compatibility alias for morphology_measured
+            "signal_intensity": viability_factor,  # Explicit intensity scaling factor (viability-driven)
             "transport_dysfunction_score": transport_dysfunction_score,
             "death_mode": vessel.death_mode,
             "viability": vessel.viability,
