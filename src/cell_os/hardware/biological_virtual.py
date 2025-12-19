@@ -56,6 +56,13 @@ ENABLE_FEEDING_COSTS = True
 FEEDING_TIME_COST_H = 0.25  # Operator time per feed operation
 FEEDING_CONTAMINATION_RISK = 0.002  # 0.2% chance of introducing contamination
 
+# Intervention costs (Phase 3: washout costs prevent free micro-cycling)
+ENABLE_INTERVENTION_COSTS = True
+WASHOUT_TIME_COST_H = 0.25  # Operator time per washout operation
+WASHOUT_CONTAMINATION_RISK = 0.001  # 0.1% chance (lower than feeding)
+WASHOUT_INTENSITY_PENALTY = 0.05  # 5% intensity drop for 12h (measurement artifact)
+WASHOUT_INTENSITY_RECOVERY_H = 12.0  # Recovery time for intensity penalty
+
 # ER stress dynamics (morphology-first, death-later mechanism)
 ENABLE_ER_STRESS = True
 ER_STRESS_K_ON = 0.25  # Induction rate constant (per hour)
@@ -73,6 +80,19 @@ MITO_DYSFUNCTION_DEATH_THETA = 0.6  # Stress level for death onset (lower than E
 MITO_DYSFUNCTION_DEATH_WIDTH = 0.1  # Sigmoid width for death transition
 MITO_DYSFUNCTION_H_MAX = 0.05  # Max death hazard (per hour) at full stress (nastier than ER)
 MITO_DYSFUNCTION_MORPH_ALPHA = 0.4  # Morphology scaling factor (40% loss at S=1)
+
+# Transport dysfunction dynamics (morphology-first, no death hazard in v1)
+ENABLE_TRANSPORT_DYSFUNCTION = True
+TRANSPORT_DYSFUNCTION_K_ON = 0.35  # Induction rate constant (per hour) - faster than ER/mito
+TRANSPORT_DYSFUNCTION_K_OFF = 0.08  # Decay rate constant (per hour) - faster recovery
+TRANSPORT_DYSFUNCTION_MORPH_ALPHA = 0.6  # Morphology scaling factor (60% increase at S=1)
+
+# Phase 4 Option 3: Cross-talk (transport → mito coupling)
+# Prolonged transport dysfunction induces secondary mito dysfunction
+ENABLE_TRANSPORT_MITO_COUPLING = True
+TRANSPORT_MITO_COUPLING_DELAY_H = 18.0  # Delay before coupling activates
+TRANSPORT_MITO_COUPLING_THRESHOLD = 0.6  # Transport dysfunction must exceed this
+TRANSPORT_MITO_COUPLING_RATE = 0.02  # Mito dysfunction induction rate (per hour)
 
 
 def stable_u32(s: str) -> int:
@@ -132,10 +152,19 @@ class VesselState:
         self.death_mitotic_catastrophe = 0.0
         self.death_er_stress = 0.0
         self.death_mito_dysfunction = 0.0
+        self.death_transport_dysfunction = 0.0  # Stub for Phase 2 (no hazard in v1)
 
         # Latent stress states (morphology-first, death-later)
         self.er_stress = 0.0  # ER stress level (0-1)
         self.mito_dysfunction = 0.0  # Mito dysfunction level (0-1)
+        self.transport_dysfunction = 0.0  # Transport dysfunction level (0-1)
+
+        # Intervention tracking (Phase 3: costs for washout/feed)
+        self.last_washout_time = None  # Simulated time of last washout (for intensity penalty)
+        self.washout_count = 0  # Total washouts performed (for ops cost tracking)
+
+        # Cross-talk tracking (Phase 4 Option 3: transport → mito coupling)
+        self.transport_high_since = None  # Time when transport dysfunction first exceeded threshold (or None)
 
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
@@ -606,16 +635,42 @@ class BiologicalVirtualMachine(VirtualMachine):
         - f_axis = dose/(dose + ic50) for mitochondrial axis compounds
         - Death hazard = h_max * sigmoid((S - theta)/width)
 
-        This creates temporal coupling and reversibility.
+        Phase 4 Option 3: Cross-talk from transport dysfunction
+        - Prolonged transport dysfunction (>18h above threshold) induces mito dysfunction
+        - Small second-order effect (rate = 0.02/h)
 
         Invariant: Monotone sanity
-        - No compounds → Mito dysfunction should not increase (decay or flat)
-        - Compounds present → Mito dysfunction should not decrease unless decay dominates
+        - No compounds AND no transport coupling → Mito dysfunction should not increase
+        - Compounds or coupling present → Mito dysfunction can increase
         """
         S_before = vessel.mito_dysfunction
 
-        if not vessel.compounds:
-            # No compounds, just decay
+        # Check for decay-only case
+        no_compounds = not vessel.compounds
+        no_coupling = False
+
+        # Phase 4 Option 3: Check for transport → mito coupling
+        coupling_induction = 0.0
+        if ENABLE_TRANSPORT_MITO_COUPLING:
+            # Check if transport dysfunction has been high for long enough
+            if vessel.transport_dysfunction > TRANSPORT_MITO_COUPLING_THRESHOLD:
+                # Track when transport first exceeded threshold
+                if vessel.transport_high_since is None:
+                    vessel.transport_high_since = self.simulated_time
+
+                # Check if delay has passed
+                time_above_threshold = self.simulated_time - vessel.transport_high_since
+                if time_above_threshold >= TRANSPORT_MITO_COUPLING_DELAY_H:
+                    # Coupling activates: transport induces mito dysfunction
+                    coupling_induction = TRANSPORT_MITO_COUPLING_RATE
+            else:
+                # Transport dropped below threshold, reset tracking
+                vessel.transport_high_since = None
+
+        no_coupling = (coupling_induction <= 0)
+
+        if no_compounds and no_coupling:
+            # No compounds, no coupling → just decay
             if vessel.mito_dysfunction > 0:
                 decay = MITO_DYSFUNCTION_K_OFF * vessel.mito_dysfunction * hours
                 vessel.mito_dysfunction = float(max(0.0, vessel.mito_dysfunction - decay))
@@ -642,7 +697,10 @@ class BiologicalVirtualMachine(VirtualMachine):
             f_axis = float(dose_uM / (dose_uM + ic50_uM))
             induction_total += f_axis
 
-        # Clamp induction to [0, 1] if multiple compounds
+        # Add coupling induction (small second-order effect)
+        induction_total += coupling_induction
+
+        # Clamp induction to [0, 1] if multiple sources
         induction_total = float(min(1.0, induction_total))
 
         # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S
@@ -671,6 +729,77 @@ class BiologicalVirtualMachine(VirtualMachine):
                 )
         # Note: With compounds, we allow decrease if decay dominates induction (no check needed)
 
+    def _update_transport_dysfunction(self, vessel: VesselState, hours: float):
+        """
+        Update transport dysfunction latent state (morphology-first, no death in v1).
+
+        Transport dysfunction is triggered by microtubule disruption:
+        - Morphology shifts early (actin channel increases)
+        - NO death hazard in v1 (already have mitotic catastrophe for microtubules)
+
+        Dynamics:
+        - dS/dt = k_on * f_axis(dose) * (1-S) - k_off * S
+        - f_axis = dose/(dose + ic50) for microtubule axis compounds
+        - Faster onset/recovery than ER/mito (k_on=0.35, k_off=0.08)
+
+        This creates temporal separation from ER/mito signatures.
+
+        Invariant: Monotone sanity
+        - No compounds → Transport dysfunction should not increase (decay or flat)
+        - Compounds present → Transport dysfunction should not decrease unless decay dominates
+        """
+        S_before = vessel.transport_dysfunction
+
+        if not vessel.compounds:
+            # No compounds, just decay
+            if vessel.transport_dysfunction > 0:
+                decay = TRANSPORT_DYSFUNCTION_K_OFF * vessel.transport_dysfunction * hours
+                vessel.transport_dysfunction = float(max(0.0, vessel.transport_dysfunction - decay))
+            return
+
+        # Compute induction term from all microtubule compounds
+        induction_total = 0.0
+        for compound, dose_uM in vessel.compounds.items():
+            if dose_uM <= 0:
+                continue
+
+            meta = vessel.compound_meta.get(compound)
+            if not meta:
+                continue
+
+            stress_axis = meta['stress_axis']
+            ic50_uM = meta['ic50_uM']
+
+            # Only microtubule axis induces transport dysfunction
+            if stress_axis != "microtubule":
+                continue
+
+            # Dose-response: f_axis = dose / (dose + ic50)
+            f_axis = float(dose_uM / (dose_uM + ic50_uM))
+            induction_total += f_axis
+
+        # Clamp induction to [0, 1] if multiple compounds
+        induction_total = float(min(1.0, induction_total))
+
+        # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S
+        S = vessel.transport_dysfunction
+        dS_dt = TRANSPORT_DYSFUNCTION_K_ON * induction_total * (1.0 - S) - TRANSPORT_DYSFUNCTION_K_OFF * S
+        vessel.transport_dysfunction = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
+
+        # NO death hazard in v1 (already have mitotic catastrophe for microtubules)
+        # death_transport_dysfunction field is stubbed for Phase 2
+
+        # Monotone sanity check (catches sign errors in dynamics)
+        S_after = vessel.transport_dysfunction
+        if not vessel.compounds:
+            # No compounds → dysfunction should not increase
+            if S_after > S_before + 1e-9:
+                raise RuntimeError(
+                    f"Transport dysfunction increased without compounds: {S_before:.6f} → {S_after:.6f} "
+                    f"(vessel_id={vessel.vessel_id})"
+                )
+        # Note: With compounds, we allow decrease if decay dominates induction (no check needed)
+
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
@@ -694,11 +823,16 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel._step_ledger_scale = 1.0
 
         # 2) Death proposal phase - mechanisms propose hazards without mutating viability
+        # IMPORTANT: Transport dysfunction must update BEFORE mito dysfunction
+        # so that cross-talk coupling sees current transport state
         if ENABLE_NUTRIENT_DEPLETION:
             self._update_nutrient_depletion(vessel, hours)
 
         if ENABLE_ER_STRESS:
             self._update_er_stress(vessel, hours)
+
+        if ENABLE_TRANSPORT_DYSFUNCTION:
+            self._update_transport_dysfunction(vessel, hours)
 
         if ENABLE_MITO_DYSFUNCTION:
             self._update_mito_dysfunction(vessel, hours)
@@ -1081,12 +1215,21 @@ class BiologicalVirtualMachine(VirtualMachine):
         Enables intervention policies like pulse dosing, compound removal, etc.
         Latent states (ER stress, etc.) will decay naturally after washout.
 
+        Costs (if ENABLE_INTERVENTION_COSTS=True):
+        - Time: Consumes WASHOUT_TIME_COST_H operator hours
+        - Contamination risk: Small probability of intensity drop (measurement artifact)
+        - Intensity penalty: Deterministic 5% signal drop for 12h (handling stress)
+
+        IMPORTANT: Washout does NOT directly affect latent states (er_stress, mito_dysfunction,
+        transport_dysfunction). Recovery comes from natural decay dynamics (k_off terms).
+        Washout only removes compounds and adds intervention costs.
+
         Args:
             vessel_id: Vessel identifier
             compound: Specific compound to remove, or None to remove all compounds
 
         Returns:
-            Dict with status and removed compounds
+            Dict with status, removed compounds, and cost metadata
         """
         if vessel_id not in self.vessel_states:
             return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
@@ -1114,15 +1257,45 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.compound_start_time.pop(compound, None)
             logger.info(f"Washed out {compound} from {vessel_id}")
 
-        self._simulate_delay(0.5)  # Media change takes time
+        # Track washout for intervention costs
+        vessel.last_washout_time = self.simulated_time
+        vessel.washout_count += 1
 
-        return {
+        result = {
             "status": "success",
             "action": "washout",
             "vessel_id": vessel_id,
             "removed_compounds": removed,
             "time": self.simulated_time,
         }
+
+        # Apply intervention costs (Phase 3)
+        if ENABLE_INTERVENTION_COSTS:
+            # Time cost (operator hours)
+            result["time_cost_h"] = WASHOUT_TIME_COST_H
+
+            # Contamination risk (intensity hit, NOT viability hit)
+            # This is a measurement artifact, not biological damage
+            contamination_roll = self.rng_assay.random()
+            if contamination_roll < WASHOUT_CONTAMINATION_RISK:
+                result["contamination_event"] = True
+                # Contamination manifests as temporary intensity drop (5-10% for 12h)
+                # This is handled in cell_painting_assay via last_washout_time check
+                logger.warning(f"Washout contamination event in {vessel_id} (intensity artifact)")
+            else:
+                result["contamination_event"] = False
+
+            # Deterministic intensity penalty (handling stress)
+            # Cells are disturbed by media change → measurement noise for next 12h
+            result["intensity_penalty_applied"] = True
+            logger.debug(f"Washout intensity penalty applied to {vessel_id} (recovers over {WASHOUT_INTENSITY_RECOVERY_H}h)")
+        else:
+            result["contamination_event"] = False
+            result["intensity_penalty_applied"] = False
+
+        self._simulate_delay(0.5)  # Media change takes time
+
+        return result
 
     def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:
         """Count cells with realistic biological variation."""
@@ -1720,6 +1893,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         if ENABLE_MITO_DYSFUNCTION and vessel.mito_dysfunction > 0:
             morph['mito'] *= max(0.1, 1.0 - MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction)
 
+        # Apply transport dysfunction latent state to actin channel (morphology-first mechanism)
+        # Transport dysfunction increases actin signal (contrast with mito decrease, matches actin bundling)
+        if ENABLE_TRANSPORT_DYSFUNCTION and vessel.transport_dysfunction > 0:
+            morph['actin'] *= (1.0 + TRANSPORT_DYSFUNCTION_MORPH_ALPHA * vessel.transport_dysfunction)
+
         # CRITICAL: Compute transport dysfunction from STRUCTURAL morphology (before viability scaling)
         # Uses biology_core for consistent dysfunction computation
         # This prevents measurement attenuation (dead cells are dim) from masquerading as
@@ -1728,8 +1906,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Keep a copy of structural morphology (before viability scaling) for output
         morph_struct = morph.copy()
 
-        # Compute dysfunction using biology_core (single source of truth)
-        # If no compounds, no dysfunction
+        # Compute dysfunction score from morphology for diagnostic purposes
+        # NOTE: This is NOT used to update the latent state (that's done by _update_transport_dysfunction())
+        # For Phase 2, transport dysfunction is a proper latent state driven by exposure dynamics
         if stress_axis is not None:
             transport_dysfunction_score = biology_core.compute_transport_dysfunction_score(
                 cell_line=cell_line,
@@ -1742,12 +1921,25 @@ class BiologicalVirtualMachine(VirtualMachine):
         else:
             transport_dysfunction_score = 0.0
 
-        # Store for attrition calculation during advance_time
-        vessel.transport_dysfunction = transport_dysfunction_score
+        # DO NOT overwrite vessel.transport_dysfunction here!
+        # The latent state is managed by _update_transport_dysfunction() during _step_vessel()
+        # Assays observe the latent, they don't modify it (observer independence)
 
         # Apply viability effect (dead cells have reduced signal)
         # This affects MEASUREMENT, not STRUCTURE
         viability_factor = 0.3 + 0.7 * vessel.viability  # Dead cells retain 30% signal
+
+        # Apply washout intensity penalty (Phase 3: intervention costs)
+        # Washout disturbs cells → transient measurement artifact (NOT biology)
+        if ENABLE_INTERVENTION_COSTS and vessel.last_washout_time is not None:
+            time_since_washout = self.simulated_time - vessel.last_washout_time
+            if time_since_washout < WASHOUT_INTENSITY_RECOVERY_H:
+                # Linear recovery over WASHOUT_INTENSITY_RECOVERY_H hours
+                recovery_fraction = time_since_washout / WASHOUT_INTENSITY_RECOVERY_H
+                washout_penalty = WASHOUT_INTENSITY_PENALTY * (1.0 - recovery_fraction)
+                viability_factor *= (1.0 - washout_penalty)
+                logger.debug(f"Washout intensity penalty: {washout_penalty:.1%} (time since washout: {time_since_washout:.1f}h)")
+
         for channel in morph:
             morph[channel] *= viability_factor
 
@@ -1998,6 +2190,19 @@ class BiologicalVirtualMachine(VirtualMachine):
         atp_signal *= total_tech_factor
         atp_signal = max(0.0, atp_signal)
 
+        # Trafficking marker (transport dysfunction proxy) - increases with transport dysfunction
+        # Baseline ~100, increases to ~250 at full dysfunction
+        baseline_trafficking = 100.0
+        trafficking_marker = baseline_trafficking * (1.0 + 1.5 * vessel.transport_dysfunction)
+
+        # Add biological noise to trafficking marker
+        if effective_bio_cv > 0:
+            trafficking_marker *= self.rng_assay.normal(1.0, effective_bio_cv)
+
+        # Add technical noise
+        trafficking_marker *= total_tech_factor
+        trafficking_marker = max(0.0, trafficking_marker)
+
         self._simulate_delay(0.5)  # LDH assay is quick
 
         result = {
@@ -2008,6 +2213,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             "ldh_signal": ldh_signal,
             "atp_signal": atp_signal,  # Mito dysfunction proxy (100 baseline, 30 at full dysfunction)
             "upr_marker": upr_marker,  # ER stress proxy (100 baseline, 300 at full stress)
+            "trafficking_marker": trafficking_marker,  # Transport dysfunction proxy (100 baseline, 250 at full dysfunction)
             "viability": vessel.viability,
             "cell_count": vessel.cell_count,
             "death_mode": vessel.death_mode,

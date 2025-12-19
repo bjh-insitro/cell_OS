@@ -167,22 +167,49 @@ Realized death allocated proportionally to hazard contribution.
 - ER stress and mito dysfunction are independent (different stress axes)
 - Test: `test_mito_dysfunction_orthogonal_to_er_stress()` verifies separation
 
+### Transport Dysfunction (`vessel.transport_dysfunction`, 0-1)
+
+**Induction:**
+- Compounds with `stress_axis="microtubule"` (paclitaxel, nocodazole, vincristine)
+- Dynamics: `dS/dt = k_on * f(dose) * (1-S) - k_off * S`
+- Timescale: 6-12h to saturation (FASTER than ER/mito)
+- Rate constants: k_on=0.35, k_off=0.08 (vs 0.25/0.05 for ER/mito)
+
+**Readouts:**
+1. **Actin morphology channel** (Cell Painting)
+   - Effect: `morph['actin'] *= (1.0 + 0.6 * transport_dysfunction)`
+   - Direction: INCREASES (contrasts with mito decrease, matches actin bundling)
+   - Early signal: 88% increase at 12h with 0.005 µM paclitaxel
+   - Location: `cell_painting_assay()`, line ~1805
+
+2. **Trafficking marker** (scalar biochemistry)
+   - Effect: `trafficking_marker = 100 * (1.0 + 1.5 * transport_dysfunction)`
+   - Baseline: 100, saturates at 250
+   - Location: `atp_viability_assay()`, line ~2088
+
+**Death hazard:**
+- **v1: NO death hazard** (morphology-only, stub for Phase 2)
+- Rationale: Mitotic catastrophe already handles death for microtubule axis
+- Bucket: `vessel.death_transport_dysfunction` (stubbed, always 0.0)
+- Design: "Don't double-punish the same axis yet" - death comes from mitotic catastrophe
+
+**Orthogonality:**
+- ER stress and mito dysfunction do NOT induce transport dysfunction
+- Transport dysfunction does NOT induce ER stress or mito dysfunction
+- Test: `test_transport_dysfunction_orthogonal_to_er_mito()` verifies separation
+- Different morphology channel (actin vs ER/mito)
+- Different scalar readout (trafficking_marker vs UPR/ATP)
+
+**Temporal signature:**
+- Faster onset than ER/mito: reaches 80% at 6h vs 100% at 12h
+- Faster recovery: decays 64% in 8h vs ~40% for ER/mito
+- Test: `test_transport_dysfunction_faster_timescale()` verifies temporal separation
+
 ---
 
 ## Future Latents (Not Yet Implemented)
 
-### Transport Dysfunction (Proposed Phase 2)
-
-Only add this AFTER verifying ER/mito identifiability.
-
-**Latent state:** `vessel.transport_dysfunction` (0-1)
-
-**Induction:**
-- Compounds with `stress_axis="microtubule"` (paclitaxel, nocodazole)
-- Second-order coupling (touches multiple channels)
-
-**Readouts:**
-1. Morphology: `morph['actin']` (primary), mild `morph['mito']` (secondary)
-2. Modulates mitotic catastrophe hazard
-
-**Design constraint:** Don't smear into mito dysfunction—keep causal graph legible.
+None currently. Next candidates:
+- DNA damage response (if we add genotoxic compounds)
+- Autophagy dysregulation (if we add lysosomal inhibitors)
+- Oxidative stress (if we add ROS generators beyond current set)
