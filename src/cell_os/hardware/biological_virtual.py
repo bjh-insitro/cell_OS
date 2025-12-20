@@ -350,42 +350,6 @@ class BiologicalVirtualMachine(VirtualMachine):
         for vessel in self.vessel_states.values():
             self._step_vessel(vessel, hours)
 
-    def _apply_survival(self, vessel: VesselState, survival: float, death_field: str, hours: float):
-        """
-        Proposal-mode survival application.
-
-        Instead of mutating viability/cell_count immediately (which creates implicit ordering
-        and makes accounting brittle), convert the survival fraction into a hazard rate over
-        this interval and accumulate it into vessel._step_hazard_proposals.
-
-        At the end of _step_vessel, we apply the combined survival once and allocate the realized
-        death back to causes proportionally to hazard contribution (competing risks).
-
-        Args:
-            vessel: Vessel state
-            survival: Survival fraction over this interval (0-1)
-            death_field: Which cumulative death field to credit (e.g., "death_starvation")
-            hours: Time interval (hours) over which this survival applies
-        """
-        survival = float(np.clip(survival, 0.0, 1.0))
-        hours = float(max(DEATH_EPS, hours))
-
-        # Convert per-interval survival to hazard rate (per hour)
-        # survival == 1 → hazard 0
-        if survival >= 1.0:
-            hazard = 0.0
-        elif survival <= 0.0:
-            # Treat zero survival as extremely large hazard (still finite for math)
-            hazard = 1e9
-        else:
-            hazard = float(-np.log(survival) / hours)
-
-        # Accumulate hazard proposal for this death cause
-        if not hasattr(vessel, "_step_hazard_proposals") or vessel._step_hazard_proposals is None:
-            vessel._step_hazard_proposals = {}
-
-        vessel._step_hazard_proposals[death_field] = vessel._step_hazard_proposals.get(death_field, 0.0) + hazard
-
     def _propose_hazard(self, vessel: VesselState, hazard_per_h: float, death_field: str):
         """
         Directly propose a hazard rate (deaths per hour) for a death cause.
