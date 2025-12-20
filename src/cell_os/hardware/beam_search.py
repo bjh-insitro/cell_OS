@@ -17,11 +17,25 @@ from .biological_virtual import BiologicalVirtualMachine
 from .reward import compute_microtubule_mechanism_reward
 
 
+@dataclass
+class PrefixRolloutResult:
+    """Result of prefix rollout to current timestep."""
+    viability: float
+    actin_fold: float
+    classifier_margin: float  # top1_score - top2_score from Phase5 classifier
+    predicted_axis: Optional[str]
+    washout_count: int
+    feed_count: int
+    # Full state for debugging
+    actin_struct: float
+    baseline_actin: float
+
+
 class Phase5EpisodeRunner(EpisodeRunner):
     """
     EpisodeRunner that applies Phase5 compound scalars (potency, toxicity).
 
-    Wraps treat_with_compound to pass potency_scalar and toxicity_scalar.
+    Extends with prefix rollouts for beam search.
     """
 
     def __init__(
@@ -48,6 +62,9 @@ class Phase5EpisodeRunner(EpisodeRunner):
             actin_threshold=actin_threshold
         )
         self.phase5_compound = phase5_compound
+
+        # Prefix rollout cache: key = (schedule_prefix_tuple, n_steps)
+        self._prefix_cache: Dict[Tuple, PrefixRolloutResult] = {}
 
     def run(self, policy: Policy) -> Tuple[EpisodeReceipt, List[EpisodeState]]:
         """Execute policy with Phase5 scalars applied."""
@@ -155,6 +172,117 @@ class Phase5EpisodeRunner(EpisodeRunner):
         self._rollout_cache[cache_key] = result
 
         return result
+
+    def rollout_prefix(self, schedule_prefix: List[Action]) -> PrefixRolloutResult:
+        """
+        Execute partial schedule and return state at current timestep.
+
+        This is the ACTUAL prefix rollout - runs VM only to len(schedule_prefix) steps.
+
+        Args:
+            schedule_prefix: Partial action sequence
+
+        Returns:
+            PrefixRolloutResult with true state (viability, actin, classifier margin)
+        """
+        n_steps_prefix = len(schedule_prefix)
+
+        # Check cache first
+        cache_key = (tuple((a.dose_fraction, a.washout, a.feed) for a in schedule_prefix), n_steps_prefix)
+        if cache_key in self._prefix_cache:
+            return self._prefix_cache[cache_key]
+
+        # Cache miss: run VM to current timestep
+        vm = BiologicalVirtualMachine(seed=self.seed)
+        vm.seed_vessel("episode", self.cell_line, 1e6, capacity=1e7, initial_viability=0.98)
+
+        # Measure baseline
+        baseline_result = vm.cell_painting_assay("episode")
+        baseline_actin = baseline_result['morphology_struct']['actin']
+        baseline_er = baseline_result['morphology_struct']['er']
+        baseline_mito = baseline_result['morphology_struct']['mito']
+        baseline_scalars = vm.atp_viability_assay("episode")
+        baseline_upr = baseline_scalars['upr_marker']
+        baseline_atp = baseline_scalars['atp_signal']
+        baseline_trafficking = baseline_scalars['trafficking_marker']
+
+        # Execute prefix
+        washout_count = 0
+        feed_count = 0
+
+        for step_idx, action in enumerate(schedule_prefix):
+            vessel = vm.vessel_states["episode"]
+
+            # Apply dose
+            if action.dose_fraction > 0:
+                dose_uM = action.dose_fraction * self.reference_dose_uM
+                if self.compound not in vessel.compounds or vessel.compounds[self.compound] == 0:
+                    vm.treat_with_compound(
+                        "episode",
+                        self.compound,
+                        dose_uM=dose_uM,
+                        potency_scalar=self.phase5_compound.potency_scalar,
+                        toxicity_scalar=self.phase5_compound.toxicity_scalar
+                    )
+
+            # Washout
+            if action.washout:
+                if self.compound in vessel.compounds and vessel.compounds[self.compound] > 0:
+                    vm.washout_compound("episode", self.compound)
+                    washout_count += 1
+
+            # Feed
+            if action.feed:
+                vm.feed_vessel("episode")
+                feed_count += 1
+
+            # Advance time
+            vm.advance_time(self.step_h)
+
+        # Measure current state
+        result = vm.cell_painting_assay("episode")
+        morph_struct = result['morphology_struct']
+        scalars = vm.atp_viability_assay("episode")
+        vessel = vm.vessel_states["episode"]
+
+        actin_struct = morph_struct['actin']
+        actin_fold = actin_struct / baseline_actin
+        viability = vessel.viability
+
+        # Run Phase5 classifier for confidence margin
+        from .masked_compound_phase5 import infer_stress_axis_with_confidence
+
+        er_fold = morph_struct['er'] / baseline_er
+        mito_fold = morph_struct['mito'] / baseline_mito
+        upr_fold = scalars['upr_marker'] / baseline_upr
+        atp_fold = scalars['atp_signal'] / baseline_atp
+        trafficking_fold = scalars['trafficking_marker'] / baseline_trafficking
+
+        predicted_axis, confidence = infer_stress_axis_with_confidence(
+            er_fold=er_fold,
+            mito_fold=mito_fold,
+            actin_fold=actin_fold,
+            upr_fold=upr_fold,
+            atp_fold=atp_fold,
+            trafficking_fold=trafficking_fold
+        )
+
+        # Build result
+        prefix_result = PrefixRolloutResult(
+            viability=viability,
+            actin_fold=actin_fold,
+            classifier_margin=confidence,
+            predicted_axis=predicted_axis,
+            washout_count=washout_count,
+            feed_count=feed_count,
+            actin_struct=actin_struct,
+            baseline_actin=baseline_actin
+        )
+
+        # Store in cache
+        self._prefix_cache[cache_key] = prefix_result
+
+        return prefix_result
 
 
 @dataclass
@@ -370,32 +498,34 @@ class BeamSearch:
                         self.nodes_pruned_interventions += 1
                         continue
 
-                    # Evaluate prefix (get current observations)
-                    prefix_result = self._evaluate_prefix(new_schedule, compound)
-
-                    if prefix_result is None:
-                        # Prefix violates hard constraint (death)
+                    # ACTUAL prefix rollout (runs VM to current timestep)
+                    try:
+                        prefix_result = self.runner.rollout_prefix(new_schedule)
+                    except Exception as e:
+                        # Simulation failed (probably death or error)
                         self.nodes_pruned_death += 1
                         continue
 
-                    viability_now, actin_fold_now, confidence_now = prefix_result
-
-                    # Early pruning: death trajectory bound
-                    # If estimated death already high, prune
-                    if viability_now < (1.0 - self.death_tolerance + 0.05):  # Give 5% slack
+                    # Early pruning: death trajectory (ACTUAL viability, not estimate)
+                    if prefix_result.viability < (1.0 - self.death_tolerance):
                         self.nodes_pruned_death += 1
                         continue
 
-                    # Compute heuristic score
-                    # Reward mechanism potential, penalize death and interventions
-                    mechanism_potential = max(0.0, actin_fold_now - 1.0)  # How much above baseline
-                    death_penalty = max(0.0, (1.0 - viability_now) - 0.02)  # Penalty for death >2%
+                    # Compute heuristic score using REAL observations
+                    # Reward classifier confidence (how certain are we?), penalize death and ops
+                    viability_bonus = prefix_result.viability  # Higher is better
+                    confidence_bonus = prefix_result.classifier_margin  # Separation between top2 axes
+                    ops_penalty = new_washout + new_feed
 
                     heuristic = (
-                        self.w_mechanism * mechanism_potential -
-                        self.w_viability * death_penalty -
-                        self.w_interventions * (new_washout + new_feed)
+                        self.w_mechanism * confidence_bonus +
+                        self.w_viability * viability_bonus -
+                        self.w_interventions * ops_penalty
                     )
+
+                    viability_now = prefix_result.viability
+                    actin_fold_now = prefix_result.actin_fold
+                    confidence_now = prefix_result.classifier_margin
 
                     successor = BeamNode(
                         t_step=node.t_step + 1,
@@ -411,44 +541,6 @@ class BeamSearch:
                     successors.append(successor)
 
         return successors
-
-    def _evaluate_prefix(
-        self,
-        schedule_prefix: List[Action],
-        compound
-    ) -> Optional[Tuple[float, float, float]]:
-        """
-        Evaluate partial schedule - simplified version for speed.
-
-        For now, just return optimistic estimates without full rollout.
-        Only complete schedules (t=n_steps) will be fully evaluated.
-
-        Args:
-            schedule_prefix: Partial action sequence
-            compound: Phase5Compound
-
-        Returns:
-            (viability, actin_fold, confidence_margin) estimates
-        """
-        # Simple heuristic estimates (for beam ordering only)
-        # Don't run full simulation for prefixes - too expensive
-
-        # Count cumulative dose exposure (dose × duration)
-        total_dose_exposure = sum(a.dose_fraction for a in schedule_prefix)
-
-        # Estimate viability (decreases with dose exposure)
-        # Typical: 0.5× dose for 12h → ~10% death, 1.0× for 24h → ~20% death
-        estimated_death = min(0.3, total_dose_exposure * 0.08)
-        estimated_viability = 1.0 - estimated_death
-
-        # Estimate actin fold-change (increases with dose, plateaus around 1.6×)
-        # Need sustained dose to engage mechanism
-        estimated_actin = 1.0 + min(0.6, total_dose_exposure * 0.25)
-
-        # Confidence margin (unused, kept for compatibility)
-        confidence_margin = 0.0
-
-        return estimated_viability, estimated_actin, confidence_margin
 
     def _prune_and_select(self, nodes: List[BeamNode]) -> List[BeamNode]:
         """
