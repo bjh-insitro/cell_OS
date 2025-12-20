@@ -376,7 +376,7 @@ class BeamNode:
     schedule: List[Action]
 
     # Action semantics
-    action_type: str = "CONTINUE"  # "CONTINUE" or "COMMIT"
+    action_type: str = "CONTINUE"  # "CONTINUE", "COMMIT", or "NO_DETECTION"
     is_terminal: bool = False
 
     # Constraint tracking
@@ -404,9 +404,10 @@ class BeamNode:
     # Heuristic score for beam ranking (NON-TERMINAL nodes)
     heuristic_score: float = 0.0
 
-    # Commit utility (TERMINAL COMMIT nodes only)
+    # Terminal utilities (different for COMMIT vs NO_DETECTION)
     commit_utility: Optional[float] = None
     commit_target: Optional[str] = None
+    no_detection_utility: Optional[float] = None
 
     # Terminal reward (legacy path: only set at t=n_steps)
     terminal_reward: Optional[float] = None
@@ -482,6 +483,12 @@ class BeamSearch:
         self.w_commit_time = 0.1
         self.w_commit_ops = 0.05
         self.w_commit_viability = 0.1
+
+        # NO_DETECTION action (NEW)
+        self.no_detection_threshold = 0.80  # Min calibrated confidence for NO_DETECTION
+        self.w_no_detection_conf = 3.0      # Lower than commit (not as valuable)
+        self.w_no_detection_time = 0.15     # Stronger time penalty (should stop earlier)
+        self.w_no_detection_ops = 0.05
 
         # Debug mode (NEW)
         self.debug_commit_decisions = False  # Set True to log COMMIT forensics
@@ -600,6 +607,30 @@ class BeamSearch:
         viability_penalty = w_commit_viability * (1.0 - viability)
 
         return conf_reward - time_penalty - ops_cost - viability_penalty
+
+    def _compute_no_detection_utility(
+        self,
+        calibrated_conf: float,
+        elapsed_time_h: float,
+        ops_penalty: int
+    ) -> float:
+        """
+        Compute terminal utility for NO_DETECTION decision.
+
+        Semantics: "I'm confident nothing is detectable, stop experiment."
+
+        Utility is lower than correct COMMIT (less valuable outcome),
+        but rewards confident null results and penalizes late stops.
+        """
+        w_no_det_conf = getattr(self, 'w_no_detection_conf', 3.0)
+        w_no_det_time = getattr(self, 'w_no_detection_time', 0.15)
+        w_no_det_ops = getattr(self, 'w_no_detection_ops', 0.05)
+
+        conf_reward = w_no_det_conf * calibrated_conf
+        time_penalty = w_no_det_time * elapsed_time_h  # Stronger penalty than COMMIT
+        ops_cost = w_no_det_ops * ops_penalty
+
+        return conf_reward - time_penalty - ops_cost
 
     def _expand_node(self, node: BeamNode, compound) -> List[BeamNode]:
         """
@@ -791,6 +822,71 @@ class BeamSearch:
 
                 successors.append(commit_node)
 
+        # 4) Generate NO_DETECTION successor (if confident in null result)
+        if node.t_step > 0:  # Can't no-detect at root
+            cal_conf = node.calibrated_confidence_current
+            no_detection_threshold = getattr(self, 'no_detection_threshold', 0.80)
+            predicted_axis = node.predicted_axis_current
+            posterior_top_prob = node.posterior_top_prob_current
+            posterior_margin = node.posterior_margin_current
+
+            # NO_DETECTION only for "unknown" predictions
+            is_unknown = (predicted_axis == "unknown")
+
+            # GUARD: Disallow NO_DETECTION if concrete mechanism has reasonable support
+            # This prevents "give up early" when real signal exists
+            # If posterior_top_prob is high OR margin is large, some mechanism is detectable
+            concrete_signal_exists = (posterior_top_prob >= 0.55 or posterior_margin >= 0.15)
+
+            if cal_conf >= no_detection_threshold and is_unknown and not concrete_signal_exists:
+                elapsed_time_h = node.t_step * self.runner.step_h
+                ops_penalty = node.washout_count + node.feed_count
+
+                no_det_util = self._compute_no_detection_utility(
+                    calibrated_conf=cal_conf,
+                    elapsed_time_h=elapsed_time_h,
+                    ops_penalty=ops_penalty
+                )
+
+                no_det_node = BeamNode(
+                    t_step=node.t_step,  # NO ADVANCE (terminal decision)
+                    schedule=node.schedule,
+                    action_type="NO_DETECTION",
+                    is_terminal=True,
+                    washout_count=node.washout_count,
+                    feed_count=node.feed_count,
+                    no_detection_utility=no_det_util,
+                    heuristic_score=0.0  # Not used for terminals
+                )
+
+                # Copy belief state from parent
+                no_det_node.viability_current = node.viability_current
+                no_det_node.actin_fold_current = node.actin_fold_current
+                no_det_node.confidence_margin_current = node.confidence_margin_current
+                no_det_node.posterior_top_prob_current = node.posterior_top_prob_current
+                no_det_node.posterior_margin_current = node.posterior_margin_current
+                no_det_node.nuisance_frac_current = node.nuisance_frac_current
+                no_det_node.calibrated_confidence_current = node.calibrated_confidence_current
+                no_det_node.predicted_axis_current = node.predicted_axis_current
+                no_det_node.nuisance_mean_shift_mag_current = node.nuisance_mean_shift_mag_current
+                no_det_node.nuisance_var_inflation_current = node.nuisance_var_inflation_current
+
+                # Forensic logging
+                if getattr(self, 'debug_commit_decisions', False):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(
+                        f"NO_DETECTION node created at t={node.t_step} ({elapsed_time_h:.1f}h): "
+                        f"predicted_axis={node.predicted_axis_current} "
+                        f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
+                        f"nuisance_frac={node.nuisance_frac_current:.3f} "
+                        f"calibrated_conf={cal_conf:.3f} "
+                        f"no_detection_utility={no_det_util:.3f} "
+                        f"threshold={no_detection_threshold:.3f}"
+                    )
+
+                successors.append(no_det_node)
+
         return successors
 
     def _prune_and_select(self, nodes: List[BeamNode]) -> List[BeamNode]:
@@ -835,11 +931,18 @@ class BeamSearch:
             bw_term = max(0, min(int(bw_term), beam_width))
             bw_non = max(0, min(int(bw_non), beam_width - bw_term))
 
-        # Rank terminals by commit_utility (missing -> very bad)
+        # Rank terminals by their respective utilities
         def _term_key(n: BeamNode) -> float:
-            if n.commit_utility is None:
+            if n.action_type == "COMMIT":
+                if n.commit_utility is None:
+                    return float("-inf")
+                return float(n.commit_utility)
+            elif n.action_type == "NO_DETECTION":
+                if n.no_detection_utility is None:
+                    return float("-inf")
+                return float(n.no_detection_utility)
+            else:
                 return float("-inf")
-            return float(n.commit_utility)
 
         terminals.sort(key=_term_key, reverse=True)
 

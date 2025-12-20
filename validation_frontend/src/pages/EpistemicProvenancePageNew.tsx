@@ -6,6 +6,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Moon, Sun, ChevronRight, Play } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ErrorBar, ScatterChart, Scatter } from 'recharts';
+
+// Import calibration results
+import calibrationData from '../data/calibration_results.json';
 
 const EpistemicProvenancePage: React.FC = () => {
     const navigate = useNavigate();
@@ -398,6 +402,110 @@ const EpistemicProvenancePage: React.FC = () => {
                         <div className="space-y-4">
                             <div>
                                 <p className="text-sm font-semibold mb-2">Per-cycle cost breakdown:</p>
+
+                                <div className={`p-3 rounded mb-3 ${isDarkMode ? 'bg-amber-800/30' : 'bg-amber-50'}`}>
+                                    <p className="text-xs font-semibold mb-2">What is rel_width?</p>
+                                    <div className="text-xs space-y-2">
+                                        <p>
+                                            <strong>rel_width = relative width of confidence interval</strong>
+                                        </p>
+                                        <p className="font-mono bg-black/10 px-2 py-1 rounded">
+                                            rel_width = (2 × standard_error) / measured_value
+                                        </p>
+                                        <p>
+                                            It tells you: <em>"How uncertain is my measurement, relative to what I'm measuring?"</em>
+                                        </p>
+
+                                        {/* Visual comparison - WIDER BOX */}
+                                        <div className={`p-6 rounded mt-4 ${isDarkMode ? 'bg-slate-900' : 'bg-white'} -mx-3 overflow-visible`}>
+                                            <p className="text-sm font-semibold mb-6 text-center">Visual Comparison: Good vs Bad Measurements</p>
+
+                                            {/* Good measurement: rel_width = 0.20 */}
+                                            <div className="mb-6">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs">Good: rel_width = 0.20</span>
+                                                    <span className="text-xs text-green-600 font-semibold">✓ Reliable</span>
+                                                </div>
+                                                <div className="relative h-10 bg-zinc-200 dark:bg-slate-700 rounded overflow-visible">
+                                                    {/* Measured value bar */}
+                                                    <div className="absolute left-0 top-0 bottom-0 bg-blue-500 rounded" style={{ width: '80%' }}>
+                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-white font-bold">0.80</span>
+                                                    </div>
+                                                    {/* Error bar overlay */}
+                                                    <div className="absolute top-0 bottom-0 border-2 border-red-500 rounded" style={{ left: '70%', width: '20%', opacity: 0.7 }}>
+                                                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-red-600">±0.08</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] mt-2 text-zinc-600 dark:text-zinc-400">
+                                                    Narrow error bars relative to signal → Can detect 15% effects
+                                                </div>
+                                            </div>
+
+                                            {/* Threshold: rel_width = 0.25 */}
+                                            <div className="mb-6">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs">Threshold: rel_width = 0.25</span>
+                                                    <span className="text-xs text-amber-600 font-semibold">⚠ Marginal</span>
+                                                </div>
+                                                <div className="relative h-10 bg-zinc-200 dark:bg-slate-700 rounded overflow-visible">
+                                                    <div className="absolute left-0 top-0 bottom-0 bg-blue-500 rounded" style={{ width: '80%' }}>
+                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-white font-bold">0.80</span>
+                                                    </div>
+                                                    <div className="absolute top-0 bottom-0 border-2 border-red-500 rounded" style={{ left: '60%', width: '40%', opacity: 0.7 }}>
+                                                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-red-600">±0.10</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] mt-2 text-zinc-600 dark:text-zinc-400">
+                                                    Just narrow enough → Can detect 20% effects (minimum for biology)
+                                                </div>
+                                            </div>
+
+                                            {/* Bad measurement: rel_width = 0.50 - with extra padding to prevent clipping */}
+                                            <div className="mb-2 pr-1">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs">Bad: rel_width = 0.50</span>
+                                                    <span className="text-xs text-red-600 font-semibold">✗ Unreliable</span>
+                                                </div>
+                                                <div className="relative h-10 overflow-visible">
+                                                    {/* Background bar container */}
+                                                    <div className="absolute inset-0 bg-zinc-200 dark:bg-slate-700 rounded"></div>
+                                                    {/* Blue measured value */}
+                                                    <div className="absolute left-0 top-0 bottom-0 bg-blue-500 rounded" style={{ width: '80%' }}>
+                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-white font-bold">0.80</span>
+                                                    </div>
+                                                    {/* Red error bars - extends beyond with overflow visible */}
+                                                    <div className="absolute top-0 bottom-0 border-2 border-red-500 rounded" style={{ left: '40%', width: '80%', opacity: 0.7 }}>
+                                                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-red-600">±0.20</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] mt-2 text-zinc-600 dark:text-zinc-400">
+                                                    Error bars as wide as the signal → Can't distinguish biology from noise
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-4 pt-3 border-t border-zinc-300 dark:border-slate-600">
+                                                <p className="text-xs text-center">
+                                                    <span className="text-blue-600 font-bold">Blue bar</span> = measured value ·
+                                                    <span className="text-red-600 font-bold ml-1">Red outline</span> = confidence interval (uncertainty)
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <p>
+                                            <strong>Example calculation:</strong> If you measure cell survival = 0.80 with standard error = 0.10:
+                                        </p>
+                                        <ul className="ml-4 space-y-1 list-disc">
+                                            <li>Confidence interval = 0.80 ± 0.10 (i.e., 0.70 to 0.90)</li>
+                                            <li>Width of interval = 2 × 0.10 = 0.20</li>
+                                            <li>rel_width = 0.20 / 0.80 = <strong>0.25</strong></li>
+                                        </ul>
+                                        <p className="mt-2 font-semibold">
+                                            <strong>Why 0.25 is the threshold:</strong> At rel_width = 0.25, you can reliably detect a 20% biological effect.
+                                            If rel_width is higher, your measurements are too noisy to distinguish real biology from experimental variability.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-white'}`}>
                                     <p className="text-xs mb-2"><strong>Goal:</strong> Get rel_width &lt; 0.25 for each cycle</p>
                                     <p className="text-xs mb-2"><strong>Requirement:</strong> ~140 degrees of freedom per cycle</p>
@@ -506,106 +614,381 @@ const EpistemicProvenancePage: React.FC = () => {
         },
         {
             title: "Step 5: Running the Multi-Cycle Calibration",
-            subtitle: "Execute the 4-cycle calibration plan",
+            subtitle: "Execute and measure across 4 independent cycles",
             content: (
                 <div className="space-y-4">
                     <p className="text-lg mb-3">
-                        The agent executes the calibration plan: 4 independent experimental cycles over 7 days.
+                        Decision made: Proceed with calibration. Now the agent executes 4 independent experimental cycles over 7 days.
                     </p>
 
-                    <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-slate-800' : 'bg-zinc-100'}`}>
-                        <div className="mb-4">
-                            <div className="text-sm font-semibold text-zinc-500 mb-3">What calibration needs</div>
-                            <div className="space-y-4">
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0">1</div>
-                                    <div className="flex-1">
-                                        <div className="font-semibold mb-2">High statistical power</div>
-                                        <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
-                                            Goal: Get <code className="px-1 bg-black/20 rounded">rel_width &lt; 0.25</code>
-                                        </div>
-                                        <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-white'}`}>
-                                            <div className="text-xs font-semibold mb-1">What is rel_width?</div>
-                                            <div className="text-xs space-y-1">
-                                                <p><strong>rel_width = (confidence interval width) / (measured signal)</strong></p>
-                                                <p>It measures uncertainty <em>relative to</em> what you're measuring.</p>
-                                                <p className="mt-2"><strong>Example:</strong> If you measure cell survival = 0.80 ± 0.10:</p>
-                                                <p className="ml-3">• Confidence interval width = 2 × 0.10 = 0.20</p>
-                                                <p className="ml-3">• rel_width = 0.20 / 0.80 = <strong>0.25</strong></p>
-                                                <p className="mt-2 text-amber-600 dark:text-amber-400">
-                                                    <strong>Why 0.25 matters:</strong> At this threshold, you can distinguish a 20% biological effect from noise.
-                                                    Below this, confidence intervals are narrow enough for biology.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                    <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-amber-900/30 border-l-4 border-amber-500' : 'bg-amber-100 border-l-4 border-amber-600'}`}>
+                        <p className="font-semibold mb-3 text-lg">Calibration Design Choices</p>
+                        <div className="space-y-3 text-sm">
+                            <div>
+                                <p className="font-semibold mb-1">Cell line: A549 (lung adenocarcinoma)</p>
+                                <p className="text-xs">
+                                    <strong>Why A549?</strong> Robust, fast-growing, and morphologically sensitive to perturbations.
+                                    Shows clear dose-dependent responses to cytotoxic agents, making it ideal for measuring instrument noise
+                                    across a dynamic range.
+                                </p>
+                            </div>
+                            <div>
+                                <p className="font-semibold mb-1">Compound: Staurosporine</p>
+                                <p className="text-xs mb-2">
+                                    <strong>Why Staurosporine?</strong> The gold standard for calibration. Broad-spectrum kinase inhibitor with:
+                                </p>
+                                <ul className="text-xs ml-4 space-y-1 list-disc">
+                                    <li>Extremely steep, reproducible dose-response curve (EC50 ~50-100 nM in most cell lines)</li>
+                                    <li>Strong, rapid apoptotic morphology (nuclear condensation, membrane blebbing, cell rounding)</li>
+                                    <li>Highly consistent across batches and suppliers</li>
+                                    <li>High signal-to-noise ratio with clear dose-dependent effects</li>
+                                </ul>
+                                <p className="text-xs mt-2">
+                                    Staurosporine is the standard for instrument calibration because it provides a steep, reliable signal
+                                    that stresses the full dynamic range of the assay.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
 
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0">2</div>
-                                    <div className="flex-1">
-                                        <div className="font-semibold mb-2">Need ~140 degrees of freedom</div>
-                                        <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-white'}`}>
-                                            <div className="text-xs font-semibold mb-1">What are degrees of freedom?</div>
-                                            <div className="text-xs space-y-1">
-                                                <p><strong>Degrees of freedom (df)</strong> = number of independent measurements that go into computing noise.</p>
-                                                <p className="mt-2"><strong>Why ~140 df?</strong></p>
-                                                <p className="ml-3">• More df → narrower confidence interval → lower rel_width</p>
-                                                <p className="ml-3">• To get rel_width &lt; 0.25, empirically need df ≥ 140</p>
-                                                <p className="ml-3">• This is determined by the t-distribution statistics</p>
-                                                <p className="mt-2 text-blue-600 dark:text-blue-400">
-                                                    <strong>Translation:</strong> You need about 140+ independent measurements to be confident
-                                                    enough in your noise estimate to make biological claims.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0">3</div>
-                                    <div className="flex-1">
-                                        <div className="font-semibold mb-2">Design an experiment that gets 140 df</div>
-                                        <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-white'}`}>
-                                            <div className="text-xs space-y-1">
-                                                <p><strong>Solution: Dose-response curve with high replication</strong></p>
-                                                <p className="mt-2">• Choose 12 dose levels of a well-characterized compound (Staurosporine)</p>
-                                                <p>• Use 13 replicates per dose level</p>
-                                                <p>• <strong>df = (replicates - 1) × dose_levels = (13 - 1) × 12 = 144 ✓</strong></p>
-                                                <p className="mt-2">• Total wells needed: 12 × 13 = <strong>156 wells</strong></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0">4</div>
-                                    <div className="flex-1">
-                                        <div className="font-semibold mb-2">Check if we can afford it</div>
-                                        <div className={`p-3 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-white'}`}>
-                                            <div className="text-xs space-y-1">
-                                                <p>• <strong>Cost:</strong> 156 wells</p>
-                                                <p>• <strong>Available budget:</strong> 384 wells</p>
-                                                <p className="mt-2 text-green-600 dark:text-green-400 font-semibold">
-                                                    ✓ 384 &gt; 156 — We can afford calibration!
-                                                </p>
-                                                <p className="mt-2 text-xs text-zinc-500">
-                                                    <strong>If budget were only 100 wells:</strong> Can't get 140 df → can't reach rel_width &lt; 0.25
-                                                    → would be forced to abort rather than produce unreliable data.
-                                                </p>
-                                            </div>
-                                        </div>
+                    <div className={`p-6 rounded-lg border-2 ${isDarkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-500'}`}>
+                        <div className="flex items-start gap-4">
+                            <div className="text-4xl">🔬</div>
+                            <div className="flex-1">
+                                <div className="font-bold text-xl mb-3">Executing: 4-cycle calibration</div>
+                                <div className="space-y-2 text-sm">
+                                    <p><strong>Each cycle protocol:</strong></p>
+                                    <div className="ml-4 space-y-1">
+                                        <div>• Plate 156 wells with A549 cells (5,000 cells/well)</div>
+                                        <div>• Apply Staurosporine at 12 dose levels: 1.56-800 nM (13 replicates each)</div>
+                                        <div>• Incubate 24 hours (37°C, 5% CO₂)</div>
+                                        <div>• Image all wells (morphology readout: nuclear size, shape, intensity)</div>
+                                        <div>• Extract morphology features (CellProfiler pipeline)</div>
+                                        <div>• Compute within-cycle noise estimate (σ_within)</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-green-900/30 border-l-4 border-green-500' : 'bg-green-100 border-l-4 border-green-600'}`}>
-                        <p className="font-semibold mb-2">✓ Decision: Run calibration experiment</p>
-                        <p className="text-sm">
-                            Budget (384) &gt; Cost (156) → The agent has enough resources to achieve statistical confidence. Proceed!
+                    {/* Dose-Response Curves: All 4 Cycles Overlaid */}
+                    <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-slate-800' : 'bg-zinc-100'}`}>
+                        <p className="text-sm font-semibold text-zinc-500 mb-4">Dose-Response Curves: All 4 Cycles</p>
+
+                        <ResponsiveContainer width="100%" height={400}>
+                            <LineChart
+                                data={(() => {
+                                    // Merge all cycles into a single dataset with error bars
+                                    const doses = calibrationData.cycles[0].well_data.map((d: any) => d.dose_nM);
+                                    return doses.map((dose: number, idx: number) => ({
+                                        dose_nM: dose,
+                                        cycle1: calibrationData.cycles[0].well_data[idx].mean,
+                                        cycle1_err: calibrationData.cycles[0].well_data[idx].std,
+                                        cycle2: calibrationData.cycles[1].well_data[idx].mean,
+                                        cycle2_err: calibrationData.cycles[1].well_data[idx].std,
+                                        cycle3: calibrationData.cycles[2].well_data[idx].mean,
+                                        cycle3_err: calibrationData.cycles[2].well_data[idx].std,
+                                        cycle4: calibrationData.cycles[3].well_data[idx].mean,
+                                        cycle4_err: calibrationData.cycles[3].well_data[idx].std,
+                                    }));
+                                })()}
+                                margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
+                            >
+                                <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#374151' : '#e5e7eb'} />
+                                <XAxis
+                                    dataKey="dose_nM"
+                                    scale="log"
+                                    domain={[1, 1000]}
+                                    ticks={[1.56, 6.25, 25, 100, 400, 800]}
+                                    label={{ value: 'Staurosporine (nM)', position: 'insideBottom', offset: -10 }}
+                                    stroke={isDarkMode ? '#9ca3af' : '#6b7280'}
+                                />
+                                <YAxis
+                                    domain={[0, 1]}
+                                    label={{ value: 'Viability', angle: -90, position: 'insideLeft' }}
+                                    stroke={isDarkMode ? '#9ca3af' : '#6b7280'}
+                                />
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: isDarkMode ? '#1f2937' : '#ffffff',
+                                        border: `1px solid ${isDarkMode ? '#374151' : '#e5e7eb'}`,
+                                        borderRadius: '6px'
+                                    }}
+                                    formatter={(value: any) => typeof value === 'number' ? value.toFixed(3) : value}
+                                />
+                                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+
+                                <Line
+                                    type="monotone"
+                                    dataKey="cycle1"
+                                    stroke="#3b82f6"
+                                    strokeWidth={2}
+                                    dot={{ r: 4 }}
+                                    name="Cycle 1 (Day 1, Batch A)"
+                                >
+                                    <ErrorBar dataKey="cycle1_err" width={4} strokeWidth={1.5} stroke="#3b82f6" />
+                                </Line>
+                                <Line
+                                    type="monotone"
+                                    dataKey="cycle2"
+                                    stroke="#10b981"
+                                    strokeWidth={2}
+                                    dot={{ r: 4 }}
+                                    name="Cycle 2 (Day 2, Batch A)"
+                                >
+                                    <ErrorBar dataKey="cycle2_err" width={4} strokeWidth={1.5} stroke="#10b981" />
+                                </Line>
+                                <Line
+                                    type="monotone"
+                                    dataKey="cycle3"
+                                    stroke="#f59e0b"
+                                    strokeWidth={2}
+                                    dot={{ r: 4 }}
+                                    name="Cycle 3 (Day 3, Batch B)"
+                                >
+                                    <ErrorBar dataKey="cycle3_err" width={4} strokeWidth={1.5} stroke="#f59e0b" />
+                                </Line>
+                                <Line
+                                    type="monotone"
+                                    dataKey="cycle4"
+                                    stroke="#8b5cf6"
+                                    strokeWidth={2}
+                                    dot={{ r: 4 }}
+                                    name="Cycle 4 (Day 7, Batch A)"
+                                >
+                                    <ErrorBar dataKey="cycle4_err" width={4} strokeWidth={1.5} stroke="#8b5cf6" />
+                                </Line>
+                            </LineChart>
+                        </ResponsiveContainer>
+
+                        <div className={`mt-4 p-4 rounded ${isDarkMode ? 'bg-indigo-900/30 border-l-4 border-indigo-500' : 'bg-indigo-100 border-l-4 border-indigo-600'}`}>
+                            <p className="text-xs font-semibold mb-3">Understanding the Measurement Endpoint</p>
+                            <div className="space-y-3 text-xs">
+                                <div>
+                                    <p className="font-semibold mb-1">What is "viability"?</p>
+                                    <p className="mb-2">
+                                        Each point on the curve represents a <strong>morphology-based viability measurement</strong> - not a simple dye readout, but a composite score derived from cellular morphology features.
+                                    </p>
+                                    <p className="ml-3 mb-2">
+                                        <strong>The measurement pipeline:</strong>
+                                    </p>
+                                    <div className={`ml-3 p-2 rounded text-[11px] ${isDarkMode ? 'bg-indigo-800/30' : 'bg-indigo-50'}`}>
+                                        <div className="space-y-1">
+                                            <div>1. <strong>Plate cells:</strong> 5,000 A549 cells/well in 384-well plate</div>
+                                            <div>2. <strong>Add compound:</strong> Staurosporine at 12 dose levels (13 replicates each)</div>
+                                            <div>3. <strong>Incubate:</strong> 24 hours at 37°C, 5% CO₂</div>
+                                            <div>4. <strong>Image:</strong> High-content microscopy captures nuclear morphology</div>
+                                            <div>5. <strong>Extract features:</strong> CellProfiler quantifies nuclear size, shape, intensity, texture</div>
+                                            <div>6. <strong>Compute viability:</strong> Machine learning model predicts cell health from morphology (0 = dead, 1 = healthy)</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <p className="font-semibold mb-1">What do the error bars represent?</p>
+                                    <p className="mb-2">
+                                        Error bars show <strong>±1 standard deviation from 13 technical replicates</strong> at each dose level. This is σ_within - the measurement noise from:
+                                    </p>
+                                    <ul className="ml-4 space-y-1 list-disc">
+                                        <li><strong>Pipetting variability:</strong> Slight differences in cell number per well (target: 5,000 cells, actual: ±200 cells)</li>
+                                        <li><strong>Cell seeding artifacts:</strong> Edge effects, uneven settling, local microenvironment differences</li>
+                                        <li><strong>Imaging variation:</strong> Focus drift, illumination differences, field-of-view positioning</li>
+                                        <li><strong>Feature extraction noise:</strong> Segmentation errors, background subtraction variability</li>
+                                    </ul>
+                                </div>
+
+                                <div>
+                                    <p className="font-semibold mb-1">Why this endpoint matters for instrument trust</p>
+                                    <p>
+                                        Morphology-based viability is <strong>more information-rich than single-parameter assays</strong> (like ATP or dye exclusion).
+                                        It integrates dozens of cellular features, making it ideal for calibration because:
+                                    </p>
+                                    <ul className="ml-4 space-y-1 list-disc mt-1">
+                                        <li>High dynamic range (detects subtle to complete cell death)</li>
+                                        <li>Sensitive to technical artifacts (if imaging is off, features degrade)</li>
+                                        <li>Stresses the full measurement pipeline (plating → imaging → analysis)</li>
+                                    </ul>
+                                    <p className="mt-2 font-semibold">
+                                        If you can measure morphology-based viability reliably, you can measure <em>anything</em> reliably.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={`mt-4 p-3 rounded ${isDarkMode ? 'bg-blue-800/30' : 'bg-blue-50'}`}>
+                            <p className="text-xs font-semibold mb-1">Key Observation</p>
+                            <p className="text-xs">
+                                All 4 cycles show steep dose-response curves with EC50 ~70-80 nM. Curves overlay closely,
+                                indicating low between-run variability. Small shifts between cycles represent day-to-day and batch-to-batch noise.
+                                The narrow error bars (σ_within ~0.045-0.053) show that within-plate technical variability is low, meaning our pipetting,
+                                imaging, and feature extraction are consistent.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Per-Cycle Summary Stats */}
+                    <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-slate-800' : 'bg-zinc-100'}`}>
+                        <p className="text-sm font-semibold text-zinc-500 mb-4">Per-Cycle Statistics</p>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            {calibrationData.cycles.map((cycle: any) => (
+                                <div key={cycle.cycle} className={`p-3 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-white'}`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="font-semibold text-xs">
+                                            Cycle {cycle.cycle} (Day {cycle.day}, Batch {cycle.batch})
+                                        </span>
+                                        <span className="text-[10px] text-zinc-500">156 wells</span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2 text-[10px]">
+                                        <div>
+                                            <div className="text-zinc-500">σ_within</div>
+                                            <div className="font-mono font-bold">{cycle.metrics.sigma_within.toFixed(3)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-zinc-500">Mean signal</div>
+                                            <div className="font-mono font-bold">{cycle.metrics.mean_signal.toFixed(3)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-zinc-500">rel_width</div>
+                                            <div className={`font-mono font-bold ${cycle.metrics.rel_width < 0.25 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {cycle.metrics.rel_width.toFixed(3)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-purple-900/30 border-l-4 border-purple-500' : 'bg-purple-100 border-l-4 border-purple-600'}`}>
+                        <p className="font-semibold mb-3 text-lg">Computing Total Noise</p>
+                        <div className="space-y-3 text-sm">
+                            <p>Now we combine within-run and between-run variability:</p>
+
+                            <div className={`p-3 rounded ${isDarkMode ? 'bg-purple-800/30' : 'bg-purple-50'}`}>
+                                <p className="font-semibold mb-2 text-xs">Step 1: Pool within-run noise</p>
+                                <p className="text-xs mb-1">Individual σ_within values: {calibrationData.cycles.map((c: any) => c.metrics.sigma_within.toFixed(3)).join(', ')}</p>
+                                <p className="text-xs font-mono">σ_within_pooled = {calibrationData.aggregate.sigma_within_pooled.toFixed(3)}</p>
+                            </div>
+
+                            <div className={`p-3 rounded ${isDarkMode ? 'bg-purple-800/30' : 'bg-purple-50'}`}>
+                                <p className="font-semibold mb-2 text-xs">Step 2: Compute between-run noise</p>
+                                <p className="text-xs mb-1">Mean signals across cycles: {calibrationData.cycles.map((c: any) => c.metrics.mean_signal.toFixed(3)).join(', ')}</p>
+                                <p className="text-xs">Standard deviation of these means:</p>
+                                <p className="text-xs font-mono">σ_between = {calibrationData.aggregate.sigma_between.toFixed(3)}</p>
+                            </div>
+
+                            <div className={`p-3 rounded ${isDarkMode ? 'bg-purple-800/30' : 'bg-purple-50'}`}>
+                                <p className="font-semibold mb-2 text-xs">Step 3: Combine both noise sources</p>
+                                <p className="text-xs font-mono mb-1">σ_total = √(σ_within² + σ_between²)</p>
+                                <p className="text-xs font-mono mb-1">σ_total = √({calibrationData.aggregate.sigma_within_pooled.toFixed(3)}² + {calibrationData.aggregate.sigma_between.toFixed(3)}²)</p>
+                                <p className="text-xs font-mono font-bold text-purple-600 dark:text-purple-400">σ_total = {calibrationData.aggregate.sigma_total.toFixed(3)}</p>
+                            </div>
+
+                            <div className={`p-3 rounded ${isDarkMode ? 'bg-purple-800/30' : 'bg-purple-50'}`}>
+                                <p className="font-semibold mb-2 text-xs">Step 4: Compute final rel_width</p>
+                                <p className="text-xs">Using mean signal across all cycles: {calibrationData.aggregate.mean_signal_overall.toFixed(3)}</p>
+                                <p className="text-xs font-mono mb-1">rel_width_total = (2 × {calibrationData.aggregate.sigma_total.toFixed(3)}) / {calibrationData.aggregate.mean_signal_overall.toFixed(3)}</p>
+                                <p className="text-xs font-mono font-bold text-green-600 dark:text-green-400">rel_width_total = {calibrationData.aggregate.rel_width_total.toFixed(3)} &lt; 0.25 ✓</p>
+                            </div>
+
+                            <p className="text-xs mt-3 font-semibold">
+                                Key insight: Between-run noise ({calibrationData.aggregate.sigma_between.toFixed(3)}) is much smaller than within-run noise ({calibrationData.aggregate.sigma_within_pooled.toFixed(3)}).
+                                This means the instrument is stable across days and batches - most variability is within plates, not between plates.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className={`p-4 rounded-lg ${calibrationData.aggregate.gate_earned ? (isDarkMode ? 'bg-green-900/30 border-l-4 border-green-500' : 'bg-green-100 border-l-4 border-green-600') : (isDarkMode ? 'bg-red-900/30 border-l-4 border-red-500' : 'bg-red-100 border-l-4 border-red-600')}`}>
+                        <p className="font-semibold mb-2 text-lg">
+                            {calibrationData.aggregate.gate_earned ? '✓' : '✗'} {calibrationData.aggregate.gate_earned ? 'Gate Earned' : 'Gate Not Earned'}: Instrument Trust {calibrationData.aggregate.gate_earned ? 'Established' : 'Failed'}
                         </p>
+                        <p className="text-sm">
+                            Total rel_width = {calibrationData.aggregate.rel_width_total.toFixed(3)} {calibrationData.aggregate.gate_earned ? '<' : '>'} {calibrationData.aggregate.gate_threshold} threshold →
+                            The system has {calibrationData.aggregate.gate_earned ? 'proven' : 'not proven'} statistical reliability.
+                            Regime change: <code className="px-1 bg-black/20 rounded font-mono">pre_gate</code> → <code className="px-1 bg-black/20 rounded font-mono">{calibrationData.aggregate.gate_earned ? 'in_gate' : 'aborted'}</code>
+                        </p>
+                        <p className="text-sm mt-2">
+                            {calibrationData.aggregate.gate_earned
+                                ? 'The agent is now permitted to run biological experiments. Phase 1 (instrument trust) complete.'
+                                : 'The agent must abort. Insufficient reliability to proceed to biological experiments.'}
+                        </p>
+                    </div>
+
+                    <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-amber-900/30 border-l-4 border-amber-500' : 'bg-amber-100 border-l-4 border-amber-600'}`}>
+                        <p className="font-semibold mb-3 text-lg">What About Generalizability?</p>
+                        <div className="space-y-3 text-sm">
+                            <p className="font-semibold">
+                                Question: Do we need to repeat calibration with other cell lines or compounds to prove the instrument is generalizable?
+                            </p>
+
+                            <p>
+                                <strong>Short answer:</strong> Yes, but that's Phase 2 (Causal Exploration), not Phase 1 (Instrument Trust).
+                            </p>
+
+                            <div className={`p-4 rounded ${isDarkMode ? 'bg-amber-800/30' : 'bg-amber-50'}`}>
+                                <p className="font-semibold mb-2 text-xs">Phase 1 Proves: Technical Reproducibility</p>
+                                <div className="text-xs space-y-2">
+                                    <p>
+                                        <strong>What we just established:</strong> The instrument's technical pipeline (pipetting, imaging, feature extraction)
+                                        produces consistent measurements with known, bounded noise.
+                                    </p>
+                                    <p>
+                                        <strong>Why A549 + Staurosporine is sufficient:</strong> This is the <em>gold standard</em> calibration pair precisely because
+                                        it stresses the instrument maximally:
+                                    </p>
+                                    <ul className="ml-4 space-y-1 list-disc">
+                                        <li>A549: Fast-growing, morphologically responsive cells</li>
+                                        <li>Staurosporine: Steep dose-response, dramatic morphological changes</li>
+                                        <li>If you can measure <em>this</em> reliably, the instrument's technical capabilities are proven</li>
+                                    </ul>
+                                    <p className="font-semibold mt-2">
+                                        Phase 1 = "Does the machine work?" → Answered with one rigorous test case.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={`p-4 rounded ${isDarkMode ? 'bg-indigo-800/30' : 'bg-indigo-50'}`}>
+                                <p className="font-semibold mb-2 text-xs">Phase 2 Tests: Biological Generalizability</p>
+                                <div className="text-xs space-y-2">
+                                    <p>
+                                        <strong>What Phase 2 explores:</strong> Does the instrument perform well across diverse biological contexts?
+                                    </p>
+                                    <p className="font-semibold mb-1">You'd test:</p>
+                                    <ul className="ml-4 space-y-1 list-disc">
+                                        <li><strong>Multiple cell lines:</strong> HEK293, HeLa, primary cells → Do different morphologies/growth rates affect measurement quality?</li>
+                                        <li><strong>Multiple compounds:</strong> Kinase inhibitors, antibiotics, metabolic perturbagens → Do different phenotypes (apoptosis, necrosis, cell cycle arrest) produce reliable dose-responses?</li>
+                                        <li><strong>Multiple readouts:</strong> Beyond morphology-based viability → Can you measure proliferation, migration, protein localization with similar reliability?</li>
+                                    </ul>
+                                    <p className="font-semibold mt-2">
+                                        Phase 2 = "Does the machine work <em>for my biology</em>?" → Requires systematic perturbation experiments.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={`p-3 rounded ${isDarkMode ? 'bg-green-800/30' : 'bg-green-50'}`}>
+                                <p className="text-xs font-semibold mb-1">The Epistemic Progression</p>
+                                <div className="text-xs space-y-1">
+                                    <p>
+                                        <strong>Phase 1:</strong> Prove instrument trust with gold-standard test case → <span className="font-semibold">Gate earned</span>
+                                    </p>
+                                    <p>
+                                        <strong>Phase 2:</strong> Use trusted instrument to systematically perturb biology → <span className="font-semibold">Build causal hypotheses</span>
+                                    </p>
+                                    <p>
+                                        <strong>Phase 3:</strong> Disambiguate mechanisms with combinatorial experiments → <span className="font-semibold">Validate causal models</span>
+                                    </p>
+                                    <p>
+                                        <strong>Phase 4:</strong> Deploy predictive models → <span className="font-semibold">Knowledge moat established</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p className="text-xs font-semibold mt-3">
+                                You can't do Phase 2-4 without Phase 1. But once you have instrument trust, you unlock the ability to
+                                systematically explore biology and build the knowledge moat.
+                            </p>
+                        </div>
                     </div>
                 </div>
             ),

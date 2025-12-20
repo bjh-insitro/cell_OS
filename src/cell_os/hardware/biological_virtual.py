@@ -38,6 +38,12 @@ from ..sim import biology_core
 # Import run context for Phase 5B realism layer
 from .run_context import RunContext, sample_plating_context, pipeline_transform
 
+# Import InjectionManager for Injection A (Volume + Evaporation)
+from .injection_manager import InjectionManager
+
+# Import OperationScheduler for Injection B (Operation Scheduling)
+from .operation_scheduler import OperationScheduler
+
 # Logger must be defined before use
 logger = logging.getLogger(__name__)
 
@@ -422,6 +428,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_assay = np.random.default_rng(seed + 3)       # Assay measurements
         self.rng_operations = np.random.default_rng(seed + 4)  # Operations (feed, washout contamination)
 
+        # Injection A: Initialize InjectionManager (authoritative concentration spine)
+        self.injection_mgr = InjectionManager(is_edge_well_fn=self._is_edge_well)
+
+        # Injection B: Initialize OperationScheduler (deterministic event ordering)
+        self.scheduler = OperationScheduler()
+
         self._load_parameters(params_file)
         self._load_raw_yaml_for_nested_params(params_file)  # Load nested params for CellROX/segmentation
     
@@ -541,9 +553,36 @@ class BiologicalVirtualMachine(VirtualMachine):
             "edge_penalty": 0.15
         }
         
+    def flush_operations_now(self):
+        """
+        Deliver all pending operations at current simulated time.
+
+        This is the ONLY supported way to force delivery without advancing time.
+        Most code should use advance_time(dt) instead, which delivers at boundaries.
+
+        Use cases:
+        - After seed_vessel (new entity needs immediate concentrations)
+        - Explicit "deliver now" for testing or special scenarios
+        - Equivalent to advance_time(0.0) but more explicit
+
+        Contract:
+        - Flushes events with scheduled_time_h <= simulated_time
+        - Events batch and execute in deterministic order (time, priority, event_id)
+        - Does NOT advance simulated_time
+        """
+        if self.scheduler is not None:
+            self.scheduler.flush_due_events(now_h=float(self.simulated_time), injection_mgr=self.injection_mgr)
+
     def advance_time(self, hours: float):
         """Advance simulated time and update all vessel states."""
         self.simulated_time += hours
+
+        # Injection B: Deliver scheduled operations at timestep boundary
+        self.flush_operations_now()
+
+        # Injection A: Apply evaporation drift ONCE per timestep (global operation)
+        if self.injection_mgr is not None:
+            self.injection_mgr.step(dt_h=float(hours), now_h=float(self.simulated_time))
 
         for vessel in self.vessel_states.values():
             self._step_vessel(vessel, hours)
@@ -738,6 +777,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         # last_feed_time already exists; it becomes meaningful with feed_vessel().
         viable_cells = vessel.cell_count * vessel.viability
 
+        # Read authoritative nutrients from InjectionManager if present
+        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
+            vessel.media_glucose_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glucose")
+            vessel.media_glutamine_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glutamine")
+
         # Convert vessel_capacity into a coarse proxy for "media volume"
         # Higher capacity means effectively more media buffering.
         # This keeps the model stable without adding a new volume field everywhere.
@@ -751,6 +795,14 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel.media_glucose_mM = max(0.0, vessel.media_glucose_mM - glucose_drop)
         vessel.media_glutamine_mM = max(0.0, vessel.media_glutamine_mM - glutamine_drop)
+
+        # Sync depleted nutrients back into InjectionManager spine
+        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
+            self.injection_mgr.set_nutrients_mM(
+                vessel.vessel_id,
+                {"glucose": float(vessel.media_glucose_mM), "glutamine": float(vessel.media_glutamine_mM)},
+                now_h=float(self.simulated_time),
+            )
 
         glucose_stress = max(0.0, (GLUCOSE_STRESS_THRESHOLD_mM - vessel.media_glucose_mM) / GLUCOSE_STRESS_THRESHOLD_mM)
         glutamine_stress = max(0.0, (GLUTAMINE_STRESS_THRESHOLD_mM - vessel.media_glutamine_mM) / GLUTAMINE_STRESS_THRESHOLD_mM)
@@ -1068,12 +1120,19 @@ class BiologicalVirtualMachine(VirtualMachine):
         Update vessel state over time interval.
 
         Order matters:
+        0. Mirror evaporated concentrations (evaporation already applied globally in advance_time)
         1. Growth (viable cells only)
         2. Death proposal phase (nutrient depletion, compound attrition, mitotic catastrophe)
         3. Commit death (apply combined survival, allocate to ledgers)
         4. Confluence management (cap growth, no killing)
         5. Update death mode label
         """
+        # 0) Mirror the authoritative concentrations into VesselState (evaporation already applied)
+        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
+            vessel.compounds = self.injection_mgr.get_all_compounds_uM(vessel.vessel_id)
+            vessel.media_glucose_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glucose")
+            vessel.media_glutamine_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glutamine")
+
         # 1) Growth (viable cells only - dead cells don't grow)
         self._update_vessel_growth(vessel, hours)
 
@@ -1187,16 +1246,26 @@ class BiologicalVirtualMachine(VirtualMachine):
         Uses biology_core for consistent attrition logic with standalone simulation.
         Attrition is "physics" - happens whether you observe it or not (Option 2).
         """
-        if not vessel.compounds:
+        # Authoritative: InjectionManager
+        compounds_snapshot = None
+        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
+            compounds_snapshot = self.injection_mgr.get_all_compounds_uM(vessel.vessel_id)
+        else:
+            compounds_snapshot = vessel.compounds
+
+        if not compounds_snapshot:
             return
 
         # Lazy load thalamus params (need for dysfunction computation)
         if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
             self._load_cell_thalamus_params()
 
-        for compound, dose_uM in vessel.compounds.items():
+        for compound, dose_uM in compounds_snapshot.items():
             if dose_uM <= 0:
                 continue
+
+            # DEBUG: Log concentration being used for attrition
+            logger.debug(f"_apply_compound_attrition: {vessel.vessel_id} {compound} dose_uM={dose_uM:.3f}")
 
             # Get compound metadata (stored during treat_with_compound)
             meta = vessel.compound_meta.get(compound)
@@ -1452,6 +1521,26 @@ class BiologicalVirtualMachine(VirtualMachine):
         plating_seed = stable_u32(f"plating_{self.run_context.seed}_{vessel_id}")
         state.plating_context = sample_plating_context(plating_seed)
 
+        # Injection A+B: seed event establishes initial exposure state
+        self.scheduler.submit_intent(
+            vessel_id=vessel_id,
+            event_type="SEED_VESSEL",
+            requested_time_h=float(self.simulated_time),
+            payload={
+                "initial_nutrients_mM": {
+                    "glucose": float(DEFAULT_MEDIA_GLUCOSE_mM),
+                    "glutamine": float(DEFAULT_MEDIA_GLUTAMINE_mM),
+                }
+            },
+        )
+        # Seed requires immediate delivery (entity creation, not mutation)
+        self.flush_operations_now()
+
+        # Mirror InjectionManager -> VesselState fields (back-compat)
+        state.media_glucose_mM = self.injection_mgr.get_nutrient_conc_mM(vessel_id, "glucose")
+        state.media_glutamine_mM = self.injection_mgr.get_nutrient_conc_mM(vessel_id, "glutamine")
+        state.compounds = self.injection_mgr.get_all_compounds_uM(vessel_id)
+
         self.vessel_states[vessel_id] = state
         logger.info(f"Seeded {vessel_id} with {initial_count:.2e} {cell_line} cells (viability={state.viability:.1%})")
 
@@ -1474,16 +1563,31 @@ class BiologicalVirtualMachine(VirtualMachine):
             return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
 
         vessel = self.vessel_states[vessel_id]
-        vessel.media_glucose_mM = float(max(0.0, glucose_mM))
-        vessel.media_glutamine_mM = float(max(0.0, glutamine_mM))
+
+        # Injection A+B: feed event updates nutrient concentrations in spine
+        self.scheduler.submit_intent(
+            vessel_id=vessel_id,
+            event_type="FEED_VESSEL",
+            requested_time_h=float(self.simulated_time),
+            payload={
+                "nutrients_mM": {
+                    "glucose": float(max(0.0, glucose_mM)),
+                    "glutamine": float(max(0.0, glutamine_mM)),
+                }
+            },
+        )
+        # Event delivery happens at next boundary (advance_time or flush_operations_now)
+        # Mirroring happens automatically in _step_vessel after flush
+
         vessel.last_feed_time = self.simulated_time
 
+        # Return intent values (event not yet delivered)
         result = {
             "status": "success",
             "action": "feed",
             "vessel_id": vessel_id,
-            "media_glucose_mM": vessel.media_glucose_mM,
-            "media_glutamine_mM": vessel.media_glutamine_mM,
+            "media_glucose_mM": glucose_mM,  # Intent value (delivery at next boundary)
+            "media_glutamine_mM": glutamine_mM,  # Intent value (delivery at next boundary)
             "time": self.simulated_time,
         }
 
@@ -1535,15 +1639,10 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel = self.vessel_states[vessel_id]
 
+        # Determine removed set based on current state (before event delivery)
         if compound is None:
-            # Remove all compounds
             removed = list(vessel.compounds.keys())
-            vessel.compounds.clear()
-            vessel.compound_meta.clear()
-            vessel.compound_start_time.clear()
-            logger.info(f"Washed out all compounds from {vessel_id}: {removed}")
         else:
-            # Remove specific compound
             if compound not in vessel.compounds:
                 return {
                     "status": "error",
@@ -1551,10 +1650,20 @@ class BiologicalVirtualMachine(VirtualMachine):
                     "vessel_id": vessel_id
                 }
             removed = [compound]
-            del vessel.compounds[compound]
-            vessel.compound_meta.pop(compound, None)
-            vessel.compound_start_time.pop(compound, None)
-            logger.info(f"Washed out {compound} from {vessel_id}")
+
+        # Injection A+B: authoritative washout event
+        self.scheduler.submit_intent(
+            vessel_id=vessel_id,
+            event_type="WASHOUT_COMPOUND",
+            requested_time_h=float(self.simulated_time),
+            payload={
+                "compound": (None if compound is None else str(compound))
+            },
+        )
+        # Event delivery happens at next boundary (advance_time or flush_operations_now)
+        # VesselState mirrors updated automatically in _step_vessel after flush
+
+        logger.info(f"Washed out {('all compounds' if compound is None else compound)} from {vessel_id}")
 
         # Track washout for intervention costs
         vessel.last_washout_time = self.simulated_time
@@ -1809,8 +1918,20 @@ class BiologicalVirtualMachine(VirtualMachine):
         instant_death_fraction_applied = 1.0 - viability_effect
         self._apply_instant_kill(vessel, instant_death_fraction_applied, "death_compound")
 
-        # Register exposure for time-dependent attrition
-        vessel.compounds[compound] = dose_uM
+        # Injection A+B: authoritative exposure event
+        self.scheduler.submit_intent(
+            vessel_id=vessel_id,
+            event_type="TREAT_COMPOUND",
+            requested_time_h=float(self.simulated_time),
+            payload={
+                "compound": str(compound),
+                "dose_uM": float(dose_uM),
+            },
+        )
+        # Event delivery happens at next boundary (advance_time or flush_operations_now)
+        # VesselState mirrors updated automatically in _step_vessel after flush
+
+        # Track compound start time for time_since_treatment calculations
         vessel.compound_start_time[compound] = self.simulated_time
 
         # Phase 5: Store potency and toxicity scalars in metadata (already extracted above)
@@ -2196,8 +2317,14 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Apply compound effects via stress axes
         # Track if any microtubule compound is present (for transport dysfunction diagnostic)
+        # Read authoritative compound concentrations from InjectionManager
+        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel_id):
+            compounds_snapshot = self.injection_mgr.get_all_compounds_uM(vessel_id)
+        else:
+            compounds_snapshot = vessel.compounds
+
         has_microtubule_compound = False
-        for compound_name, dose_uM in vessel.compounds.items():
+        for compound_name, dose_uM in compounds_snapshot.items():
             if dose_uM == 0:
                 continue
 

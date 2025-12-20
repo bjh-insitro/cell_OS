@@ -74,16 +74,16 @@ def test_evaporation_drift_increases_concentration_edge_vs_interior():
 
 def test_evaporation_drift_affects_attrition():
     """
-    Test that higher concentration due to evaporation causes more attrition.
+    Test that higher concentration due to evaporation causes proportionally higher death rate.
+
+    Key insight: Check that concentration ratio matches death accumulation ratio,
+    accounting for initial viability differences from instant kill variance.
 
     Setup:
     - Two wells: edge vs interior
     - Same initial dose
-    - Advance time without ops
-    - Assert edge has more death (higher death_compound) from concentrated exposure
-
-    Use death_compound accumulation instead of viability to avoid confounding from
-    instant kill variance.
+    - Advance time (concentrations drift apart due to evaporation)
+    - Assert edge death rate is proportionally higher (matches concentration ratio)
     """
     print("\nTest: Evaporation drift affects attrition (biology reads spine)")
     print("-" * 70)
@@ -94,49 +94,60 @@ def test_evaporation_drift_affects_attrition():
     edge = "Plate1_A01"
     interior = "Plate1_D06"
 
-    vm.seed_vessel(edge, "A549", initial_count=1e6, initial_viability=1.0)  # Start with 100% to isolate attrition
+    vm.seed_vessel(edge, "A549", initial_count=1e6, initial_viability=1.0)
     vm.seed_vessel(interior, "A549", initial_count=1e6, initial_viability=1.0)
 
-    # Same dose at time 0 (low dose to avoid instant kill, focus on attrition)
-    vm.treat_with_compound(edge, "tunicamycin", 0.5)
-    vm.treat_with_compound(interior, "tunicamycin", 0.5)
+    # Same dose at time 0 (moderate dose to see attrition signal)
+    vm.treat_with_compound(edge, "tunicamycin", 1.5)
+    vm.treat_with_compound(interior, "tunicamycin", 1.5)
 
-    # Record death_compound after instant kill
-    death_edge_after_instant = vm.vessel_states[edge].death_compound
-    death_int_after_instant = vm.vessel_states[interior].death_compound
+    # Record viability after instant kill (will differ due to RNG)
+    via_edge_start = vm.vessel_states[edge].viability
+    via_int_start = vm.vessel_states[interior].viability
 
     print(f"After instant kill:")
-    print(f"  Edge: death_compound={death_edge_after_instant:.4f}")
-    print(f"  Interior: death_compound={death_int_after_instant:.4f}")
+    print(f"  Edge viability: {via_edge_start:.4f}")
+    print(f"  Interior viability: {via_int_start:.4f}")
 
-    # Advance 48 hours (attrition accumulates)
-    print(f"\nAdvancing 48 hours...")
-    vm.advance_time(48.0)
+    # Advance 96 hours (attrition accumulates, concentrations drift)
+    print(f"\nAdvancing 96 hours...")
+    vm.advance_time(96.0)
 
-    # Read final death_compound (includes instant + attrition)
-    death_edge_final = vm.vessel_states[edge].death_compound
-    death_int_final = vm.vessel_states[interior].death_compound
+    # Read final viabilities
+    via_edge_final = vm.vessel_states[edge].viability
+    via_int_final = vm.vessel_states[interior].viability
 
-    # Attrition delta = final - instant
-    attrition_edge = death_edge_final - death_edge_after_instant
-    attrition_int = death_int_final - death_int_after_instant
+    # Compute survival fraction (relative to post-instant state)
+    survival_edge = via_edge_final / max(0.001, via_edge_start)
+    survival_int = via_int_final / max(0.001, via_int_start)
 
-    # Read concentrations for context
+    # Read concentrations
     c_edge = vm.injection_mgr.get_compound_concentration_uM(edge, "tunicamycin")
     c_int = vm.injection_mgr.get_compound_concentration_uM(interior, "tunicamycin")
 
-    print(f"\nFinal state (after 48h attrition):")
-    print(f"  Edge: death_compound={death_edge_final:.4f}, attrition={attrition_edge:.4f}, conc={c_edge:.3f} µM")
-    print(f"  Interior: death_compound={death_int_final:.4f}, attrition={attrition_int:.4f}, conc={c_int:.3f} µM")
-    print(f"  Attrition ratio (edge/interior): {attrition_edge/max(0.001, attrition_int):.3f}")
+    print(f"\nFinal state (after 96h attrition):")
+    print(f"  Edge: viability={via_edge_final:.4f}, survival={survival_edge:.4f}, conc={c_edge:.3f} µM")
+    print(f"  Interior: viability={via_int_final:.4f}, survival={survival_int:.4f}, conc={c_int:.3f} µM")
+    print(f"  Concentration ratio (edge/int): {c_edge/c_int:.3f}")
+    print(f"  Survival ratio (edge/int): {survival_edge/survival_int:.3f}")
+    print(f"  (Lower survival = more death from attrition)")
 
-    # Edge should have more attrition due to higher concentration
-    if attrition_edge > attrition_int:
-        print(f"✓ PASS: Edge well has more attrition (higher concentrated exposure)")
+    # Edge should have LOWER survival (more death) due to higher concentration
+    # Combined check: concentration ratio > 1.15× AND survival ratio shows effect
+    conc_ratio = c_edge / c_int
+    survival_ratio = survival_edge / survival_int
+
+    if conc_ratio > 1.15 and survival_ratio < 0.98:
+        print(f"✓ PASS: Edge has lower survival matching higher concentration")
+        print(f"  Biology reads InjectionManager concentrations (conc_ratio={conc_ratio:.3f}, survival_ratio={survival_ratio:.3f})")
         return True
+    elif conc_ratio > 1.15:
+        print(f"❌ FAIL: Concentration drifted ({conc_ratio:.3f}×) but survival ratio too high ({survival_ratio:.3f})")
+        print(f"  Expected survival_ratio < 0.98, got {survival_ratio:.3f}")
+        print(f"  This suggests biology may not be reading InjectionManager concentrations")
+        return False
     else:
-        print(f"❌ FAIL: Edge well does not have more attrition (edge={attrition_edge:.4f}, int={attrition_int:.4f})")
-        print(f"  This suggests biology is not reading InjectionManager concentrations")
+        print(f"⚠ INCONCLUSIVE: Concentration ratio too small ({conc_ratio:.3f}×) to test reliably")
         return False
 
 
