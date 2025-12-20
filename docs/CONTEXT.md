@@ -2,7 +2,7 @@
 
 **What you're building, where it's at, and how the pieces fit together.**
 
-Last updated: December 16, 2025
+Last updated: December 20, 2025
 
 ---
 
@@ -12,7 +12,22 @@ Cell OS is a **world model for cell biology experiments**, not just a simulation
 
 **Phase 0 (Complete):** We proved the simulation encodes real biological mechanism. Mid-dose (0.5-2×IC50) at 12h shows 300× better stress class separation than all-doses mixed. Key finding: **mechanistic information moves earlier in time and lower in dose**.
 
-**Phase 1 (Next):** Build an agent that discovers this on its own through active learning (epistemic agency).
+**Phase 5 (Complete):** Population heterogeneity keystone fix. Implemented 3-bucket subpopulation model (sensitive/typical/resistant) with shifted IC50 and stress thresholds. This creates natural variance in stress response and prevents overconfident early classification. Mixture width captures biological uncertainty → confidence collapses when populations disagree.
+
+**Phase 5B (Complete):** Realism layer with 3 injections to make epistemic control strategies robust:
+1. **RunContext** - Correlated batch/lot/instrument effects (today is cursed)
+2. **Plating artifacts** - Post-dissociation stress decays over 6-16h (early timepoints unreliable)
+3. **Pipeline drift** - Batch-dependent feature extraction failures (prevents feature overtrust)
+
+Result: Same compound can give different conclusions under different contexts. Forces calibration plate workflows, delayed commitment strategies, and batch normalization.
+
+**Phase 6A (Complete):** Epistemic control - Agent learns to actively resolve biological uncertainty through strategic intervention. Achieved:
+1. **Data-driven signature learning** - Learned mechanism signatures from 200 simulation runs per mechanism. Cosplay detector ratio = ∞ (perfect separation via covariance structure)
+2. **Calibrated confidence** - Three-layer architecture (inference, reality, decision) with logistic regression calibrator. ECE = 0.0626 < 0.1 (well-calibrated)
+3. **Semantic honesty enforcement** - Fixed death accounting, conservation violations, plate factor seeding to ensure no "quiet lies"
+4. **Beam search integration** - COMMIT action gated by calibrated confidence (≥0.75 threshold), enabling early termination when justified
+
+**Next:** Phase 6B - Realism improvements (volume/evaporation, plate-level correlated fields, waste/pH dynamics)
 
 ---
 
@@ -433,6 +448,281 @@ make lint
 - Current: 200+ features → 5 z-scores (lightweight)
 - Future: pixel-level images for deep learning (Phase 3+)
 - Trade-off: features interpretable, images more realistic
+
+---
+
+## Phase 5 & 5B: Population Heterogeneity and Realism Layer
+
+### Phase 5: Population Heterogeneity (Keystone Fix)
+
+**Problem:** Phase 4 policies overconfident in early classification (12h probe → commit). No mechanism to capture biological variance.
+
+**Solution:** 3-bucket subpopulation model with shifted parameters:
+
+| Subpopulation | Fraction | IC50 Shift | Death Threshold Shift |
+|---------------|----------|------------|----------------------|
+| Sensitive | 25% | 0.5× (more sensitive) | 0.8× (die earlier) |
+| Typical | 50% | 1.0× (normal) | 1.0× (normal) |
+| Resistant | 25% | 2.0× (more resistant) | 1.2× (die later) |
+
+**Implementation:**
+- `VesselState.subpopulations` dict tracking per-subpop stress levels
+- Mixture properties (`er_stress_mixture`, `mito_dysfunction_mixture`)
+- `get_mixture_width()` computes std dev across subpopulations
+- Death distributed proportionally to subpop stress (sensitive die first)
+
+**Key File:** `src/cell_os/hardware/biological_virtual.py` (lines 167-251)
+
+**Confidence Accounting:**
+```python
+confidence = base_confidence * max(0, 1 - mixture_width / 0.3)
+```
+
+Wide mixture (subpopulations disagree) → low confidence → delayed commitment
+
+**Test:** `tests/unit/test_epistemic_control.py` validates confidence collapse
+
+### Phase 5B: Realism Layer (3 Injections)
+
+**Goal:** Make epistemic control strategies robust by injecting correlated context effects that create "same compound, different conclusion" outcomes.
+
+#### Injection #1: RunContext (Correlated Batch/Lot/Instrument Effects)
+
+**Implementation:** `src/cell_os/hardware/run_context.py` (~300 lines)
+
+**Correlated factors** (correlation=0.5 with shared "cursed day" latent):
+- `incubator_shift`: ±0.3 → EC50 multiplier 0.86-1.16×
+- `reagent_lot_shift`: Per-channel biases ±15%
+- `instrument_shift`: ±0.2 → illumination bias 0.82-1.22×
+
+**Biology hooks** (5 locations in `biological_virtual.py`):
+1. Line 1591: EC50 multiplier in `treat_with_compound`
+2. Lines 760-761: Stress sensitivity in `_update_er_stress`
+3. Lines 853-854: Stress sensitivity in `_update_mito_dysfunction`
+4. Lines 929-930: Stress sensitivity in `_update_transport_dysfunction`
+5. Lines 1041-1042: Growth rate multiplier in `_update_vessel_growth`
+
+**Measurement hooks** (1 location):
+6. Lines 2200-2210: Channel biases + illumination in `cell_painting_assay`
+
+**Test results:** Same compound under two contexts shows 73-155% channel intensity differences (Test 3 in `test_run_context.py`)
+
+#### Injection #2: Plating Artifacts (Post-Dissociation Stress)
+
+**Implementation:** `biological_virtual.py` (lines 197-200, 277-315, 1307-1308, 2133-2157)
+
+**Sampled per vessel:**
+- `post_dissociation_stress`: 0.0-0.3 (initial stress level)
+- `clumpiness`: 0.0-0.3 (spatial heterogeneity)
+- `tau_recovery_h`: 6-16h (exponential decay time constant)
+
+**Temporal decay:**
+```python
+artifact(t) = A * exp(-t / tau_recovery)
+```
+
+**Mixture width inflation:**
+```python
+total_width = sqrt(base_width² + artifact_width²)  # Quadrature sum
+```
+
+**Impact:** Early timepoints (6-12h) unreliable, late timepoints (24-36h) reveal true biology
+
+**Test results:** Artifact inflation decays from 0.036 @ 6h to 0.011 @ 24h (Test 2 in `test_plating_artifacts.py`)
+
+#### Injection #3: Pipeline Drift (Batch-Dependent Feature Extraction)
+
+**Implementation:** `run_context.py` (lines 200-301), integrated at `biological_virtual.py` lines 2220-2229
+
+**Transforms applied:**
+1. **Channel-specific segmentation bias** (correlation=0.3 with reagent lot)
+   - 30% correlated + 70% independent component
+   - When reagent lot bad → segmentation also bad (cursed day coherence)
+
+2. **Affine transforms in feature space** (per batch)
+   - ER and mito scaled independently
+   - Some batches compress ER-mito separation, others amplify
+
+3. **Discrete failure modes** (5% of plates)
+   - `focus_off`: All channels 0.7-0.9× dimmer
+   - `illumination_wrong`: Per-channel 0.8-1.3× shifts
+   - `segmentation_fail`: Nucleus/actin ratio skewed
+
+**Impact:** Same biology measured in Batch A vs Batch B gives 1.8-5.9% feature differences
+
+**Test results:** Tunicamycin ER/mito ratio differs by 0.06 between batches (enough to flip classification)
+
+### Layered Uncertainty Formula
+
+**Total confidence:**
+```python
+confidence = (
+    base_confidence
+    * (1 - mixture_width / 0.3)        # Heterogeneity (Phase 5)
+    * (1 - context_uncertainty)         # RunContext (Phase 5B.1)
+    * artifact_decay(t)                 # Plating (Phase 5B.2)
+    * pipeline_trust(batch)             # Pipeline drift (Phase 5B.3)
+)
+```
+
+Result: Confidence collapses naturally when any uncertainty source is high.
+
+### Testing
+
+**Phase 5B Test Suite:**
+- `test_run_context.py` - 4/4 tests pass
+- `test_plating_artifacts.py` - 6/6 tests pass
+- `test_pipeline_drift.py` - 6/6 tests pass
+
+**Key validation:**
+- Context affects biology: 2.5% viability difference between good/cursed days
+- Context affects measurement: 73-155% channel intensity differences
+- Plating artifacts decay correctly: 6h → 24h exponential decay verified
+- Pipeline drift creates batch disagreement: 1.8-5.9% feature differences
+
+### Files Reference
+
+**Core implementation:**
+- `src/cell_os/hardware/run_context.py` - RunContext + plating + pipeline (~300 lines)
+- `src/cell_os/hardware/biological_virtual.py` - Integration hooks (9 locations)
+
+**Documentation:**
+- `docs/PHASE_5B_REALISM_LAYER.md` - Complete design and implementation guide
+- `docs/PHASE_5_EPISTEMIC_CONTROL.md` - Epistemic control system design
+- `docs/LATENT_TO_READOUT_MAP.md` - Morphology readout architecture
+
+**Tests:**
+- `src/cell_os/hardware/test_run_context.py`
+- `src/cell_os/hardware/test_plating_artifacts.py`
+- `src/cell_os/hardware/test_pipeline_drift.py`
+- `tests/unit/test_epistemic_control.py`
+
+---
+
+## Phase 6A: Epistemic Control (December 2025)
+
+**Goal:** Enable agents to actively resolve biological uncertainty through strategic intervention with calibrated confidence.
+
+### Key Achievements
+
+#### 1. Data-Driven Signature Learning
+
+**Implementation:** `learn_mechanism_signatures.py`, `src/cell_os/hardware/mechanism_posterior_v2.py`
+
+**What changed:**
+- Learned mechanism-specific mean (μ_m) and covariance (Σ_m) from 200 simulation runs
+- 3D feature space [actin, mito, ER] sufficient for discrimination
+- Per-mechanism covariance captures variance structure (not just centroids)
+
+**Validation:**
+- **Cosplay detector test**: ratio = ∞ (perfect separation)
+- Proves real likelihood evaluation (not nearest-neighbor with Bayes paint)
+
+**Files:**
+- `data/learned_mechanism_signatures_quick.pkl` - Frozen signatures (treat like labware)
+- `docs/results/SIGNATURE_LEARNING_RESULTS.md` - Full validation report
+
+#### 2. Calibrated Confidence Architecture
+
+**Implementation:** `src/cell_os/hardware/confidence_calibrator.py`, `train_confidence_calibrator.py`
+
+**Three-layer separation:**
+
+1. **Inference Layer** (`mechanism_posterior_v2.py`)
+   - Bayesian posterior with per-mechanism covariance
+   - Nuisance model: mean-shift + variance inflation
+   - Outputs: P(mechanism | features)
+   - **Stays clean**: No ad-hoc penalties
+
+2. **Reality Layer** (`confidence_calibrator.py`)
+   - Maps belief_state → P(correct)
+   - Learns from empirical correctness rates
+   - **Allows inversions**: 80% posterior + 53% nuisance → 52% confidence
+
+3. **Decision Layer** (beam search integration)
+   - Uses calibrated confidence for COMMIT/WAIT/RESCUE
+   - Not just "data favors X" but "allowed to trust that"
+
+**Training:**
+- Stratified dataset: 150 runs across 3 nuisance levels (low/medium/high)
+- ECE = 0.0626 < 0.1 (well-calibrated)
+- High-nuisance bins conservative (confidence 0.899 vs accuracy 0.958)
+
+**Files:**
+- `data/confidence_calibrator_v1.pkl` - Frozen calibrator (treat like labware)
+- `docs/results/CALIBRATION_RESULTS.md` - Training metrics and analysis
+- `docs/architecture/CALIBRATION_ARCHITECTURE.md` - Design documentation
+
+#### 3. Semantic Honesty Enforcement
+
+**Problem:** "Quiet lies" that undermine calibration trust
+
+**Fixes applied:**
+1. ✓ **death_unknown vs death_unattributed split** - No silent laundering of contamination
+2. ✓ **Remove silent renormalization** - Conservation violations crash loudly (ConservationViolationError)
+3. ✓ **Passaging clock resets** - Reset temporal state, resample plating_context
+4. ✓ **Plate factor seeding with run_context** - "Cursed day" varies per run, not globally constant
+5. ⚠ **Epistemic particle guards** - Documented semantics, guards recommended (medium priority)
+
+**Files:**
+- `docs/archive/sessions/2025-12-20-semantic-fixes.md` - Complete fix verification
+- `docs/designs/EPISTEMIC_HONESTY_PHILOSOPHY.md` - Design philosophy
+
+#### 4. Beam Search Integration
+
+**Implementation:** `src/cell_os/hardware/beam_search.py`
+
+**What changed:**
+- COMMIT action added as first-class terminal decision
+- Gated by calibrated_confidence ≥ 0.75 threshold
+- Early termination when epistemic state justifies commitment
+- Forensic logging for COMMIT decisions
+
+**Expected behavior:**
+- Fewer early commits in high-nuisance runs
+- No collapse in easy cases (clean context still commits)
+- Rescue plans for right reasons (targets dominant uncertainty source)
+
+**Files:**
+- `docs/architecture/BEAM_SEARCH_CALIBRATION_INTEGRATION.md` - Integration recipe
+- `docs/results/BEAM_COMMIT_TEST_RESULTS.md` - Test validation
+
+### Key Insights
+
+**"The geometry doesn't lie anymore"**
+- Before: Nearest-neighbor with Bayes paint (threshold classifier cosplay)
+- After: Real likelihood evaluation with learned covariance structure
+
+**"Three-layer separation works"**
+- Inference: "What does the data say?" (Bayesian posterior)
+- Reality: "How often is that actually correct?" (Calibrated confidence)
+- Decision: "What should I do about it?" (Governance)
+
+**"Inversions are not bugs"**
+- High posterior + high nuisance → reduced confidence (conservative)
+- Moderate posterior + low nuisance → maintained confidence (justified)
+- Calibrator learns: "high nuisance → lower trust" explicitly
+
+### Files Reference
+
+**Core implementation:**
+- `src/cell_os/hardware/mechanism_posterior_v2.py` - Bayesian inference layer
+- `src/cell_os/hardware/confidence_calibrator.py` - Calibration layer (~350 lines)
+- `src/cell_os/hardware/beam_search.py` - COMMIT integration
+
+**Data artifacts (frozen):**
+- `data/learned_mechanism_signatures_quick.pkl`
+- `data/confidence_calibrator_v1.pkl`
+
+**Documentation:**
+- `docs/milestones/PHASE_6A_EPISTEMIC_CONTROL_SESSION.md` - Session summary
+- `docs/designs/EPISTEMIC_HONESTY_PHILOSOPHY.md` - Design principles
+- `docs/designs/EPISTEMIC_CHARTER.md` - Epistemic governance
+
+**Tests:**
+- `test_calibrated_posterior.py` - Full pipeline integration test
+- `test_context_mimic.py` - Context shift robustness
+- `test_messy_boundary.py` - Ambiguous case handling
 
 ---
 

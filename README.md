@@ -299,7 +299,7 @@ docs/
 - JupyterHub deployment (50-100× speedup)
 
 ### ✅ Phase 1: Epistemic Agent (v0.4.2)
-**Status**: Core complete, validation in progress
+**Status**: Complete
 
 - Pay-for-calibration regime enforced
 - Gate lock invariant (rel_width ≤ 0.25)
@@ -307,7 +307,40 @@ docs/
 - Symmetric gate events (earned + lost)
 - Template library (baseline, edge, dose-ladder)
 
-### 🚧 Phase 2: Advanced Discovery (Planned)
+### ✅ Phase 5: Population Heterogeneity
+**Status**: Complete
+
+- 3-bucket subpopulation model (sensitive/typical/resistant)
+- Shifted IC50 and stress thresholds per subpopulation
+- Mixture width captures biological uncertainty
+- Confidence collapses when populations disagree
+- Natural variance in stress response prevents overconfident classification
+
+### ✅ Phase 5B: Realism Layer
+**Status**: Complete
+
+- **RunContext**: Correlated batch/lot/instrument effects ("cursed days")
+- **Plating artifacts**: Post-dissociation stress (6-16h decay)
+- **Pipeline drift**: Batch-dependent feature extraction failures
+- Forces calibration workflows and delayed commitment strategies
+- Same compound → different conclusions under different contexts
+
+### ✅ Phase 6A: Epistemic Control
+**Status**: Complete (December 2025)
+
+- **Data-driven signature learning**: Learned mechanism signatures (μ_m, Σ_m) from 200 simulation runs
+- **Calibrated confidence**: Three-layer architecture (inference, reality, decision) with ECE = 0.0626
+- **Semantic honesty enforcement**: Fixed death accounting, conservation violations, plate seeding
+- **Beam search integration**: COMMIT action gated by calibrated confidence (≥0.75 threshold)
+- **Key insight**: "The geometry doesn't lie anymore" - real likelihood evaluation, not nearest-neighbor cosplay
+
+### 🚧 Phase 6B: Realism Improvements (Planned)
+- Volume/evaporation dynamics with concentration drift
+- Plate-level correlated fields (temperature, illumination gradients)
+- Waste/pH as secondary stress axis
+- Seeding density persistence and IC50 modulation
+
+### 🚧 Phase 7: Advanced Discovery (Planned)
 - Multi-fidelity learning
 - Hit calling pipeline
 - DINO embedding analysis
@@ -357,15 +390,19 @@ class MyPolicy(RuleBasedPolicy):
 - [x] Evidence ledgers + gate events
 - [x] Observer-independent physics
 - [x] JupyterHub deployment (determinism verified)
+- [x] Population heterogeneity (Phase 5)
+- [x] Realism layer: RunContext, plating artifacts, pipeline drift (Phase 5B)
+- [x] Epistemic control: calibrated confidence, semantic honesty (Phase 6A)
+- [x] Beam search integration with COMMIT gating
 - [x] Documentation consolidation
 
 ### In Progress 🚧
-- [ ] Phase 1 validation campaigns
-- [ ] Dashboard integration for v0.4.2
-- [ ] Benchmark suite for gate statistics
+- [ ] Phase 6B: Realism improvements (volume, evaporation, plate fields)
+- [ ] Beam search teachability validation
+- [ ] Dashboard integration for Phase 6A
 
 ### Planned 📋
-- [ ] Multi-fidelity learning (transfer from cheap → expensive assays)
+- [ ] Phase 7: Multi-fidelity learning (transfer from cheap → expensive assays)
 - [ ] Hit calling pipeline
 - [ ] DINO embedding analysis
 - [ ] Real hardware integration (SiLA2/vendor APIs)

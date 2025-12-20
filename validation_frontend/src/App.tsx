@@ -6,7 +6,7 @@ import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
 import ViewingPage from './pages/CellThalamus/ViewingPage';
 import AutonomousLoopPage from './pages/AutonomousLoopPage';
-import EpistemicProvenancePage from './pages/EpistemicProvenancePage';
+import EpistemicProvenancePage from './pages/EpistemicProvenancePageNew';
 
 function App() {
     return (

@@ -30,6 +30,18 @@ class PrefixRolloutResult:
     actin_struct: float
     baseline_actin: float
 
+    # NEW: Belief state (Bayesian posterior + calibration)
+    mito_fold: float = 1.0
+    er_fold: float = 1.0
+    posterior_top_prob: float = 0.0
+    posterior_margin: float = 0.0
+    nuisance_fraction: float = 0.0
+    calibrated_confidence: float = 0.0
+
+    # Forensics: nuisance model components
+    nuisance_mean_shift_mag: float = 0.0  # ||mean_shift||
+    nuisance_var_inflation: float = 0.0   # Total variance inflation
+
 
 class Phase5EpisodeRunner(EpisodeRunner):
     """
@@ -267,16 +279,78 @@ class Phase5EpisodeRunner(EpisodeRunner):
             trafficking_fold=trafficking_fold
         )
 
+        # NEW: Compute Bayesian posterior + calibrated confidence
+        from .mechanism_posterior_v2 import compute_mechanism_posterior_v2, NuisanceModel
+        from .confidence_calibrator import ConfidenceCalibrator, BeliefState
+
+        # Build nuisance model
+        current_time_h = n_steps_prefix * self.step_h
+        meas_mods = vm.run_context.get_measurement_modifiers()
+        context_shift = np.array([
+            (meas_mods['channel_biases']['actin'] - 1.0) * 0.2,
+            (meas_mods['channel_biases']['mito'] - 1.0) * 0.2,
+            (meas_mods['channel_biases']['er'] - 1.0) * 0.2
+        ])
+
+        hetero_width = vessel.get_mixture_width('transport_dysfunction')
+        artifact_var = 0.01 * np.exp(-current_time_h / 10.0)
+
+        nuisance = NuisanceModel(
+            context_shift=context_shift,
+            pipeline_shift=np.array([0.01, -0.01, 0.01]),
+            artifact_var=artifact_var,
+            heterogeneity_var=hetero_width ** 2,
+            context_var=0.15 ** 2,
+            pipeline_var=0.10 ** 2
+        )
+
+        # Compute posterior
+        posterior = compute_mechanism_posterior_v2(
+            actin_fold=actin_fold,
+            mito_fold=mito_fold,
+            er_fold=er_fold,
+            nuisance=nuisance
+        )
+
+        # Build belief state
+        belief_state = BeliefState(
+            top_probability=posterior.top_probability,
+            margin=posterior.margin,
+            entropy=posterior.entropy,
+            nuisance_fraction=nuisance.nuisance_fraction,
+            timepoint_h=current_time_h,
+            dose_relative=1.0,  # TODO: track actual dose relative to reference
+            viability=viability
+        )
+
+        # Load calibrator and predict confidence
+        calibrator = ConfidenceCalibrator.load('/Users/bjh/cell_OS/data/confidence_calibrator_v1.pkl')
+        calibrated_conf = calibrator.predict_confidence(belief_state)
+
+        # Compute nuisance component magnitudes for forensics
+        mean_shift_mag = np.linalg.norm(nuisance.total_mean_shift)
+        var_inflation = nuisance.total_var_inflation
+
         # Build result
         prefix_result = PrefixRolloutResult(
             viability=viability,
             actin_fold=actin_fold,
             classifier_margin=confidence,
-            predicted_axis=predicted_axis,
+            predicted_axis=posterior.top_mechanism.value,  # Use posterior, not Phase5 classifier
             washout_count=washout_count,
             feed_count=feed_count,
             actin_struct=actin_struct,
-            baseline_actin=baseline_actin
+            baseline_actin=baseline_actin,
+            # NEW: Belief state fields
+            mito_fold=mito_fold,
+            er_fold=er_fold,
+            posterior_top_prob=posterior.top_probability,
+            posterior_margin=posterior.margin,
+            nuisance_fraction=nuisance.nuisance_fraction,
+            calibrated_confidence=calibrated_conf,
+            # Forensics: nuisance components
+            nuisance_mean_shift_mag=mean_shift_mag,
+            nuisance_var_inflation=var_inflation
         )
 
         # Store in cache
@@ -295,10 +369,15 @@ class BeamNode:
     - Action sequence so far
     - Intervention counts
     - Current observations (viability, readouts)
-    - Heuristic score (for beam ranking, not terminal reward)
+    - Exploration heuristic score (for beam ranking, not terminal reward)
+    - Optional terminal commit utility (for early COMMIT nodes)
     """
     t_step: int  # 0..n_steps
     schedule: List[Action]
+
+    # Action semantics
+    action_type: str = "CONTINUE"  # "CONTINUE" or "COMMIT"
+    is_terminal: bool = False
 
     # Constraint tracking
     washout_count: int = 0
@@ -307,12 +386,29 @@ class BeamNode:
     # Current state (from prefix rollout)
     viability_current: float = 1.0
     actin_fold_current: float = 1.0
-    confidence_margin_current: float = 0.0  # classifier margin (top1 - top2)
 
-    # Heuristic score for beam ranking (NOT terminal reward)
+    # Exploration proxy (Phase5 classifier margin: top1 - top2)
+    confidence_margin_current: float = 0.0
+
+    # Reality layer / belief state summaries (populated in rollout_prefix)
+    posterior_top_prob_current: float = 0.0
+    posterior_margin_current: float = 0.0
+    nuisance_frac_current: float = 0.0
+    calibrated_confidence_current: float = 0.0
+    predicted_axis_current: str = "UNKNOWN"
+
+    # Forensics: nuisance components
+    nuisance_mean_shift_mag_current: float = 0.0
+    nuisance_var_inflation_current: float = 0.0
+
+    # Heuristic score for beam ranking (NON-TERMINAL nodes)
     heuristic_score: float = 0.0
 
-    # Terminal reward (only set at t=n_steps)
+    # Commit utility (TERMINAL COMMIT nodes only)
+    commit_utility: Optional[float] = None
+    commit_target: Optional[str] = None
+
+    # Terminal reward (legacy path: only set at t=n_steps)
     terminal_reward: Optional[float] = None
 
     # For debugging
@@ -377,6 +473,18 @@ class BeamSearch:
         self.w_mechanism = w_mechanism
         self.w_viability = w_viability
         self.w_interventions = w_interventions
+
+        # Commit gating (NEW)
+        self.commit_conf_threshold = 0.75  # Min calibrated confidence to allow COMMIT
+
+        # Commit utility weights (NEW)
+        self.w_commit_conf = 5.0
+        self.w_commit_time = 0.1
+        self.w_commit_ops = 0.05
+        self.w_commit_viability = 0.1
+
+        # Debug mode (NEW)
+        self.debug_commit_decisions = False  # Set True to log COMMIT forensics
 
         # Action space
         self.dose_levels = [0.0, 0.25, 0.5, 1.0]
@@ -457,21 +565,78 @@ class BeamSearch:
             nodes_pruned_dominated=self.nodes_pruned_dominated
         )
 
+    def _populate_node_from_prefix(self, node, pr) -> None:
+        """Populate BeamNode cached fields from PrefixRolloutResult."""
+        node.viability_current = pr.viability
+        node.actin_fold_current = pr.actin_fold
+        node.confidence_margin_current = pr.classifier_margin
+
+        node.posterior_top_prob_current = pr.posterior_top_prob
+        node.posterior_margin_current = pr.posterior_margin
+        node.nuisance_frac_current = pr.nuisance_fraction
+        node.calibrated_confidence_current = pr.calibrated_confidence
+        node.predicted_axis_current = pr.predicted_axis
+
+        # Forensics: nuisance components
+        node.nuisance_mean_shift_mag_current = pr.nuisance_mean_shift_mag
+        node.nuisance_var_inflation_current = pr.nuisance_var_inflation
+
+    def _compute_commit_utility(
+        self,
+        calibrated_conf: float,
+        elapsed_time_h: float,
+        ops_penalty: int,
+        viability: float
+    ) -> float:
+        """Compute terminal utility for COMMIT decision."""
+        w_commit_conf = getattr(self, 'w_commit_conf', 5.0)
+        w_commit_time = getattr(self, 'w_commit_time', 0.1)
+        w_commit_ops = getattr(self, 'w_commit_ops', 0.05)
+        w_commit_viability = getattr(self, 'w_commit_viability', 0.1)
+
+        conf_reward = w_commit_conf * calibrated_conf
+        time_penalty = w_commit_time * elapsed_time_h
+        ops_cost = w_commit_ops * ops_penalty
+        viability_penalty = w_commit_viability * (1.0 - viability)
+
+        return conf_reward - time_penalty - ops_cost - viability_penalty
+
     def _expand_node(self, node: BeamNode, compound) -> List[BeamNode]:
         """
         Generate successor nodes by trying all legal actions.
+
+        Now supports COMMIT as a terminal decision gated by calibrated confidence.
+
+        Structure:
+        1. Compute prefix_current once for COMMIT gating (if node not yet populated)
+        2. Generate CONTINUE successors (dose/washout/feed combinations)
+        3. Generate COMMIT successor (if confident enough)
 
         Args:
             node: Current node
             compound: Phase5Compound
 
         Returns:
-            List of successor nodes (after legality filtering)
+            List of successor nodes (CONTINUE + optional COMMIT)
         """
         successors = []
 
-        # Check if compound is present (for washout legality)
-        # For simplicity, track if we've ever dosed
+        # 1) Compute prefix_current once for COMMIT gating
+        # Only needed if node belief state not yet populated
+        prefix_current = None
+        if node.t_step > 0 and (node.calibrated_confidence_current <= 0.0 or node.predicted_axis_current == "UNKNOWN"):
+            try:
+                prefix_current = self.runner.rollout_prefix(node.schedule)
+                self._populate_node_from_prefix(node, prefix_current)
+            except Exception as e:
+                # If current state failed, can't expand from here
+                if getattr(self, 'debug_commit_decisions', False):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to compute prefix_current for node at t={node.t_step}: {e}", exc_info=True)
+                return []
+
+        # 2) Generate CONTINUE successors
         has_dosed = any(a.dose_fraction > 0 for a in node.schedule)
 
         for dose_level in self.dose_levels:
@@ -498,23 +663,27 @@ class BeamSearch:
                         self.nodes_pruned_interventions += 1
                         continue
 
-                    # ACTUAL prefix rollout (runs VM to current timestep)
+                    # ACTUAL prefix rollout (runs VM to current timestep + 1)
                     try:
                         prefix_result = self.runner.rollout_prefix(new_schedule)
                     except Exception as e:
                         # Simulation failed (probably death or error)
+                        if getattr(self, 'debug_commit_decisions', False):
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Prefix rollout failed for schedule {new_schedule}: {e}")
                         self.nodes_pruned_death += 1
                         continue
 
-                    # Early pruning: death trajectory (ACTUAL viability, not estimate)
+                    # Early pruning: death trajectory
                     if prefix_result.viability < (1.0 - self.death_tolerance):
                         self.nodes_pruned_death += 1
                         continue
 
                     # Compute heuristic score using REAL observations
-                    # Reward classifier confidence (how certain are we?), penalize death and ops
-                    viability_bonus = prefix_result.viability  # Higher is better
-                    confidence_bonus = prefix_result.classifier_margin  # Separation between top2 axes
+                    # Keep exploration heuristic CLEAN: classifier_margin + viability - ops
+                    viability_bonus = prefix_result.viability
+                    confidence_bonus = prefix_result.classifier_margin  # Phase5 classifier margin
                     ops_penalty = new_washout + new_feed
 
                     heuristic = (
@@ -523,41 +692,177 @@ class BeamSearch:
                         self.w_interventions * ops_penalty
                     )
 
-                    viability_now = prefix_result.viability
-                    actin_fold_now = prefix_result.actin_fold
-                    confidence_now = prefix_result.classifier_margin
-
+                    # Create CONTINUE successor
                     successor = BeamNode(
                         t_step=node.t_step + 1,
                         schedule=new_schedule,
+                        action_type="CONTINUE",
+                        is_terminal=False,
                         washout_count=new_washout,
                         feed_count=new_feed,
-                        viability_current=viability_now,
-                        actin_fold_current=actin_fold_now,
-                        confidence_margin_current=confidence_now,
-                        heuristic_score=heuristic
+                        heuristic_score=heuristic,
+                        commit_utility=None  # Only for COMMIT nodes
                     )
 
+                    # Populate belief state from prefix rollout
+                    self._populate_node_from_prefix(successor, prefix_result)
+
                     successors.append(successor)
+
+        # 3) Generate COMMIT successor (if confident enough)
+        if node.t_step > 0:  # Can't commit at root
+            cal_conf = node.calibrated_confidence_current
+            commit_threshold = getattr(self, 'commit_conf_threshold', 0.75)
+            predicted_axis = node.predicted_axis_current
+
+            # CRITICAL: Disallow COMMIT to "unknown"
+            # "unknown" is not a mechanism, it's a "no perturbation" hypothesis
+            # Allowing COMMIT to unknown is a "commit to abstaining" loophole
+            is_concrete_mechanism = predicted_axis in ["microtubule", "er_stress", "mitochondrial"]
+
+            # Log blocked abstention commits for forensics
+            if cal_conf >= commit_threshold and not is_concrete_mechanism:
+                if getattr(self, 'debug_commit_decisions', False):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    elapsed_time_h = node.t_step * self.runner.step_h
+                    logger.info(
+                        f"COMMIT BLOCKED (abstention) at t={node.t_step} ({elapsed_time_h:.1f}h): "
+                        f"predicted_axis={predicted_axis} "
+                        f"calibrated_conf={cal_conf:.3f} "
+                        f"threshold={commit_threshold:.3f} "
+                        f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
+                        f"nuisance_frac={node.nuisance_frac_current:.3f}"
+                    )
+
+            if cal_conf >= commit_threshold and is_concrete_mechanism:
+                elapsed_time_h = node.t_step * self.runner.step_h
+                ops_penalty = node.washout_count + node.feed_count
+                viability = node.viability_current
+
+                commit_util = self._compute_commit_utility(
+                    calibrated_conf=cal_conf,
+                    elapsed_time_h=elapsed_time_h,
+                    ops_penalty=ops_penalty,
+                    viability=viability
+                )
+
+                commit_node = BeamNode(
+                    t_step=node.t_step,  # NO ADVANCE (COMMIT doesn't advance time)
+                    schedule=node.schedule,  # Same schedule (COMMIT is decision, not action)
+                    action_type="COMMIT",
+                    is_terminal=True,
+                    washout_count=node.washout_count,
+                    feed_count=node.feed_count,
+                    commit_utility=commit_util,
+                    commit_target=node.predicted_axis_current,
+                    heuristic_score=0.0  # Not used for terminals
+                )
+
+                # Copy belief state from parent (COMMIT doesn't change state)
+                commit_node.viability_current = node.viability_current
+                commit_node.actin_fold_current = node.actin_fold_current
+                commit_node.confidence_margin_current = node.confidence_margin_current
+                commit_node.posterior_top_prob_current = node.posterior_top_prob_current
+                commit_node.posterior_margin_current = node.posterior_margin_current
+                commit_node.nuisance_frac_current = node.nuisance_frac_current
+                commit_node.calibrated_confidence_current = node.calibrated_confidence_current
+                commit_node.predicted_axis_current = node.predicted_axis_current
+                commit_node.nuisance_mean_shift_mag_current = node.nuisance_mean_shift_mag_current
+                commit_node.nuisance_var_inflation_current = node.nuisance_var_inflation_current
+
+                # Forensic logging
+                if getattr(self, 'debug_commit_decisions', False):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(
+                        f"COMMIT node created at t={node.t_step} ({elapsed_time_h:.1f}h): "
+                        f"predicted_axis={node.predicted_axis_current} "
+                        f"is_concrete_mech=True "  # Always true now (gated above)
+                        f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
+                        f"posterior_margin={node.posterior_margin_current:.3f} "
+                        f"nuisance_frac={node.nuisance_frac_current:.3f} "
+                        f"nuisance_mean_shift_mag={node.nuisance_mean_shift_mag_current:.3f} "
+                        f"nuisance_var_inflation={node.nuisance_var_inflation_current:.3f} "
+                        f"calibrated_conf={cal_conf:.3f} "
+                        f"commit_utility={commit_util:.3f} "
+                        f"threshold={commit_threshold:.3f}"
+                    )
+
+                successors.append(commit_node)
 
         return successors
 
     def _prune_and_select(self, nodes: List[BeamNode]) -> List[BeamNode]:
         """
-        Select top-k nodes by heuristic score.
+        Select a mixed beam of terminal (COMMIT) and non-terminal nodes.
 
-        Args:
-            nodes: Candidate nodes
+        - Terminal nodes are ranked by commit_utility.
+        - Non-terminal nodes are ranked by exploration heuristic_score.
 
-        Returns:
-            Top-k nodes by heuristic score
+        This prevents premature collapse into early COMMITs while still allowing
+        high-quality commits to surface.
         """
         if not nodes:
             return []
 
-        # No dominance pruning - too aggressive and loses diversity
-        # Just select top-k by heuristic score
-        nodes.sort(key=lambda n: n.heuristic_score, reverse=True)
-        beam = nodes[:self.beam_width]
+        terminals: List[BeamNode] = []
+        nonterminals: List[BeamNode] = []
 
-        return beam
+        for n in nodes:
+            if n.is_terminal or n.action_type == "COMMIT":
+                terminals.append(n)
+            else:
+                nonterminals.append(n)
+
+        # Determine allocation. If explicit knobs exist, use them.
+        beam_width = self.beam_width
+        bw_term = getattr(self, "beam_width_terminal", None)
+        bw_non = getattr(self, "beam_width_nonterminal", None)
+
+        if bw_term is None and bw_non is None:
+            # Default: allow some terminals, but keep most capacity for exploration
+            bw_term = max(1, beam_width // 3)
+            bw_non = beam_width - bw_term
+        elif bw_term is None:
+            bw_non = min(int(bw_non), beam_width)
+            bw_term = beam_width - bw_non
+        elif bw_non is None:
+            bw_term = min(int(bw_term), beam_width)
+            bw_non = beam_width - bw_term
+        else:
+            # Both provided: respect, but cap total
+            bw_term = max(0, min(int(bw_term), beam_width))
+            bw_non = max(0, min(int(bw_non), beam_width - bw_term))
+
+        # Rank terminals by commit_utility (missing -> very bad)
+        def _term_key(n: BeamNode) -> float:
+            if n.commit_utility is None:
+                return float("-inf")
+            return float(n.commit_utility)
+
+        terminals.sort(key=_term_key, reverse=True)
+
+        # Rank non-terminals by exploration heuristic_score
+        nonterminals.sort(key=lambda n: float(n.heuristic_score), reverse=True)
+
+        selected: List[BeamNode] = []
+
+        selected.extend(terminals[:bw_term])
+        selected.extend(nonterminals[:bw_non])
+
+        # If one side is empty, backfill from the other
+        if len(selected) < beam_width:
+            remaining = beam_width - len(selected)
+            if len(terminals) < bw_term:
+                # terminals underfilled, take more nonterminals
+                selected.extend(nonterminals[bw_non:bw_non + remaining])
+            elif len(nonterminals) < bw_non:
+                # nonterminals underfilled, take more terminals
+                selected.extend(terminals[bw_term:bw_term + remaining])
+            else:
+                # both had enough but allocation was tight, just backfill from nonterminals
+                selected.extend(nonterminals[bw_non:bw_non + remaining])
+
+        # Final cap and return
+        return selected[:beam_width]
