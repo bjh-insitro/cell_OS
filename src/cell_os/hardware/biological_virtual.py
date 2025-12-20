@@ -133,7 +133,6 @@ class VesselState:
         self.compound_meta = {}  # compound -> {ic50, hill_slope, stress_axis}
 
         # Death accounting (cumulative fractions)
-        self.transport_dysfunction = 0.0  # Current dysfunction score (0-1)
         self.death_compound = 0.0  # Fraction killed by compound attrition
         self.death_confluence = 0.0  # Fraction killed by overconfluence
         self.death_unknown = 0.0  # Fraction killed by unknown causes (seeding stress, etc.)
