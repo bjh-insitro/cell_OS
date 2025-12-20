@@ -584,13 +584,15 @@ class BiologicalVirtualMachine(VirtualMachine):
 
             stress_axis = meta['stress_axis']
             ic50_uM = meta['ic50_uM']
+            potency_scalar = meta.get('potency_scalar', 1.0)  # Phase 5: weak signature support
 
             # Only ER-stress and proteostasis axes induce ER stress
             if stress_axis not in ["er_stress", "proteostasis"]:
                 continue
 
             # Dose-response: f_axis = dose / (dose + ic50)
-            f_axis = float(dose_uM / (dose_uM + ic50_uM))
+            # Scale by potency for weak compounds
+            f_axis = float(dose_uM / (dose_uM + ic50_uM)) * potency_scalar
             induction_total += f_axis
 
         # Clamp induction to [0, 1] if multiple compounds
@@ -688,13 +690,15 @@ class BiologicalVirtualMachine(VirtualMachine):
 
             stress_axis = meta['stress_axis']
             ic50_uM = meta['ic50_uM']
+            potency_scalar = meta.get('potency_scalar', 1.0)  # Phase 5: weak signature support
 
             # Only mitochondrial axis induces mito dysfunction
             if stress_axis != "mitochondrial":
                 continue
 
             # Dose-response: f_axis = dose / (dose + ic50)
-            f_axis = float(dose_uM / (dose_uM + ic50_uM))
+            # Scale by potency for weak compounds
+            f_axis = float(dose_uM / (dose_uM + ic50_uM)) * potency_scalar
             induction_total += f_axis
 
         # Add coupling induction (small second-order effect)
@@ -769,13 +773,15 @@ class BiologicalVirtualMachine(VirtualMachine):
 
             stress_axis = meta['stress_axis']
             ic50_uM = meta['ic50_uM']
+            potency_scalar = meta.get('potency_scalar', 1.0)  # Phase 5: weak signature support
 
             # Only microtubule axis induces transport dysfunction
             if stress_axis != "microtubule":
                 continue
 
             # Dose-response: f_axis = dose / (dose + ic50)
-            f_axis = float(dose_uM / (dose_uM + ic50_uM))
+            # Scale by potency for weak compounds
+            f_axis = float(dose_uM / (dose_uM + ic50_uM)) * potency_scalar
             induction_total += f_axis
 
         # Clamp induction to [0, 1] if multiple compounds
@@ -976,6 +982,10 @@ class BiologicalVirtualMachine(VirtualMachine):
                 current_viability=vessel.viability,
                 params=self.thalamus_params  # Pass real params, not None
             )
+
+            # Phase 5: Apply toxicity_scalar to death rates
+            toxicity_scalar = meta.get('toxicity_scalar', 1.0)
+            attrition_rate *= toxicity_scalar
 
             if attrition_rate <= 0:
                 continue
@@ -1416,6 +1426,10 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Get cell-line-specific IC50 sensitivity (if exists)
         cell_line_sensitivity = self.thalamus_params.get('cell_line_sensitivity', {})
 
+        # Phase 5: Extract potency and toxicity scalars early (before computing effects)
+        potency_scalar = float(kwargs.get('potency_scalar', 1.0))
+        toxicity_scalar = float(kwargs.get('toxicity_scalar', 1.0))
+
         # Compute adjusted IC50 using biology_core (single source of truth)
         ic50_uM = biology_core.compute_adjusted_ic50(
             compound=compound,
@@ -1432,6 +1446,13 @@ class BiologicalVirtualMachine(VirtualMachine):
             ic50_uM=ic50_uM,
             hill_slope=hill_slope
         )
+
+        # Phase 5: Apply toxicity_scalar to instant viability effect
+        # Convert viability to death, scale, convert back
+        instant_death_fraction = 1.0 - viability_effect
+        instant_death_fraction *= toxicity_scalar
+        viability_effect = 1.0 - instant_death_fraction
+        viability_effect = float(np.clip(viability_effect, 0.0, 1.0))
 
         # Add biological variability (only if biological_cv > 0)
         params = self.cell_line_params.get(vessel.cell_line, self.defaults)
@@ -1453,11 +1474,15 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Register exposure for time-dependent attrition
         vessel.compounds[compound] = dose_uM
         vessel.compound_start_time[compound] = self.simulated_time
+
+        # Phase 5: Store potency and toxicity scalars in metadata (already extracted above)
         vessel.compound_meta[compound] = {
             'ic50_uM': ic50_uM,
             'hill_slope': hill_slope,
             'stress_axis': stress_axis,
-            'base_ec50': base_ec50
+            'base_ec50': base_ec50,
+            'potency_scalar': potency_scalar,  # Scales k_on for latent induction
+            'toxicity_scalar': toxicity_scalar  # Scales death rates
         }
 
         self._simulate_delay(0.5)
