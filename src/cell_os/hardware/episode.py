@@ -132,9 +132,35 @@ class EpisodeRunner:
         self.measurement_time_12h = 12.0
         self.measurement_time_48h = 48.0
 
+        # Rollout cache: keyed by (compound_id, dose_schedule, washout_schedule, feed_schedule, seed)
+        # Prevents re-simulating identical policies
+        self._rollout_cache: Dict[Tuple, Tuple[EpisodeReceipt, List[EpisodeState]]] = {}
+
+    def _policy_to_cache_key(self, policy: Policy) -> Tuple:
+        """
+        Convert policy to cache key.
+
+        Key format: (compound_id, dose_schedule, washout_schedule, feed_schedule, seed)
+        where schedules are tuples of values at each timestep.
+        """
+        dose_schedule = tuple(a.dose_fraction for a in policy.actions)
+        washout_schedule = tuple(a.washout for a in policy.actions)
+        feed_schedule = tuple(a.feed for a in policy.actions)
+
+        cache_key = (
+            f"{self.compound}@{self.reference_dose_uM:.6f}uM",
+            dose_schedule,
+            washout_schedule,
+            feed_schedule,
+            self.seed
+        )
+        return cache_key
+
     def run(self, policy: Policy) -> Tuple[EpisodeReceipt, List[EpisodeState]]:
         """
         Execute policy and return reward receipt + trajectory.
+
+        Uses internal cache to avoid re-simulating identical policies.
 
         Args:
             policy: Policy to execute
@@ -150,6 +176,12 @@ class EpisodeRunner:
                 f"(horizon={self.horizon_h}h, step={self.step_h}h)"
             )
 
+        # Check cache first
+        cache_key = self._policy_to_cache_key(policy)
+        if cache_key in self._rollout_cache:
+            return self._rollout_cache[cache_key]
+
+        # Cache miss: execute policy
         # Initialize VM
         vm = BiologicalVirtualMachine(seed=self.seed)
         vm.seed_vessel("episode", self.cell_line, 1e6, capacity=1e7, initial_viability=0.98)
@@ -240,7 +272,11 @@ class EpisodeRunner:
             actin_threshold=self.actin_threshold
         )
 
-        return receipt, trajectory
+        # Store in cache before returning
+        result = (receipt, trajectory)
+        self._rollout_cache[cache_key] = result
+
+        return result
 
     def enumerate_policies(
         self,
