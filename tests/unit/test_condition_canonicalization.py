@@ -330,6 +330,96 @@ def test_canonical_condition_validation():
         pass  # Expected
 
 
+def test_dose_validation_rejects_invalid():
+    """Test that canonical_dose_uM rejects invalid inputs."""
+    # Negative dose
+    try:
+        canonical_dose_uM(-1.0)
+        assert False, "Should reject negative dose"
+    except ValueError as e:
+        assert "non-negative" in str(e).lower()
+
+    # NaN
+    try:
+        canonical_dose_uM(float('nan'))
+        assert False, "Should reject NaN"
+    except ValueError as e:
+        assert "finite" in str(e).lower()
+
+    # Infinity
+    try:
+        canonical_dose_uM(float('inf'))
+        assert False, "Should reject infinity"
+    except ValueError as e:
+        assert "finite" in str(e).lower()
+
+
+def test_time_validation_rejects_invalid():
+    """Test that canonical_time_h rejects invalid inputs."""
+    # Negative time
+    try:
+        canonical_time_h(-1.0)
+        assert False, "Should reject negative time"
+    except ValueError as e:
+        assert "non-negative" in str(e).lower()
+
+    # NaN
+    try:
+        canonical_time_h(float('nan'))
+        assert False, "Should reject NaN"
+    except ValueError as e:
+        assert "finite" in str(e).lower()
+
+    # Infinity
+    try:
+        canonical_time_h(float('inf'))
+        assert False, "Should reject infinity"
+    except ValueError as e:
+        assert "finite" in str(e).lower()
+
+
+def test_bankers_rounding_behavior():
+    """Test that rounding follows banker's rounding (round-half-to-even).
+
+    Python's round() uses banker's rounding:
+    - 0.5 → 0 (rounds to even)
+    - 1.5 → 2 (rounds to even)
+    - 2.5 → 2 (rounds to even)
+    - 3.5 → 4 (rounds to even)
+    """
+    from cell_os.core.canonicalize import DOSE_RESOLUTION_NM
+
+    # Doses that land exactly on half-steps
+    # 0.0005 µM = 0.5 nM → should round to 0 (even)
+    assert canonical_dose_uM(0.0005) == 0
+
+    # 0.0015 µM = 1.5 nM → should round to 2 (even)
+    assert canonical_dose_uM(0.0015) == 2
+
+    # 0.0025 µM = 2.5 nM → should round to 2 (even)
+    assert canonical_dose_uM(0.0025) == 2
+
+    # 0.0035 µM = 3.5 nM → should round to 4 (even)
+    assert canonical_dose_uM(0.0035) == 4
+
+    print("✓ Banker's rounding behavior locked and tested")
+
+
+def test_resolution_constants_are_used():
+    """Test that resolution constants are actually used in conversion."""
+    from cell_os.core.canonicalize import DOSE_RESOLUTION_NM, TIME_RESOLUTION_MIN
+
+    # Verify constants are defined
+    assert DOSE_RESOLUTION_NM == 1, "Dose resolution should be 1 nM"
+    assert TIME_RESOLUTION_MIN == 1, "Time resolution should be 1 min"
+
+    # Verify conversion uses resolution
+    # If resolution were 10 nM, 1.005 µM (1005 nM) would round to 1010 nM
+    # With resolution = 1 nM, it stays at 1005 nM
+    dose_1_005_uM = canonical_dose_uM(1.005)
+    assert dose_1_005_uM == 1005, f"Expected 1005 nM, got {dose_1_005_uM}"
+
+
 def test_canonical_condition_to_dict():
     """Test serialization for logging."""
     key = canonical_condition_key(
@@ -364,6 +454,10 @@ if __name__ == "__main__":
     test_are_conditions_equivalent()
     test_canonical_condition_immutable()
     test_canonical_condition_validation()
+    test_dose_validation_rejects_invalid()
+    test_time_validation_rejects_invalid()
+    test_bankers_rounding_behavior()
+    test_resolution_constants_are_used()
     test_canonical_condition_to_dict()
 
     print("\n✅ All canonicalization unit tests passed")
@@ -371,4 +465,6 @@ if __name__ == "__main__":
     print("  → Float noise collapses to single canonical key")
     print("  → 32-well DMSO split is now IMPOSSIBLE")
     print("  → Deterministic across runs and orderings")
-    print("  → Validation prevents invalid conditions")
+    print("  → Validation prevents invalid conditions (negative, NaN, inf)")
+    print("  → Banker's rounding behavior locked and tested")
+    print("  → Resolution constants explicitly defined and used")
