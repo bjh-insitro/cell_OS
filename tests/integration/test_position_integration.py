@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from cell_os.epistemic_agent.world import ExperimentalWorld
 from cell_os.epistemic_agent.schemas import Proposal, WellSpec
+from cell_os.epistemic_agent.observation_aggregator import aggregate_observation
 from cell_os.core.experiment import SpatialLocation
 
 
@@ -68,8 +69,15 @@ def test_world_uses_derived_position():
         budget_limit=96
     )
 
-    # Execute
-    observation = world.run_experiment(proposal)
+    # Execute (world returns raw results)
+    raw_results = world.run_experiment(proposal)
+
+    # Aggregate (aggregator interprets raw results)
+    observation = aggregate_observation(
+        proposal=proposal,
+        raw_results=raw_results,
+        budget_remaining=world.budget_remaining
+    )
 
     # Check that we got 2 condition summaries (edge and center)
     assert len(observation.conditions) == 2, \
