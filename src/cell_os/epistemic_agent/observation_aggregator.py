@@ -19,13 +19,17 @@ Usage:
     )
 """
 
-from typing import Sequence, Dict, List, Any, Literal, Tuple
+from typing import Sequence, Dict, List, Any, Literal, Tuple, Set
 from collections import defaultdict
 from dataclasses import dataclass
 import numpy as np
+import logging
 
 from ..core.observation import RawWellResult, ConditionKey
+from ..core.canonicalize import canonical_condition_key, CanonicalCondition
 from .schemas import Observation, ConditionSummary, Proposal
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -96,22 +100,46 @@ def _aggregate_per_channel(
     - Detect outliers per channel (optional)
 
     Does NOT compute a scalar "response" by averaging channels.
+
+    Agent 2: Now uses CANONICAL condition keys to prevent aggregation races.
+    All doses/times converted to integer representations (nM, min) before grouping.
     """
-    # Group by condition
-    conditions = defaultdict(list)
+    # Agent 1.5: Temporal Provenance Enforcement
+    # Cannot aggregate zero results - would produce observation with no conditions
+    if not raw_results:
+        from cell_os.epistemic_agent.exceptions import TemporalProvenanceError
+        raise TemporalProvenanceError(
+            message="Aggregator received zero raw_results; cannot produce observation with temporal metadata",
+            missing_field="observation_time_h",
+            context="observation_aggregator._aggregate_per_channel()",
+            details={"proposal_design_id": proposal.design_id}
+        )
+
+    # Group by CANONICAL condition (Agent 2)
+    conditions: Dict[CanonicalCondition, List[Dict[str, Any]]] = defaultdict(list)
+
+    # Track raw parameter values for near-duplicate detection
+    raw_params_by_canonical: Dict[CanonicalCondition, Set[Tuple[float, float]]] = defaultdict(set)
 
     for result in raw_results:
         # Derive position_class from physical location
         position_class = result.location.position_class
 
-        # Create condition key
-        key = ConditionKey(
+        # Agent 2: Create CANONICAL condition key (integers, no floats)
+        canonical_key = canonical_condition_key(
             cell_line=result.cell_line,
-            treatment=result.treatment,
-            assay=result.assay,
-            observation_time_h=result.observation_time_h,
+            compound_id=result.treatment.compound,
+            dose_uM=result.treatment.dose_uM,
+            time_h=result.observation_time_h,
+            assay=result.assay.value,  # Convert enum to string
             position_class=position_class
         )
+
+        # Agent 2: Track raw parameters for near-duplicate detection
+        raw_params_by_canonical[canonical_key].add((
+            result.treatment.dose_uM,
+            result.observation_time_h
+        ))
 
         # Extract morphology channels
         morph = result.readouts.get('morphology', {})
@@ -127,17 +155,42 @@ def _aggregate_per_channel(
         # (but mark it as derived, not primary)
         response = np.mean(list(features.values()))
 
-        conditions[key].append({
+        conditions[canonical_key].append({
             'response': response,
             'features': features,
             'well_id': result.location.well_id,
             'failed': result.qc.get('failed', False),
+            # Agent 2: Store raw parameters for audit
+            'raw_dose_uM': result.treatment.dose_uM,
+            'raw_time_h': result.observation_time_h,
         })
+
+    # Agent 2: Detect and log near-duplicates (conditions that merged)
+    near_duplicate_events = []
+    for canonical_key, raw_params_set in raw_params_by_canonical.items():
+        if len(raw_params_set) > 1:
+            # Multiple raw (dose, time) pairs collapsed to same canonical key
+            raw_doses = sorted(set(d for d, t in raw_params_set))
+            raw_times = sorted(set(t for d, t in raw_params_set))
+
+            event = {
+                "event": "canonical_condition_merge",
+                "canonical_key": canonical_key.to_dict(),
+                "raw_doses_uM": raw_doses,
+                "raw_times_h": raw_times,
+                "n_wells": len(conditions[canonical_key]),
+            }
+            near_duplicate_events.append(event)
+
+            logger.info(
+                f"Agent 2: Merged near-duplicate conditions into {canonical_key}: "
+                f"doses={raw_doses}, times={raw_times}, n_wells={len(conditions[canonical_key])}"
+            )
 
     # Compute summary statistics per condition
     summaries = []
-    for key, values in conditions.items():
-        summary = _summarize_condition(key, values)
+    for canonical_key, values in conditions.items():
+        summary = _summarize_condition(canonical_key, values)
         summaries.append(summary)
 
     # Generate QC flags
@@ -151,6 +204,8 @@ def _aggregate_per_channel(
         budget_remaining=budget_remaining,
         qc_flags=qc_flags,
         aggregation_strategy="default_per_channel",
+        # Agent 2: Attach near-duplicate events for diagnostics
+        near_duplicate_merges=near_duplicate_events,
     )
 
     return observation
@@ -181,18 +236,19 @@ def _aggregate_legacy_scalar(
 # =============================================================================
 
 def _summarize_condition(
-    key: ConditionKey,
+    key: CanonicalCondition,
     values: List[Dict[str, Any]]
 ) -> ConditionSummary:
     """Compute summary statistics for a condition.
 
+    Agent 2: Now accepts CanonicalCondition (integer dose_nM, time_min).
     Agent 3 hardening: Explicit tracking of information loss.
     - All wells counted in n_wells_total
     - Drops tracked in drop_reasons
     - No silent uncertainty reduction
 
     Args:
-        key: Condition identifier
+        key: Canonical condition identifier (integers, no floats)
         values: List of per-well measurements for this condition
 
     Returns:
@@ -265,12 +321,31 @@ def _summarize_condition(
     # If we dropped wells, mark that CI might be artificially tight
     aggregation_penalty_applied = (n_wells_dropped > 0)
 
+    # Agent 2: Convert canonical integers back to floats for ConditionSummary
+    # (ConditionSummary still uses floats for backward compat, but sourced from canonical)
+    dose_uM = key.dose_nM / 1000.0
+    time_h = key.time_min / 60.0
+
+    # Agent 1.5: Temporal Provenance Enforcement
+    # Every ConditionSummary MUST have time_h; missing time bypasses temporal causality
+    if time_h is None or not hasattr(key, 'time_min') or key.time_min is None:
+        from cell_os.epistemic_agent.exceptions import TemporalProvenanceError
+        raise TemporalProvenanceError(
+            message=(
+                f"Aggregator cannot derive time_h for condition {key}; "
+                "temporal enforcement would be bypassed"
+            ),
+            missing_field="time_h",
+            context="observation_aggregator._summarize_condition()",
+            details={"condition_key": str(key), "dose_uM": dose_uM}
+        )
+
     summary = ConditionSummary(
         cell_line=key.cell_line,
-        compound=key.treatment.compound,
-        dose_uM=key.treatment.dose_uM,
-        time_h=key.observation_time_h,
-        assay=key.assay.value,  # Convert enum to string
+        compound=key.compound_id,
+        dose_uM=dose_uM,  # Agent 2: Derived from canonical dose_nM
+        time_h=time_h,    # Agent 2: Derived from canonical time_min
+        assay=key.assay,
         position_tag=key.position_class,
         n_wells=n_wells_total,  # Backward compat: keep as total
         mean=mean_val,
@@ -291,19 +366,43 @@ def _summarize_condition(
         aggregation_penalty_applied=aggregation_penalty_applied,
         mad=mad_val,
         iqr=iqr_val,
+        # Agent 2: Store canonical representation for audit
+        canonical_dose_nM=key.dose_nM,
+        canonical_time_min=key.time_min,
     )
 
     return summary
 
 
-def _empty_condition_summary(key: ConditionKey) -> ConditionSummary:
-    """Create empty summary for condition with no wells."""
+def _empty_condition_summary(key: CanonicalCondition) -> ConditionSummary:
+    """Create empty summary for condition with no wells.
+
+    Agent 2: Updated to accept CanonicalCondition.
+    """
+    # Agent 2: Convert canonical integers back to floats
+    dose_uM = key.dose_nM / 1000.0
+    time_h = key.time_min / 60.0
+
+    # Agent 1.5: Temporal Provenance Enforcement
+    # Even empty summaries must have time_h
+    if time_h is None or not hasattr(key, 'time_min') or key.time_min is None:
+        from cell_os.epistemic_agent.exceptions import TemporalProvenanceError
+        raise TemporalProvenanceError(
+            message=(
+                f"Aggregator cannot derive time_h for empty condition {key}; "
+                "temporal enforcement would be bypassed"
+            ),
+            missing_field="time_h",
+            context="observation_aggregator._empty_condition_summary()",
+            details={"condition_key": str(key), "dose_uM": dose_uM}
+        )
+
     return ConditionSummary(
         cell_line=key.cell_line,
-        compound=key.treatment.compound,
-        dose_uM=key.treatment.dose_uM,
-        time_h=key.observation_time_h,
-        assay=key.assay.value,
+        compound=key.compound_id,
+        dose_uM=dose_uM,
+        time_h=time_h,
+        assay=key.assay,
         position_tag=key.position_class,
         n_wells=0,
         mean=0.0,
@@ -324,6 +423,9 @@ def _empty_condition_summary(key: ConditionKey) -> ConditionSummary:
         aggregation_penalty_applied=False,
         mad=0.0,
         iqr=0.0,
+        # Agent 2: Canonical fields
+        canonical_dose_nM=key.dose_nM,
+        canonical_time_min=key.time_min,
     )
 
 

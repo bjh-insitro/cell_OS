@@ -299,10 +299,29 @@ class BeliefState:
         # Use provided evidence_time_h, or fall back to _current_evidence_time_h
         final_evidence_time_h = evidence_time_h if evidence_time_h is not None else self._current_evidence_time_h
 
-        # If both evidence_time_h and claim_time_h are specified, enforce temporal causality
-        # Rule: claim_time_h <= evidence_time_h
+        # Agent 1.5: Strengthen temporal causality enforcement
+        # If claim_time_h is specified, evidence_time_h MUST be present
         # (Can only make claims about states at or before observation time)
-        if final_evidence_time_h is not None and claim_time_h is not None:
+        if claim_time_h is not None:
+            if final_evidence_time_h is None:
+                from ..exceptions import TemporalProvenanceError
+                raise TemporalProvenanceError(
+                    message=(
+                        f"Attempted to update belief '{field_name}' about timepoint {claim_time_h}h "
+                        f"but evidence_time_h is None; cannot enforce temporal causality"
+                    ),
+                    missing_field="evidence_time_h",
+                    context="BeliefState._set()",
+                    cycle=self._cycle,
+                    details={
+                        "belief_name": field_name,
+                        "claim_time_h": claim_time_h,
+                        "prev_value": prev_value,
+                        "new_value": new_value,
+                    }
+                )
+
+            # Rule: claim_time_h <= evidence_time_h
             if claim_time_h > final_evidence_time_h:
                 violation_delta = claim_time_h - final_evidence_time_h
                 raise TemporalCausalityViolation(
@@ -668,6 +687,73 @@ class BeliefState:
                     f"This violates Covenant 7: gate changes must emit gate_event/gate_loss/gate_shadow."
                 )
 
+    def _extract_evidence_time_h_from_conditions(self, conditions: List) -> float:
+        """Extract evidence_time_h from conditions with strict validation.
+
+        Agent 1.5: Temporal Provenance Enforcement.
+
+        This method enforces that every observation has valid temporal metadata.
+        If time is missing or malformed, temporal causality enforcement would be
+        bypassed silently. This is not allowed.
+
+        Args:
+            conditions: List of ConditionSummary objects
+
+        Returns:
+            float: Maximum time_h from all conditions (most conservative for causality)
+
+        Raises:
+            TemporalProvenanceError: If conditions are empty or any lack time_h
+        """
+        from ..exceptions import TemporalProvenanceError
+
+        if not conditions:
+            raise TemporalProvenanceError(
+                message="Observation has no conditions; cannot derive evidence_time_h",
+                missing_field="time_h",
+                context="BeliefState.update()",
+                cycle=self._cycle,
+                details={"observation": "empty conditions list"}
+            )
+
+        missing_indices = []
+        times = []
+
+        for i, cond in enumerate(conditions):
+            if not hasattr(cond, "time_h"):
+                missing_indices.append(i)
+                continue
+
+            t = getattr(cond, "time_h")
+            if t is None:
+                missing_indices.append(i)
+                continue
+
+            times.append(float(t))
+
+        if missing_indices:
+            raise TemporalProvenanceError(
+                message=(
+                    f"One or more conditions missing time_h (indices={missing_indices}); "
+                    "temporal enforcement would be bypassed"
+                ),
+                missing_field="time_h",
+                context="BeliefState.update()",
+                cycle=self._cycle,
+                details={"missing_indices": missing_indices, "n_conditions": len(conditions)}
+            )
+
+        if not times:
+            raise TemporalProvenanceError(
+                message="No valid time_h values found in conditions; cannot derive evidence_time_h",
+                missing_field="time_h",
+                context="BeliefState.update()",
+                cycle=self._cycle,
+                details={"n_conditions": len(conditions)}
+            )
+
+        return max(times)
+
     def update(self, observation, cycle: int = 0):
         """Update beliefs from a new observation.
 
@@ -677,20 +763,19 @@ class BeliefState:
 
         Returns:
             (events, diagnostics): Event lists for ledgers
+
+        Raises:
+            TemporalProvenanceError: If observation lacks temporal metadata
         """
         self.total_observations += 1
 
         # Extract conditions from observation
         conditions = observation.conditions if hasattr(observation, 'conditions') else []
 
-        # Agent 1: Extract observation time for temporal provenance
-        # Set _current_evidence_time_h from conditions (use max time if multiple)
-        if conditions:
-            # Extract all unique time_h values from conditions
-            time_h_values = [cond.time_h for cond in conditions if hasattr(cond, 'time_h')]
-            if time_h_values:
-                # Use the maximum observation time (most conservative for causality)
-                self._current_evidence_time_h = max(time_h_values)
+        # Agent 1.5: Strict extraction of evidence_time_h (cannot be None)
+        # This enforces temporal provenance and prevents silent bypass
+        evidence_time_h = self._extract_evidence_time_h_from_conditions(conditions)
+        self._current_evidence_time_h = evidence_time_h
 
         # Track compounds and cell lines
         for cond in conditions:

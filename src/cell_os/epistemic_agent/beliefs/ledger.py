@@ -70,9 +70,41 @@ def format_event(ev: EvidenceEvent) -> str:
 
 
 def append_events_jsonl(path, events: List[EvidenceEvent]):
-    """Append events to JSONL file."""
+    """Append events to JSONL file.
+
+    Agent 1.5: Temporal Provenance Enforcement.
+    Refuses to write belief_update events without evidence_time_h.
+    """
+    from ..exceptions import TemporalProvenanceError
+
     with open(path, "a", encoding="utf-8") as f:
         for ev in events:
+            # Agent 1.5: Check for belief updates (not gate events) with null evidence_time_h
+            # Gate events have belief like "gate_event:*" or "gate_loss:*"
+            # Belief updates have belief like "dose_curvature_seen", "noise_sigma_stable", etc.
+            is_gate_event = (
+                ev.belief.startswith("gate_event:") or
+                ev.belief.startswith("gate_loss:") or
+                ev.belief.startswith("gate_shadow:")
+            )
+
+            # For non-gate belief updates, evidence_time_h should not be None
+            # (Atemporal beliefs are allowed with evidence_time_h set, just claim_time_h=None)
+            if not is_gate_event and ev.evidence_time_h is None:
+                # Allow special cases: insolvency tracking, gate attainment
+                special_beliefs = {"epistemic_insolvent"}
+                if ev.belief not in special_beliefs:
+                    raise TemporalProvenanceError(
+                        message=(
+                            f"Ledger refused to write belief_update for '{ev.belief}' "
+                            f"with evidence_time_h=None; temporal provenance would be lost"
+                        ),
+                        missing_field="evidence_time_h",
+                        context="ledger.append_events_jsonl()",
+                        cycle=ev.cycle,
+                        details={"belief": ev.belief, "prev": ev.prev, "new": ev.new}
+                    )
+
             f.write(ev.to_json_line() + "\n")
 
 

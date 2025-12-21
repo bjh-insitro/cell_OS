@@ -199,3 +199,48 @@ class TemporalCausalityViolation(EpistemicInvariantError):
                 self.details,
             ),
         )
+
+
+@dataclass
+class TemporalProvenanceError(EpistemicInvariantError):
+    """Raised when temporal metadata required for epistemic guarantees is missing.
+
+    Agent 1.5: Temporal Provenance Enforcement.
+
+    This error fires when:
+    - Observation has no conditions
+    - Conditions lack time_h
+    - evidence_time_h is None when beliefs are updated
+    - Ledger attempts to write belief_update without evidence_time_h
+
+    This prevents silent bypass of temporal causality enforcement.
+    Without evidence_time_h, the system cannot verify temporal admissibility.
+
+    Structured fields:
+    - message: Human-readable error description
+    - missing_field: Which temporal field is missing
+    - context: Where the error occurred
+    """
+    message: str
+    missing_field: str = "evidence_time_h"
+    context: str = "unknown"
+    cycle: Optional[int] = None
+    covenant_id: str = "C8_TEMPORAL"  # Same covenant as TemporalCausalityViolation
+    details: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        super().__init__(self.message)
+
+    def __reduce__(self):
+        """Enable pickle serialization for multiprocessing and persistence."""
+        return (
+            self.__class__,
+            (
+                self.message,
+                self.missing_field,
+                self.context,
+                self.cycle,
+                self.covenant_id,
+                self.details,
+            ),
+        )
