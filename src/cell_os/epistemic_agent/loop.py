@@ -25,6 +25,7 @@ from .beliefs.ledger import append_events_jsonl, append_decisions_jsonl, append_
 from .exceptions import InvalidDesignError
 from .controller_integration import EpistemicIntegration
 from .design_quality import DesignQualityChecker
+from .observation_aggregator import aggregate_observation
 
 
 class EpistemicLoop:
@@ -79,6 +80,23 @@ class EpistemicLoop:
     def run(self):
         """Run the full experiment loop."""
         self._log_header()
+
+        # Write contamination warning if enforcement is disabled
+        if self.epistemic.controller.is_contaminated:
+            contamination_event = {
+                "timestamp": datetime.now().isoformat(),
+                "contamination_type": self.epistemic.controller.contamination_reason,
+                "message": "Epistemic debt enforcement is disabled. This run does not enforce honesty constraints.",
+                "severity": "CRITICAL",
+            }
+            append_noise_diagnostics_jsonl(self.diagnostics_file, [contamination_event])
+            self._log("\n" + "="*60)
+            self._log("⚠️  CONTAMINATED RUN WARNING")
+            self._log("="*60)
+            self._log(f"  Reason: {self.epistemic.controller.contamination_reason}")
+            self._log("  This run does not enforce epistemic debt constraints.")
+            self._log("  Results are not comparable to enforced runs.")
+            self._log("="*60 + "\n")
 
         capabilities = self.world.get_capabilities()
         self._log_capabilities(capabilities)
@@ -246,7 +264,17 @@ class EpistemicLoop:
             # World executes (no validation - world doesn't care about quality)
             start_time = time.time()
             try:
-                observation = self.world.run_experiment(proposal)
+                # World returns raw results (no aggregation)
+                raw_results = self.world.run_experiment(proposal)
+
+                # Aggregator converts raw results to Observation
+                observation = aggregate_observation(
+                    proposal=proposal,
+                    raw_results=raw_results,
+                    budget_remaining=self.world.budget_remaining,
+                    strategy="default_per_channel"
+                )
+
                 elapsed = time.time() - start_time
 
                 self._log_observation(observation, elapsed)

@@ -42,6 +42,13 @@ class ConditionSummary:
 
     Condition = unique (cell_line, compound, dose, time, assay, position_tag) tuple.
     Agent only sees aggregates, not raw well values.
+
+    Aggregation transparency (Agent 3 hardening):
+    - n_wells_total: All wells for this condition (before any filtering)
+    - n_wells_used: Wells that contributed to mean/std (after filtering)
+    - n_wells_dropped: Wells excluded from aggregation
+    - drop_reasons: Explicit counts by exclusion reason
+    - aggregation_penalty_applied: Flag if CI should be wider due to drops
     """
     # Condition identifiers
     cell_line: str
@@ -52,7 +59,7 @@ class ConditionSummary:
     position_tag: str
 
     # Summary statistics (scalar convenience)
-    n_wells: int                # Number of replicates
+    n_wells: int                # DEPRECATED: use n_wells_total
     mean: float                 # Mean response (scalar: average of all morphology channels)
     std: float                  # Standard deviation
     sem: float                  # Standard error of mean
@@ -70,6 +77,15 @@ class ConditionSummary:
     # QC flags (agent must interpret these)
     n_failed: int               # Number of wells flagged as failed
     n_outliers: int             # Number detected as outliers (Z>3)
+
+    # Agent 3: Aggregation transparency (explicit information loss tracking)
+    n_wells_total: int = 0              # All wells measured (before filtering)
+    n_wells_used: int = 0               # Wells used in mean/std computation
+    n_wells_dropped: int = 0            # Wells excluded from aggregation
+    drop_reasons: Dict[str, int] = field(default_factory=dict)  # {'zscore_outlier': 3, 'qc_failed': 1}
+    aggregation_penalty_applied: bool = False  # True if drops widened CI
+    mad: Optional[float] = None         # Median absolute deviation (robust dispersion metric)
+    iqr: Optional[float] = None         # Interquartile range (robust dispersion metric)
 
     @property
     def condition_key(self) -> tuple:
@@ -89,6 +105,9 @@ class Observation:
 
     Contains only summary statistics and coarse QC flags.
     No raw well values, no internal simulator parameters.
+
+    Agent 3 hardening:
+    - aggregation_strategy: How summaries were produced (transparency requirement)
     """
     design_id: str
     conditions: List[ConditionSummary]
@@ -97,6 +116,9 @@ class Observation:
 
     # Coarse QC flags (agent must infer structure)
     qc_flags: List[str] = field(default_factory=list)
+
+    # Agent 3: Strategy transparency (same data + different strategy = different Observation)
+    aggregation_strategy: str = "default_per_channel"
 
     # Optional: if agent requests raw data (costs extra)
     raw_wells: Optional[List[Dict[str, Any]]] = None

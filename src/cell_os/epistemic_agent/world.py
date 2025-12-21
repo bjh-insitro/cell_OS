@@ -2,9 +2,11 @@
 Experimental World: Wraps the simulator without exposing god mode.
 
 The world executes experiments and returns only what a real experimentalist would see:
-- Summary statistics per condition
-- QC flags (but agent must interpret)
+- Raw well-level results (no aggregation)
+- Physical locations (concrete, not abstract)
 - No internal parameters, no noise terms, no "true" values
+
+Aggregation happens in a separate layer (observation_aggregator.py).
 """
 
 import sys
@@ -12,7 +14,7 @@ import uuid
 import hashlib
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -20,7 +22,13 @@ from dataclasses import dataclass
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 import standalone_cell_thalamus as sim
 
-from .schemas import WellSpec, Proposal, Observation, ConditionSummary
+# Import canonical types from core
+from ..core.observation import RawWellResult
+from ..core.experiment import SpatialLocation, Treatment
+from ..core.assay import AssayType
+
+# Import legacy schemas for backward compatibility (temporarily)
+from .schemas import WellSpec, Proposal
 
 
 class ExperimentalWorld:
@@ -36,7 +44,7 @@ class ExperimentalWorld:
         self.budget_total = budget_wells
         self.budget_remaining = budget_wells
         self.seed = seed
-        self.history: List[Observation] = []
+        self.history: List[Tuple[RawWellResult, ...]] = []  # Track raw results
 
         # Plate geometry (96-well)
         self.ROWS = [chr(65 + i) for i in range(8)]  # A-H
@@ -81,19 +89,21 @@ class ExperimentalWorld:
             'budget_remaining': self.budget_remaining,
         }
 
-    def run_experiment(self, proposal: Proposal) -> Observation:
-        """Execute proposed experiment and return observations.
+    def run_experiment(self, proposal: Proposal) -> Tuple[RawWellResult, ...]:
+        """Execute proposed experiment and return raw well results.
 
-        The world executes any physically valid proposal. It does NOT
-        validate scientific quality (confounding, power, etc.).
+        The world executes any physically valid proposal. It does NOT:
+        - Aggregate or summarize results
+        - Validate scientific quality (confounding, power, etc.)
+        - Compute statistics or interpret data
 
-        That's the agent's job.
+        That's the aggregation layer's and agent's job.
 
         Args:
             proposal: Agent's experiment proposal
 
         Returns:
-            Observation with summary statistics (no raw wells by default)
+            Tuple of RawWellResult (raw per-well measurements, no aggregation)
 
         Raises:
             ValueError: If proposal exceeds budget (physical constraint)
@@ -107,21 +117,14 @@ class ExperimentalWorld:
             )
 
         # Convert and execute
-        well_assignments = self._convert_proposal_to_assignments(proposal)
-        results = self._simulate_wells(well_assignments, proposal.design_id)
-
-        # Aggregate results into summary statistics
-        observation = self._aggregate_results(
-            results,
-            proposal.design_id,
-            wells_requested
-        )
+        well_assignments, positions = self._convert_proposal_to_assignments_with_positions(proposal)
+        raw_results = self._simulate_wells(well_assignments, positions, proposal.design_id)
 
         # Update budget
         self.budget_remaining -= wells_requested
-        self.history.append(observation)
+        self.history.append(raw_results)
 
-        return observation
+        return raw_results
 
     def _convert_proposal_to_assignments(
         self,
@@ -182,184 +185,95 @@ class ExperimentalWorld:
     def _simulate_wells(
         self,
         assignments: List[sim.WellAssignment],
+        positions: List[str],
         design_id: str
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[RawWellResult, ...]:
         """Run simulation for list of wells.
 
-        Uses standalone simulator's simulate_well function.
+        Uses standalone simulator's simulate_well function and converts
+        to canonical RawWellResult objects.
+
+        Args:
+            assignments: Simulator's WellAssignment objects
+            positions: Corresponding well positions (same order)
+            design_id: Design identifier
+
+        Returns:
+            Tuple of RawWellResult (canonical format)
         """
         results = []
-        for well in assignments:
-            result = sim.simulate_well(well, design_id)
-            if result is not None:
-                results.append(result)
-        return results
-
-    def _aggregate_results(
-        self,
-        results: List[Dict[str, Any]],
-        design_id: str,
-        wells_requested: int
-    ) -> Observation:
-        """Aggregate raw results into summary statistics.
-
-        Agent only sees summaries, not raw well values.
-        This prevents "god mode" leakage.
-
-        Position classification is DERIVED from physical location using
-        SpatialLocation.position_class, not stored separately.
-        """
-        # Import here to avoid circular dependency
-        from ..core.experiment import SpatialLocation
-
-        # Group by condition
-        conditions = defaultdict(list)
-
-        for res in results:
-            # Derive position_class from physical location (not reverse inference)
-            well_id = res['well_id']
-            plate_id = res.get('plate_id', 'unknown')
-            location = SpatialLocation(plate_id=plate_id, well_id=well_id)
-            position_class = location.position_class
-
-            # Create condition key
-            key = (
-                res['cell_line'],
-                res['compound'],
-                res['dose_uM'],
-                res['timepoint_h'],
-                'cell_painting',  # For now, single assay
-                position_class  # Derived from location, not stored
-            )
-
-            # Extract response from measured signal (not "true" viability)
-            # Agent should see noisy measurements like a real experimentalist
-            morph = res['morphology']
-
-            # Scalar response (convenience for scalar analyses)
-            response = np.mean([morph['er'], morph['mito'], morph['nucleus'],
-                                morph['actin'], morph['rna']])
-
-            # Multivariate features (enables channel-specific learning)
-            features = {
-                'er': morph['er'],
-                'mito': morph['mito'],
-                'nucleus': morph['nucleus'],
-                'actin': morph['actin'],
-                'rna': morph['rna'],
-            }
-
-            # Note: LDH signal is zero for DMSO (healthy cells), not useful for baseline noise
-
-            conditions[key].append({
-                'response': response,
-                'features': features,
-                'well_id': well_id,
-                'failed': False,  # TODO: detect failures
-            })
-
-        # Compute summary statistics per condition
-        summaries = []
-        for key, values in conditions.items():
-            cell_line, compound, dose, time, assay, pos = key
-
-            # Extract responses (scalar)
-            responses = [v['response'] for v in values]
-            n = len(responses)
-
-            if n == 0:
+        for well_assignment, well_pos in zip(assignments, positions):
+            # Run simulator
+            sim_result = sim.simulate_well(well_assignment, design_id)
+            if sim_result is None:
                 continue
 
-            mean_val = np.mean(responses)
-            std_val = np.std(responses, ddof=1) if n > 1 else 0.0
-            sem_val = std_val / np.sqrt(n) if n > 0 else 0.0
-            cv_val = std_val / mean_val if mean_val > 0 else 0.0
-            min_val = np.min(responses)
-            max_val = np.max(responses)
+            # Convert to canonical RawWellResult
+            location = SpatialLocation(
+                plate_id=sim_result.get('plate_id', f"Plate_{design_id[:8]}"),
+                well_id=sim_result['well_id']
+            )
 
-            # Extract features (multivariate)
-            # For each channel, compute mean and std across replicates
-            channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
-            feature_means = {}
-            feature_stds = {}
+            treatment = Treatment(
+                compound=sim_result['compound'],
+                dose_uM=sim_result['dose_uM']
+            )
 
-            for ch in channels:
-                ch_values = [v['features'][ch] for v in values]
-                feature_means[ch] = float(np.mean(ch_values))
-                feature_stds[ch] = float(np.std(ch_values, ddof=1)) if n > 1 else 0.0
+            # Map assay string to AssayType enum
+            # For now, epistemic agent only uses cell_painting
+            assay = AssayType.CELL_PAINTING
 
-            # Outlier detection (simple Z-score > 3 on scalar response)
-            n_outliers = 0
-            if n > 2:
-                z_scores = np.abs((responses - mean_val) / std_val) if std_val > 0 else np.zeros(n)
-                n_outliers = int(np.sum(z_scores > 3))
+            # Extract readouts (morphology channels)
+            morph = sim_result['morphology']
+            readouts = {
+                'morphology': {
+                    'er': morph['er'],
+                    'mito': morph['mito'],
+                    'nucleus': morph['nucleus'],
+                    'actin': morph['actin'],
+                    'rna': morph['rna'],
+                }
+            }
 
-            summary = ConditionSummary(
-                cell_line=cell_line,
-                compound=compound,
-                dose_uM=dose,
-                time_h=time,
+            # Extract LDH if present
+            if 'ldh' in sim_result:
+                readouts['ldh'] = sim_result['ldh']
+
+            # QC metadata (optional)
+            qc = {}
+            if 'failed' in sim_result:
+                qc['failed'] = sim_result['failed']
+            if 'failure_type' in sim_result:
+                qc['failure_type'] = sim_result['failure_type']
+
+            raw_result = RawWellResult(
+                location=location,
+                cell_line=sim_result['cell_line'],
+                treatment=treatment,
                 assay=assay,
-                position_tag=pos,
-                n_wells=n,
-                mean=mean_val,
-                std=std_val,
-                sem=sem_val,
-                cv=cv_val,
-                min_val=min_val,
-                max_val=max_val,
-                feature_means=feature_means,
-                feature_stds=feature_stds,
-                n_failed=0,  # TODO: track actual failures
-                n_outliers=n_outliers,
-            )
-            summaries.append(summary)
-
-        # Generate QC flags (coarse, agent must interpret)
-        qc_flags = self._generate_qc_flags(summaries)
-
-        observation = Observation(
-            design_id=design_id,
-            conditions=summaries,
-            wells_spent=wells_requested,
-            budget_remaining=self.budget_remaining - wells_requested,
-            qc_flags=qc_flags,
-        )
-
-        return observation
-
-    def _generate_qc_flags(self, summaries: List[ConditionSummary]) -> List[str]:
-        """Generate coarse QC flags without exposing internals.
-
-        Agent must interpret these.
-        """
-        flags = []
-
-        # Check for edge bias (if both edge and center present)
-        edge_means = [s.mean for s in summaries if s.position_tag == 'edge']
-        center_means = [s.mean for s in summaries if s.position_tag == 'center']
-
-        if edge_means and center_means:
-            edge_avg = np.mean(edge_means)
-            center_avg = np.mean(center_means)
-            diff_pct = abs(edge_avg - center_avg) / center_avg if center_avg > 0 else 0
-
-            if diff_pct > 0.1:  # >10% difference
-                direction = "lower" if edge_avg < center_avg else "higher"
-                flags.append(
-                    f"Edge wells show {diff_pct:.1%} {direction} signal than center"
-                )
-
-        # Check for high variance
-        high_cv_conditions = [s for s in summaries if s.cv > 0.15]
-        if high_cv_conditions:
-            flags.append(
-                f"{len(high_cv_conditions)}/{len(summaries)} conditions have CV >15%"
+                observation_time_h=sim_result['timepoint_h'],
+                readouts=readouts,
+                qc=qc
             )
 
-        # Check for outliers
-        total_outliers = sum(s.n_outliers for s in summaries)
-        if total_outliers > 0:
-            flags.append(f"{total_outliers} wells flagged as outliers (Z>3)")
+            results.append(raw_result)
 
-        return flags
+        return tuple(results)
+
+    # =============================================================================
+    # AGGREGATION REMOVED: World is now a pure executor
+    # =============================================================================
+    # The _aggregate_results and _generate_qc_flags methods have been removed.
+    # Aggregation now happens in observation_aggregator.py (separate layer).
+    #
+    # World's job:
+    #   - Execute experiments (simulate wells)
+    #   - Return raw RawWellResult objects
+    #   - Track budget
+    #
+    # Not world's job:
+    #   - Compute statistics (mean, std, sem, cv)
+    #   - Group by conditions
+    #   - Generate QC flags
+    #   - Interpret results
+    # ============================================================================

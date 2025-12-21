@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Optional
 
 from .schemas import Proposal, WellSpec
 from .exceptions import InvalidDesignError
+from ..simulation.design_validation import ExperimentalDesignValidator
 
 
 class RefusalPersistenceError(RuntimeError):
@@ -229,7 +230,73 @@ def validate_design(
             details={"duplicates": duplicates}
         )
 
-    # Passed validation
+    # Confluence confounding validation (density-matched design enforcement)
+    # This ensures comparisons across treatment arms are not confounded by density differences
+    validator = ExperimentalDesignValidator()
+
+    # Convert design wells to validator format (timepoint_h → time_h, _assay → assay)
+    validator_wells = []
+    for w in design["wells"]:
+        validator_well = {
+            "cell_line": w["cell_line"],
+            "compound": w["compound"],
+            "dose_uM": w["dose_uM"],
+            "time_h": w["timepoint_h"],
+            "assay": w.get("_assay", "cell_painting"),  # Default to cell_painting if not specified
+        }
+        validator_wells.append(validator_well)
+
+    try:
+        validator.validate_proposal_for_confluence_confounding(
+            wells=validator_wells,
+            design_id=design_id,
+            threshold=0.15
+        )
+    except ValueError as e:
+        # Validator raises ValueError with structured dict
+        if e.args and isinstance(e.args[0], dict):
+            error_details = e.args[0]
+            raise InvalidDesignError(
+                message=error_details["message"],
+                violation_code="confluence_confounding",
+                design_id=design_id,
+                cycle=cycle,
+                validator_mode="policy_guard",
+                details=error_details
+            )
+        else:
+            # Re-raise if not our structured error
+            raise
+
+    # Batch confounding validation (balanced batch assignment enforcement)
+    # This ensures treatment assignment is not confounded with technical batches
+    from ..simulation.batch_confounding_validator import validate_batch_confounding
+
+    batch_result = validate_batch_confounding(
+        design,
+        imbalance_threshold=0.7,
+        strict=strict
+    )
+
+    if batch_result.is_confounded:
+        raise InvalidDesignError(
+            message=f"Batch confounded: {batch_result.violation_type} (imbalance={batch_result.imbalance_metric:.3f})",
+            violation_code="batch_confounding",
+            design_id=design_id,
+            cycle=cycle,
+            validator_mode="policy_guard",
+            details={
+                "violation_type": batch_result.violation_type,
+                "confounded_arms": batch_result.confounded_arms,
+                "imbalance_metric": batch_result.imbalance_metric,
+                "resolution_strategies": batch_result.resolution_strategies,
+                "plate_imbalance": batch_result.details.get("plate_imbalance"),
+                "day_imbalance": batch_result.details.get("day_imbalance"),
+                "operator_imbalance": batch_result.details.get("operator_imbalance"),
+            }
+        )
+
+    # Passed all validations
     return None
 
 
