@@ -66,13 +66,20 @@ from cell_os.epistemic_sandbagging import SandbaggingDetector
 logger = logging.getLogger(__name__)
 
 
+# Agent 3: Budget reserve to prevent epistemic deadlock
+# Minimum cost of any calibration template (baseline_replicates uses 12 wells)
+# This must always be affordable, or agent can't escape debt
+MIN_CALIBRATION_COST_WELLS = 12
+
+
 @dataclass
 class EpistemicControllerConfig:
     """
     Configuration for epistemic controller.
 
     Attributes:
-        debt_sensitivity: How much debt affects cost (default: 10% per bit)
+        debt_sensitivity: How much debt affects cost (default: 50% per bit)
+            Agent 3: Increased from 0.1 to 0.5 to make debt *painful* before hard block
         debt_decay_rate: Optional debt forgiveness per action (default: 0)
         penalty_config: Configuration for entropy penalties
         enable_debt_tracking: Enable debt accumulation (default: True)
@@ -83,7 +90,7 @@ class EpistemicControllerConfig:
     If enable_debt_tracking=False, the run is marked as contaminated in diagnostics.
     """
 
-    debt_sensitivity: float = 0.1
+    debt_sensitivity: float = 0.5  # Agent 3: Tightened from 0.1 to make debt felt
     debt_decay_rate: float = 0.0
     penalty_config: EpistemicPenaltyConfig = field(default_factory=EpistemicPenaltyConfig)
     enable_debt_tracking: bool = True
@@ -476,34 +483,51 @@ class EpistemicController:
         """
         Check whether an action should be refused due to epistemic debt.
 
+        Agent 3 enforcement with deadlock prevention:
+        1. Hard threshold: debt > 2.0 bits blocks non-calibration actions
+        2. Cost inflation: debt increases cost (soft block)
+        3. Budget reserve: non-calibration actions must leave MIN_CALIBRATION_COST_WELLS
+           available for recovery (prevents epistemic bankruptcy)
+
         Returns:
             (should_refuse, refusal_reason, context)
             - should_refuse: True if action must be blocked
-            - refusal_reason: "epistemic_debt_budget_exceeded" or "epistemic_debt_action_blocked"
+            - refusal_reason: One of:
+                * "epistemic_debt_action_blocked" - hard threshold exceeded
+                * "epistemic_debt_budget_exceeded" - cost inflation exceeds budget
+                * "insufficient_budget_for_epistemic_recovery" - would prevent calibration
             - context: Dict with debt_bits, inflated_cost, etc. for RefusalEvent
         """
         if not self.config.enable_debt_tracking:
             return (False, "", {})
 
         if calibration_templates is None:
-            calibration_templates = {"baseline", "calibration", "dmso_replicates"}
+            calibration_templates = {"baseline", "calibration", "dmso_replicates", "baseline_replicates"}
 
         debt = self.get_total_debt()
         inflated_cost = self.get_inflated_cost(float(base_cost_wells))
+        is_calibration = template_name in calibration_templates
+
+        # Agent 3: Budget reserve enforcement
+        # Non-calibration actions must leave enough budget for recovery
+        budget_after_action = budget_remaining - inflated_cost
+        blocked_by_reserve = (not is_calibration) and (budget_after_action < MIN_CALIBRATION_COST_WELLS)
 
         # Check cost inflation (soft block)
         blocked_by_cost = inflated_cost > budget_remaining
 
         # Check debt threshold (hard block for non-calibration actions)
-        is_calibration = template_name in calibration_templates
         blocked_by_threshold = (debt > debt_hard_threshold) and not is_calibration
 
-        should_refuse = blocked_by_cost or blocked_by_threshold
+        # Determine refusal reason (precedence matters for clarity)
+        should_refuse = blocked_by_threshold or blocked_by_cost or blocked_by_reserve
 
-        if blocked_by_cost:
-            refusal_reason = "epistemic_debt_budget_exceeded"
-        elif blocked_by_threshold:
+        if blocked_by_threshold:
             refusal_reason = "epistemic_debt_action_blocked"
+        elif blocked_by_reserve:
+            refusal_reason = "insufficient_budget_for_epistemic_recovery"
+        elif blocked_by_cost:
+            refusal_reason = "epistemic_debt_budget_exceeded"
         else:
             refusal_reason = ""
 
@@ -512,9 +536,13 @@ class EpistemicController:
             "base_cost_wells": base_cost_wells,
             "inflated_cost_wells": int(inflated_cost),
             "budget_remaining": budget_remaining,
+            "budget_after_action": int(budget_after_action),
+            "required_reserve": MIN_CALIBRATION_COST_WELLS,
             "debt_threshold": debt_hard_threshold,
-            "blocked_by_cost": blocked_by_cost,
             "blocked_by_threshold": blocked_by_threshold,
+            "blocked_by_cost": blocked_by_cost,
+            "blocked_by_reserve": blocked_by_reserve,
+            "is_calibration": is_calibration,
         }
 
         return (should_refuse, refusal_reason, context)

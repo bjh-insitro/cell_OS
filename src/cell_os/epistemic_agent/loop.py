@@ -183,10 +183,14 @@ class EpistemicLoop:
                 self._log(f"  Inflated cost: {refusal_context['inflated_cost_wells']} wells")
                 self._log(f"  Budget remaining: {refusal_context['budget_remaining']} wells")
 
-                if refusal_context['blocked_by_cost']:
-                    self._log(f"  → Cost inflation from debt exceeds budget")
-                if refusal_context['blocked_by_threshold']:
+                # Agent 3: Report all refusal reasons with priority
+                if refusal_context.get('blocked_by_threshold', False):
                     self._log(f"  → Debt threshold ({refusal_context['debt_threshold']:.1f} bits) exceeded for non-calibration action")
+                if refusal_context.get('blocked_by_reserve', False):
+                    self._log(f"  → Budget reserve violation: would leave only {refusal_context['budget_after_action']} wells")
+                    self._log(f"  → Minimum {refusal_context['required_reserve']} wells required for epistemic recovery (deadlock prevention)")
+                if refusal_context.get('blocked_by_cost', False):
+                    self._log(f"  → Cost inflation from debt exceeds budget")
 
                 # Write refusal to permanent log
                 from .beliefs.ledger import RefusalEvent, append_refusals_jsonl

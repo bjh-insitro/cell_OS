@@ -87,6 +87,12 @@ class ConditionSummary:
     mad: Optional[float] = None         # Median absolute deviation (robust dispersion metric)
     iqr: Optional[float] = None         # Interquartile range (robust dispersion metric)
 
+    # Agent 2: Canonical representation (prevents aggregation races)
+    # These are the ACTUAL grouping keys (integers, no floats)
+    # dose_uM and time_h above are derived from these for backward compat
+    canonical_dose_nM: Optional[int] = None    # Integer nanomolar (1000 nM = 1 µM)
+    canonical_time_min: Optional[int] = None   # Integer minutes (60 min = 1 h)
+
     @property
     def condition_key(self) -> tuple:
         """Unique key for this condition."""
@@ -119,6 +125,10 @@ class Observation:
 
     # Agent 3: Strategy transparency (same data + different strategy = different Observation)
     aggregation_strategy: str = "default_per_channel"
+
+    # Agent 2: Near-duplicate detection (conditions that merged due to canonicalization)
+    # List of diagnostic events where multiple raw (dose, time) pairs collapsed to same key
+    near_duplicate_merges: List[Dict[str, Any]] = field(default_factory=list)
 
     # Optional: if agent requests raw data (costs extra)
     raw_wells: Optional[List[Dict[str, Any]]] = None
