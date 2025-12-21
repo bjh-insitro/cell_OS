@@ -9,12 +9,120 @@ No peeking at hidden truth (latents, true axis). Only observed readouts.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Set
 import numpy as np
 
 from .episode import Action, Policy, EpisodeRunner, EpisodeReceipt, EpisodeState
 from .biological_virtual import BiologicalVirtualMachine
 from .reward import compute_microtubule_mechanism_reward
+from ..epistemic_agent.governance import (
+    Blocker,
+    GovernanceAction,
+    GovernanceDecision,
+    GovernanceInputs,
+    GovernanceThresholds,
+    decide_governance,
+)
+from enum import Enum
+
+
+class ActionIntent(str, Enum):
+    """
+    Coarse intent tags for actions.
+
+    Used by governance-driven action biasing to prioritize actions that resolve blockers.
+    """
+    DISCRIMINATE = "DISCRIMINATE"  # Actions likely to separate mechanisms
+    REDUCE_NUISANCE = "REDUCE_NUISANCE"  # Washout, wait, replicate, context reset
+    AMPLIFY_SIGNAL = "AMPLIFY_SIGNAL"  # Increase dose, extend duration
+    OBSERVE = "OBSERVE"  # Measure, readout at a timepoint
+
+
+def classify_action_intent(action: Action, has_dosed: bool) -> ActionIntent:
+    """
+    Classify an action's coarse intent.
+
+    This is not perfect taxonomy. It's consistent taxonomy.
+    """
+    # Washout = reduce nuisance (clear confounders)
+    if action.washout:
+        return ActionIntent.REDUCE_NUISANCE
+
+    # Feed = reduce nuisance (refresh medium, reduce contact pressure artifacts)
+    if action.feed:
+        return ActionIntent.REDUCE_NUISANCE
+
+    # No dose = observe (just measure current state)
+    if action.dose_fraction == 0.0:
+        return ActionIntent.OBSERVE
+
+    # Higher dose after already dosing = amplify signal
+    if has_dosed and action.dose_fraction > 0.5:
+        return ActionIntent.AMPLIFY_SIGNAL
+
+    # First dose or low dose = discriminate (establish baseline response)
+    return ActionIntent.DISCRIMINATE
+
+
+def action_intent_cost(intent: ActionIntent) -> float:
+    """
+    Cost model for action intents.
+
+    Returns normalized cost (1.0 = baseline observation).
+    These are constants for now, can be refined with empirical data later.
+
+    Cost reflects:
+      - TIME: How long does it take?
+      - REAGENT: How expensive is it?
+      - RISK: How much viability/quality risk?
+    """
+    costs = {
+        ActionIntent.OBSERVE: 1.0,  # Baseline: just measure
+        ActionIntent.REDUCE_NUISANCE: 1.5,  # Intervention (washout/feed) + measure
+        ActionIntent.DISCRIMINATE: 2.0,  # Dose + measure + analysis
+        ActionIntent.AMPLIFY_SIGNAL: 2.5,  # High dose + risk + measure
+    }
+    return costs[intent]
+
+
+def compute_action_bias(
+    blockers: Set[Blocker],
+    evidence_strength: float,
+) -> Dict[ActionIntent, float]:
+    """
+    Map governance blockers to action intent bias multipliers.
+
+    Returns weight multipliers for each ActionIntent (1.0 = neutral, >1.0 = boost, <1.0 = downweight).
+
+    Heuristics:
+      - HIGH_NUISANCE → boost REDUCE_NUISANCE, downweight AMPLIFY_SIGNAL (don't make it worse)
+      - LOW_POSTERIOR_TOP → boost DISCRIMINATE and OBSERVE
+      - Both blockers → prioritize nuisance reduction first (confounded discrimination is useless)
+    """
+    if not blockers:
+        # No blockers: neutral bias
+        return {intent: 1.0 for intent in ActionIntent}
+
+    bias = {intent: 1.0 for intent in ActionIntent}
+
+    # Blocker: HIGH_NUISANCE
+    if Blocker.HIGH_NUISANCE in blockers:
+        bias[ActionIntent.REDUCE_NUISANCE] = 3.0  # Strong boost
+        bias[ActionIntent.OBSERVE] = 1.5  # Moderate boost (observe after cleanup)
+        bias[ActionIntent.AMPLIFY_SIGNAL] = 0.3  # Downweight (don't escalate into noise)
+        bias[ActionIntent.DISCRIMINATE] = 0.5  # Downweight (confounded discrimination is misleading)
+
+    # Blocker: LOW_POSTERIOR_TOP
+    if Blocker.LOW_POSTERIOR_TOP in blockers:
+        # If nuisance is ALSO high, prioritize nuisance first (already handled above)
+        if Blocker.HIGH_NUISANCE not in blockers:
+            bias[ActionIntent.DISCRIMINATE] = 2.5  # Strong boost
+            bias[ActionIntent.OBSERVE] = 2.0  # Boost observation
+            # If evidence is weak, might need signal amplification
+            if evidence_strength < 0.5:
+                bias[ActionIntent.AMPLIFY_SIGNAL] = 1.5
+
+    return bias
 
 
 @dataclass
@@ -35,12 +143,16 @@ class PrefixRolloutResult:
     er_fold: float = 1.0
     posterior_top_prob: float = 0.0
     posterior_margin: float = 0.0
-    nuisance_fraction: float = 0.0
+    nuisance_fraction: float = 0.0  # v2: stores nuisance_probability (observation-aware)
     calibrated_confidence: float = 0.0
 
     # Forensics: nuisance model components
     nuisance_mean_shift_mag: float = 0.0  # ||mean_shift||
     nuisance_var_inflation: float = 0.0   # Total variance inflation
+
+    # CAUSAL ATTRIBUTION: Full posterior for split-ledger accounting
+    posterior: Optional[object] = None  # MechanismPosterior object
+    attribution_source: Optional[str] = None  # "evidence" | "nuisance_reweight" | "both" | "none"
 
 
 class Phase5EpisodeRunner(EpisodeRunner):
@@ -77,6 +189,9 @@ class Phase5EpisodeRunner(EpisodeRunner):
 
         # Prefix rollout cache: key = (schedule_prefix_tuple, n_steps)
         self._prefix_cache: Dict[Tuple, PrefixRolloutResult] = {}
+
+        # Cached calibrator (load once instead of every rollout)
+        self._calibrator = None
 
     def run(self, policy: Policy) -> Tuple[EpisodeReceipt, List[EpisodeState]]:
         """Execute policy with Phase5 scalars applied."""
@@ -218,6 +333,9 @@ class Phase5EpisodeRunner(EpisodeRunner):
         baseline_atp = baseline_scalars['atp_signal']
         baseline_trafficking = baseline_scalars['trafficking_marker']
 
+        # Capture baseline vessel state (for contact_pressure baseline)
+        baseline_vessel = vm.vessel_states["episode"]
+
         # Execute prefix
         washout_count = 0
         feed_count = 0
@@ -295,21 +413,57 @@ class Phase5EpisodeRunner(EpisodeRunner):
         hetero_width = vessel.get_mixture_width('transport_dysfunction')
         artifact_var = 0.01 * np.exp(-current_time_h / 10.0)
 
+        # Tie variance inflations to shift magnitude (not constants)
+        pipeline_shift = np.array([0.01, -0.01, 0.01])
+        shift_mag = np.linalg.norm(context_shift + pipeline_shift)
+        shift_mag = min(shift_mag, 0.25)  # Cap to avoid pathological cases
+
+        k_context = 0.5  # Scale factors chosen so typical shift_mag ~ 0.05 gives small variances
+        k_pipe = 0.3
+        context_var = (k_context * shift_mag) ** 2
+        pipeline_var = (k_pipe * shift_mag) ** 2
+
+        # Contact pressure nuisance: mean shift in fold-space from Δp between baseline and readout
+        # IMPORTANT: use baseline pressure from the same baseline measurement that produced baseline_* values
+        p_obs = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
+        p_base = float(np.clip(getattr(baseline_vessel, "contact_pressure", 0.0), 0.0, 1.0))
+        delta_p = float(np.clip(p_obs - p_base, -1.0, 1.0))
+        contact_shift = np.array([
+            0.10 * delta_p,   # actin
+            -0.05 * delta_p,  # mito
+            0.06 * delta_p    # ER
+        ])
+        # Small variance term to reflect model mismatch (kept conservative)
+        contact_var = (0.10 * abs(delta_p) * 0.25) ** 2  # tweak later; ~ (2.5% at full Δp)^2
+
         nuisance = NuisanceModel(
             context_shift=context_shift,
-            pipeline_shift=np.array([0.01, -0.01, 0.01]),
+            pipeline_shift=pipeline_shift,
+            contact_shift=contact_shift,
             artifact_var=artifact_var,
             heterogeneity_var=hetero_width ** 2,
-            context_var=0.15 ** 2,
-            pipeline_var=0.10 ** 2
+            context_var=context_var,
+            pipeline_var=pipeline_var,
+            contact_var=contact_var
         )
 
-        # Compute posterior
+        # CAUSAL ATTRIBUTION: Look up prior posterior for split-ledger accounting
+        prior_posterior = None
+        if n_steps_prefix > 1:
+            # Look up prior prefix (one step back)
+            prior_schedule_prefix = schedule_prefix[:-1]
+            prior_cache_key = (tuple((a.dose_fraction, a.washout, a.feed) for a in prior_schedule_prefix), n_steps_prefix - 1)
+            if prior_cache_key in self._prefix_cache:
+                prior_result = self._prefix_cache[prior_cache_key]
+                prior_posterior = prior_result.posterior
+
+        # Compute posterior (with split-ledger accounting if prior available)
         posterior = compute_mechanism_posterior_v2(
             actin_fold=actin_fold,
             mito_fold=mito_fold,
             er_fold=er_fold,
-            nuisance=nuisance
+            nuisance=nuisance,
+            prior_posterior=prior_posterior
         )
 
         # Build belief state
@@ -317,15 +471,17 @@ class Phase5EpisodeRunner(EpisodeRunner):
             top_probability=posterior.top_probability,
             margin=posterior.margin,
             entropy=posterior.entropy,
-            nuisance_fraction=nuisance.nuisance_fraction,
+            nuisance_fraction=nuisance.inflation_share_nonhetero,  # v1: bookkeeping ratio
+            nuisance_probability=posterior.nuisance_probability,   # v2: observation-aware P(NUISANCE|x)
             timepoint_h=current_time_h,
             dose_relative=1.0,  # TODO: track actual dose relative to reference
             viability=viability
         )
 
-        # Load calibrator and predict confidence
-        calibrator = ConfidenceCalibrator.load('/Users/bjh/cell_OS/data/confidence_calibrator_v1.pkl')
-        calibrated_conf = calibrator.predict_confidence(belief_state)
+        # Load calibrator once and cache (avoid reloading on every rollout)
+        if self._calibrator is None:
+            self._calibrator = ConfidenceCalibrator.load('/Users/bjh/cell_OS/data/confidence_calibrator_v1.pkl')
+        calibrated_conf = self._calibrator.predict_confidence(belief_state)
 
         # Compute nuisance component magnitudes for forensics
         mean_shift_mag = np.linalg.norm(nuisance.total_mean_shift)
@@ -346,11 +502,14 @@ class Phase5EpisodeRunner(EpisodeRunner):
             er_fold=er_fold,
             posterior_top_prob=posterior.top_probability,
             posterior_margin=posterior.margin,
-            nuisance_fraction=nuisance.nuisance_fraction,
+            nuisance_fraction=posterior.nuisance_probability,  # v2: observation-aware P(NUISANCE|x)
             calibrated_confidence=calibrated_conf,
             # Forensics: nuisance components
             nuisance_mean_shift_mag=mean_shift_mag,
-            nuisance_var_inflation=var_inflation
+            nuisance_var_inflation=var_inflation,
+            # CAUSAL ATTRIBUTION: Store full posterior and attribution source
+            posterior=posterior,
+            attribution_source=posterior.attribution_source
         )
 
         # Store in cache
@@ -417,6 +576,56 @@ class BeamNode:
 
 
 @dataclass
+class NoCommitEpisode:
+    """
+    Track a single NO_COMMIT episode for cost-aware closed-loop analysis.
+
+    An episode is a window from NO_COMMIT decision to resolution (commit/detection) or timeout.
+    """
+    episode_id: str  # Unique identifier
+    t_start: int  # Timestep when NO_COMMIT fired
+    blockers_start: Set[Blocker]  # Which blockers caused NO_COMMIT
+    posterior_gap_start: float
+    nuisance_gap_start: float
+
+    # Actions taken to resolve (window of k steps)
+    actions_taken: List[ActionIntent]  # Sequence of intents chosen
+    costs_incurred: List[float]  # Cost per action
+
+    # Outcome after k steps
+    t_end: int
+    blockers_end: Set[Blocker]  # Which blockers remain
+    posterior_gap_end: float
+    nuisance_gap_end: float
+
+    # Derived metrics
+    @property
+    def total_cost(self) -> float:
+        return sum(self.costs_incurred)
+
+    @property
+    def posterior_gap_reduction(self) -> float:
+        return self.posterior_gap_start - self.posterior_gap_end
+
+    @property
+    def nuisance_gap_reduction(self) -> float:
+        return self.nuisance_gap_start - self.nuisance_gap_end
+
+    @property
+    def gap_reduction_per_cost(self) -> float:
+        """Primary KPI: information-optimal metric."""
+        if self.total_cost == 0:
+            return 0.0
+        total_reduction = self.posterior_gap_reduction + self.nuisance_gap_reduction
+        return total_reduction / self.total_cost
+
+    @property
+    def resolved(self) -> bool:
+        """Did we resolve at least one blocker?"""
+        return len(self.blockers_end) < len(self.blockers_start)
+
+
+@dataclass
 class BeamSearchResult:
     """Result of beam search."""
     best_schedule: List[Action]
@@ -433,6 +642,18 @@ class BeamSearchResult:
     # Comparison to baseline
     smart_policy_reward: Optional[float] = None
     beats_smart: bool = False
+
+    # Governance forensics (what the contract decided and why)
+    governance_action: Optional[str] = None  # "COMMIT", "NO_COMMIT", "NO_DETECTION"
+    governance_reason: Optional[str] = None
+    governance_mechanism: Optional[str] = None  # Approved mechanism if COMMIT
+    governance_posterior_top: Optional[float] = None
+    governance_nuisance_prob: Optional[float] = None
+    governance_evidence_strength: Optional[float] = None
+
+    # Distance to commit tracking (closed-loop KPI)
+    governance_posterior_gap: Optional[float] = None  # max(0, threshold - posterior_top)
+    governance_nuisance_gap: Optional[float] = None  # max(0, nuisance - threshold)
 
 
 class BeamSearch:
@@ -452,7 +673,9 @@ class BeamSearch:
         # Heuristic weights
         w_mechanism: float = 2.0,      # Reward mechanism engagement potential
         w_viability: float = 0.5,      # Penalize death
-        w_interventions: float = 0.1   # Small penalty for interventions
+        w_interventions: float = 0.1,  # Small penalty for interventions
+        # Action space
+        dose_levels: Optional[List[float]] = None
     ):
         """
         Initialize beam search.
@@ -493,8 +716,8 @@ class BeamSearch:
         # Debug mode (NEW)
         self.debug_commit_decisions = False  # Set True to log COMMIT forensics
 
-        # Action space
-        self.dose_levels = [0.0, 0.25, 0.5, 1.0]
+        # Action space (configurable for speed testing)
+        self.dose_levels = dose_levels if dose_levels is not None else [0.0, 0.25, 0.5, 1.0]
 
         # Stats
         self.nodes_expanded = 0
@@ -561,6 +784,16 @@ class BeamSearch:
         best_policy = Policy(actions=best_node.schedule, name=f"beam_search_{compound_id}")
         best_receipt, _ = self.runner.run(best_policy)
 
+        # GOVERNANCE FORENSICS: Capture what the contract decided and why
+        # This enables "why didn't it commit?" debugging without rerunning
+        gov_decision = self._apply_governance_contract(best_node)
+
+        # DISTANCE TO COMMIT: Compute gaps (closed-loop KPI)
+        # These measure "how far from being allowed to commit"
+        thresholds = GovernanceThresholds()
+        posterior_gap = max(0.0, thresholds.commit_posterior_min - best_node.posterior_top_prob_current)
+        nuisance_gap = max(0.0, best_node.nuisance_frac_current - thresholds.nuisance_max_for_commit)
+
         return BeamSearchResult(
             best_schedule=best_node.schedule,
             best_policy=best_policy,
@@ -569,7 +802,17 @@ class BeamSearch:
             nodes_expanded=self.nodes_expanded,
             nodes_pruned_death=self.nodes_pruned_death,
             nodes_pruned_interventions=self.nodes_pruned_interventions,
-            nodes_pruned_dominated=self.nodes_pruned_dominated
+            nodes_pruned_dominated=self.nodes_pruned_dominated,
+            # Governance forensics
+            governance_action=gov_decision.action.value,
+            governance_reason=gov_decision.reason,
+            governance_mechanism=gov_decision.mechanism,
+            governance_posterior_top=best_node.posterior_top_prob_current,
+            governance_nuisance_prob=best_node.nuisance_frac_current,
+            governance_evidence_strength=best_node.posterior_top_prob_current,  # Using as proxy
+            # Distance to commit (closed-loop KPI)
+            governance_posterior_gap=posterior_gap,
+            governance_nuisance_gap=nuisance_gap,
         )
 
     def _populate_node_from_prefix(self, node, pr) -> None:
@@ -632,6 +875,44 @@ class BeamSearch:
 
         return conf_reward - time_penalty - ops_cost
 
+    def _apply_governance_contract(self, node: BeamNode) -> GovernanceDecision:
+        """
+        Apply governance contract to node's belief state.
+
+        This is the choke point: all terminal decisions (COMMIT/NO_DETECTION) must pass through here.
+
+        Constructs GovernanceInputs from node's belief state and delegates to decide_governance.
+        """
+        # Build minimal posterior dict from node's belief state
+        # We only have top mechanism + probability, so construct a minimal dict
+        predicted_mech = node.predicted_axis_current
+        top_prob = node.posterior_top_prob_current
+
+        if predicted_mech and predicted_mech != "unknown":
+            posterior = {predicted_mech: top_prob}
+        else:
+            # No concrete mechanism predicted
+            posterior = {}
+
+        # Use posterior_top_prob as evidence_strength proxy
+        # Interpretation: if the top mechanism has high probability, evidence exists
+        evidence_strength = top_prob
+
+        gov_inputs = GovernanceInputs(
+            posterior=posterior,
+            nuisance_prob=node.nuisance_frac_current,
+            evidence_strength=evidence_strength,
+        )
+
+        # Use default thresholds (can be customized later)
+        thresholds = GovernanceThresholds(
+            commit_posterior_min=0.80,
+            nuisance_max_for_commit=0.35,
+            evidence_min_for_detection=0.70,
+        )
+
+        return decide_governance(gov_inputs, thresholds)
+
     def _expand_node(self, node: BeamNode, compound) -> List[BeamNode]:
         """
         Generate successor nodes by trying all legal actions.
@@ -669,6 +950,14 @@ class BeamSearch:
 
         # 2) Generate CONTINUE successors
         has_dosed = any(a.dose_fraction > 0 for a in node.schedule)
+
+        # GOVERNANCE-DRIVEN BIASING: If in NO_COMMIT state, compute action bias from blockers
+        # This makes NO_COMMIT productive by prioritizing actions that resolve blockers
+        gov_decision_for_bias = self._apply_governance_contract(node) if node.t_step > 0 else None
+        action_bias = {}
+        if gov_decision_for_bias and gov_decision_for_bias.action == GovernanceAction.NO_COMMIT:
+            evidence_strength = node.posterior_top_prob_current
+            action_bias = compute_action_bias(gov_decision_for_bias.blockers, evidence_strength)
 
         for dose_level in self.dose_levels:
             for washout in [False, True]:
@@ -723,6 +1012,13 @@ class BeamSearch:
                         self.w_interventions * ops_penalty
                     )
 
+                    # APPLY GOVERNANCE BIAS: Multiply heuristic by action intent bias
+                    # This prioritizes actions that resolve blockers (productive NO_COMMIT)
+                    if action_bias:
+                        intent = classify_action_intent(action, has_dosed)
+                        bias_multiplier = action_bias.get(intent, 1.0)
+                        heuristic *= bias_multiplier
+
                     # Create CONTINUE successor
                     successor = BeamNode(
                         t_step=node.t_step + 1,
@@ -740,36 +1036,16 @@ class BeamSearch:
 
                     successors.append(successor)
 
-        # 3) Generate COMMIT successor (if confident enough)
+        # 3) Generate COMMIT successor (if governance contract allows)
         if node.t_step > 0:  # Can't commit at root
-            cal_conf = node.calibrated_confidence_current
-            commit_threshold = getattr(self, 'commit_conf_threshold', 0.75)
-            predicted_axis = node.predicted_axis_current
+            # GOVERNANCE CHOKE POINT: All terminal decisions must pass through contract
+            gov_decision = self._apply_governance_contract(node)
 
-            # CRITICAL: Disallow COMMIT to "unknown"
-            # "unknown" is not a mechanism, it's a "no perturbation" hypothesis
-            # Allowing COMMIT to unknown is a "commit to abstaining" loophole
-            is_concrete_mechanism = predicted_axis in ["microtubule", "er_stress", "mitochondrial"]
-
-            # Log blocked abstention commits for forensics
-            if cal_conf >= commit_threshold and not is_concrete_mechanism:
-                if getattr(self, 'debug_commit_decisions', False):
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    elapsed_time_h = node.t_step * self.runner.step_h
-                    logger.info(
-                        f"COMMIT BLOCKED (abstention) at t={node.t_step} ({elapsed_time_h:.1f}h): "
-                        f"predicted_axis={predicted_axis} "
-                        f"calibrated_conf={cal_conf:.3f} "
-                        f"threshold={commit_threshold:.3f} "
-                        f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
-                        f"nuisance_frac={node.nuisance_frac_current:.3f}"
-                    )
-
-            if cal_conf >= commit_threshold and is_concrete_mechanism:
+            if gov_decision.action == GovernanceAction.COMMIT:
                 elapsed_time_h = node.t_step * self.runner.step_h
                 ops_penalty = node.washout_count + node.feed_count
                 viability = node.viability_current
+                cal_conf = node.calibrated_confidence_current
 
                 commit_util = self._compute_commit_utility(
                     calibrated_conf=cal_conf,
@@ -786,7 +1062,7 @@ class BeamSearch:
                     washout_count=node.washout_count,
                     feed_count=node.feed_count,
                     commit_utility=commit_util,
-                    commit_target=node.predicted_axis_current,
+                    commit_target=gov_decision.mechanism,  # CONTRACT: mechanism approved by governance
                     heuristic_score=0.0  # Not used for terminals
                 )
 
@@ -822,23 +1098,9 @@ class BeamSearch:
 
                 successors.append(commit_node)
 
-        # 4) Generate NO_DETECTION successor (if confident in null result)
-        if node.t_step > 0:  # Can't no-detect at root
-            cal_conf = node.calibrated_confidence_current
-            no_detection_threshold = getattr(self, 'no_detection_threshold', 0.80)
-            predicted_axis = node.predicted_axis_current
-            posterior_top_prob = node.posterior_top_prob_current
-            posterior_margin = node.posterior_margin_current
-
-            # NO_DETECTION only for "unknown" predictions
-            is_unknown = (predicted_axis == "unknown")
-
-            # GUARD: Disallow NO_DETECTION if concrete mechanism has reasonable support
-            # This prevents "give up early" when real signal exists
-            # If posterior_top_prob is high OR margin is large, some mechanism is detectable
-            concrete_signal_exists = (posterior_top_prob >= 0.55 or posterior_margin >= 0.15)
-
-            if cal_conf >= no_detection_threshold and is_unknown and not concrete_signal_exists:
+            elif gov_decision.action == GovernanceAction.NO_DETECTION:
+                # CONTRACT: NO_DETECTION only allowed when contract permits (low evidence)
+                cal_conf = node.calibrated_confidence_current
                 elapsed_time_h = node.t_step * self.runner.step_h
                 ops_penalty = node.washout_count + node.feed_count
 
@@ -886,6 +1148,10 @@ class BeamSearch:
                     )
 
                 successors.append(no_det_node)
+
+            # else: gov_decision.action == GovernanceAction.NO_COMMIT
+            #   CONTRACT: No terminal node created, beam search continues exploring
+            #   This is the correct behavior when evidence exists but confidence isn't sufficient
 
         return successors
 

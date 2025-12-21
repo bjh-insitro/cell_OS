@@ -15,7 +15,7 @@ The inversion is not a bug. It's epistemic maturity.
 """
 
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Literal
 import numpy as np
 import pickle
 from pathlib import Path
@@ -37,30 +37,53 @@ class BeliefState:
     top_probability: float
     margin: float  # top - second
     entropy: float
+
+    # v1 feature (bookkeeping ratio: inflation_share_nonhetero)
     nuisance_fraction: float
+
+    # v2 feature (observation-aware: P(NUISANCE | x))
+    nuisance_probability: Optional[float] = None
 
     # Optional context features
     timepoint_h: Optional[float] = None
     dose_relative: Optional[float] = None
     viability: Optional[float] = None
 
-    def to_feature_vector(self, include_context: bool = False) -> np.ndarray:
-        """Convert to feature vector for calibration."""
+    def to_feature_vector(
+        self,
+        include_context: bool = False,
+        schema_version: Literal["v1", "v2"] = "v1",
+    ) -> np.ndarray:
+        """
+        Convert to feature vector for calibration.
+
+        v1: uses nuisance_fraction (bookkeeping ratio)
+        v2: uses nuisance_probability (observation-aware)
+        """
+        if schema_version == "v1":
+            nuisance_feat = self.nuisance_fraction
+        elif schema_version == "v2":
+            if self.nuisance_probability is None:
+                raise ValueError("nuisance_probability is required for schema_version='v2'")
+            nuisance_feat = self.nuisance_probability
+        else:
+            raise ValueError(f"Unknown schema_version: {schema_version}")
+
         features = [
             self.top_probability,
             self.margin,
             self.entropy,
-            self.nuisance_fraction
+            nuisance_feat,
         ]
 
         if include_context and self.timepoint_h is not None:
             features.extend([
                 self.timepoint_h / 24.0,  # Normalize to typical experiment
                 self.dose_relative if self.dose_relative is not None else 1.0,
-                self.viability if self.viability is not None else 1.0
+                self.viability if self.viability is not None else 1.0,
             ])
 
-        return np.array(features)
+        return np.array(features, dtype=float)
 
 
 @dataclass
@@ -77,13 +100,19 @@ class CalibrationDatapoint:
     @property
     def nuisance_bin(self) -> str:
         """Stratification bin by nuisance level."""
-        nf = self.belief_state.nuisance_fraction
+        # Prefer v2 nuisance_probability when available
+        nf = (
+            self.belief_state.nuisance_probability
+            if self.belief_state.nuisance_probability is not None
+            else self.belief_state.nuisance_fraction
+        )
+
         if nf < 0.3:
-            return 'low_nuisance'
+            return "low_nuisance"
         elif nf < 0.5:
-            return 'medium_nuisance'
+            return "medium_nuisance"
         else:
-            return 'high_nuisance'
+            return "high_nuisance"
 
 
 class ConfidenceCalibrator:
@@ -93,14 +122,16 @@ class ConfidenceCalibrator:
     Frozen after training. Treat like labware.
     """
 
-    def __init__(self, method: str = 'platt', include_context: bool = False):
+    def __init__(self, method: str = 'platt', include_context: bool = False, schema_version: str = "v1"):
         """
         Args:
             method: 'platt' (logistic regression) or 'isotonic'
             include_context: Include timepoint, dose, viability as features
+            schema_version: 'v1' (nuisance_fraction) or 'v2' (nuisance_probability)
         """
         self.method = method
         self.include_context = include_context
+        self.schema_version = schema_version
         self.calibrator = None
         self.training_stats = {}
         self.frozen = False
@@ -336,7 +367,10 @@ class ConfidenceCalibrator:
         if self.calibrator is None:
             raise RuntimeError("Calibrator not trained")
 
-        X = belief_state.to_feature_vector(self.include_context).reshape(1, -1)
+        X = belief_state.to_feature_vector(
+            include_context=self.include_context,
+            schema_version=getattr(self, "schema_version", "v1"),
+        ).reshape(1, -1)
 
         if self.method == 'platt':
             # Logistic regression returns probabilities
@@ -362,6 +396,7 @@ class ConfidenceCalibrator:
         data = {
             'method': self.method,
             'include_context': self.include_context,
+            'schema_version': self.schema_version,
             'calibrator': self.calibrator,
             'training_stats': self.training_stats,
             'frozen': self.frozen
@@ -378,13 +413,15 @@ class ConfidenceCalibrator:
 
         calibrator = cls(
             method=data['method'],
-            include_context=data['include_context']
+            include_context=data['include_context'],
+            schema_version=data.get('schema_version', 'v1')  # Default to v1 for old models
         )
         calibrator.calibrator = data['calibrator']
         calibrator.training_stats = data['training_stats']
         calibrator.frozen = data['frozen']
 
-        print(f"Calibrator loaded from {path}")
+        # Suppress verbose loading message (called frequently during beam search)
+        # print(f"Calibrator loaded from {path}")
         return calibrator
 
 

@@ -100,29 +100,50 @@ class NuisanceModel:
     # Mean shifts (per channel)
     context_shift: np.ndarray  # [actin, mito, ER] shifts from RunContext
     pipeline_shift: np.ndarray  # [actin, mito, ER] shifts from batch
+    contact_shift: np.ndarray  # [actin, mito, ER] shifts from contact pressure (Δp)
 
     # Variance inflations (additive, not multiplicative)
     artifact_var: float  # Temporal (plating artifacts)
     heterogeneity_var: float  # Biological (subpopulations)
     context_var: float  # Context effects
     pipeline_var: float  # Pipeline drift
+    contact_var: float  # Contact pressure uncertainty / model mismatch
 
     @property
     def total_mean_shift(self) -> np.ndarray:
-        """Combined mean shift from context + pipeline."""
-        return self.context_shift + self.pipeline_shift
+        """Combined mean shift from context + pipeline + contact."""
+        return self.context_shift + self.pipeline_shift + self.contact_shift
 
     @property
     def total_var_inflation(self) -> float:
         """Total additive variance from all nuisance sources."""
-        return self.artifact_var + self.heterogeneity_var + self.context_var + self.pipeline_var
+        return (
+            self.artifact_var +
+            self.heterogeneity_var +
+            self.context_var +
+            self.pipeline_var +
+            self.contact_var
+        )
 
     @property
-    def nuisance_fraction(self) -> float:
-        """Fraction of total variance from nuisance (excluding heterogeneity)."""
-        nuisance = self.artifact_var + self.context_var + self.pipeline_var
+    def inflation_share_nonhetero(self) -> float:
+        """
+        Fraction of variance inflation not due to heterogeneity.
+
+        This is a bookkeeping ratio, NOT an observation-dependent nuisance probability.
+        Do not use this as a calibrator feature.
+        """
+        nuisance = self.artifact_var + self.context_var + self.pipeline_var + self.contact_var
         total = self.total_var_inflation
         return nuisance / total if total > 0 else 0.0
+
+    @property
+    def nuisance_fraction(self):
+        """DEPRECATED: Use nuisance_probability or inflation_share_nonhetero."""
+        raise RuntimeError(
+            "nuisance_fraction is deprecated. "
+            "Use nuisance_probability (observation-aware) or inflation_share_nonhetero (bookkeeping)."
+        )
 
 
 def compute_mechanism_posterior_v2(
@@ -130,14 +151,24 @@ def compute_mechanism_posterior_v2(
     mito_fold: float,
     er_fold: float,
     nuisance: NuisanceModel,
-    prior: Optional[Dict[Mechanism, float]] = None
+    prior: Optional[Dict[Mechanism, float]] = None,
+    prior_posterior: Optional['MechanismPosterior'] = None
 ) -> 'MechanismPosterior':
     """
-    Bayesian posterior with per-mechanism covariance and nuisance marginalization.
+    Bayesian posterior with per-mechanism covariance and NUISANCE competing hypothesis.
 
-    P(m | x) ∝ P(x | m, nuisance) P(m)
+    P(m | x) ∝ P(x | m) P(m)
+    P(NUISANCE | x) ∝ P(x | NUISANCE) P(NUISANCE)
 
-    where nuisance shifts mean and inflates variance.
+    Mechanisms do NOT get mean_shift (clean competition).
+    NUISANCE hypothesis represents measurement drift.
+
+    CAUSAL ATTRIBUTION:
+    If prior_posterior provided, compute split-ledger:
+      - Δposterior_from_new_evidence: recompute with prior_posterior.nuisance (old nuisance)
+      - Δposterior_from_nuisance_reweighting: recompute with new nuisance (current nuisance)
+
+    This prevents "simulator candy" where nuisance actions mint unjustified certainty.
     """
     observed = np.array([actin_fold, mito_fold, er_fold])
 
@@ -145,39 +176,118 @@ def compute_mechanism_posterior_v2(
     if prior is None:
         prior = {mech: 1.0 / len(MECHANISM_SIGNATURES_V2) for mech in MECHANISM_SIGNATURES_V2}
 
-    # Compute likelihood for each mechanism
+    # Compute likelihood for each mechanism (NO mean shift)
     likelihoods = {}
     for mech, signature in MECHANISM_SIGNATURES_V2.items():
-        # Mean: mechanism signature + nuisance shift
-        mean_eff = signature.to_mean_vector() + nuisance.total_mean_shift
+        # Mean: mechanism signature only (no nuisance shift)
+        mean_eff = signature.to_mean_vector()
 
-        # Covariance: mechanism variance + nuisance inflation
-        # Σ_eff = Σ_m + Σ_nuisance (additive)
+        # Covariance: mechanism variance + heterogeneity only
         cov_m = signature.to_cov_matrix()
-        cov_nuisance = np.eye(3) * nuisance.total_var_inflation  # Diagonal nuisance
-        cov_eff = cov_m + cov_nuisance
+        cov_hetero = np.eye(3) * nuisance.heterogeneity_var
+        cov_eff = cov_m + cov_hetero
 
         # Multivariate normal likelihood
         mvn = multivariate_normal(mean=mean_eff, cov=cov_eff, allow_singular=True)
         likelihood = mvn.pdf(observed)
         likelihoods[mech] = likelihood
 
-    # Bayes rule
-    unnormalized = {m: likelihoods[m] * prior[m] for m in MECHANISM_SIGNATURES_V2}
+    # Add NUISANCE hypothesis (competing explanation for measurement drift)
+    sigma2_meas_floor = 0.005  # Measurement noise floor (slightly larger than UNKNOWN)
+    mu_nuis = np.array([1.0, 1.0, 1.0]) + nuisance.total_mean_shift
+    cov_nuis = np.eye(3) * (sigma2_meas_floor + nuisance.total_var_inflation)
+    mvn_nuis = multivariate_normal(mean=mu_nuis, cov=cov_nuis, allow_singular=True)
+    likelihoods["NUISANCE"] = mvn_nuis.pdf(observed)
+
+    # Extend prior to include NUISANCE
+    prior_nuis = 0.10  # Start with 10% prior on nuisance hypothesis
+    mech_mass = 1.0 - prior_nuis
+    prior_extended = {m: prior[m] * mech_mass for m in MECHANISM_SIGNATURES_V2}
+    prior_extended["NUISANCE"] = prior_nuis
+
+    # Bayes rule (include NUISANCE in normalization)
+    unnormalized = {k: likelihoods[k] * prior_extended[k] for k in likelihoods.keys()}
     Z = sum(unnormalized.values())
 
     if Z == 0:
         # Degenerate: all likelihoods zero (data way outside support)
-        posterior_probs = {m: 1.0 / len(MECHANISM_SIGNATURES_V2) for m in MECHANISM_SIGNATURES_V2}
+        n_hyp = len(MECHANISM_SIGNATURES_V2) + 1
+        posterior_probs = {m: 1.0 / n_hyp for m in MECHANISM_SIGNATURES_V2}
+        nuisance_prob = 1.0 / n_hyp
     else:
-        posterior_probs = {m: p / Z for m, p in unnormalized.items()}
+        posterior_probs = {m: unnormalized[m] / Z for m in MECHANISM_SIGNATURES_V2}
+        nuisance_prob = unnormalized["NUISANCE"] / Z
+
+    # CAUSAL ATTRIBUTION: Split-ledger accounting
+    # Compute how much posterior change came from new evidence vs. nuisance reduction
+    attribution_source = None
+    if prior_posterior is not None:
+        # Counterfactual: "What if we had these observations but OLD nuisance?"
+        # This isolates the contribution of nuisance reduction
+        prior_nuisance = prior_posterior.nuisance
+
+        # Recompute likelihoods with prior nuisance (holding observations constant)
+        likelihoods_old_nuisance = {}
+        for mech, signature in MECHANISM_SIGNATURES_V2.items():
+            mean_eff = signature.to_mean_vector()
+            cov_m = signature.to_cov_matrix()
+            cov_hetero = np.eye(3) * prior_nuisance.heterogeneity_var
+            cov_eff = cov_m + cov_hetero
+            mvn = multivariate_normal(mean=mean_eff, cov=cov_eff, allow_singular=True)
+            likelihoods_old_nuisance[mech] = mvn.pdf(observed)
+
+        # NUISANCE hypothesis with prior nuisance
+        sigma2_meas_floor = 0.005
+        mu_nuis = np.array([1.0, 1.0, 1.0]) + prior_nuisance.total_mean_shift
+        cov_nuis = np.eye(3) * (sigma2_meas_floor + prior_nuisance.total_var_inflation)
+        mvn_nuis = multivariate_normal(mean=mu_nuis, cov=cov_nuis, allow_singular=True)
+        likelihoods_old_nuisance["NUISANCE"] = mvn_nuis.pdf(observed)
+
+        # Recompute posterior with old nuisance
+        prior_nuis = 0.10
+        mech_mass = 1.0 - prior_nuis
+        prior_extended_old = {m: prior[m] * mech_mass for m in MECHANISM_SIGNATURES_V2}
+        prior_extended_old["NUISANCE"] = prior_nuis
+
+        unnormalized_old = {k: likelihoods_old_nuisance[k] * prior_extended_old[k] for k in likelihoods_old_nuisance.keys()}
+        Z_old = sum(unnormalized_old.values())
+
+        if Z_old > 0:
+            posterior_probs_old_nuisance = {m: unnormalized_old[m] / Z_old for m in MECHANISM_SIGNATURES_V2}
+            top_mech_old = max(posterior_probs_old_nuisance.items(), key=lambda x: x[1])[0]
+            top_prob_old = posterior_probs_old_nuisance[top_mech_old]
+
+            # Compare: how much did posterior improve?
+            prior_top_prob = prior_posterior.top_probability
+            current_top_prob = max(posterior_probs.values())
+            counterfactual_top_prob = top_prob_old
+
+            # Decompose change:
+            # Total change = current - prior
+            # Nuisance contribution = current - counterfactual (with old nuisance)
+            # Evidence contribution = counterfactual - prior
+            total_change = current_top_prob - prior_top_prob
+            nuisance_contrib = current_top_prob - counterfactual_top_prob
+            evidence_contrib = counterfactual_top_prob - prior_top_prob
+
+            # Attribute based on dominant contribution
+            if abs(total_change) < 0.01:
+                attribution_source = "none"  # No significant change
+            elif abs(nuisance_contrib) > abs(evidence_contrib) * 2:
+                attribution_source = "nuisance_reweight"  # Nuisance reduction dominates
+            elif abs(evidence_contrib) > abs(nuisance_contrib) * 2:
+                attribution_source = "evidence"  # New evidence dominates
+            else:
+                attribution_source = "both"  # Mixed contribution
 
     return MechanismPosterior(
         probabilities=posterior_probs,
         observed_features=observed,
         likelihood_scores=likelihoods,
         prior=prior,
-        nuisance=nuisance
+        nuisance=nuisance,
+        nuisance_probability=nuisance_prob,
+        attribution_source=attribution_source
     )
 
 
@@ -198,6 +308,13 @@ class MechanismPosterior:
     # Calibrated confidence (set after calibration, not from entropy)
     calibrated_confidence: Optional[float] = None
 
+    # Nuisance probability: P(NUISANCE | x) from competing hypothesis
+    nuisance_probability: Optional[float] = None
+
+    # CAUSAL ATTRIBUTION: Track where posterior concentration came from
+    # Used to prevent "simulator candy" where nuisance actions mint unjustified certainty
+    attribution_source: Optional[str] = None  # "evidence" | "nuisance_reweight" | "both"
+
     @property
     def top_mechanism(self) -> Mechanism:
         return max(self.probabilities.items(), key=lambda x: x[1])[0]
@@ -207,13 +324,31 @@ class MechanismPosterior:
         return self.probabilities[self.top_mechanism]
 
     @property
-    def entropy(self) -> float:
-        """Posterior entropy (concentration index, NOT confidence)."""
+    def mechanism_entropy_bits(self) -> float:
+        """
+        Mechanism posterior entropy: uncertainty about WHICH mechanism is operating.
+
+        Agent 3 hardening: Explicitly named to prevent conflation with calibration entropy.
+        This measures epistemic uncertainty over biological mechanisms, NOT measurement noise.
+
+        Returns:
+            Entropy in bits (information-theoretic, from mechanism posterior)
+        """
         H = 0.0
         for p in self.probabilities.values():
             if p > 0:
                 H -= p * np.log(p)
         return H
+
+    @property
+    def entropy(self) -> float:
+        """
+        DEPRECATED: Use mechanism_entropy_bits for clarity.
+
+        This returns mechanism entropy (uncertainty about which biological process).
+        Do NOT confuse with calibration entropy (uncertainty about noise/bias).
+        """
+        return self.mechanism_entropy_bits
 
     @property
     def margin(self) -> float:
@@ -228,7 +363,7 @@ class MechanismPosterior:
         NOT a proper probability of correctness.
         """
         max_entropy = np.log(len(self.probabilities))
-        return 1.0 - (self.entropy / max_entropy) if max_entropy > 0 else 1.0
+        return 1.0 - (self.mechanism_entropy_bits / max_entropy) if max_entropy > 0 else 1.0
 
     @property
     def confidence(self) -> float:
