@@ -14,7 +14,15 @@ from typing import List, Dict, Any, Optional
 
 @dataclass(frozen=True)
 class EvidenceEvent:
-    """A single belief update with evidence."""
+    """A single belief update with evidence.
+
+    Temporal provenance (Agent 1 - Temporal Causality Enforcement):
+    - evidence_time_h: When the observation was made (hours since t=0)
+    - claim_time_h: What timepoint the belief is about (hours since t=0, or None if atemporal)
+
+    Temporal admissibility rule: evidence_time_h >= claim_time_h
+    (You may only update beliefs about a timepoint using evidence from that timepoint or later)
+    """
     cycle: int
     belief: str
     prev: Any
@@ -22,6 +30,8 @@ class EvidenceEvent:
     evidence: Dict[str, Any]
     supporting_conditions: List[str]
     note: Optional[str] = None
+    evidence_time_h: Optional[float] = None  # When observation was made
+    claim_time_h: Optional[float] = None  # What timepoint belief is about (None = atemporal)
 
     def to_dict(self) -> dict:
         """Convert to JSON-serializable dict."""
@@ -90,6 +100,56 @@ def append_decisions_jsonl(path, decisions: List[DecisionEvent]):
     with open(path, "a", encoding="utf-8") as f:
         for dec in decisions:
             f.write(dec.to_json_line() + "\n")
+
+
+@dataclass(frozen=True)
+class RefusalEvent:
+    """
+    A single refusal with full context.
+
+    This is NOT a warning. This is a permanent record that the system
+    refused to execute an action because epistemic debt made it unaffordable.
+
+    Refusals are asymmetric: they only trigger when overclaiming has accumulated.
+    Underclaiming never causes refusal.
+    """
+    cycle: int
+    timestamp: str
+    refusal_reason: str  # "epistemic_debt_budget_exceeded" or "epistemic_debt_action_blocked"
+
+    # Action that was refused
+    proposed_template: str
+    proposed_hypothesis: str
+    proposed_wells: int
+
+    # Epistemic state at refusal
+    debt_bits: float
+    base_cost_wells: int
+    inflated_cost_wells: float
+    budget_remaining: int
+    debt_threshold: float  # What threshold was violated
+
+    # Context
+    blocked_by_cost: bool  # True if inflated cost exceeded budget
+    blocked_by_threshold: bool  # True if debt exceeded hard threshold
+
+    # Optional design ID (if proposal existed)
+    design_id: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dict."""
+        return asdict(self)
+
+    def to_json_line(self) -> str:
+        """Serialize as single JSON line for JSONL."""
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+
+def append_refusals_jsonl(path, refusals: List[RefusalEvent]):
+    """Append refusals to JSONL file."""
+    with open(path, "a", encoding="utf-8") as f:
+        for refusal in refusals:
+            f.write(refusal.to_json_line() + "\n")
 
 
 @dataclass(frozen=True)

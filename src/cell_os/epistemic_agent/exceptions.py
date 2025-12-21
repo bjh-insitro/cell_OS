@@ -150,3 +150,52 @@ class InvalidDesignError(EpistemicInvariantError):
                 self.audit_error,
             ),
         )
+
+
+@dataclass
+class TemporalCausalityViolation(EpistemicInvariantError):
+    """Raised when belief update violates temporal causality.
+
+    Agent 1: Temporal Causality & Epistemic Provenance Enforcement.
+
+    Temporal admissibility rule: evidence_time_h >= claim_time_h
+
+    Beliefs cannot travel backward in time. You may only update beliefs about
+    a timepoint using evidence from that timepoint or later.
+
+    This prevents retroactive inference: using 48h data to update 12h mechanism
+    beliefs, then proposing 12h experiments and being confused by mismatch.
+
+    Structured fields:
+    - belief_name: Which belief was being updated
+    - evidence_time_h: When the observation was made
+    - claim_time_h: What timepoint the belief is about
+    - violation_delta_h: How far backward in time (evidence_time_h - claim_time_h)
+    """
+    message: str
+    belief_name: str
+    evidence_time_h: float
+    claim_time_h: float
+    violation_delta_h: float
+    cycle: Optional[int] = None
+    covenant_id: str = "C8_TEMPORAL"  # New covenant for temporal causality
+    details: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        super().__init__(self.message)
+
+    def __reduce__(self):
+        """Enable pickle serialization for multiprocessing and persistence."""
+        return (
+            self.__class__,
+            (
+                self.message,
+                self.belief_name,
+                self.evidence_time_h,
+                self.claim_time_h,
+                self.violation_delta_h,
+                self.cycle,
+                self.covenant_id,
+                self.details,
+            ),
+        )

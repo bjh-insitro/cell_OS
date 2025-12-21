@@ -13,7 +13,7 @@ v0.4.2: Baseline pay-for-calibration regime with noise gates.
 No Bayesian math, no LLM - just trackable heuristics with receipts.
 """
 
-from typing import Dict, List, Set, Optional, Any
+from typing import Dict, List, Set, Optional, Any, Tuple
 from dataclasses import dataclass, field
 import math
 import numpy as np
@@ -113,6 +113,7 @@ class BeliefState:
     noise_sse_total: float = 0.0
     noise_sigma_cycle_history: List[float] = field(default_factory=list)
     noise_drift_metric: Optional[float] = None
+    noise_gate_streak: int = 0                   # Consecutive stable observations (for K-sequential requirement)
 
     # Assay-specific gates (measurement ladder)
     # LDH: scalar viability readout
@@ -150,11 +151,20 @@ class BeliefState:
     tested_compounds: Set[str] = field(default_factory=set)
     tested_cell_lines: Set[str] = field(default_factory=set)
     total_observations: int = 0
-    
+
+    # Epistemic insolvency tracking (debt enforcement)
+    epistemic_insolvent: bool = False        # True if last action was refused due to debt
+    epistemic_debt_bits: float = 0.0         # Last known debt level
+    consecutive_refusals: int = 0            # Count of refusals in a row (backoff trigger)
+    last_refusal_reason: Optional[str] = None  # Most recent refusal reason
+
     # Evidence ledger
     _cycle: int = 0
     _events: List[EvidenceEvent] = field(default_factory=list)
-    
+
+    # Agent 1: Temporal provenance tracking
+    _current_evidence_time_h: Optional[float] = None  # Set during update() from observation
+
     def begin_cycle(self, cycle: int):
         """Start a new cycle (clear event buffer)."""
         self._cycle = cycle
@@ -164,6 +174,98 @@ class BeliefState:
         """Return events from this cycle."""
         return self._events
 
+    def record_refusal(
+        self,
+        refusal_reason: str,
+        debt_bits: float,
+        debt_threshold: float
+    ) -> None:
+        """
+        Record that an action was refused due to epistemic debt.
+
+        This is a measurement about the agent's state, not about biology.
+        The agent learns "I am epistemically insolvent" and must adapt.
+
+        Args:
+            refusal_reason: Why refused ("epistemic_debt_action_blocked" or "epistemic_debt_budget_exceeded")
+            debt_bits: Current epistemic debt
+            debt_threshold: Threshold that was violated (usually 2.0)
+        """
+        # Update insolvency state
+        self.epistemic_insolvent = True
+        self.epistemic_debt_bits = debt_bits
+        self.consecutive_refusals += 1
+        self.last_refusal_reason = refusal_reason
+
+        # Emit evidence event (refusal is evidence about agent state)
+        self._events.append(EvidenceEvent(
+            cycle=self._cycle,
+            belief="epistemic_insolvent",
+            prev=False,
+            new=True,
+            evidence={
+                "refusal_reason": refusal_reason,
+                "debt_bits": debt_bits,
+                "debt_threshold": debt_threshold,
+                "consecutive_refusals": self.consecutive_refusals
+            },
+            supporting_conditions=[],
+            note=f"Action refused: {refusal_reason} (debt={debt_bits:.2f} > threshold={debt_threshold:.2f})"
+        ))
+
+    def record_action_executed(self, was_calibration: bool) -> None:
+        """
+        Record that an action successfully executed (not refused).
+
+        If calibration executed, check if debt reduced enough to clear insolvency.
+
+        Args:
+            was_calibration: True if the executed action was a calibration template
+        """
+        if not self.epistemic_insolvent:
+            return  # Already solvent, nothing to do
+
+        # If calibration executed, assume debt is being addressed
+        # (Controller will update debt separately; we just track state transitions)
+        if was_calibration:
+            # Check if debt dropped below threshold
+            # (Threshold is 2.0 bits by convention)
+            if self.epistemic_debt_bits < 2.0:
+                # Clear insolvency
+                self.epistemic_insolvent = False
+                self.consecutive_refusals = 0
+                self.last_refusal_reason = None
+
+                self._events.append(EvidenceEvent(
+                    cycle=self._cycle,
+                    belief="epistemic_insolvent",
+                    prev=True,
+                    new=False,
+                    evidence={
+                        "debt_bits": self.epistemic_debt_bits,
+                        "calibration_succeeded": True
+                    },
+                    supporting_conditions=[],
+                    note=f"Solvency restored: debt={self.epistemic_debt_bits:.2f} < 2.0 threshold"
+                ))
+
+    def update_debt_level(self, current_debt: float) -> None:
+        """
+        Update tracked debt level (called by controller after each resolution).
+
+        This keeps beliefs synchronized with controller state.
+
+        Args:
+            current_debt: Current epistemic debt from controller
+        """
+        self.epistemic_debt_bits = current_debt
+
+        # If debt dropped below threshold while insolvent, clear flag
+        if self.epistemic_insolvent and current_debt < 2.0:
+            self.epistemic_insolvent = False
+            self.consecutive_refusals = 0
+            self.last_refusal_reason = None
+
     def _set(
         self,
         field_name: str,
@@ -172,15 +274,54 @@ class BeliefState:
         evidence: Dict[str, Any],
         supporting_conditions: List[str],
         note: Optional[str] = None,
+        claim_time_h: Optional[float] = None,  # Agent 1: What timepoint belief is about
+        evidence_time_h: Optional[float] = None,  # Agent 1: When observation was made
     ):
         """Set a belief field and record evidence if it changed.
 
         This is the core accountability mechanism: every belief flip gets a receipt.
+
+        Agent 1: Temporal Causality Enforcement
+        - evidence_time_h: When the observation was made (defaults to _current_evidence_time_h)
+        - claim_time_h: What timepoint the belief is about (None = atemporal belief)
+
+        Temporal admissibility rule: evidence_time_h >= claim_time_h
+        If violated, raises TemporalCausalityViolation (refusal, not warning).
         """
+        from ..exceptions import TemporalCausalityViolation
+
         prev_value = getattr(self, field_name)
 
         if prev_value == new_value:
             return  # No change, no event
+
+        # Agent 1: Temporal admissibility check
+        # Use provided evidence_time_h, or fall back to _current_evidence_time_h
+        final_evidence_time_h = evidence_time_h if evidence_time_h is not None else self._current_evidence_time_h
+
+        # If both evidence_time_h and claim_time_h are specified, enforce temporal causality
+        # Rule: claim_time_h <= evidence_time_h
+        # (Can only make claims about states at or before observation time)
+        if final_evidence_time_h is not None and claim_time_h is not None:
+            if claim_time_h > final_evidence_time_h:
+                violation_delta = claim_time_h - final_evidence_time_h
+                raise TemporalCausalityViolation(
+                    message=(
+                        f"Attempted to update belief '{field_name}' about timepoint {claim_time_h}h "
+                        f"using evidence from {final_evidence_time_h}h. "
+                        f"Cannot make claims about future states using past evidence (violation: {violation_delta:.2f}h)."
+                    ),
+                    belief_name=field_name,
+                    evidence_time_h=final_evidence_time_h,
+                    claim_time_h=claim_time_h,
+                    violation_delta_h=violation_delta,
+                    cycle=self._cycle,
+                    details={
+                        "prev_value": prev_value,
+                        "new_value": new_value,
+                        "supporting_conditions": supporting_conditions,
+                    }
+                )
 
         # Covenant 7: Field-level provenance
         # Tag exactly which belief field(s) this EvidenceEvent just changed.
@@ -208,6 +349,8 @@ class BeliefState:
             evidence=evidence,
             supporting_conditions=supporting_conditions,
             note=note,
+            evidence_time_h=final_evidence_time_h,
+            claim_time_h=claim_time_h,
         ))
 
         # v0.4.2+: explicit gate events for provenance-safe attainment tracking
@@ -264,22 +407,28 @@ class BeliefState:
         elif (prev_value is True) and (new_value is False):
             # Same whitelist: track revocations
             if field_name == "noise_sigma_stable":
+                rel_width_val = evidence.get('rel_width')
+                drift_val = evidence.get('drift_metric')
+                rel_width_str = f"{rel_width_val:.4f}" if rel_width_val is not None else "N/A"
+                drift_str = f"{drift_val:.4f}" if drift_val is not None else "N/A"
                 self._emit_gate_loss(
                     "noise_sigma",
                     prev=prev_value,
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: noise_sigma (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, drift={evidence.get('drift_metric'):.4f if evidence.get('drift_metric') else 'N/A'})",
+                    note=f"Gate lost: noise_sigma (rel_width={rel_width_str}, drift={drift_str})",
                 )
             elif field_name == "edge_effect_confident":
+                mean_abs_effect_val = evidence.get('mean_abs_effect')
+                mean_abs_effect_str = f"{mean_abs_effect_val:.4f}" if mean_abs_effect_val is not None else "0.0"
                 self._emit_gate_loss(
                     "edge_effect",
                     prev=prev_value,
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: edge_effect (n_tests={evidence.get('n_tests')}, mean_abs_effect={evidence.get('mean_abs_effect'):.4f if evidence.get('mean_abs_effect') else 0.0})",
+                    note=f"Gate lost: edge_effect (n_tests={evidence.get('n_tests')}, mean_abs_effect={mean_abs_effect_str})",
                 )
             # Assay-specific gates
             elif field_name == "ldh_sigma_stable":
@@ -534,6 +683,15 @@ class BeliefState:
         # Extract conditions from observation
         conditions = observation.conditions if hasattr(observation, 'conditions') else []
 
+        # Agent 1: Extract observation time for temporal provenance
+        # Set _current_evidence_time_h from conditions (use max time if multiple)
+        if conditions:
+            # Extract all unique time_h values from conditions
+            time_h_values = [cond.time_h for cond in conditions if hasattr(cond, 'time_h')]
+            if time_h_values:
+                # Use the maximum observation time (most conservative for causality)
+                self._current_evidence_time_h = max(time_h_values)
+
         # Track compounds and cell lines
         for cond in conditions:
             self.tested_compounds.add(cond.compound)
@@ -623,28 +781,53 @@ class BeliefState:
             self.noise_drift_metric = drift_metric
 
             # 5) Gate with hysteresis on relative CI width + df sanity + drift
+            # ROBUST GATE: Requires K consecutive stable observations (not one lucky batch)
             enter_threshold = 0.25
             exit_threshold = 0.40
             df_min_sanity = 40  # Sanity floor: prevent nonsense claims at tiny df
             drift_threshold = 0.20
+            NOISE_GATE_STREAK_K = 3  # Must see stability K consecutive times
 
             drift_bad = (drift_metric is not None and drift_metric >= drift_threshold)
 
-            # Gate: primary criterion is rel_width, df_min_sanity just prevents stupidity
+            # Separate one-time df check from per-observation stability check
+            # df_min_sanity: One-time gate to prevent earning before enough data
+            # current_observation_stable: Per-observation check (rel_width + drift)
+            has_enough_data = (self.noise_df_total >= df_min_sanity)
+            current_observation_stable = (
+                rel_width is not None and
+                rel_width <= enter_threshold and
+                not drift_bad
+            )
+
+            # Gate logic with sequential stability requirement
             new_stable = self.noise_sigma_stable
             if not self.noise_sigma_stable:
-                new_stable = (
-                    self.noise_df_total >= df_min_sanity and
-                    rel_width is not None and
-                    rel_width <= enter_threshold and
-                    not drift_bad
-                )
+                # Not yet stable: accumulate evidence
+                if has_enough_data:
+                    # Only start counting streak once we have enough data
+                    if current_observation_stable:
+                        # Increment streak
+                        self.noise_gate_streak += 1
+                        # Earn gate only if we've seen K consecutive stable observations
+                        if self.noise_gate_streak >= NOISE_GATE_STREAK_K:
+                            new_stable = True
+                    else:
+                        # Reset streak on instability
+                        self.noise_gate_streak = 0
+                else:
+                    # Not enough data yet - reset streak
+                    self.noise_gate_streak = 0
             else:
-                # only exit if clearly degraded or drifting
-                new_stable = not (
+                # Already stable: check for revocation
+                # Revoke if clearly degraded or drifting
+                should_revoke = (
                     drift_bad or
                     (rel_width is not None and rel_width >= exit_threshold)
                 )
+                if should_revoke:
+                    new_stable = False
+                    self.noise_gate_streak = 0  # Reset streak on revocation
 
             # Record belief change only if it flips
             # Format note strings (avoid conditionals in format specs)
@@ -669,7 +852,8 @@ class BeliefState:
                 supporting_conditions=[condition_key],
                 note=(
                     f"noise_sigma_stable={new_stable} (df={self.noise_df_total}, "
-                    f"rel_width={rel_width_str}, drift={drift_str})"
+                    f"rel_width={rel_width_str}, drift={drift_str}, "
+                    f"streak={self.noise_gate_streak}/{NOISE_GATE_STREAK_K})"
                 ),
             )
             self.noise_sigma_stable = new_stable
@@ -996,3 +1180,166 @@ class BeliefState:
         # Set metric_source explicitly for scRNA (future: also set for real transcriptome measurements)
         if assay == "scrna":
             self.scrna_metric_source = metric_source  # When real scRNA exists, this will be "scrna:transcriptome"
+
+    @property
+    def calibration_entropy_bits(self) -> float:
+        """
+        Calibration entropy: uncertainty about NOISE, bias, and measurement quality.
+
+        Agent 3 hardening: Explicitly named to prevent conflation with mechanism entropy.
+        This measures uncertainty about the RULER, not about which biological process.
+
+        This is "Phase 1" entropy - based on calibration metrics, not mechanism inference.
+        Higher entropy = more uncertainty about noise, edges, dose-response, etc.
+
+        Entropy components:
+        - Noise uncertainty: Wide CI = high entropy (0-2 bits)
+        - Assay uncertainty: Ungated assays = high entropy (0-3 bits)
+        - Edge effects: Unknown = high entropy (0-1 bit)
+        - Compound exploration: Untested = high entropy (0-2 bits)
+
+        Returns:
+            Entropy in bits (heuristic, from calibration state, NOT mechanism posterior)
+        """
+        entropy = 0.0
+
+        # Noise uncertainty (0-2 bits)
+        # Wide CI or no noise estimate = high entropy
+        if not self.noise_sigma_stable:
+            if self.noise_rel_width is None or self.noise_df_total < 10:
+                entropy += 2.0  # No noise estimate yet
+            elif self.noise_rel_width > 0.40:
+                entropy += 1.5  # Very wide CI
+            elif self.noise_rel_width > 0.25:
+                entropy += 1.0  # Moderate CI
+            else:
+                entropy += 0.5  # Narrow CI but gate not stable yet
+        else:
+            entropy += 0.1  # Stable gate, low uncertainty
+
+        # Assay uncertainty (0-3 bits, 1 bit per ungated assay)
+        # Ungated assays represent unknown measurement quality
+        if not self.ldh_sigma_stable:
+            entropy += 1.0
+        if not self.cell_paint_sigma_stable:
+            entropy += 1.0
+        if not self.scrna_sigma_stable:
+            entropy += 1.0
+
+        # Edge effects uncertainty (0-1 bit)
+        # Unknown edge effects = systematic bias risk
+        if not self.edge_effect_confident:
+            if self.edge_tests_run == 0:
+                entropy += 1.0  # No edge tests yet
+            else:
+                entropy += 0.5  # Edge tests run but not confident
+
+        # Compound exploration uncertainty (0-2 bits)
+        # Untested compounds represent unknown dose-response space
+        n_tested = len(self.tested_compounds) - (1 if 'DMSO' in self.tested_compounds else 0)
+        if n_tested == 0:
+            entropy += 2.0  # No compounds tested
+        elif n_tested == 1:
+            entropy += 1.0  # Only one compound
+        else:
+            entropy += 0.5  # Multiple compounds (still exploration needed)
+
+        # Dose-response uncertainty (0-1 bit)
+        if not self.dose_curvature_seen:
+            entropy += 1.0
+
+        # Time-dependence uncertainty (0-1 bit)
+        if not self.time_dependence_seen:
+            entropy += 1.0
+
+        return entropy
+
+    @property
+    def entropy(self) -> float:
+        """
+        DEPRECATED: Use calibration_entropy_bits for clarity.
+
+        This returns calibration entropy (uncertainty about noise/bias/measurement quality).
+        Do NOT confuse with mechanism entropy (uncertainty about which biological process).
+        """
+        return self.calibration_entropy_bits
+
+    def estimate_expected_gain(
+        self,
+        template_name: str,
+        n_wells: int,
+        modalities: Tuple[str, ...] = ("cell_painting",)
+    ) -> float:
+        """
+        Estimate expected information gain from a proposed experiment.
+
+        This is "Phase 1" gain estimation - based on heuristics, not full Bayesian updates.
+        Assumes experiments reduce entropy by tightening calibration or exploring new space.
+
+        Args:
+            template_name: Experiment template (e.g., "baseline_replicates", "edge_center_test")
+            n_wells: Number of wells in design
+            modalities: Assays used (e.g., ("cell_painting",), ("scrna_seq",))
+
+        Returns:
+            Expected information gain in bits (higher = more informative)
+        """
+        expected_gain = 0.0
+
+        # Baseline replicates: Reduce noise uncertainty
+        if "baseline" in template_name or "calibrate" in template_name:
+            if not self.noise_sigma_stable:
+                # Gain proportional to wells (more data = tighter CI)
+                # Saturates at ~0.5-1.0 bits for reasonable sample sizes
+                df_current = self.noise_df_total
+                df_after = df_current + (n_wells - 1)
+                if df_current < 10:
+                    expected_gain += 0.8  # First calibration is very informative
+                elif df_current < 40:
+                    expected_gain += 0.5  # Approaching gate, still valuable
+                else:
+                    expected_gain += 0.2  # Fine-tuning
+            else:
+                expected_gain += 0.1  # Maintenance of calibration
+
+        # Edge center test: Resolve edge effects
+        if "edge" in template_name:
+            if not self.edge_effect_confident:
+                expected_gain += 0.8  # First edge test is informative
+            else:
+                expected_gain += 0.1  # Confirmation
+
+        # Dose ladder: Explore dose-response
+        if "dose" in template_name or "screen" in template_name:
+            n_untested = len(self.tested_compounds)  # Rough proxy
+            if n_untested < 2:
+                expected_gain += 1.0  # First compound very informative
+            elif n_untested < 5:
+                expected_gain += 0.6  # Expanding chemical space
+            else:
+                expected_gain += 0.3  # Incremental exploration
+
+        # scRNA upgrade: High information gain (expensive modality)
+        if "scrna" in template_name:
+            if "scrna_seq" in modalities or "scrna" in modalities:
+                # scRNA resolves mechanism-level questions
+                expected_gain += 1.5  # High gain from transcriptional data
+            else:
+                expected_gain += 0.3  # Proxy measurements less informative
+
+        # Assay ladder calibration: Per-assay gate earning
+        if "ldh" in template_name:
+            if not self.ldh_sigma_stable:
+                expected_gain += 0.6
+        if "cell_paint" in template_name or "paint" in template_name:
+            if not self.cell_paint_sigma_stable:
+                expected_gain += 0.6
+        if "scrna" in template_name:
+            if not self.scrna_sigma_stable:
+                expected_gain += 1.0  # scRNA gate is expensive, high value
+
+        # Minimum gain floor (even bad experiments provide some information)
+        if expected_gain < 0.05:
+            expected_gain = 0.05
+
+        return expected_gain
