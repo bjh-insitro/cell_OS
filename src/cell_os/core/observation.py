@@ -24,7 +24,11 @@ class RawWellResult:
     Fields use canonical types:
     - location: SpatialLocation (concrete, not position_tag)
     - assay: AssayType enum (not string)
-    - observation_time_h: explicit time semantics
+    - observation_time_h: explicit time semantics (hours since t=0)
+
+    Temporal invariants:
+    - observation_time_h >= 0 (no negative time)
+    - observation_time_h >= treatment_start_time_h (causality)
 
     readouts can hold arbitrary nested structure (assay-specific).
     """
@@ -35,6 +39,11 @@ class RawWellResult:
     observation_time_h: float
     readouts: Mapping[str, Any]
     qc: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Validate temporal causality on RawWellResult construction."""
+        from .temporal_causality import validate_raw_well_result_temporal_causality
+        validate_raw_well_result_temporal_causality(self)
 
 
 @dataclass(frozen=True)

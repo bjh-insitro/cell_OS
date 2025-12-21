@@ -81,13 +81,28 @@ class Well:
 
     Field semantics (CANONICAL - do not reinterpret):
 
-    observation_time_h:
-        Hours since treatment start when the assay readout is taken.
-        This is the ONLY time field allowed in the canonical well model.
+    treatment_start_time_h:
+        Hours since universal time origin (t=0) when treatment is applied.
+        This is the causal anchor - observations cannot precede this time.
+        Defaults to 0.0 (treatment at experiment start).
 
         Examples:
-        - observation_time_h=24.0 means "measure 24 hours after adding compound"
-        - observation_time_h=0.0 means "measure immediately after treatment"
+        - treatment_start_time_h=0.0 means "add compound at experiment start"
+        - treatment_start_time_h=24.0 means "add compound 24h after experiment start"
+
+        Invariant: treatment_start_time_h >= 0 (no time travel)
+
+    observation_time_h:
+        Hours since universal time origin (t=0) when the assay readout is taken.
+        This is when the measurement happens, NOT duration.
+
+        Examples:
+        - observation_time_h=24.0 with treatment_start_time_h=0.0
+          means "measure 24 hours after adding compound"
+        - observation_time_h=48.0 with treatment_start_time_h=24.0
+          means "measure 24 hours after adding compound (which was added at t=24h)"
+
+        Invariant: observation_time_h >= treatment_start_time_h (causality)
 
         NOT:
         - "timepoint" (ambiguous reference point)
@@ -105,7 +120,13 @@ class Well:
     treatment: Treatment
     observation_time_h: float
     assay: AssayType
+    treatment_start_time_h: float = 0.0
     location: Optional[SpatialLocation] = None
+
+    def __post_init__(self):
+        """Validate temporal causality on Well construction."""
+        from .temporal_causality import validate_well_temporal_causality
+        validate_well_temporal_causality(self)
 
 
 @dataclass(frozen=True)
@@ -187,6 +208,7 @@ class Experiment:
                 "compound": w.treatment.compound,
                 "dose_uM": w.treatment.dose_uM,
                 "observation_time_h": w.observation_time_h,
+                "treatment_start_time_h": w.treatment_start_time_h,
                 "assay": w.assay.value,  # Enum → string
                 "plate_id": w.location.plate_id if w.location else None,
                 "well_id": w.location.well_id if w.location else None,
@@ -226,6 +248,7 @@ class Experiment:
                     "compound": w.treatment.compound,
                     "dose_uM": w.treatment.dose_uM,
                     "observation_time_h": w.observation_time_h,
+                    "treatment_start_time_h": w.treatment_start_time_h,
                     "assay": w.assay.value,
                     "plate_id": w.location.plate_id if w.location else None,
                     "well_id": w.location.well_id if w.location else None,
