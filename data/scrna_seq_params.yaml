@@ -1,0 +1,198 @@
+# scRNA-seq simulation parameters
+# Version 0.1 - minimal but correct
+#
+# Philosophy:
+# - Small gene panel on purpose (can expand to 500-2000 genes later)
+# - Fold changes are program weights, not "truth"
+# - Technical noise separates biology from measurement artifacts
+# - Batch effects > imaging noise (realistic for scRNA)
+
+version: 0.1
+
+genesets:
+  # Keep it small for Phase 0. Expand later.
+  housekeeping: [ACTB, GAPDH, B2M, RPLP0]
+  apoptosis: [BAX, BCL2, BBC3, CASP3]
+  cell_cycle: [MKI67, TOP2A, PCNA, CCNB1]
+
+cell_line_baseline:
+  # Baseline mean expression (relative UMIs if depth=1.0, no programs active)
+  # Values are intentionally coarse - this is a minimal panel
+  A549:
+    # Housekeeping (high, stable)
+    ACTB: 30
+    GAPDH: 25
+    B2M: 12
+    RPLP0: 15
+    # ER stress markers (low baseline, highly inducible)
+    HSPA5: 2
+    DDIT3: 0.5
+    ATF4: 1.2
+    XBP1: 0.8
+    # Oxidative stress markers
+    HMOX1: 1
+    NQO1: 1
+    SOD1: 3
+    GPX1: 2
+    # DNA damage markers
+    TP53: 1
+    CDKN1A: 0.7
+    GADD45A: 0.6
+    # Mitochondrial markers
+    ATP5A1: 6
+    COX4I1: 5
+    PARK2: 0.6
+    # Apoptosis markers
+    BAX: 1
+    BCL2: 1.2
+    BBC3: 0.4
+    CASP3: 0.8
+    # Cell cycle markers
+    MKI67: 2
+    TOP2A: 1.5
+    PCNA: 1.8
+    CCNB1: 1.0
+    # Collagen (generic ECM marker, downregulated by stress)
+    COL1A1: 4
+
+  HEK293:
+    ACTB: 28
+    GAPDH: 22
+    B2M: 10
+    RPLP0: 14
+    HSPA5: 2.5
+    DDIT3: 0.6
+    ATF4: 1.0
+    XBP1: 0.9
+    HMOX1: 1.2
+    NQO1: 0.8
+    SOD1: 3.5
+    GPX1: 2.2
+    TP53: 0.8
+    CDKN1A: 0.6
+    GADD45A: 0.5
+    ATP5A1: 7
+    COX4I1: 6
+    PARK2: 0.5
+    BAX: 0.9
+    BCL2: 1.4
+    BBC3: 0.3
+    CASP3: 0.7
+    MKI67: 3
+    TOP2A: 2
+    PCNA: 2.2
+    CCNB1: 1.5
+    COL1A1: 3
+
+  iPSC_NGN2:
+    # Neurons: lower proliferation markers, higher oxidative metabolism
+    ACTB: 32
+    GAPDH: 20
+    B2M: 8
+    RPLP0: 12
+    HSPA5: 1.5
+    DDIT3: 0.4
+    ATF4: 0.8
+    XBP1: 0.7
+    HMOX1: 2.0
+    NQO1: 1.5
+    SOD1: 5.0
+    GPX1: 3.0
+    TP53: 1.2
+    CDKN1A: 0.9
+    GADD45A: 0.7
+    ATP5A1: 10
+    COX4I1: 9
+    PARK2: 0.8
+    BAX: 1.2
+    BCL2: 0.8
+    BBC3: 0.5
+    CASP3: 1.0
+    MKI67: 0.5  # Low proliferation
+    TOP2A: 0.3
+    PCNA: 0.4
+    CCNB1: 0.2
+    COL1A1: 1
+
+stress_programs_ref: "data/gene_signatures/stress_programs.yaml"
+
+dose_response:
+  # Hill coefficient for program activation
+  hill: 2.0
+  # Latent saturation threshold (when latent = 1.0, program is fully active)
+  latent_saturation: 1.0
+
+subpop_effects:
+  # Sensitive cells: stronger program response, higher baseline noise
+  sensitive:
+    program_gain: 1.25  # 25% stronger program activation
+    baseline_noise_cv: 0.25
+  # Typical cells: normal response
+  typical:
+    program_gain: 1.0
+    baseline_noise_cv: 0.20
+  # Resistant cells: weaker program response, lower baseline noise
+  resistant:
+    program_gain: 0.75  # 25% weaker program activation
+    baseline_noise_cv: 0.18
+
+technical_noise:
+  # Library size distribution (UMIs per cell)
+  umi_depth_mean: 5000
+  umi_depth_logsigma: 0.35  # ~2× range typical
+
+  # Dropout model: p_dropout = 1 / (1 + (expected_umi / x0)^alpha)
+  # Higher expected → lower dropout
+  dropout_alpha: 1.6     # Strength (higher = more aggressive)
+  dropout_x0: 1.0        # Midpoint (50% dropout at 1 UMI)
+
+  # Batch effects: multiplicative lognormal per gene per batch
+  # Composed of shared latent (affects all genes) + gene-specific noise
+  # IMPORTANT: Batch effects are STRONGER in scRNA than imaging
+  batch_gene_lognormal_sigma: 0.25  # Per-gene variation
+  batch_shared_sigma: 0.15          # Shared batch-level drift
+
+  # Ambient RNA: fraction of counts from cell-free RNA in supernatant
+  # Creates spurious low-level detection of "housekeeping" genes in dying cells
+  ambient_fraction: 0.02  # 2% contamination
+
+costs:
+  # Time cost: scRNA takes longer than imaging, increasing drift exposure
+  time_cost_h: 4.0  # 4 hours (vs 2h for cell painting)
+
+  # Reagent cost: scRNA is 10× more expensive than imaging
+  reagent_cost_usd: 200.0
+
+  # Minimum cells for reliable estimates (underpowered = noisy)
+  min_cells: 500
+
+  # Soft penalty if agent requests underpowered scRNA anyway
+  # Applied to reward or cost if n_cells < min_cells
+  soft_penalty_if_underpowered: 0.25
+
+cell_cycle:
+  # Cell cycle is a CONFOUNDER: cycling cells look "recovered" even if stressed
+  # Proliferating cells: high cycle markers + suppressed stress markers
+  # This creates realistic ambiguity: "recovered or just dividing?"
+
+  cycling_fraction_by_cell_line:
+    A549: 0.55      # Lung cancer, proliferative
+    HEK293: 0.60    # Highly proliferative
+    iPSC_NGN2: 0.08 # Neurons, post-mitotic (barely cycle)
+
+  cycling_program:
+    # Genes upregulated in cycling cells
+    MKI67: 8.0   # Proliferation marker
+    TOP2A: 6.0   # DNA replication
+    PCNA: 3.0    # DNA synthesis
+    CCNB1: 4.0   # Cell cycle regulator
+
+  stress_antagonism:
+    # Cell cycle SUPPRESSES stress markers (resource competition)
+    # When cycling_score = 1.0, these markers are multiplied by these factors
+    # This creates false "recovery" signal in proliferating cells
+    HSPA5: 0.70   # 30% reduction in ER stress marker
+    DDIT3: 0.65   # 35% reduction in pro-apoptotic UPR
+    ATF4: 0.75    # 25% reduction
+    HMOX1: 0.80   # 20% reduction in oxidative marker
+    BAX: 0.70     # 30% reduction in apoptosis marker

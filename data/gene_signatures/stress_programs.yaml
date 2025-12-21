@@ -1,0 +1,63 @@
+# Stress-responsive gene programs for scRNA-seq simulation
+#
+# Each program defines differentially expressed genes per stress axis.
+# Fold changes are program weights (saturated activation level), not absolute truth.
+#
+# These map to vessel latent states:
+# - er_stress → er_stress program
+# - mito_dysfunction → mito_dysfunction program
+# - oxidative_stress → oxidative_stress program (if tracked)
+# - dna_damage → dna_damage program (if tracked)
+
+er_stress:
+  # Unfolded protein response (UPR) markers
+  up:
+    HSPA5: 10.0   # BiP/GRP78 - canonical UPR marker
+    DDIT3: 20.0   # CHOP - pro-apoptotic UPR
+    ATF4: 5.0     # Transcription factor
+    XBP1: 4.0     # Spliced XBP1
+  down:
+    COL1A1: 0.3   # Collagen synthesis suppressed
+
+mito_dysfunction:
+  # Mitochondrial stress response
+  up:
+    PARK2: 8.0    # Parkin - mitophagy marker
+  down:
+    ATP5A1: 0.25  # ATP synthase subunit
+    COX4I1: 0.3   # Cytochrome c oxidase
+
+oxidative_stress:
+  # ROS response / Nrf2 pathway
+  up:
+    HMOX1: 12.0   # Heme oxygenase 1 - canonical oxidative marker
+    NQO1: 8.0     # NAD(P)H quinone dehydrogenase
+    SOD1: 2.0     # Superoxide dismutase
+    GPX1: 2.0     # Glutathione peroxidase
+
+dna_damage:
+  # DNA damage response / p53 pathway
+  up:
+    TP53: 3.0     # Tumor suppressor
+    CDKN1A: 10.0  # p21 - cell cycle arrest
+    GADD45A: 8.0  # Growth arrest marker
+
+transport_dysfunction:
+  # Microtubule/cytoskeleton disruption
+  # NOTE: In your current model, transport dysfunction is latent but may not
+  # have strong transcriptional signature (morphological phenotype dominates).
+  # Placeholder for now - can expand if you add transcriptional coupling.
+  up:
+    HSPA8: 2.0    # Stress-induced chaperone
+  down:
+    TUBB: 0.7     # Beta-tubulin (mild suppression)
+
+proteostasis:
+  # Proteasome inhibition / protein aggregation
+  # Maps to er_stress axis in your current model
+  up:
+    HSPA5: 8.0
+    DDIT3: 15.0
+    SQSTM1: 6.0   # p62 - autophagy marker
+  down:
+    COL1A1: 0.4

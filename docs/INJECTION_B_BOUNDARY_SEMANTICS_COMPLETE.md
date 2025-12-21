@@ -13,6 +13,42 @@ OperationScheduler is now the deterministic event queue. Operations queue intent
 
 ---
 
+## Critical Post-Review Fixes
+
+After initial boundary semantics implementation, user review identified two critical issues:
+
+### Fix 1: Interval Semantics (CRITICAL)
+**Bug**: Clock advanced BEFORE event delivery, so events scheduled at t=0 didn't affect physics over [0, 12)
+
+**User feedback**: "Your scheduler delivery happens after you advance time. That means intents scheduled at 'now' do not affect the physics during the interval you are simulating. That is a semantic fracture."
+
+**Direct question**: "do you want events to apply at the start of the interval, the end, or half-open [t, t+dt)?"
+
+**Answer**: Events should apply at START of interval (left-closed [t, t+dt))
+
+**Fix**: Reordered `advance_time()` to:
+1. Deliver events at t0 (before physics)
+2. Apply physics over [t0, t0+dt) using delivered concentrations
+3. Advance clock to t0+dt (after physics)
+
+**Enforcement**: New test `test_interval_semantics.py` (3/3 passing)
+
+### Fix 2: Instant Kill Guardrail
+**Bug**: `_apply_instant_kill` could be called during hazard proposal/commit phase, causing double-counting in death ledgers
+
+**User guidance**: "Guardrail: if a step is 'open', refuse instant kills."
+
+**Fix**: Added guardrail checking `_step_hazard_proposals is not None` and raising RuntimeError if violated
+
+**Lifecycle**:
+- Initialize to None (signals "no step in progress")
+- Set to {} at start of _step_vessel (signals "step open")
+- Set to None at end of _step_vessel (signals "step complete")
+
+**Enforcement**: New test `test_instant_kill_guardrail.py` (3/3 passing)
+
+---
+
 ## What Was Built
 
 ### 1. OperationScheduler (Pure Envelope Queue)
@@ -237,6 +273,9 @@ vm.advance_time(12.0)  # Advance time, then deliver at boundary
 - `tests/phase6a/test_operation_scheduler_order_invariance.py` (3 tests, all passing)
 - `tests/phase6a/test_scheduler_no_concentration_mutation.py` (3 tests, all passing)
 - `tests/phase6a/test_scheduler_capacity_penalty_spec.py` (3 tests, all xfail)
+- `tests/phase6a/test_interval_semantics.py` (3 tests, all passing) - **Added after user review**
+- `tests/phase6a/test_instant_kill_guardrail.py` (3 tests, all passing) - **Added for conservation safety**
+- `docs/ENFORCEMENT_TEST_COVERAGE.md` (comprehensive test coverage summary)
 
 ### Modified Files
 - `src/cell_os/hardware/biological_virtual.py`:
@@ -250,9 +289,11 @@ vm.advance_time(12.0)  # Advance time, then deliver at boundary
   - Added design principle: "If a change would make a test easier to write but a lie easier to tell, reject the change."
 
 ### Total Test Coverage
-- **3 new Injection B enforcement tests** (6 passing, 3 xfail)
+- **3 new Injection B enforcement tests** (9 passing, 3 xfail)
+- **1 new interval semantics test** (3 passing)
+- **1 new guardrail enforcement test** (3 passing)
 - **All existing Injection A tests pass** (2 + 6 invariants)
-- **Total: 14 enforcement assertions passing**
+- **Total: 23 enforcement assertions passing** (18 passing + 5 existing + 3 xfail spec tests)
 
 ---
 
