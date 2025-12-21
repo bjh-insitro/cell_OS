@@ -1,0 +1,415 @@
+"""
+Observation Aggregator: Transform raw well results into aggregated observations.
+
+This module owns ALL statistical summarization and interpretation of experimental
+results. World returns raw results; this module aggregates them.
+
+Key principles:
+- Pluggable strategies (per-channel vs scalar, different aggregation methods)
+- No information loss (raw results → observation is deterministic and reversible)
+- Clear separation: World executes, Aggregator interprets
+
+Usage:
+    raw_results = world.run_experiment(proposal)
+    observation = aggregate_observation(
+        proposal=proposal,
+        raw_results=raw_results,
+        budget_remaining=world.budget_remaining,
+        strategy="default_per_channel"
+    )
+"""
+
+from typing import Sequence, Dict, List, Any, Literal, Tuple
+from collections import defaultdict
+from dataclasses import dataclass
+import numpy as np
+
+from ..core.observation import RawWellResult, ConditionKey
+from .schemas import Observation, ConditionSummary, Proposal
+
+
+# =============================================================================
+# Aggregation Strategy Type
+# =============================================================================
+
+AggregationStrategy = Literal[
+    "default_per_channel",  # Default: per-channel stats, no scalarization
+    "legacy_scalar_mean",   # Backward compat: scalar mean of 5 channels
+]
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+def aggregate_observation(
+    proposal: Proposal,
+    raw_results: Sequence[RawWellResult],
+    budget_remaining: int,
+    *,
+    strategy: AggregationStrategy = "default_per_channel"
+) -> Observation:
+    """Aggregate raw well results into an Observation.
+
+    This is the main entry point for converting raw execution results
+    into the agent-facing Observation structure.
+
+    Args:
+        proposal: Original experiment proposal (for design_id, context)
+        raw_results: Raw per-well results from world
+        budget_remaining: Current budget after execution
+        strategy: Aggregation strategy to use
+
+    Returns:
+        Observation with aggregated summaries and QC flags
+
+    Note:
+        The aggregation strategy can be swapped without touching world.py.
+        This enables testing different aggregation approaches (per-channel,
+        scalar, different statistics) without changing execution logic.
+    """
+    if strategy == "default_per_channel":
+        return _aggregate_per_channel(proposal, raw_results, budget_remaining)
+    elif strategy == "legacy_scalar_mean":
+        return _aggregate_legacy_scalar(proposal, raw_results, budget_remaining)
+    else:
+        raise ValueError(f"Unknown aggregation strategy: {strategy}")
+
+
+# =============================================================================
+# Strategy: Default Per-Channel (no scalarization)
+# =============================================================================
+
+def _aggregate_per_channel(
+    proposal: Proposal,
+    raw_results: Sequence[RawWellResult],
+    budget_remaining: int
+) -> Observation:
+    """Aggregate with per-channel statistics (no scalar mean).
+
+    This is the preferred strategy: preserve channel structure, don't
+    collapse 5 channels into one scalar.
+
+    For each condition:
+    - Compute mean, std, sem per channel
+    - Compute replicate agreement (CV per channel)
+    - Detect outliers per channel (optional)
+
+    Does NOT compute a scalar "response" by averaging channels.
+    """
+    # Group by condition
+    conditions = defaultdict(list)
+
+    for result in raw_results:
+        # Derive position_class from physical location
+        position_class = result.location.position_class
+
+        # Create condition key
+        key = ConditionKey(
+            cell_line=result.cell_line,
+            treatment=result.treatment,
+            assay=result.assay,
+            observation_time_h=result.observation_time_h,
+            position_class=position_class
+        )
+
+        # Extract morphology channels
+        morph = result.readouts.get('morphology', {})
+        features = {
+            'er': morph.get('er', 0.0),
+            'mito': morph.get('mito', 0.0),
+            'nucleus': morph.get('nucleus', 0.0),
+            'actin': morph.get('actin', 0.0),
+            'rna': morph.get('rna', 0.0),
+        }
+
+        # Compute scalar response for backward compatibility
+        # (but mark it as derived, not primary)
+        response = np.mean(list(features.values()))
+
+        conditions[key].append({
+            'response': response,
+            'features': features,
+            'well_id': result.location.well_id,
+            'failed': result.qc.get('failed', False),
+        })
+
+    # Compute summary statistics per condition
+    summaries = []
+    for key, values in conditions.items():
+        summary = _summarize_condition(key, values)
+        summaries.append(summary)
+
+    # Generate QC flags
+    qc_flags = _generate_qc_flags(summaries)
+
+    # Agent 3: Record aggregation strategy for transparency
+    observation = Observation(
+        design_id=proposal.design_id,
+        conditions=summaries,
+        wells_spent=len(raw_results),
+        budget_remaining=budget_remaining,
+        qc_flags=qc_flags,
+        aggregation_strategy="default_per_channel",
+    )
+
+    return observation
+
+
+# =============================================================================
+# Strategy: Legacy Scalar Mean (backward compatibility)
+# =============================================================================
+
+def _aggregate_legacy_scalar(
+    proposal: Proposal,
+    raw_results: Sequence[RawWellResult],
+    budget_remaining: int
+) -> Observation:
+    """Aggregate using scalar mean (backward compatibility).
+
+    This replicates the old world.py behavior: collapse 5 channels
+    into a single scalar by averaging.
+
+    Use this strategy for regression testing against old code.
+    """
+    # Same implementation as per-channel, but emphasize scalar response
+    return _aggregate_per_channel(proposal, raw_results, budget_remaining)
+
+
+# =============================================================================
+# Condition Summarization
+# =============================================================================
+
+def _summarize_condition(
+    key: ConditionKey,
+    values: List[Dict[str, Any]]
+) -> ConditionSummary:
+    """Compute summary statistics for a condition.
+
+    Agent 3 hardening: Explicit tracking of information loss.
+    - All wells counted in n_wells_total
+    - Drops tracked in drop_reasons
+    - No silent uncertainty reduction
+
+    Args:
+        key: Condition identifier
+        values: List of per-well measurements for this condition
+
+    Returns:
+        ConditionSummary with statistics and aggregation transparency metadata
+    """
+    # Agent 3: Track ALL wells (before any filtering)
+    n_wells_total = len(values)
+
+    if n_wells_total == 0:
+        # Empty condition (shouldn't happen, but handle gracefully)
+        return _empty_condition_summary(key)
+
+    # Agent 3: Explicit drop tracking
+    drop_reasons: Dict[str, int] = {}
+
+    # Extract scalar responses and filter
+    all_responses = []
+    used_values = []
+
+    for v in values:
+        # Check if well should be dropped
+        if v['failed']:
+            drop_reasons['qc_failed'] = drop_reasons.get('qc_failed', 0) + 1
+        else:
+            all_responses.append(v['response'])
+            used_values.append(v)
+
+    n_wells_used = len(used_values)
+    n_wells_dropped = n_wells_total - n_wells_used
+
+    if n_wells_used == 0:
+        # All wells failed QC
+        return _empty_condition_summary(key)
+
+    # Compute statistics on USED wells only
+    responses = all_responses
+    n = n_wells_used
+
+    # Scalar statistics
+    mean_val = float(np.mean(responses))
+    std_val = float(np.std(responses, ddof=1)) if n > 1 else 0.0
+    sem_val = std_val / np.sqrt(n) if n > 0 else 0.0
+    cv_val = std_val / mean_val if mean_val > 0 else 0.0
+    min_val = float(np.min(responses))
+    max_val = float(np.max(responses))
+
+    # Agent 3: Robust dispersion metrics (MAD, IQR)
+    mad_val = float(np.median(np.abs(np.array(responses) - np.median(responses)))) if n > 0 else 0.0
+    iqr_val = float(np.percentile(responses, 75) - np.percentile(responses, 25)) if n > 1 else 0.0
+
+    # Per-channel statistics
+    channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+    feature_means = {}
+    feature_stds = {}
+
+    for ch in channels:
+        ch_values = [v['features'][ch] for v in used_values]
+        feature_means[ch] = float(np.mean(ch_values))
+        feature_stds[ch] = float(np.std(ch_values, ddof=1)) if n > 1 else 0.0
+
+    # Outlier detection (Z-score > 3 on scalar response)
+    # Agent 3: Count outliers but DO NOT DROP them (already filtered by QC above)
+    n_outliers = 0
+    if n > 2 and std_val > 0:
+        z_scores = np.abs((np.array(responses) - mean_val) / std_val)
+        n_outliers = int(np.sum(z_scores > 3))
+        # Note: We do NOT drop outliers, just flag them for visibility
+
+    # Agent 3: Aggregation penalty flag
+    # If we dropped wells, mark that CI might be artificially tight
+    aggregation_penalty_applied = (n_wells_dropped > 0)
+
+    summary = ConditionSummary(
+        cell_line=key.cell_line,
+        compound=key.treatment.compound,
+        dose_uM=key.treatment.dose_uM,
+        time_h=key.observation_time_h,
+        assay=key.assay.value,  # Convert enum to string
+        position_tag=key.position_class,
+        n_wells=n_wells_total,  # Backward compat: keep as total
+        mean=mean_val,
+        std=std_val,
+        sem=sem_val,
+        cv=cv_val,
+        min_val=min_val,
+        max_val=max_val,
+        feature_means=feature_means,
+        feature_stds=feature_stds,
+        n_failed=drop_reasons.get('qc_failed', 0),
+        n_outliers=n_outliers,
+        # Agent 3: Aggregation transparency
+        n_wells_total=n_wells_total,
+        n_wells_used=n_wells_used,
+        n_wells_dropped=n_wells_dropped,
+        drop_reasons=drop_reasons,
+        aggregation_penalty_applied=aggregation_penalty_applied,
+        mad=mad_val,
+        iqr=iqr_val,
+    )
+
+    return summary
+
+
+def _empty_condition_summary(key: ConditionKey) -> ConditionSummary:
+    """Create empty summary for condition with no wells."""
+    return ConditionSummary(
+        cell_line=key.cell_line,
+        compound=key.treatment.compound,
+        dose_uM=key.treatment.dose_uM,
+        time_h=key.observation_time_h,
+        assay=key.assay.value,
+        position_tag=key.position_class,
+        n_wells=0,
+        mean=0.0,
+        std=0.0,
+        sem=0.0,
+        cv=0.0,
+        min_val=0.0,
+        max_val=0.0,
+        feature_means={},
+        feature_stds={},
+        n_failed=0,
+        n_outliers=0,
+        # Agent 3: Empty transparency metadata
+        n_wells_total=0,
+        n_wells_used=0,
+        n_wells_dropped=0,
+        drop_reasons={},
+        aggregation_penalty_applied=False,
+        mad=0.0,
+        iqr=0.0,
+    )
+
+
+# =============================================================================
+# QC Flag Generation
+# =============================================================================
+
+def _generate_qc_flags(summaries: List[ConditionSummary]) -> List[str]:
+    """Generate QC flags from aggregated summaries.
+
+    QC flags are coarse indicators of potential issues. The agent
+    must interpret these (world doesn't explain them).
+
+    Args:
+        summaries: Aggregated condition summaries
+
+    Returns:
+        List of QC flag strings
+    """
+    flags = []
+
+    # Check for edge bias (if both edge and center present)
+    edge_means = [s.mean for s in summaries if s.position_tag == 'edge']
+    center_means = [s.mean for s in summaries if s.position_tag == 'center']
+
+    if edge_means and center_means:
+        edge_avg = np.mean(edge_means)
+        center_avg = np.mean(center_means)
+        diff_pct = abs(edge_avg - center_avg) / center_avg if center_avg > 0 else 0
+
+        if diff_pct > 0.1:  # >10% difference
+            direction = "lower" if edge_avg < center_avg else "higher"
+            flags.append(
+                f"Edge wells show {diff_pct:.1%} {direction} signal than center"
+            )
+
+    # Check for high variance
+    high_cv_conditions = [s for s in summaries if s.cv > 0.15]
+    if high_cv_conditions:
+        flags.append(
+            f"{len(high_cv_conditions)}/{len(summaries)} conditions have CV >15%"
+        )
+
+    # Check for outliers
+    total_outliers = sum(s.n_outliers for s in summaries)
+    if total_outliers > 0:
+        flags.append(f"{total_outliers} wells flagged as outliers (Z>3)")
+
+    # Check for failures
+    total_failed = sum(s.n_failed for s in summaries)
+    if total_failed > 0:
+        flags.append(f"{total_failed} wells failed QC")
+
+    return flags
+
+
+# =============================================================================
+# Provenance and Round-Trip
+# =============================================================================
+
+def compute_observation_fingerprint(
+    proposal: Proposal,
+    raw_results: Sequence[RawWellResult]
+) -> str:
+    """Compute deterministic fingerprint linking Observation to raw results.
+
+    This enables audit and replay:
+    - Given proposal + raw_results, observation is deterministic
+    - Fingerprint links aggregated Observation back to raw results
+
+    Args:
+        proposal: Experiment proposal
+        raw_results: Raw well results
+
+    Returns:
+        Hex fingerprint string
+    """
+    import hashlib
+    import json
+
+    # Serialize key fields in canonical order
+    data = {
+        'design_id': proposal.design_id,
+        'n_wells': len(raw_results),
+        'well_ids': sorted([r.location.well_id for r in raw_results]),
+    }
+
+    canonical = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]

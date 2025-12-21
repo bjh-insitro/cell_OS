@@ -6,13 +6,15 @@ Tools for validating and optimizing experimental designs:
 - Batch confounding detection
 - Replication adequacy
 - Optimization suggestions
+- Confluence confounding detection (density-matched design enforcement)
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 from scipy import stats
 import pandas as pd
+from collections import defaultdict
 
 
 @dataclass
@@ -360,5 +362,179 @@ class ExperimentalDesignValidator:
             results["overall"] = "⚠️  Issues detected: " + ", ".join(issues)
         else:
             results["overall"] = "✓ Design looks good!"
-        
+
         return results
+
+    def _predict_contact_pressure(self,
+                                  cell_line: str,
+                                  time_h: float,
+                                  assay: str,
+                                  compound: str,
+                                  dose_uM: float) -> float:
+        """
+        Predict contact pressure at readout time using lightweight heuristic model.
+
+        This is a **design-time policy guard**, not a full physical simulation.
+        It uses conservative defaults to catch obvious confounding patterns.
+
+        Args:
+            cell_line: Cell line name (A549, HepG2, U2OS, 293T)
+            time_h: Hours post-treatment
+            assay: Assay type (affects readout timing)
+            compound: Compound name
+            dose_uM: Dose in micromolar
+
+        Returns:
+            Predicted contact pressure [0, 1] at readout time
+
+        Contract:
+        - Uses nominal seeding fractions and growth rates per cell line
+        - Applies crude dose penalty to be conservative (prevent false negatives)
+        - Same sigmoid as simulator: c0=0.75, width=0.08
+        - Does NOT require running full simulation
+        """
+        # Nominal defaults (tune these as platform data accumulates)
+        defaults = {
+            "A549": {"seed_frac": 0.20, "growth_rate_h": 0.035},   # ~20h doubling
+            "HepG2": {"seed_frac": 0.25, "growth_rate_h": 0.025},  # ~28h doubling
+            "U2OS": {"seed_frac": 0.18, "growth_rate_h": 0.030},   # ~23h doubling
+            "293T": {"seed_frac": 0.15, "growth_rate_h": 0.040},   # ~17h doubling
+        }
+
+        # Fallback for unknown cell lines
+        d = defaults.get(cell_line, {"seed_frac": 0.20, "growth_rate_h": 0.030})
+
+        # Conservative dose effect: assume compounds slow growth unless marked as vehicle
+        dose_penalty = 0.0
+        if dose_uM > 0 and compound.lower() not in ("dmso", "vehicle", "control", "pbs"):
+            # Bounded logarithmic penalty (conservative: assumes mild growth inhibition)
+            dose_penalty = min(0.6, 0.08 * np.log10(dose_uM + 1.0))
+
+        # Predict confluence at time
+        r = d["growth_rate_h"] * (1.0 - dose_penalty)
+        confluence = d["seed_frac"] * np.exp(r * time_h)
+        confluence = float(min(1.2, max(0.0, confluence)))  # Cap at 120% (overgrown)
+
+        # Convert to pressure using same sigmoid as simulator
+        c0, width = 0.75, 0.08
+        x = (confluence - c0) / max(width, 1e-6)
+        p = 1.0 / (1.0 + np.exp(-x))
+        return float(min(1.0, max(0.0, p)))
+
+    def validate_proposal_for_confluence_confounding(self,
+                                                    wells: List[Dict[str, Any]],
+                                                    design_id: str,
+                                                    threshold: float = 0.15) -> None:
+        """
+        Validate that proposal does not have confounded density across comparison arms.
+
+        This enforces **density-matched design** as a scientific constraint.
+        Comparisons across conditions must be density-matched at readout time,
+        or explicitly include a density sentinel arm.
+
+        Args:
+            wells: List of well dicts with keys: cell_line, compound, dose_uM, time_h, assay
+            design_id: Design identifier (for error reporting)
+            threshold: Maximum allowed delta_p across comparison arms (default 0.15)
+
+        Raises:
+            ValueError: If confluence confounding detected (with structured details)
+
+        Resolution strategies (three options):
+        1. Add a density sentinel arm (compound="DENSITY_SENTINEL")
+        2. Add schema support for per-arm seeding density (future)
+        3. Mark contact_pressure as explicit covariate (future)
+
+        Contract:
+        - Groups wells by (cell_line, time_h, assay) to identify comparison sets
+        - Compares only within groups that have multiple conditions (compound, dose)
+        - Uses conservative pressure prediction (errs toward rejection)
+        - Sentinel escape hatch: wells with compound="DENSITY_SENTINEL" exempt the group
+        """
+        # Group wells by readout context (cell_line, time_h, assay)
+        # These are wells that will be compared against each other
+        groups = defaultdict(list)
+        for w in wells:
+            key = (w["cell_line"], w["time_h"], w["assay"])
+            groups[key].append(w)
+
+        # Check each readout group for confluence confounding
+        for (cell_line, time_h, assay), group_wells in groups.items():
+            # Sentinel escape hatch: if any well is marked as density sentinel, skip this group
+            if any(w["compound"] == "DENSITY_SENTINEL" for w in group_wells):
+                continue
+
+            # Count unique conditions in this group
+            conditions = defaultdict(int)
+            for w in group_wells:
+                cond_key = (w["compound"], w["dose_uM"])
+                conditions[cond_key] += 1
+
+            # Only validate if there are multiple conditions to compare
+            if len(conditions) < 2:
+                continue
+
+            # Predict pressure for each well
+            pressures = []
+            for w in group_wells:
+                p = self._predict_contact_pressure(
+                    cell_line=cell_line,
+                    time_h=time_h,
+                    assay=assay,
+                    compound=w["compound"],
+                    dose_uM=w["dose_uM"]
+                )
+                pressures.append((p, w))
+
+            # Check if delta_p exceeds threshold
+            p_vals = [p for p, _ in pressures]
+            delta_p = max(p_vals) - min(p_vals)
+
+            if delta_p > threshold:
+                # Find worst offenders for structured error details
+                worst_high = max(pressures, key=lambda t: t[0])
+                worst_low = min(pressures, key=lambda t: t[0])
+
+                # Build structured error message
+                message = (
+                    f"Design likely confounded by confluence differences across comparison arms.\n"
+                    f"  Cell line: {cell_line}, Time: {time_h}h, Assay: {assay}\n"
+                    f"  Predicted pressure range: {worst_low[0]:.3f} to {worst_high[0]:.3f} (Δp={delta_p:.3f})\n"
+                    f"  Threshold: {threshold:.3f}\n"
+                    f"\n"
+                    f"  Highest pressure: {worst_high[1]['compound']} @ {worst_high[1]['dose_uM']} µM (p={worst_high[0]:.3f})\n"
+                    f"  Lowest pressure: {worst_low[1]['compound']} @ {worst_low[1]['dose_uM']} µM (p={worst_low[0]:.3f})\n"
+                    f"\n"
+                    f"Resolution strategies:\n"
+                    f"  1. Add density sentinel arm: compound='DENSITY_SENTINEL' for this group\n"
+                    f"  2. Add schema support for per-arm seeding density (future)\n"
+                    f"  3. Mark contact_pressure as explicit covariate (future)"
+                )
+
+                # Raise with structured details (using ValueError since we don't import InvalidDesignError here)
+                # The bridge layer will catch this and convert to InvalidDesignError
+                raise ValueError({
+                    "message": message,
+                    "violation_code": "confluence_confounding",
+                    "design_id": design_id,
+                    "threshold": float(threshold),
+                    "delta_p": float(delta_p),
+                    "cell_line": cell_line,
+                    "time_h": float(time_h),
+                    "assay": assay,
+                    "highest_pressure": {
+                        "p": float(worst_high[0]),
+                        "compound": worst_high[1]["compound"],
+                        "dose_uM": float(worst_high[1]["dose_uM"]),
+                    },
+                    "lowest_pressure": {
+                        "p": float(worst_low[0]),
+                        "compound": worst_low[1]["compound"],
+                        "dose_uM": float(worst_low[1]["dose_uM"]),
+                    },
+                    "resolution_strategies": [
+                        "Add density sentinel arm: compound='DENSITY_SENTINEL' for this (cell_line, time_h, assay) group",
+                        "Add schema support for per-arm seeding density and density-match arms",
+                        "Mark contact_pressure as explicit covariate in design schema",
+                    ],
+                })
