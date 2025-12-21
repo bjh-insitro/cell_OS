@@ -1,11 +1,52 @@
 # cell_OS
 
-**Autonomous Operating System for Cell Biology Research** 🧬
-
-A production-ready platform for simulating and discovering optimal experimental conditions through autonomous active learning. Built on a deterministic, biologically-grounded world model (Cell Thalamus) with pay-for-calibration epistemic agents.
+**Epistemic Control Research Testbed for Autonomous Experimentation**
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
+
+---
+
+## ⚠️ What This Is
+
+This is a **simulation-first research testbed** for studying epistemic honesty in autonomous experimental agents. It generates **100% synthetic cell biology data** to test whether agents can:
+
+1. **Earn calibration before claiming biological knowledge** (pay-for-calibration)
+2. **Track epistemic debt when overclaiming information gain**
+3. **Refuse to act when uncertainty is too high**
+4. **Maintain conservation laws** (death accounting, mass balance)
+5. **Provide auditable provenance** for every belief change
+
+**All experimental data is simulated.** The biology engine (`BiologicalVirtualMachine`) generates realistic Cell Painting morphology and LDH cytotoxicity readouts with configurable noise, batch effects, and edge biases. No wet-lab integration exists.
+
+---
+
+## 🚫 What This Is NOT
+
+- ❌ **Not a Bayesian optimization library** (not Ax, not BoTorch)
+- ❌ **Not ready for real laboratory hardware** (no SiLA2, no vendor APIs)
+- ❌ **Not a general-purpose active learning framework**
+- ❌ **Not trained on real assay data** (mechanism signatures are hardcoded)
+- ❌ **Not optimizing a target metric** (agent explores and calibrates, doesn't optimize)
+
+**If you need wet-lab automation:** This is not your tool. The value is the **epistemic control machinery** (debt tracking, conservation enforcement, provenance ledgers), not the biology simulator.
+
+**If you need Bayesian optimization:** Use Ax/BoTorch. This agent uses rule-based heuristics with evidence receipts, not Gaussian processes.
+
+---
+
+## 🎯 Core Research Question
+
+**"Can autonomous agents be forced to be honest about what they don't know?"**
+
+Most active learning systems optimize acquisition functions without tracking whether their uncertainty estimates are trustworthy. This testbed enforces:
+
+- **Pay upfront for calibration** → Agent must earn "noise gate" (CI width ≤ 25%) before biology experiments
+- **Overclaiming has consequences** → Epistemic debt accumulates when claimed information gain exceeds actual
+- **Conservation laws are hard constraints** → Death accounting must sum to 1.0 within 1e-9, or crash
+- **Every belief change has a receipt** → JSONL ledgers document supporting evidence
+
+The simulator provides a **controlled adversarial environment** where agents can be tempted to overclaim (mechanism cosplay via nuisance factors, subpopulation heterogeneity collapsing confidence, batch effects mimicking biology).
 
 ---
 
@@ -19,64 +60,47 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 
-# Run the epistemic agent (Phase 1)
-python scripts/run_epistemic_agent.py --cycles 10 --budget 200 --seed 42
+# Run epistemic agent (generates SYNTHETIC data)
+python scripts/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
 
-# Launch the dashboard
-streamlit run dashboard_app/app.py
-
-# Run Cell Thalamus simulation (Phase 0)
-python standalone_cell_thalamus.py --mode full --seed 0
+# Output: evidence.jsonl, diagnostics.jsonl, decisions.jsonl
+# All measurements are simulated - no real cells involved
 ```
 
----
+**What happens:**
+1. Agent proposes DMSO baseline replicates (calibration phase)
+2. Simulated world returns morphology measurements with realistic noise
+3. Agent computes pooled variance, checks if "noise gate" earned
+4. If gate earned: explores compounds. If lost: returns to calibration
+5. All decisions logged to JSONL ledgers with provenance
 
-## 📖 What is cell_OS?
-
-cell_OS is a **research platform** for autonomous experimental design in cell biology, consisting of:
-
-### 🧪 Cell Thalamus (Phase 0)
-**Biologically-grounded world simulator** for cell-based assays
-- Deterministic simulation of 2,304 wells (96-well plates × 24 replicates)
-- Cell line-specific responses (A549, HepG2, iPSC neurons, iPSC microglia)
-- 10 stress compounds (oxidative, ER, mitochondrial, DNA damage, proteasome, microtubule)
-- Cell Painting morphology (5 channels: DNA, ER, Actin, Mitochondria, AGP)
-- LDH cytotoxicity readout
-- **Fixed sentinel scaffolding** for statistical process control
-- **50-100× speedup** on JupyterHub (72 CPUs: ~5 minutes for full campaign)
-
-### 🤖 Epistemic Agent (Phase 1)
-**Active learning agent** that discovers optimal experimental conditions
-- **Pay-for-calibration regime**: Must earn "noise gate" before biology experiments
-- **Gate lock invariant**: Enforces calibration quality (rel_width ≤ 0.25)
-- **Evidence ledgers**: Complete provenance tracking (JSONL receipts)
-- **Observer-independent**: Physics-based attrition (no Schrödinger's cat)
-- **Autonomous**: Proposes experiments, updates beliefs, manages budget
-- **Deterministic**: Same seed → same results (cross-machine verified)
+**Success = Agent earns gate without overspending budget**, not "found optimal compound."
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture (All Components Are Synthetic)
 
 ```mermaid
 graph TB
-    subgraph "Phase 1: Epistemic Agent"
+    subgraph "Epistemic Agent (Rule-Based)"
         Agent[EpistemicLoop]
         Policy[RuleBasedPolicy]
         Beliefs[BeliefState]
         Chooser[TemplateChooser]
     end
 
-    subgraph "Phase 0: Cell Thalamus"
+    subgraph "Synthetic World (Simulation Only)"
         World[ExperimentalWorld]
         Hardware[BiologicalVirtualMachine]
-        Biology[biology_core]
+        Biology[biology_core.py]
+        Note1[No Real Lab<br/>No Instruments<br/>No Plates]
     end
 
-    subgraph "Evidence System"
-        Evidence[evidence.jsonl]
-        Diagnostics[diagnostics.jsonl]
-        Decisions[decisions.jsonl]
+    subgraph "Epistemic Control (Research Focus)"
+        Debt[EpistemicDebt]
+        Penalty[EpistemicPenalty]
+        Conservation[Conservation Laws]
+        Ledgers[JSONL Provenance]
     end
 
     Agent --> Policy
@@ -86,59 +110,227 @@ graph TB
     World --> Hardware
     Hardware --> Biology
 
-    Beliefs --> Evidence
-    Beliefs --> Diagnostics
-    Policy --> Decisions
+    Beliefs --> Ledgers
+    Agent --> Debt
+    Agent --> Penalty
+    Hardware --> Conservation
 
-    style Agent fill:#e1f5ff
-    style World fill:#fff4e1
-    style Beliefs fill:#e1ffe1
-    style Biology fill:#f0e1ff
+    style World fill:#ff6b6b,color:#fff
+    style Hardware fill:#ff6b6b,color:#fff
+    style Biology fill:#ff6b6b,color:#fff
+    style Note1 fill:#ff6b6b,color:#fff
+    style Debt fill:#51cf66,color:#000
+    style Penalty fill:#51cf66,color:#000
+    style Conservation fill:#51cf66,color:#000
+    style Ledgers fill:#51cf66,color:#000
 ```
 
-### Core Components
-
-| Component | Purpose |
-|-----------|---------|
-| **Cell Thalamus** | Biologically-realistic simulation engine with morphology + viability |
-| **Epistemic Agent** | Active learning agent with calibration requirements |
-| **BeliefState** | Tracks what agent knows with evidence receipts |
-| **TemplateChooser** | Decides next experiment (baseline, edge test, dose ladder) |
-| **Hardware Abstraction** | Switch between virtual and real lab execution |
-| **Evidence Ledgers** | JSONL logs for complete provenance |
+**Red = Simulation** (generates synthetic data)
+**Green = Epistemic machinery** (the actual research contribution)
 
 ---
 
-## ✨ Key Features
+## 📖 System Components
 
-### 🔬 Biological Realism (Cell Thalamus)
-- **Cell line-specific sensitivity**: iPSC neurons resist microtubule drugs, cancer cells die
-- **Morphology-first principle**: Transport disruption → attrition → death (72-96h timeline)
-- **Observer independence**: Cell fate identical whether you measure or not
-- **IC50 coupling**: Proliferation-dependent sensitivity (mitotic catastrophe)
-- **Attrition feedback**: Morphology disruption scales death rate
-- **Death accounting**: Track instant vs cumulative death separately
+### 1. BiologicalVirtualMachine (Synthetic Data Generator)
 
-### 🧠 Epistemic Guarantees (Phase 1 v0.4.2)
-- **Pay-for-calibration**: Biology experiments forbidden until noise gate earned
-- **Gate criteria**: Pooled variance CI width ≤ 25% of estimate (rel_width ≤ 0.25)
-- **Hysteresis control**: enter_threshold=0.25, exit_threshold=0.40 (prevent flapping)
-- **Drift detection**: Compare recent vs historical noise estimates
-- **Fail-fast**: Abort if insufficient budget to earn gate
-- **Symmetric receipts**: Both gate_event (earned) and gate_loss (revoked) logged
+**Purpose**: Generate realistic cell assay measurements with known ground truth
 
-### 📊 Provenance & Reproducibility
-- **Evidence ledgers**: Every belief change logged with supporting data
-- **SHA-256 scaffold hashing**: Cryptographic integrity for fixed scaffolds
-- **Cross-machine determinism**: Same seed → bit-identical results
-- **Worker determinism**: 1 CPU == 64 CPUs (parallel aggregation correct)
-- **Stream isolation**: RNG independence verified (assay calls don't perturb physics)
+**File**: `src/cell_os/hardware/biological_virtual.py` (3386 lines)
 
-### 🎛️ Multi-Interface
-- **CLI scripts**: `run_epistemic_agent.py`, `standalone_cell_thalamus.py`
-- **Dashboard**: Streamlit web UI (work in progress for Phase 1 integration)
-- **API**: FastAPI endpoints (background task execution)
-- **Programmatic**: Import as Python modules
+**What it does**:
+- Simulates cell viability via Hill curves (dose-response)
+- Generates Cell Painting morphology (5 channels: ER, Mito, Nucleus, Actin, RNA)
+- Enforces death conservation: `viable + Σ(death_modes) = 1.0 ± 1e-9`
+- Adds realistic noise: multiplicative lognormal (no negative signals)
+- Injects batch effects, edge biases, washout contamination
+- **Critically**: Biology is observer-independent (cell fate same whether measured or not)
+
+**Not connected to**: Any real lab equipment, databases, or vendor APIs
+
+---
+
+### 2. Epistemic Agent (Rule-Based Policy)
+
+**Purpose**: Autonomous experiment selection under pay-for-calibration regime
+
+**Files**:
+- `src/cell_os/epistemic_agent/loop.py` (main orchestration)
+- `src/cell_os/epistemic_agent/beliefs/state.py` (tracks what agent knows)
+- `src/cell_os/epistemic_agent/acquisition/chooser.py` (selects next experiment)
+
+**What it does**:
+- Proposes experiments (baseline, edge test, dose-response)
+- Updates beliefs from observations (pooled variance, edge effects, dose curvature)
+- **Noise gate**: Must earn CI width ≤ 25% before biology experiments
+- **Gate hysteresis**: Enter at 0.25, exit at 0.40 (prevents flapping)
+- Writes evidence receipts to JSONL for every belief change
+
+**What it does NOT do**:
+- Optimize a target metric
+- Use Gaussian process regression
+- Train neural networks
+- Adapt to real lab failures
+
+---
+
+### 3. Epistemic Control System (Research Contribution)
+
+**Purpose**: Enforce honesty about uncertainty
+
+**Files**:
+- `src/cell_os/epistemic_control.py` - Debt tracking
+- `src/cell_os/epistemic_debt.py` - Information gain computation
+- `src/cell_os/epistemic_penalty.py` - Cost inflation from debt
+
+**What it does**:
+- **Tracks epistemic debt**: `debt += max(0, claimed_gain - actual_gain)`
+- **Inflates costs**: Future experiments cost more if agent overclaimed
+- **Asymmetric penalties**: Overclaiming hurts, underclaiming doesn't
+- **Currently**: Tracks debt but doesn't block execution (integration incomplete)
+
+**Research hypothesis**: Agents with debt tracking will learn to be conservative in information gain claims.
+
+---
+
+### 4. Conservation Law Enforcement
+
+**Purpose**: Prevent silent violations of physical constraints
+
+**Location**: `biological_virtual.py` lines 1152-1238
+
+**Enforced invariants**:
+```python
+# Death accounting (hard error if violated)
+total = viable_frac + sum([
+    death_compound,
+    death_starvation,
+    death_mitotic_catastrophe,
+    death_er_stress,
+    death_mito_dysfunction,
+    death_confluence,
+    death_unknown
+])
+assert abs(total - 1.0) < DEATH_EPS  # 1e-9 tolerance
+```
+
+**Why this matters**: Many biological simulators silently renormalize when mass doesn't balance. This system crashes instead, forcing explicit accounting of every death pathway.
+
+---
+
+## 🔬 Example Run (Synthetic Data Only)
+
+```bash
+python scripts/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
+```
+
+**Cycle 1-3**: Agent proposes DMSO replicates (n=32), measures noise
+- Computes pooled variance across wells: σ² = SSE / df
+- Chi-square confidence interval for σ: [σ_low, σ_high]
+- Relative width: (σ_high - σ_low) / σ_hat
+- **Gate earned if**: rel_width ≤ 0.25
+
+**Cycle 4-6**: If gate earned, runs edge tests (center vs edge wells)
+- Measures whether edge wells show 10-15% signal reduction
+- Updates `edge_effect_confident` flag with evidence receipt
+
+**Cycle 7-20**: Explores compounds at multiple doses
+- Proposes dose-response experiments (0.1, 1, 10, 100 µM)
+- Observes morphology changes (ER stress → ER channel, Mito dysfunction → Mito channel)
+- **Does NOT optimize** (just explores and tracks confidence)
+
+**Output files** (all from synthetic data):
+```
+results/epistemic_agent/run_20251221_143022_evidence.jsonl
+results/epistemic_agent/run_20251221_143022_diagnostics.jsonl
+results/epistemic_agent/run_20251221_143022_decisions.jsonl
+```
+
+**Success criteria**:
+- ✅ Noise gate earned (agent calibrated measurement system)
+- ✅ Edge effects characterized (agent learned position bias)
+- ✅ Multiple compounds tested (agent explored chemical space)
+- ✅ Budget not exhausted (agent was efficient)
+
+**NOT measured**: "Did we find the best compound?" (that's not the research question)
+
+---
+
+## 📊 What The Tests Actually Test
+
+The repository has **10,000+ lines of tests** enforcing epistemic invariants, not biological accuracy.
+
+### Heavily Defended Behaviors
+
+1. **Death conservation** (`tests/phase6a/test_death_accounting_honesty.py`)
+   - Verifies `viable + Σ(deaths) = 1.0` after every simulation step
+   - Tests that typos in death field names cause immediate failures
+   - Checks that `death_unknown` vs `death_unattributed` are semantically distinct
+
+2. **Observer independence** (`tests/phase6a/test_washout_measurement_separation.py`)
+   - Runs simulation with/without assay calls
+   - Asserts cell viability is bit-identical
+   - Ensures measurement noise doesn't feed back into biology
+
+3. **Determinism** (`tests/unit/test_active_learner.py`)
+   - Same seed → identical results across machines
+   - 1 CPU == 64 CPUs (parallel aggregation correct)
+   - RNG streams isolated (assay RNG independent of biology RNG)
+
+4. **Noise gate earning** (`tests/unit/test_active_learner.py`)
+   - Verifies agent can't propose biology experiments before calibration
+   - Tests gate hysteresis (enter at 0.25, exit at 0.40)
+   - Checks symmetric events (gate_event:earned, gate_loss logged)
+
+### Weakly Tested or Untested
+
+1. **Epistemic debt consequences** - Debt tracked but not enforced (integration incomplete)
+2. **Design quality refusals** - Refusal logic exists but no test verifies `refusals.jsonl`
+3. **Mechanism classification accuracy** - No ECE validation on held-out set
+4. **Multi-cycle gate recovery** - Tests check earning, not losing and re-earning
+
+---
+
+## 🛠️ If You Want To Use This
+
+### For Epistemic Control Research
+
+**You should use this if**:
+- Studying agent honesty under adversarial conditions
+- Testing calibration requirements for autonomous systems
+- Benchmarking provenance/ledger systems
+- Developing new uncertainty quantification methods
+
+**What you get**:
+- Controlled testbed with known ground truth
+- Realistic confounders (batch effects, nuisance factors)
+- Full provenance trails (JSONL ledgers)
+- Conservation law enforcement examples
+
+**What you need to add**:
+- Your own agent policy (`RuleBasedPolicy` is just a baseline)
+- Custom epistemic penalties (debt inflation config is tunable)
+- Your own mechanism signatures (currently hardcoded)
+
+---
+
+### For Wet-Lab Integration (Not Supported)
+
+**Blockers for real lab use**:
+1. **No hardware abstraction layer** - `BiologicalVirtualMachine` is simulation-only
+2. **No vendor APIs** - No Tecan, Hamilton, or BioTek integration
+3. **No LIMS integration** - No data pipelines for real assay readouts
+4. **No failure recovery** - Agent assumes infinite reliability
+5. **No resource scheduling** - No tracking of consumables, instruments, staff
+
+**What you'd need to build**:
+- `HardwareInterface` subclass for real instruments
+- Adapter for your lab's data format (Cell Painting profiles, plate reader CSVs)
+- Error handling for instrument failures, plate drops, contamination
+- Calibration using your lab's real noise characteristics (not simulated)
+- Mechanism signatures trained on your assay panel (not hardcoded)
+
+**Estimated effort**: 6-12 months for a single instrument stack.
 
 ---
 
@@ -147,266 +339,198 @@ graph TB
 ```
 cell_OS/
 ├── src/cell_os/
-│   ├── epistemic_agent/           # Phase 1 agent (v0.4.2)
-│   │   ├── agent/                 # Policy rules + templates
-│   │   ├── beliefs/               # BeliefState + evidence ledgers
-│   │   ├── acquisition/           # TemplateChooser (pay-for-calibration)
-│   │   ├── loop.py                # Main orchestration
-│   │   ├── world.py               # Experimental world wrapper
-│   │   └── schemas.py             # Data structures
-│   ├── cell_thalamus/             # Phase 0 world simulator
-│   │   ├── epistemic_agent.py     # Active learning (deprecated, see above)
-│   │   ├── design_generator.py   # Fixed scaffold generation
-│   │   └── parallel_runner.py    # Multi-CPU execution
-│   ├── hardware/                  # Hardware abstraction layer
-│   │   └── biological_virtual.py # Virtual lab (simulation)
-│   ├── sim/                       # Simulation core
-│   │   └── biology_core.py        # Pure biology functions
-│   ├── lab_world_model/           # Lab modeling (resources, costs)
-│   └── simulation/                # Legacy simulation components
+│   ├── epistemic_agent/              # Agent + belief tracking
+│   │   ├── loop.py                   # Main orchestration
+│   │   ├── beliefs/state.py          # What agent knows
+│   │   └── acquisition/chooser.py    # Experiment selection
+│   ├── hardware/
+│   │   ├── biological_virtual.py     # Synthetic data generator (3386 lines)
+│   │   └── mechanism_posterior_v2.py # Bayesian inference (for beam search)
+│   ├── sim/
+│   │   └── biology_core.py           # Pure pharmacology functions
+│   ├── epistemic_control.py          # Debt tracking
+│   ├── epistemic_debt.py             # Information gain computation
+│   └── epistemic_penalty.py          # Cost inflation
+├── tests/                            # 10K+ lines of epistemic invariant tests
+│   ├── unit/                         # Component tests
+│   ├── integration/                  # Agent + world integration
+│   └── phase6a/                      # Conservation laws, honesty, confluence
 ├── scripts/
-│   ├── run_epistemic_agent.py     # Phase 1 runner
-│   ├── benchmark_multiseed.py     # Multi-seed validation
-│   └── design_generator_*.py     # Scaffold generators
-├── standalone_cell_thalamus.py    # Phase 0 standalone runner
-├── dashboard_app/                 # Streamlit web interface
-├── tests/                         # Test suite
-├── docs/                          # Consolidated documentation
-│   ├── BIOLOGY_SIMULATION_EVOLUTION.md
-│   ├── PROVENANCE_AND_SCAFFOLDING.md
-│   ├── OBSERVER_INDEPENDENCE_COMPLETE.md
-│   ├── deployment/JUPYTERHUB_DEPLOYMENT.md
-│   └── guides/                    # Usage guides
-└── data/                          # Configurations and results
+│   └── run_epistemic_agent.py        # Main entry point
+└── docs/
+    ├── PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md
+    ├── PHASE1_AGENT_SUMMARY.md
+    └── INJECTION_B_BOUNDARY_SEMANTICS_COMPLETE.md
 ```
 
 ---
 
-## 🔬 Example: Run Epistemic Agent
+## 🎯 Research Phases (What "Complete" Means)
 
-The Phase 1 agent learns optimal experimental conditions through active learning with calibration requirements:
+### ✅ Phase 0: Synthetic Data Generator
+**Goal**: Generate realistic cell assay data with known ground truth
 
-```bash
-# Run with 20 cycles, 384-well budget, seed 42
-python scripts/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
-```
+**Deliverables**:
+- Death conservation enforcement (hard errors)
+- Observer-independent physics (measurement doesn't affect fate)
+- Deterministic execution (same seed → identical results)
+- 5-channel Cell Painting + LDH cytotoxicity
 
-**What it does:**
-1. Proposes baseline DMSO replicates (calibration)
-2. Measures noise, computes pooled variance CI
-3. Checks if gate earned (rel_width ≤ 0.25)
-4. If gate earned: runs edge tests, then dose-response experiments
-5. If gate lost: returns to calibration
-6. Logs all decisions to evidence ledgers
-
-**Output files:**
-```
-results/epistemic_agent/
-├── run_20251218_115051.json           # Run summary + beliefs
-├── run_20251218_115051.log            # Human-readable log
-├── run_20251218_115051_evidence.jsonl # Belief changes
-└── run_20251218_115051_diagnostics.jsonl # Noise model telemetry
-```
-
-**Success criteria:**
-- ✅ Noise gate earned (rel_width ≤ 0.25)
-- ✅ Edge effects tested
-- ✅ Compounds explored (≥2)
-- ✅ Budget remaining
+**NOT delivered**: Real lab integration
 
 ---
 
-## 🧪 Example: Cell Thalamus Simulation
+### ✅ Phase 1: Pay-For-Calibration
+**Goal**: Agents must earn measurement noise characterization before biology
 
-Phase 0 provides the world model for agent testing:
+**Deliverables**:
+- Noise gate: CI width ≤ 25% of estimate
+- Gate hysteresis (prevent flapping)
+- Evidence ledgers (JSONL receipts)
+- Template library (baseline, edge test, dose-response)
 
-```bash
-# Run full 2304-well campaign
-python standalone_cell_thalamus.py --mode full --seed 0 --workers 32
+**NOT delivered**: Optimization (agent explores, doesn't optimize)
 
-# Quick benchmark (48 wells)
-python standalone_cell_thalamus.py --mode benchmark --seed 0
+---
 
-# Self-test (verify observer independence)
-python standalone_cell_thalamus.py --self-test
-```
+### ✅ Phase 5: Population Heterogeneity
+**Goal**: Confidence collapses when subpopulations disagree
 
-**Validation results:**
-- **Determinism**: `workers=1` == `workers=64` (bit-identical)
-- **Observer independence**: Cell fate identical with/without assay calls
-- **Biological realism**: Neurons resist microtubule drugs 72-96h longer than cancer
-- **LDH validation**: Proper dose-response, cell-line specificity
+**Deliverables**:
+- 3-bucket mixture model (sensitive/typical/resistant)
+- Per-bucket IC50 shifts
+- Confidence penalty when buckets disagree
+
+**NOT delivered**: Hierarchical Bayesian inference
+
+---
+
+### ✅ Phase 6A: Epistemic Control
+**Goal**: Track epistemic debt, enforce conservation laws
+
+**Deliverables**:
+- Debt tracking (overclaiming accumulates penalty)
+- Calibrated confidence (ECE = 0.0626 on synthetic validation)
+- Beam search with COMMIT gating (≥0.75 confidence threshold)
+- Fixed semantic bugs (death accounting, conservation violations)
+
+**NOT delivered**: Debt enforcement (tracked but doesn't block execution yet)
+
+---
+
+### 🚧 Phase 6B: Realism Improvements (In Progress)
+**Goal**: More realistic confounders
+
+**Planned**:
+- Volume/evaporation dynamics (concentration drift)
+- Plate-level gradients (temperature, illumination)
+- pH/waste as secondary stress axis
+
+**Not planned**: Instrument-specific failure modes (belongs in wet-lab layer)
+
+---
+
+### 🚧 Phase 7: Advanced Discovery (Future)
+**NOT started, may never ship**:
+- Multi-fidelity learning
+- Hit calling pipeline
+- Real hardware integration
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Run full test suite
+# Run full test suite (10K+ lines)
 pytest
 
-# Run specific test modules
-pytest tests/unit/test_active_learner.py
-pytest tests/integration/test_simulation_realism.py
+# Focus on epistemic invariants
+pytest tests/phase6a/
 
-# Run with coverage
-pytest --cov=src/cell_os --cov-report=html
+# Focus on agent behavior
+pytest tests/unit/test_active_learner.py
+
+# Check death conservation
+pytest tests/phase6a/test_death_accounting_honesty.py
 ```
 
-**Test categories:**
-- `tests/unit/` - Unit tests for individual modules
-- `tests/integration/` - Integration tests (agent + world)
-- `tests/simulation/` - Biological realism validation
+**What tests verify**:
+- Death conservation (sum = 1.0)
+- Observer independence (measurement doesn't affect biology)
+- Determinism (same seed → identical results)
+- Noise gate earning (can't skip calibration)
+- Evidence provenance (every belief change logged)
+
+**What tests do NOT verify**:
+- Biological accuracy (IC50 values are made up)
+- Clinical relevance (compounds are model systems)
+- Wet-lab feasibility (simulation-only)
 
 ---
 
 ## 📚 Documentation
 
-### Quick References
-- **[Phase 0 Milestone](PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md)** - Fixed scaffold design
-- **[Phase 1 Milestone](PHASE1_AGENT_SUMMARY.md)** - Epistemic agent implementation
-- **[Developer Reference](docs/DEVELOPER_REFERENCE.md)** - Local development guide
+### Start Here
+- **[What We Built](docs/WHAT_WE_BUILT.md)** - System overview (if exists)
+- **[Phase 0 Milestone](PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md)** - Synthetic data generator
+- **[Phase 1 Milestone](PHASE1_AGENT_SUMMARY.md)** - Pay-for-calibration agent
 
-### Comprehensive Guides
-- **[Biology Simulation Evolution](docs/BIOLOGY_SIMULATION_EVOLUTION.md)** - Complete history of world model development
-- **[Provenance & Scaffolding](docs/PROVENANCE_AND_SCAFFOLDING.md)** - Cryptographic integrity guarantees
-- **[Observer Independence](docs/OBSERVER_INDEPENDENCE_COMPLETE.md)** - Physics-based simulation architecture
-- **[JupyterHub Deployment](docs/deployment/JUPYTERHUB_DEPLOYMENT.md)** - 50-100× speedup guide
+### Deep Dives
+- **[Biology Simulation Evolution](docs/BIOLOGY_SIMULATION_EVOLUTION.md)** - How death accounting was fixed
+- **[Observer Independence](docs/OBSERVER_INDEPENDENCE_COMPLETE.md)** - Why measurement can't affect fate
+- **[Provenance & Scaffolding](docs/PROVENANCE_AND_SCAFFOLDING.md)** - JSONL ledger system
+- **[Epistemic Control System](docs/EPISTEMIC_SYSTEM_COMPLETE.md)** - Debt tracking architecture
 
-### Organized Documentation
-```
-docs/
-├── testing/          # Hardening, RNG, determinism
-├── architecture/     # Death accounting, provenance
-├── results/          # Validation reports
-├── designs/          # Cell Thalamus, scaffolding
-├── guides/           # Usage, code review
-├── meta/             # Maintenance, cleanup
-└── archive/          # Historical documents
-```
+### For Developers
+- **[Developer Reference](docs/DEVELOPER_REFERENCE.md)** - Local setup
+- **[Testing Guide](docs/testing/)** - How to run tests
+- **[Code Review Guide](docs/guides/)** - Contribution standards
 
 ---
 
-## 🎯 Phase Milestones
+## ⚖️ Design Principles (Actual, Not Aspirational)
 
-### ✅ Phase 0: Cell Thalamus World Model
-**Status**: Production complete
+1. **Crash loudly, never silently renormalize**
+   - Conservation violations → `ConservationViolationError` (not warning)
+   - Missing death attribution → hard error (not `death_other`)
+   - Invalid designs → refuse and log (not accept and warn)
 
-- Biologically-grounded simulation (2,304 wells)
-- Fixed sentinel scaffolding (28 positions, 0 errors/warnings)
-- Cell Painting + LDH readouts
-- Deterministic execution (cross-machine verified)
-- JupyterHub deployment (50-100× speedup)
+2. **Every belief change has a receipt**
+   - JSONL ledgers for evidence, diagnostics, decisions
+   - Field-level provenance (which belief changed, why)
+   - Symmetric events (gate_event:earned + gate_loss)
 
-### ✅ Phase 1: Epistemic Agent (v0.4.2)
-**Status**: Complete
+3. **Simulation is not the product, epistemic machinery is**
+   - Biology simulator is a **controlled testbed**
+   - Research contribution is **debt tracking, conservation laws, provenance**
+   - Value is the **forcing functions** (pay-for-calibration, conservation enforcement)
 
-- Pay-for-calibration regime enforced
-- Gate lock invariant (rel_width ≤ 0.25)
-- Evidence ledgers (complete provenance)
-- Symmetric gate events (earned + lost)
-- Template library (baseline, edge, dose-ladder)
+4. **Observer independence is non-negotiable**
+   - Cell fate must be identical with/without measurement
+   - RNG streams isolated (biology vs assay)
+   - Tests verify bit-identical results
 
-### ✅ Phase 5: Population Heterogeneity
-**Status**: Complete
-
-- 3-bucket subpopulation model (sensitive/typical/resistant)
-- Shifted IC50 and stress thresholds per subpopulation
-- Mixture width captures biological uncertainty
-- Confidence collapses when populations disagree
-- Natural variance in stress response prevents overconfident classification
-
-### ✅ Phase 5B: Realism Layer
-**Status**: Complete
-
-- **RunContext**: Correlated batch/lot/instrument effects ("cursed days")
-- **Plating artifacts**: Post-dissociation stress (6-16h decay)
-- **Pipeline drift**: Batch-dependent feature extraction failures
-- Forces calibration workflows and delayed commitment strategies
-- Same compound → different conclusions under different contexts
-
-### ✅ Phase 6A: Epistemic Control
-**Status**: Complete (December 2025)
-
-- **Data-driven signature learning**: Learned mechanism signatures (μ_m, Σ_m) from 200 simulation runs
-- **Calibrated confidence**: Three-layer architecture (inference, reality, decision) with ECE = 0.0626
-- **Semantic honesty enforcement**: Fixed death accounting, conservation violations, plate seeding
-- **Beam search integration**: COMMIT action gated by calibrated confidence (≥0.75 threshold)
-- **Key insight**: "The geometry doesn't lie anymore" - real likelihood evaluation, not nearest-neighbor cosplay
-
-### 🚧 Phase 6B: Realism Improvements (Planned)
-- Volume/evaporation dynamics with concentration drift
-- Plate-level correlated fields (temperature, illumination gradients)
-- Waste/pH as secondary stress axis
-- Seeding density persistence and IC50 modulation
-
-### 🚧 Phase 7: Advanced Discovery (Planned)
-- Multi-fidelity learning
-- Hit calling pipeline
-- DINO embedding analysis
-- Real hardware integration
+5. **Determinism enables accountability**
+   - Same seed → identical results (cross-machine)
+   - Parallel execution → same results as serial
+   - Makes bugs reproducible
 
 ---
 
-## 🛠️ Advanced Usage
+## 🤝 Contributing
 
-### Multi-Seed Validation
+**This is a research testbed, not production software.**
 
-Verify determinism and gate statistics across seeds:
+Contributions welcome for:
+- New epistemic control mechanisms (debt variants, penalty functions)
+- Better calibration requirements (multi-assay gates)
+- Conservation law extensions (energy balance, stoichiometry)
+- Provenance system improvements (cryptographic commitments)
 
-```bash
-python scripts/benchmark_multiseed.py --seeds 10 --budget 384 --cycles 20
-```
-
-**Output:**
-```
-Gate earned: 8/10 (80%)
-Rel width: mean=0.0782, min=0.0651, max=0.0893
-DF: mean=44, min=44, max=44
-Cycles to gate: mean=4.2, min=4, max=5
-```
-
-### Custom Templates
-
-Extend the agent with new experiment templates:
-
-```python
-from cell_os.epistemic_agent.agent.policy_rules import RuleBasedPolicy
-
-class MyPolicy(RuleBasedPolicy):
-    def _template_my_experiment(self, cap: dict, reason: str):
-        # Your custom experiment design
-        return Proposal(...)
-```
-
----
-
-## 🎯 Roadmap
-
-### Completed ✅
-- [x] Cell Thalamus world simulator (Phase 0)
-- [x] Fixed sentinel scaffolding with provenance
-- [x] Epistemic agent with pay-for-calibration (Phase 1)
-- [x] Evidence ledgers + gate events
-- [x] Observer-independent physics
-- [x] JupyterHub deployment (determinism verified)
-- [x] Population heterogeneity (Phase 5)
-- [x] Realism layer: RunContext, plating artifacts, pipeline drift (Phase 5B)
-- [x] Epistemic control: calibrated confidence, semantic honesty (Phase 6A)
-- [x] Beam search integration with COMMIT gating
-- [x] Documentation consolidation
-
-### In Progress 🚧
-- [ ] Phase 6B: Realism improvements (volume, evaporation, plate fields)
-- [ ] Beam search teachability validation
-- [ ] Dashboard integration for Phase 6A
-
-### Planned 📋
-- [ ] Phase 7: Multi-fidelity learning (transfer from cheap → expensive assays)
-- [ ] Hit calling pipeline
-- [ ] DINO embedding analysis
-- [ ] Real hardware integration (SiLA2/vendor APIs)
-- [ ] Notification system (Slack/email)
+Not accepting:
+- Wet-lab integration PRs (scope too large, needs separate project)
+- Biological accuracy improvements without epistemic relevance
+- Performance optimizations for biology simulator (fast enough)
 
 ---
 
@@ -416,15 +540,32 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Acknowledgments
+## ❓ FAQ
 
-Built with careful attention to biological realism, statistical rigor, and epistemic honesty.
+**Q: Can I use this with my real lab data?**
+A: No. This generates synthetic data only. You'd need to build a hardware interface, adapt data formats, and recalibrate all noise models.
 
-**Design Principles** (from Phase 0 discoveries):
-- Morphology-first principle (transport collapse → attrition → death)
-- Pay-for-calibration (earn noise gate before biology)
-- Observer independence (physics-based, not measurement-dependent)
-- Provenance tracking (every claim has receipts)
-- Gate lock invariant (once earned, verify still valid)
+**Q: Is this a Bayesian optimization library?**
+A: No. The agent uses rule-based heuristics, not BO. It explores and calibrates, doesn't optimize.
+
+**Q: What's the point of synthetic data?**
+A: Controlled testbed for epistemic control research. We know ground truth, can inject adversarial confounders, and verify agents are honest about uncertainty.
+
+**Q: When will Phase 7 be done?**
+A: Unknown. Phases are research milestones, not product releases. Phase 7 may never ship.
+
+**Q: Can I train the mechanism signatures on my data?**
+A: Not currently supported. Signatures are hardcoded in `mechanism_posterior_v2.py`. You'd need to build a training pipeline.
+
+**Q: Why 10K+ lines of tests for 2K lines of simulation?**
+A: Because epistemic honesty is hard. Most bugs are silent (wrong conservation, measurement feedback loops, RNG coupling). Tests enforce invariants that don't show up in outputs.
+
+---
 
 **Questions?** See [docs/DEVELOPER_REFERENCE.md](docs/DEVELOPER_REFERENCE.md) or open an issue.
+
+**Want real lab automation?** This is not the right starting point. Consider:
+- Emerald Cloud Lab (commercial)
+- SiLA2 standard (instrument abstraction)
+- Strateos API (cloud lab platform)
+- Opentrons Python API (open source liquid handling)
