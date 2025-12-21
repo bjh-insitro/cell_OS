@@ -19,10 +19,32 @@ Design Philosophy:
 
 from .base import InjectionState, Injection, InjectionContext
 from .volume_evaporation import VolumeEvaporationInjection
+from .coating_quality import CoatingQualityInjection
+from .pipetting_variance import PipettingVarianceInjection
+from .mixing_gradients import MixingGradientsInjection
+from .measurement_backaction import MeasurementBackActionInjection
+from .stress_memory import StressMemoryInjection
+from .lumpy_time import LumpyTimeInjection
+from .death_modes import DeathModesInjection
+from .assay_deception import AssayDeceptionInjection
+from .coalition_dynamics import CoalitionDynamicsInjection
+from .identifiability_limits import IdentifiabilityLimitsInjection
+from .cursed_plate import CursedPlateInjection
 
 __all__ = [
     'InjectionState',
     'Injection',
     'InjectionContext',
     'VolumeEvaporationInjection',
+    'CoatingQualityInjection',
+    'PipettingVarianceInjection',
+    'MixingGradientsInjection',
+    'MeasurementBackActionInjection',
+    'StressMemoryInjection',
+    'LumpyTimeInjection',
+    'DeathModesInjection',
+    'AssayDeceptionInjection',
+    'CoalitionDynamicsInjection',
+    'IdentifiabilityLimitsInjection',
+    'CursedPlateInjection',
 ]

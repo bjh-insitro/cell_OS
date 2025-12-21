@@ -302,7 +302,99 @@ def compute_instant_viability_effect(
     return 1.0 / (1.0 + (dose_uM / ic50_uM) ** hill_slope)
 
 
-def compute_attrition_rate(
+def interval_fraction_after(t0: float, t1: float, threshold: float) -> float:
+    """
+    Compute fraction of interval [t0, t1) that lies after threshold.
+
+    Used for integrating step functions over time intervals.
+
+    Args:
+        t0: Start of interval
+        t1: End of interval
+        threshold: Threshold time
+
+    Returns:
+        Fraction in [0, 1]: 0 if entire interval before threshold,
+                           1 if entire interval after threshold,
+                           (t1 - threshold) / (t1 - t0) if interval crosses threshold
+
+    Examples:
+        >>> interval_fraction_after(0, 24, 12)  # [0, 24) crosses 12h
+        0.5  # Half of interval is after 12h
+        >>> interval_fraction_after(0, 10, 12)  # [0, 10) entirely before 12h
+        0.0
+        >>> interval_fraction_after(15, 20, 12)  # [15, 20) entirely after 12h
+        1.0
+    """
+    if t1 <= threshold:
+        return 0.0
+    if t0 >= threshold:
+        return 1.0
+    return (t1 - threshold) / (t1 - t0)
+
+
+def mean_lag_factor_over_interval(
+    time_since_seed_start_h: float,
+    dt_h: float,
+    lag_duration_h: float
+) -> float:
+    """
+    Compute mean lag factor over interval, integrating linear ramp.
+
+    Lag factor ramps linearly from 0 to 1 over lag_duration_h:
+    - f(t) = clamp(t / L, 0, 1) where t = time_since_seed, L = lag_duration
+
+    Returns the mean value of f(t) over [time_since_seed_start, time_since_seed_start + dt].
+
+    Args:
+        time_since_seed_start_h: Time since seed at start of interval
+        dt_h: Interval duration
+        lag_duration_h: Duration of lag phase ramp
+
+    Returns:
+        Mean lag factor in [0, 1]
+
+    Examples:
+        >>> mean_lag_factor_over_interval(0, 24, 12)  # [0, 24h) with 12h lag
+        # Ramp [0,12) + plateau [12,24) → mean = (0.5*12 + 1.0*12) / 24 = 0.75
+
+        >>> mean_lag_factor_over_interval(0, 6, 12)  # [0, 6h) with 12h lag
+        # Ramp [0,6) → mean = 0.5 * (6/12) = 0.25
+
+        >>> mean_lag_factor_over_interval(15, 5, 12)  # [15, 20h) past lag
+        1.0  # Fully grown
+    """
+    if lag_duration_h <= 0:
+        return 1.0  # No lag
+
+    a = time_since_seed_start_h  # Start of interval
+    b = a + dt_h  # End of interval
+
+    # Clamp to [0, L]
+    x0 = max(0.0, min(a, lag_duration_h))
+    x1 = max(0.0, min(b, lag_duration_h))
+
+    # Area under ramp: ∫(t/L) dt from x0 to x1 = (x1^2 - x0^2) / (2L)
+    if x1 > x0:
+        ramp_area = (x1 * x1 - x0 * x0) / (2.0 * lag_duration_h)
+    else:
+        ramp_area = 0.0
+
+    # Area under plateau (f=1 after lag completes)
+    plateau_start = max(a, lag_duration_h)
+    if b > plateau_start:
+        plateau_area = b - plateau_start
+    else:
+        plateau_area = 0.0
+
+    # Mean over interval
+    total_area = ramp_area + plateau_area
+    mean_factor = total_area / dt_h
+
+    return float(min(1.0, max(0.0, mean_factor)))
+
+
+def compute_attrition_rate_instantaneous(
     *,
     cell_line: str,
     compound: str,
@@ -316,10 +408,18 @@ def compute_attrition_rate(
     params: Optional[Dict] = None
 ) -> float:
     """
-    Compute time-dependent attrition rate (deaths per hour).
+    Compute instantaneous attrition rate at a single time point.
 
     This is the core of the morphology-to-attrition feedback loop.
     Attrition accumulates over time when cells are under high stress.
+
+    CRITICAL FIX: For microtubule axis on dividing cells, returns 0.0 to avoid
+    double-attribution with mitotic catastrophe. Mitotic death is attributed
+    exclusively to death_mitotic_catastrophe. For non-dividing cells (neurons),
+    returns transport-collapse-driven attrition (death_compound).
+
+    NOTE: This function evaluates attrition at a SINGLE time point. For interval
+    integration, use compute_attrition_rate_interval_mean() instead.
 
     Args:
         cell_line: Cell line identifier
@@ -334,7 +434,7 @@ def compute_attrition_rate(
         params: Optional parameters dict (for future extensions)
 
     Returns:
-        Attrition rate (fraction killed per hour)
+        Attrition rate (fraction killed per hour) at this time point
     """
     # No attrition before 12h (cells need time to commit to death)
     if time_since_treatment_h <= 12.0:
@@ -362,23 +462,30 @@ def compute_attrition_rate(
         'oxidative': 0.20,      # Moderate (ROS accumulates, some adaptation possible)
         'mitochondrial': 0.18,  # Moderate (bioenergetic collapse)
         'dna_damage': 0.20,     # Moderate (apoptosis cascade)
-        'microtubule': 0.05,    # Weak (rapid commitment for cancer cells)
+        # 'microtubule' NOT in this dict - handled explicitly below to avoid double-attribution
     }
 
     # Microtubule-specific: neurons get higher attrition (slow burn death after transport collapse)
-    if stress_axis == 'microtubule' and cell_line == 'iPSC_NGN2':
-        # Base attrition for microtubule in neurons
-        base_mt_attrition = 0.25
+    # Dividing cells (cancer lines) return 0.0 - mitotic catastrophe handles attribution exclusively
+    if stress_axis == 'microtubule':
+        if cell_line == 'iPSC_NGN2':
+            # Neurons: non-dividing, die from axonal transport collapse
+            # This is distinct from mitotic catastrophe (which doesn't apply to non-dividing cells)
+            base_mt_attrition = 0.25
 
-        # Scale attrition by ACTUAL morphology disruption (not dose proxy!)
-        # This creates the true "morphology → attrition → viability" causal arc
-        dys = transport_dysfunction
+            # Scale attrition by ACTUAL morphology disruption (not dose proxy!)
+            # This creates the true "morphology → attrition → viability" causal arc
+            dys = transport_dysfunction
 
-        # Nonlinear scaling: mild disruption has ceiling (allows recovery/adaptation)
-        # dys^2 means: 20% disruption → 4% scale, 50% disruption → 25% scale
-        # This prevents low doses from causing inevitable death
-        attrition_scale = 1.0 + 2.0 * (dys ** 2.0)  # 1× at no disruption, up to 3× at complete disruption
-        attrition_rate_base = base_mt_attrition * attrition_scale
+            # Nonlinear scaling: mild disruption has ceiling (allows recovery/adaptation)
+            # dys^2 means: 20% disruption → 4% scale, 50% disruption → 25% scale
+            # This prevents low doses from causing inevitable death
+            attrition_scale = 1.0 + 2.0 * (dys ** 2.0)  # 1× at no disruption, up to 3× at complete disruption
+            attrition_rate_base = base_mt_attrition * attrition_scale
+        else:
+            # Dividing cells (A549, HepG2, etc.): mitotic catastrophe is the ONLY attribution
+            # Return 0.0 here to prevent double-attribution with death_mitotic_catastrophe
+            return 0.0
     else:
         attrition_rate_base = base_attrition_rates.get(stress_axis, 0.10)
 
@@ -390,6 +497,143 @@ def compute_attrition_rate(
     attrition_rate = attrition_rate_base * stress_multiplier * time_factor / 36.0  # Normalize to per-hour
 
     return attrition_rate
+
+
+def compute_attrition_rate_interval_mean(
+    *,
+    cell_line: str,
+    compound: str,
+    dose_uM: float,
+    stress_axis: str,
+    ic50_uM: float,
+    hill_slope: float,
+    transport_dysfunction: float,
+    time_since_treatment_start_h: float,
+    dt_h: float,
+    current_viability: float,
+    params: Optional[Dict] = None
+) -> float:
+    """
+    Compute interval-averaged attrition rate, properly integrating step functions.
+
+    This wrapper handles the 12h commitment threshold correctly:
+    - Computes fraction of interval [t0, t1) that lies past 12h threshold
+    - Evaluates instantaneous rate at midpoint of post-threshold segment
+    - Returns effective rate = fraction_after * rate_at_midpoint
+
+    For linear ramps (like the 12h → 48h attrition ramp), midpoint evaluation
+    equals exact mean, making this both simple and correct.
+
+    Args:
+        cell_line: Cell line identifier
+        compound: Compound name
+        dose_uM: Dose in µM
+        stress_axis: Stress axis
+        ic50_uM: Adjusted IC50 for this cell line
+        hill_slope: Hill coefficient
+        transport_dysfunction: Transport dysfunction score (0-1)
+        time_since_treatment_start_h: Time since treatment at START of interval (t0)
+        dt_h: Interval duration
+        current_viability: Current viability (0-1)
+        params: Optional parameters dict
+
+    Returns:
+        Effective attrition rate (fraction killed per hour) averaged over interval
+
+    Examples:
+        >>> compute_attrition_rate_interval_mean(
+        ...     ..., time_since_treatment_start_h=0, dt_h=24, ...
+        ... )
+        # Interval [0, 24h) crosses 12h threshold
+        # Fraction after 12h = (24 - 12) / 24 = 0.5
+        # Evaluate rate at midpoint of [12, 24) = 18h
+        # Return: 0.5 * rate(18h)
+
+        >>> compute_attrition_rate_interval_mean(
+        ...     ..., time_since_treatment_start_h=0, dt_h=10, ...
+        ... )
+        # Interval [0, 10h) entirely before 12h threshold
+        # Return: 0.0 (no attrition)
+
+        >>> compute_attrition_rate_interval_mean(
+        ...     ..., time_since_treatment_start_h=15, dt_h=5, ...
+        ... )
+        # Interval [15, 20h) entirely after 12h threshold
+        # Evaluate rate at midpoint = 17.5h
+        # Return: 1.0 * rate(17.5h)
+    """
+    ATTRITION_THRESHOLD_H = 12.0
+
+    t0 = time_since_treatment_start_h
+    t1 = t0 + dt_h
+
+    # Fraction of interval past commitment threshold
+    frac_after = interval_fraction_after(t0, t1, ATTRITION_THRESHOLD_H)
+
+    if frac_after <= 0:
+        return 0.0  # Entire interval before threshold
+
+    # Evaluate instantaneous rate at midpoint of post-threshold segment
+    # For interval [t0, t1) with threshold T:
+    # - If t0 >= T: midpoint = t0 + 0.5 * dt
+    # - If t0 < T < t1: midpoint = T + 0.5 * (t1 - T)
+    post_threshold_start = max(t0, ATTRITION_THRESHOLD_H)
+    post_threshold_end = t1
+    t_eval = post_threshold_start + 0.5 * (post_threshold_end - post_threshold_start)
+
+    # Evaluate instantaneous rate at this representative time
+    rate_at_midpoint = compute_attrition_rate_instantaneous(
+        cell_line=cell_line,
+        compound=compound,
+        dose_uM=dose_uM,
+        stress_axis=stress_axis,
+        ic50_uM=ic50_uM,
+        hill_slope=hill_slope,
+        transport_dysfunction=transport_dysfunction,
+        time_since_treatment_h=t_eval,
+        current_viability=current_viability,
+        params=params,
+    )
+
+    # Effective rate over interval = fraction_after * rate_at_midpoint
+    return frac_after * rate_at_midpoint
+
+
+# Backward compatibility alias (deprecated, use interval_mean explicitly)
+def compute_attrition_rate(
+    *,
+    cell_line: str,
+    compound: str,
+    dose_uM: float,
+    stress_axis: str,
+    ic50_uM: float,
+    hill_slope: float,
+    transport_dysfunction: float,
+    time_since_treatment_h: float,
+    current_viability: float,
+    params: Optional[Dict] = None
+) -> float:
+    """
+    DEPRECATED: Use compute_attrition_rate_instantaneous() or compute_attrition_rate_interval_mean().
+
+    This function is kept for backward compatibility with existing code that hasn't
+    been updated to use explicit interval integration. It evaluates instantaneous
+    rate at a single time point, which creates step-size artifacts.
+
+    New code should use compute_attrition_rate_interval_mean() with explicit t0 and dt.
+    """
+    return compute_attrition_rate_instantaneous(
+        cell_line=cell_line,
+        compound=compound,
+        dose_uM=dose_uM,
+        stress_axis=stress_axis,
+        ic50_uM=ic50_uM,
+        hill_slope=hill_slope,
+        transport_dysfunction=transport_dysfunction,
+        time_since_treatment_h=time_since_treatment_h,
+        current_viability=current_viability,
+        params=params,
+    )
 
 
 def apply_attrition_over_time(
