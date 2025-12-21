@@ -524,6 +524,256 @@ def cosplay_detector_test():
     return lik_A > lik_B * 2
 
 
+# =============================================================================
+# Agent 3: Mechanism Posterior Calibration Tracking (ECE)
+# =============================================================================
+
+@dataclass
+class CalibrationEvent:
+    """
+    Single classification event for calibration tracking.
+
+    Records:
+    - confidence: max posterior probability (how sure was the agent?)
+    - correct: was the prediction actually right?
+
+    Agent 3: This is PURE INSTRUMENTATION. No policy coupling.
+    """
+    confidence: float
+    correct: bool
+
+    def __post_init__(self):
+        """Validate bounds."""
+        assert 0.0 <= self.confidence <= 1.0, f"Confidence must be in [0,1], got {self.confidence}"
+        assert isinstance(self.correct, bool), f"Correct must be bool, got {type(self.correct)}"
+
+
+class MechanismCalibrationTracker:
+    """
+    Track mechanism posterior calibration over time.
+
+    Answers: "When the agent says '90% sure', is it actually right ~90% of the time?"
+
+    Agent 3 principles:
+    - Pure instrumentation (no policy changes)
+    - No filtering (track ALL classifications, even low confidence)
+    - Deterministic ECE computation
+    - Small-sample guardrails (min 30 samples for stability)
+
+    Usage:
+        tracker = MechanismCalibrationTracker()
+
+        # After each classification
+        tracker.record(
+            predicted=posterior.top_mechanism,
+            true_mechanism=ground_truth,
+            posterior=posterior.probabilities
+        )
+
+        # Compute calibration
+        ece, is_stable = tracker.compute_ece()
+        if is_stable and ece > 0.15:
+            logger.warning(f"Mechanism posteriors miscalibrated: ECE={ece:.3f}")
+    """
+
+    def __init__(self, min_samples_for_stability: int = 30):
+        """
+        Initialize calibration tracker.
+
+        Args:
+            min_samples_for_stability: Minimum samples before ECE is considered stable
+        """
+        self.events: List[CalibrationEvent] = []
+        self.min_samples_for_stability = min_samples_for_stability
+
+    def record(
+        self,
+        predicted: Mechanism,
+        true_mechanism: Mechanism,
+        posterior: Dict[Mechanism, float]
+    ) -> None:
+        """
+        Record a single classification event.
+
+        Args:
+            predicted: Agent's predicted mechanism (argmax of posterior)
+            true_mechanism: Ground truth mechanism (from simulator)
+            posterior: Full posterior distribution
+
+        Agent 3: This MUST be called on EVERY classification, no filtering.
+        """
+        confidence = max(posterior.values())
+        correct = (predicted == true_mechanism)
+
+        event = CalibrationEvent(confidence=confidence, correct=correct)
+        self.events.append(event)
+
+    def compute_ece(self, n_bins: int = 10) -> Tuple[float, bool]:
+        """
+        Compute Expected Calibration Error (ECE).
+
+        ECE measures calibration: does "90% confident" mean "90% correct"?
+
+        Formula:
+            ECE = Σ_k (|B_k| / N) * |acc(B_k) - conf(B_k)|
+
+        Where:
+        - B_k = bin k (confidence range)
+        - acc(B_k) = accuracy in bin k
+        - conf(B_k) = mean confidence in bin k
+        - N = total samples
+
+        Args:
+            n_bins: Number of confidence bins (default: 10)
+
+        Returns:
+            (ece, is_stable):
+            - ece: Expected Calibration Error in [0, 1]
+            - is_stable: True if n_samples >= min_samples_for_stability
+
+        Agent 3: Deterministic, pure function. No side effects.
+        """
+        if len(self.events) == 0:
+            return 0.0, False
+
+        is_stable = len(self.events) >= self.min_samples_for_stability
+
+        # Bin edges: [0, 0.1, 0.2, ..., 1.0]
+        bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+
+        # Group events by bin
+        bins: List[List[CalibrationEvent]] = [[] for _ in range(n_bins)]
+
+        for event in self.events:
+            # Find which bin this confidence falls into
+            bin_idx = int(event.confidence * n_bins)
+            # Handle edge case: confidence = 1.0 falls into last bin
+            if bin_idx == n_bins:
+                bin_idx = n_bins - 1
+            bins[bin_idx].append(event)
+
+        # Compute ECE
+        ece = 0.0
+        n_total = len(self.events)
+
+        for bin_events in bins:
+            if len(bin_events) == 0:
+                continue  # Skip empty bins
+
+            # Accuracy in this bin
+            n_correct = sum(1 for e in bin_events if e.correct)
+            accuracy = n_correct / len(bin_events)
+
+            # Mean confidence in this bin
+            mean_confidence = sum(e.confidence for e in bin_events) / len(bin_events)
+
+            # Calibration gap
+            gap = abs(accuracy - mean_confidence)
+
+            # Weighted by bin size
+            weight = len(bin_events) / n_total
+            ece += weight * gap
+
+        return ece, is_stable
+
+    def get_statistics(self) -> Dict[str, any]:
+        """
+        Get summary statistics for diagnostics.
+
+        Returns dict with:
+        - n_samples: Total classification events
+        - mean_confidence: Average confidence
+        - accuracy: Overall accuracy
+        - ece: Expected Calibration Error
+        - is_stable: Whether ECE is stable
+        """
+        if len(self.events) == 0:
+            return {
+                "n_samples": 0,
+                "mean_confidence": 0.0,
+                "accuracy": 0.0,
+                "ece": 0.0,
+                "is_stable": False
+            }
+
+        n_correct = sum(1 for e in self.events if e.correct)
+        accuracy = n_correct / len(self.events)
+        mean_confidence = sum(e.confidence for e in self.events) / len(self.events)
+        ece, is_stable = self.compute_ece()
+
+        return {
+            "n_samples": len(self.events),
+            "mean_confidence": mean_confidence,
+            "accuracy": accuracy,
+            "ece": ece,
+            "is_stable": is_stable
+        }
+
+
+def compute_ece(
+    events: List[CalibrationEvent],
+    n_bins: int = 10
+) -> float:
+    """
+    Pure function: Compute Expected Calibration Error.
+
+    Agent 3: This is the canonical ECE implementation.
+    Use this for testing in isolation.
+
+    Args:
+        events: List of calibration events
+        n_bins: Number of confidence bins
+
+    Returns:
+        ECE in [0, 1]
+
+    Example:
+        # Perfectly calibrated
+        events = [CalibrationEvent(0.9, True) for _ in range(90)]
+        events += [CalibrationEvent(0.9, False) for _ in range(10)]
+        ece = compute_ece(events)
+        assert ece < 0.05  # Should be near-zero
+
+        # Overconfident
+        events = [CalibrationEvent(0.9, True) for _ in range(60)]
+        events += [CalibrationEvent(0.9, False) for _ in range(40)]
+        ece = compute_ece(events)
+        assert ece > 0.2  # Should be high
+    """
+    if len(events) == 0:
+        return 0.0
+
+    # Bin edges
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+
+    # Group by bin
+    bins: List[List[CalibrationEvent]] = [[] for _ in range(n_bins)]
+
+    for event in events:
+        bin_idx = int(event.confidence * n_bins)
+        if bin_idx == n_bins:
+            bin_idx = n_bins - 1
+        bins[bin_idx].append(event)
+
+    # Compute ECE
+    ece = 0.0
+    n_total = len(events)
+
+    for bin_events in bins:
+        if len(bin_events) == 0:
+            continue
+
+        # Accuracy and confidence in bin
+        accuracy = sum(1 for e in bin_events if e.correct) / len(bin_events)
+        mean_conf = sum(e.confidence for e in bin_events) / len(bin_events)
+
+        # Weighted gap
+        weight = len(bin_events) / n_total
+        ece += weight * abs(accuracy - mean_conf)
+
+    return ece
+
+
 if __name__ == "__main__":
     passed = cosplay_detector_test()
     if passed:
