@@ -54,11 +54,12 @@ def test_regression_scrna_added_to_global_enforcement_loop_is_caught():
     beliefs.tested_compounds = {'DMSO'}
 
     # Normal behavior: should return dose_ladder (NOT scRNA calibration)
-    template_name, _ = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=384,
         cycle=5
     )
+    template_name = decision.chosen_template
 
     # If someone adds scRNA to enforcement loop, this would return calibrate_scrna_baseline
     # The test proves that current implementation does NOT force scRNA
@@ -67,9 +68,8 @@ def test_regression_scrna_added_to_global_enforcement_loop_is_caught():
         "scRNA calibration must NEVER be forced autonomously. Only LDH + CP should be forced."
 
     # Additional check: decision receipt should NOT show scRNA enforcement
-    decision = chooser.last_decision_event
-    if decision.selected_candidate.get("forced"):
-        assert decision.selected_candidate.get("assay") not in ["scrna", None], \
+    if decision.rationale.forced:
+        assert decision.chosen_kwargs.get("assay") not in ["scrna", None], \
             "REGRESSION: Forced decision for scRNA detected (expensive truth forcing cheap truth)"
 
 
@@ -106,10 +106,14 @@ def test_regression_bypass_finalize_selection_is_detected():
     # This should crash with DecisionReceiptInvariantError
     # because last_decision_event is None
     with patch.object(chooser, 'choose_next', side_effect=hostile_choose_next_bypass):
-        template_name, _ = chooser.choose_next(beliefs=beliefs, budget_remaining_wells=384, cycle=5)
+        result = chooser.choose_next(beliefs=beliefs, budget_remaining_wells=384, cycle=5)
 
         # If we get here, the hostile bypass succeeded (BAD)
-        # Now try to access decision receipt (should be None)
+        # The result should be a tuple, not a Decision object
+        assert isinstance(result, tuple), \
+            "Hostile bypass returned tuple instead of Decision"
+
+        # Now try to access decision receipt via last_decision_event (should be None)
         assert chooser.last_decision_event is None, \
             "REGRESSION: choose_next bypassed _finalize_selection but didn't crash. " \
             "This means the invariant check is not being enforced."
@@ -259,49 +263,48 @@ def test_meta_all_decisions_have_minimum_schema_after_short_run():
                     setattr(beliefs, field, value)
 
         # Run chooser
-        template_name, _ = chooser.choose_next(
+        decision = chooser.choose_next(
             beliefs=beliefs,
             budget_remaining_wells=scenario["budget"],
             cycle=scenario["cycle"]
         )
+        template_name = decision.chosen_template
 
         # Verify decision receipt exists
-        decision = chooser.last_decision_event
         assert decision is not None, \
             f"Scenario {i+1}: No decision receipt (Covenant 6 violation)"
 
-        cand = decision.selected_candidate
-        assert isinstance(cand, dict), \
-            f"Scenario {i+1}: selected_candidate is not a dict"
-
-        # Check required fields
-        missing = required_fields - set(cand.keys())
-        assert not missing, \
-            f"Scenario {i+1}: Missing required fields: {missing}. " \
-            f"Present: {sorted(cand.keys())}. " \
-            f"This is a Covenant 6 violation (incomplete decision receipt)."
+        # Check required fields on rationale
+        assert decision.rationale.regime is not None, \
+            f"Scenario {i+1}: Missing regime field"
+        assert decision.rationale.forced is not None, \
+            f"Scenario {i+1}: Missing forced field"
+        assert decision.rationale.trigger is not None, \
+            f"Scenario {i+1}: Missing trigger field"
+        assert decision.rationale.gate_state is not None, \
+            f"Scenario {i+1}: Missing gate_state field"
 
         # If forced or abort, must have enforcement_layer
-        if cand.get("forced") or "abort" in template_name.lower():
-            assert "enforcement_layer" in cand, \
+        if decision.rationale.forced or "abort" in template_name.lower():
+            assert decision.rationale.enforcement_layer is not None, \
                 f"Scenario {i+1}: Forced/abort decision missing enforcement_layer. " \
-                f"Template: {template_name}, forced={cand.get('forced')}"
+                f"Template: {template_name}, forced={decision.rationale.forced}"
 
         # If abort, must have attempted_template or calibration_plan
         if "abort" in template_name.lower():
-            assert "attempted_template" in cand or "calibration_plan" in cand, \
+            assert decision.rationale.attempted_template is not None or decision.rationale.calibration_plan is not None, \
                 f"Scenario {i+1}: Abort decision missing provenance " \
                 f"(no attempted_template or calibration_plan). " \
                 f"Aborts must explain what was refused."
 
         # Verify gate_state is a dict
-        assert isinstance(cand["gate_state"], dict), \
+        assert isinstance(decision.rationale.gate_state, dict), \
             f"Scenario {i+1}: gate_state is not a dict"
 
         # Verify regime matches expectation
-        assert cand["regime"] == scenario["expected_regime"], \
+        assert decision.rationale.regime == scenario["expected_regime"], \
             f"Scenario {i+1}: Expected regime '{scenario['expected_regime']}', " \
-            f"got '{cand['regime']}'"
+            f"got '{decision.rationale.regime}'"
 
 
 if __name__ == "__main__":

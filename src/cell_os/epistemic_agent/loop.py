@@ -20,9 +20,11 @@ from typing import Optional
 
 from .world import ExperimentalWorld
 from .agent.policy_rules import RuleBasedPolicy
-from .schemas import Observation
+from .schemas import Observation, Proposal, WellSpec
 from .beliefs.ledger import append_events_jsonl, append_decisions_jsonl, append_noise_diagnostics_jsonl, DecisionEvent
 from .exceptions import InvalidDesignError
+from .controller_integration import EpistemicIntegration
+from .design_quality import DesignQualityChecker
 
 
 class EpistemicLoop:
@@ -33,11 +35,14 @@ class EpistemicLoop:
         budget: int = 384,
         max_cycles: int = 20,
         log_dir: Optional[Path] = None,
-        seed: int = 0
+        seed: int = 0,
+        strict_quality: bool = True,
+        strict_provenance: bool = True
     ):
         self.budget = budget
         self.max_cycles = max_cycles
         self.seed = seed
+        self.strict_provenance = strict_provenance
 
         # Setup logging
         if log_dir is None:
@@ -55,10 +60,17 @@ class EpistemicLoop:
         self.evidence_file = self.log_dir / f"{self.run_id}_evidence.jsonl"
         self.decisions_file = self.log_dir / f"{self.run_id}_decisions.jsonl"
         self.diagnostics_file = self.log_dir / f"{self.run_id}_diagnostics.jsonl"
+        self.refusals_file = self.log_dir / f"{self.run_id}_refusals.jsonl"
 
         # Initialize world and agent
         self.world = ExperimentalWorld(budget_wells=budget, seed=seed)
         self.agent = RuleBasedPolicy(budget=budget)
+
+        # v0.5.1: Epistemic integration (Task 3 - real epistemic claims)
+        self.epistemic = EpistemicIntegration(enable=True)
+
+        # NEW: Design quality checker (scientific heuristics, not physics)
+        self.quality_checker = DesignQualityChecker(strict_mode=strict_quality)
 
         # Run history
         self.history = []
@@ -94,11 +106,9 @@ class EpistemicLoop:
                     previous_observation=self.history[-1] if self.history else None
                 )
 
-                # v0.4.2: Write decision event (always present after chooser.choose_next)
-                if hasattr(self.agent, 'chooser') and hasattr(self.agent.chooser, 'last_decision_event'):
-                    decision_evt = self.agent.chooser.last_decision_event
-                    if decision_evt is not None:
-                        append_decisions_jsonl(self.decisions_file, [decision_evt])
+                # v0.5.0: Write canonical Decision (no side-channel, no hasattr checks)
+                if self.agent.last_decision is not None:
+                    append_decisions_jsonl(self.decisions_file, [self.agent.last_decision])
 
             except RuntimeError as e:
                 # Handle abort from policy (e.g., insufficient budget)
@@ -106,25 +116,24 @@ class EpistemicLoop:
                     self._log(f"\n⛔ POLICY ABORT: {e}")
                     self.abort_reason = str(e)
 
-                    # v0.4.2: Write abort decision event
-                    if hasattr(self.agent, 'chooser') and hasattr(self.agent.chooser, 'last_decision_event'):
-                        decision_evt = self.agent.chooser.last_decision_event
-                        if decision_evt is not None:
-                            append_decisions_jsonl(self.decisions_file, [decision_evt])
-                        else:
-                            # Fallback: create minimal abort receipt if chooser didn't set one
-                            abort_decision = DecisionEvent(
+                    # v0.5.0: Write canonical Decision (no side-channel, no hasattr checks)
+                    if self.agent.last_decision is not None:
+                        append_decisions_jsonl(self.decisions_file, [self.agent.last_decision])
+                    else:
+                            # Fallback: create minimal abort Decision if chooser didn't set one
+                            from cell_os.core import Decision, DecisionRationale
+                            abort_decision = Decision(
+                                decision_id=f"abort-cycle-{cycle}",
                                 cycle=cycle,
-                                candidates=[],
-                                selected="abort_runtime_error",
-                                selected_score=0.0,
-                                selected_candidate={
-                                    "template": "abort_runtime_error",
-                                    "forced": True,
-                                    "trigger": "abort",
-                                    "regime": "aborted"
-                                },
-                                reason=str(e),
+                                timestamp_utc=Decision.now_utc(),
+                                kind="abort",
+                                chosen_template=None,
+                                chosen_kwargs={"reason": str(e)},
+                                rationale=DecisionRationale(
+                                    summary=f"Runtime abort: {str(e)}",
+                                    rules_fired=("runtime_error",),
+                                ),
+                                inputs_fingerprint=f"abort_{cycle}",
                             )
                             append_decisions_jsonl(self.decisions_file, [abort_decision])
 
@@ -136,7 +145,105 @@ class EpistemicLoop:
 
             self._log_proposal(proposal)
 
-            # World executes
+            # EPISTEMIC DEBT ENFORCEMENT: Check if action can be afforded
+            # This is the forcing function - debt accumulation blocks execution
+            template_name = proposal.design_id.split('_')[0]  # Extract template name
+            should_refuse, refusal_reason, refusal_context = self.epistemic.should_refuse_action(
+                template_name=template_name,
+                base_cost_wells=len(proposal.wells),
+                budget_remaining=self.world.budget_remaining,
+                debt_hard_threshold=2.0,  # Hard threshold: 2 bits of overclaim
+                calibration_templates={"baseline", "calibration", "dmso"}
+            )
+
+            if should_refuse:
+                self._log("\n" + "="*60)
+                self._log(f"EPISTEMIC DEBT REFUSAL: {refusal_reason}")
+                self._log("="*60)
+                self._log(f"  Debt accumulated: {refusal_context['debt_bits']:.3f} bits")
+                self._log(f"  Base cost: {refusal_context['base_cost_wells']} wells")
+                self._log(f"  Inflated cost: {refusal_context['inflated_cost_wells']} wells")
+                self._log(f"  Budget remaining: {refusal_context['budget_remaining']} wells")
+
+                if refusal_context['blocked_by_cost']:
+                    self._log(f"  → Cost inflation from debt exceeds budget")
+                if refusal_context['blocked_by_threshold']:
+                    self._log(f"  → Debt threshold ({refusal_context['debt_threshold']:.1f} bits) exceeded for non-calibration action")
+
+                # Write refusal to permanent log
+                from .beliefs.ledger import RefusalEvent, append_refusals_jsonl
+                refusal_event = RefusalEvent(
+                    cycle=cycle,
+                    timestamp=datetime.now().isoformat(),
+                    refusal_reason=refusal_reason,
+                    proposed_template=template_name,
+                    proposed_hypothesis=proposal.hypothesis,
+                    proposed_wells=len(proposal.wells),
+                    design_id=proposal.design_id,
+                    **refusal_context
+                )
+                append_refusals_jsonl(self.refusals_file, [refusal_event])
+
+                # Update agent beliefs with refusal (agent learns "I am insolvent")
+                self.agent.beliefs.record_refusal(
+                    refusal_reason=refusal_reason,
+                    debt_bits=refusal_context['debt_bits'],
+                    debt_threshold=refusal_context['debt_threshold']
+                )
+
+                self._log(f"\n  Refusal logged to: {self.refusals_file.name}")
+                self._log(f"  Agent marked as epistemically insolvent (consecutive refusals: {self.agent.beliefs.consecutive_refusals})")
+                self._log(f"  System must propose calibration to restore solvency")
+
+                # Skip this cycle - agent must propose calibration next
+                continue
+
+            # v0.5.1: Epistemic claim (Task 3 - real epistemic claims)
+            # Estimate expected gain BEFORE execution
+            prior_entropy = self.agent.beliefs.entropy
+            modalities = tuple(set(w.assay for w in proposal.wells))  # Deduplicate assays
+            expected_gain = self.agent.beliefs.estimate_expected_gain(
+                template_name=template_name,
+                n_wells=len(proposal.wells),
+                modalities=modalities
+            )
+
+            # Claim design with expected gain
+            claim_id = self.epistemic.claim_design(
+                design_id=proposal.design_id,
+                cycle=cycle,
+                expected_gain_bits=expected_gain,
+                hypothesis=proposal.hypothesis,
+                modalities=modalities,
+                wells_count=len(proposal.wells),
+                estimated_cost_usd=len(proposal.wells) * 5.0,  # Rough estimate: $5/well
+                prior_modalities=None  # TODO: Track cumulative modalities
+            )
+
+            self._log(f"  Expected gain: {expected_gain:.3f} bits (prior entropy: {prior_entropy:.2f})")
+
+            # NEW: Check design quality BEFORE execution
+            quality_report = self.quality_checker.check(proposal)
+
+            self._log(f"\nDesign Quality Check:")
+            self._log(f"  {quality_report.summary()}")
+            if quality_report.has_warnings:
+                for warning in quality_report.warnings:
+                    self._log(f"    {warning}")
+
+            # NEW: Policy decision - refuse if quality blocks
+            if quality_report.blocks_execution:
+                self._log("\n" + "="*60)
+                self._log("DESIGN REJECTED: High-severity quality issues")
+                self._log("="*60)
+
+                # Log refusal reason
+                self._log_refusal(proposal, quality_report, cycle)
+
+                # Agent could revise here, but for now we skip cycle
+                continue  # Skip to next cycle
+
+            # World executes (no validation - world doesn't care about quality)
             start_time = time.time()
             try:
                 observation = self.world.run_experiment(proposal)
@@ -151,11 +258,67 @@ class EpistemicLoop:
                 events = self.agent.beliefs.end_cycle()
                 diagnostics = self.agent.last_diagnostics or []
 
-                # Covenant 7: Assert no undocumented mutations
-                beliefs_after = self.agent.beliefs.snapshot()
-                self.agent.beliefs.assert_no_undocumented_mutation(
-                    beliefs_before, beliefs_after, cycle=cycle
+                # Covenant 7: Assert no undocumented mutations (if strict_provenance enabled)
+                if self.strict_provenance:
+                    beliefs_after = self.agent.beliefs.snapshot()
+                    self.agent.beliefs.assert_no_undocumented_mutation(
+                        beliefs_before, beliefs_after, cycle=cycle
+                    )
+
+                # v0.5.1: Epistemic resolution (Task 3 - real epistemic claims)
+                # Measure actual gain AFTER observation
+                posterior_entropy = self.agent.beliefs.entropy
+                realized_gain = prior_entropy - posterior_entropy
+
+                # Create dummy posteriors for resolution (Phase 1: entropy-only)
+                # TODO (Task 6): Replace with real MechanismPosterior objects
+                class DummyPosterior:
+                    def __init__(self, entropy_val):
+                        self.entropy = entropy_val
+
+                # Resolve claim and track debt
+                resolution = self.epistemic.resolve_design(
+                    claim_id=claim_id,
+                    prior_posterior=DummyPosterior(prior_entropy),
+                    posterior=DummyPosterior(posterior_entropy)
                 )
+
+                self._log(
+                    f"  Realized gain: {realized_gain:.3f} bits "
+                    f"(posterior entropy: {posterior_entropy:.2f}), "
+                    f"debt_increment: {resolution['debt_increment']:.3f}, "
+                    f"total_debt: {resolution['total_debt']:.3f}"
+                )
+
+                # Compute debt repayment for calibration actions
+                is_calibration = template_name in {"baseline", "calibration", "dmso"}
+                if is_calibration and resolution['total_debt'] > 0:
+                    # Measure noise improvement (if any)
+                    noise_rel_width_after = self.agent.beliefs.noise_rel_width
+                    noise_rel_width_before = beliefs_before.get("noise_rel_width")
+
+                    noise_improvement = None
+                    if noise_rel_width_before is not None and noise_rel_width_after is not None:
+                        # Improvement = reduction in uncertainty
+                        noise_improvement = max(0.0, noise_rel_width_before - noise_rel_width_after)
+
+                    # Compute and apply repayment
+                    repayment = self.epistemic.compute_repayment(
+                        action_id=claim_id,
+                        action_type=template_name,
+                        is_calibration=True,
+                        noise_improvement=noise_improvement
+                    )
+
+                    if repayment > 0:
+                        self._log(f"  Debt repayment: {repayment:.3f} bits earned from calibration")
+
+                # Update agent's knowledge of current debt (after repayment)
+                current_debt = self.epistemic.controller.get_total_debt()
+                self.agent.beliefs.update_debt_level(current_debt)
+
+                # Record that action executed successfully (may clear insolvency)
+                self.agent.beliefs.record_action_executed(was_calibration=is_calibration)
 
                 # Write to ledgers
                 if events:
@@ -184,66 +347,6 @@ class EpistemicLoop:
                 # Save incremental JSON
                 self._save_json()
 
-            except InvalidDesignError as e:
-                # Covenant 5: Agent refused to execute invalid design
-                # Write refusal receipt FIRST, then handle abort/retry
-                self._log(f"\n🛑 DESIGN REFUSAL: {e}")
-
-                # CRITICAL: Check for audit trail degradation
-                if e.audit_degraded:
-                    # Audit trail is compromised - emit loud ERROR-level event
-                    self._log(
-                        f"\n⚠️  AUDIT TRAIL DEGRADED ⚠️\n"
-                        f"Refusal artifacts failed to write: {e.audit_error}\n"
-                        f"Refusal is ENFORCED (agent still refuses), but receipt write failed.\n"
-                        f"This must be investigated and resolved before next run."
-                    )
-
-                # Extract structured provenance (no parsing!)
-                rejected_path = e.rejected_path
-                validator_mode = e.validator_mode or "unknown"
-                violation_code = e.violation_code
-
-                # Create refusal receipt (DecisionEvent with abort)
-                refusal_receipt = DecisionEvent(
-                    cycle=cycle,
-                    candidates=[],  # No valid candidates when design fails validation
-                    selected="abort_invalid_design",
-                    selected_score=0.0,
-                    selected_candidate={
-                        "template": "abort_invalid_design",
-                        "forced": True,
-                        "trigger": "design_validation_failed",
-                        "regime": "aborted",
-                        "enforcement_layer": "design_bridge",
-                        "attempted_template": proposal.design_id,
-                        "invalid_design_path": str(rejected_path) if rejected_path else "unknown",
-                        "constraint_violation": violation_code,
-                        "validator_mode": validator_mode,
-                        "retry_policy": "no_retry_on_validation_failure",  # Theology: no automatic retries
-                        # Audit trail status
-                        "audit_degraded": e.audit_degraded,
-                        "audit_error": e.audit_error if e.audit_degraded else None,
-                    },
-                    reason=f"Design validation failed: {violation_code} ({validator_mode} validator)"
-                )
-
-                # Receipt first, then die (Covenant 6)
-                append_decisions_jsonl(self.decisions_file, [refusal_receipt])
-
-                # Log and abort (no automatic retry for validation failures)
-                self.abort_reason = f"Invalid design (cycle {cycle}): {violation_code}"
-                if e.audit_degraded:
-                    self.abort_reason += " [AUDIT DEGRADED]"
-                self._save_json()
-                break
-
-            # NOTE:
-            # We quarantine only validation failures (Covenant 5: InvalidDesignError).
-            # If execution fails after a design passes validation, we do NOT write a _REJECTED artifact,
-            # because the design itself was valid and the failure is operational/runtime.
-            # Runtime failures indicate simulator bugs, infrastructure issues, or unexpected conditions,
-            # not agent constraint violations.
             except Exception as e:
                 self._log(f"\n❌ ERROR: {e}")
                 self.abort_reason = f"Exception: {e}"
@@ -376,6 +479,29 @@ class EpistemicLoop:
         self._log(f"Evidence: {self.evidence_file}")
         self._log(f"Decisions: {self.decisions_file}")
         self._log(f"Diagnostics: {self.diagnostics_file}")
+
+    def _log_refusal(self, proposal: Proposal, quality_report, cycle: int):
+        """Log design refusal with full provenance."""
+        refusal = {
+            'timestamp': datetime.now().isoformat(),
+            'cycle': cycle,
+            'design_id': proposal.design_id,
+            'hypothesis': proposal.hypothesis,
+            'quality_score': quality_report.score,
+            'warnings': [
+                {
+                    'category': w.category,
+                    'severity': w.severity,
+                    'message': w.message,
+                    'details': w.details
+                }
+                for w in quality_report.warnings
+            ]
+        }
+
+        # Write to refusals log
+        with open(self.refusals_file, 'a') as f:
+            f.write(json.dumps(refusal) + '\n')
 
     def _save_json(self):
         """Save history to JSON for analysis.

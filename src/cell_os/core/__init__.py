@@ -1,11 +1,31 @@
 """
-Compatibility shim for the legacy `core` package.
+Core canonical types for cell_OS.
 
-This exposes `cell_os.core.world_model` so imports like
-`from cell_os.core.world_model import WorldModel` keep working
-while the codebase migrates fully into `cell_os`.
+These types are the single source of truth for experimental semantics.
+All legacy types (WellSpec, WellAssignment, etc.) must adapt to these.
 """
 
-from . import world_model
+from .experiment import Well, Treatment, SpatialLocation, DesignSpec, Experiment
+from .assay import AssayType
+from .cell_painting_channel import CellPaintingChannel
+from .decision import Decision, DecisionRationale
+from .observation import RawWellResult, ConditionKey, Observation
+from .capabilities import PlateGeometry, Capabilities, AllocationPolicy
 
-__all__ = ["world_model"]
+__all__ = [
+    'Well',
+    'Treatment',
+    'SpatialLocation',
+    'DesignSpec',
+    'Experiment',
+    'AssayType',
+    'CellPaintingChannel',
+    'Decision',
+    'DecisionRationale',
+    'RawWellResult',
+    'ConditionKey',
+    'Observation',
+    'PlateGeometry',
+    'Capabilities',
+    'AllocationPolicy',
+]

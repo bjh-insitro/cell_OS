@@ -84,6 +84,11 @@ class ExperimentalWorld:
     def run_experiment(self, proposal: Proposal) -> Observation:
         """Execute proposed experiment and return observations.
 
+        The world executes any physically valid proposal. It does NOT
+        validate scientific quality (confounding, power, etc.).
+
+        That's the agent's job.
+
         Args:
             proposal: Agent's experiment proposal
 
@@ -91,9 +96,9 @@ class ExperimentalWorld:
             Observation with summary statistics (no raw wells by default)
 
         Raises:
-            ValueError: If proposal exceeds budget or has invalid parameters
+            ValueError: If proposal exceeds budget (physical constraint)
         """
-        # Validate budget
+        # Validate budget (this IS a physical constraint)
         wells_requested = len(proposal.wells)
         if wells_requested > self.budget_remaining:
             raise ValueError(
@@ -101,10 +106,8 @@ class ExperimentalWorld:
                 f"remaining {self.budget_remaining}"
             )
 
-        # Convert WellSpec list to WellAssignment list
+        # Convert and execute
         well_assignments = self._convert_proposal_to_assignments(proposal)
-
-        # Run simulation (using standalone simulator)
         results = self._simulate_wells(well_assignments, proposal.design_id)
 
         # Aggregate results into summary statistics
@@ -129,7 +132,20 @@ class ExperimentalWorld:
         This is where we map position_tag to actual well positions
         without exposing the mapping to the agent.
         """
+        assignments, _ = self._convert_proposal_to_assignments_with_positions(proposal)
+        return assignments
+
+    def _convert_proposal_to_assignments_with_positions(
+        self,
+        proposal: Proposal
+    ) -> tuple[List[sim.WellAssignment], List[str]]:
+        """Convert agent's WellSpec to simulator's WellAssignment, returning both assignments and positions.
+
+        Returns:
+            (assignments, positions): List of WellAssignment and list of well_pos strings
+        """
         assignments = []
+        positions = []
 
         # Allocate wells based on position_tag
         edge_iter = iter(self.EDGE_WELLS)
@@ -159,8 +175,9 @@ class ExperimentalWorld:
                 is_sentinel=False
             )
             assignments.append(assignment)
+            positions.append(well_id)
 
-        return assignments
+        return assignments, positions
 
     def _simulate_wells(
         self,
@@ -188,17 +205,22 @@ class ExperimentalWorld:
 
         Agent only sees summaries, not raw well values.
         This prevents "god mode" leakage.
+
+        Position classification is DERIVED from physical location using
+        SpatialLocation.position_class, not stored separately.
         """
+        # Import here to avoid circular dependency
+        from ..core.experiment import SpatialLocation
+
         # Group by condition
         conditions = defaultdict(list)
 
         for res in results:
-            # Determine position_tag from well_id
+            # Derive position_class from physical location (not reverse inference)
             well_id = res['well_id']
-            if well_id in self.EDGE_WELLS:
-                position_tag = 'edge'
-            else:
-                position_tag = 'center'
+            plate_id = res.get('plate_id', 'unknown')
+            location = SpatialLocation(plate_id=plate_id, well_id=well_id)
+            position_class = location.position_class
 
             # Create condition key
             key = (
@@ -207,7 +229,7 @@ class ExperimentalWorld:
                 res['dose_uM'],
                 res['timepoint_h'],
                 'cell_painting',  # For now, single assay
-                position_tag
+                position_class  # Derived from location, not stored
             )
 
             # Extract response from measured signal (not "true" viability)

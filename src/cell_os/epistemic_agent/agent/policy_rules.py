@@ -23,6 +23,7 @@ class RuleBasedPolicy:
         self.beliefs = BeliefState()
         self.chooser = TemplateChooser()
         self.last_diagnostics = None
+        self.last_decision = None  # v0.5.0: Canonical Decision object (kills side-channel)
         self.cycle = 0
 
     def propose_next_experiment(
@@ -33,18 +34,27 @@ class RuleBasedPolicy:
         """Propose next experiment using chooser + beliefs.
 
         v0.4.2: Enforces pay-for-calibration constraints.
+        v0.5.0: Returns Decision object with full provenance (kills side-channel pattern).
         """
         self.cycle += 1
 
         # Choose template based on current beliefs
-        template_name, template_kwargs = self.chooser.choose_next(
+        # v0.5.0: chooser.choose_next() now returns Decision (not tuple)
+        decision = self.chooser.choose_next(
             beliefs=self.beliefs,
             budget_remaining_wells=self.budget_remaining,
             cycle=self.cycle
         )
 
+        # Store decision for provenance (replaces side-channel last_decision_event)
+        self.last_decision = decision
+
+        # Extract template and kwargs from decision
+        template_name = decision.chosen_template
+        template_kwargs = dict(decision.chosen_kwargs)
+
         # Handle abort
-        if template_name == "abort":
+        if template_name == "abort" or decision.kind == "abort":
             reason = template_kwargs.get("reason", "Unknown")
             raise RuntimeError(f"ABORT EXPERIMENT: {reason}")
 

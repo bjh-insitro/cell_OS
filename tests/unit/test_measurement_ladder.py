@@ -130,22 +130,23 @@ def test_assay_affordability_abort():
     assert remaining_wells < wells_needed
 
     # Choose next: should abort
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=remaining_wells,
         cycle=1
     )
+    template_name = decision.chosen_template
+    template_kwargs = decision.chosen_kwargs
 
     # Should return abort
     assert template_name == "abort"
     assert "Cannot afford" in template_kwargs["reason"]
 
     # Check decision event includes calibration plan
-    decision = chooser.last_decision_event
     assert decision is not None
-    assert decision.selected_candidate["trigger"] == "abort"
-    assert "calibration_plan" in decision.selected_candidate
-    assert decision.selected_candidate["calibration_plan"]["wells_needed"] == wells_needed
+    assert decision.rationale.trigger == "abort"
+    assert decision.rationale.calibration_plan is not None
+    assert decision.rationale.calibration_plan["wells_needed"] == wells_needed
 
 
 def test_gate_loss_emitted():
@@ -213,11 +214,13 @@ def test_global_calibration_does_not_force_scrna():
     beliefs.scrna_sigma_stable = False
 
     # Choose next: should force LDH calibration first
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=384,
         cycle=5
     )
+    template_name = decision.chosen_template
+    template_kwargs = decision.chosen_kwargs
 
     assert template_name == "calibrate_ldh_baseline"
     assert template_kwargs["assay"] == "ldh"
@@ -228,11 +231,13 @@ def test_global_calibration_does_not_force_scrna():
     beliefs.ldh_rel_width = 0.22
 
     # Choose next: should force CP calibration next
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=300,
         cycle=6
     )
+    template_name = decision.chosen_template
+    template_kwargs = decision.chosen_kwargs
 
     assert template_name == "calibrate_cell_paint_baseline"
     assert template_kwargs["assay"] == "cell_paint"
@@ -244,11 +249,12 @@ def test_global_calibration_does_not_force_scrna():
 
     # Choose next: should NOT force scRNA calibration
     # Should go to biology (dose_ladder or other)
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=250,
         cycle=7
     )
+    template_name = decision.chosen_template
 
     # Should be a biology template, NOT calibrate_scrna_baseline
     assert template_name != "calibrate_scrna_baseline"
@@ -316,11 +322,13 @@ def test_template_gate_override_blocks_biology_until_gates():
     beliefs.tested_compounds = {'DMSO'}  # Triggers "len(tested) < 5" branch
 
     # Choose next: should override dose_ladder_coarse to calibrate_ldh_baseline
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=384,
         cycle=5
     )
+    template_name = decision.chosen_template
+    template_kwargs = decision.chosen_kwargs
 
     # Should have been overridden to LDH calibration
     assert template_name == "calibrate_ldh_baseline"
@@ -329,9 +337,8 @@ def test_template_gate_override_blocks_biology_until_gates():
     # Check decision provenance
     # Note: enforcement loop catches this before biology template is selected
     # So trigger is "must_calibrate" (from enforcement loop) not "must_calibrate_for_template"
-    decision = chooser.last_decision_event
-    assert decision.selected_candidate["trigger"] == "must_calibrate"
-    assert decision.selected_candidate["assay"] == "ldh"
+    assert decision.rationale.trigger == "must_calibrate"
+    assert decision.chosen_kwargs["assay"] == "ldh"
 
 
 def test_scrna_gate_not_earnable_with_proxy():
@@ -388,19 +395,19 @@ def test_enforcement_layer_appears_in_decisions():
     beliefs.ldh_sigma_stable = False
     beliefs.cell_paint_sigma_stable = False
 
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=384,
         cycle=5
     )
+    template_name = decision.chosen_template
 
     # Should force LDH calibration via global loop
     assert template_name == "calibrate_ldh_baseline"
 
     # Check that enforcement_layer is present in decision receipt
-    decision = chooser.last_decision_event
-    assert "enforcement_layer" in decision.selected_candidate, "enforcement_layer must be in decision"
-    assert decision.selected_candidate["enforcement_layer"] == "global_pre_biology", \
+    assert decision.rationale.enforcement_layer is not None, "enforcement_layer must be in decision"
+    assert decision.rationale.enforcement_layer == "global_pre_biology", \
         "Global loop should mark enforcement_layer as global_pre_biology"
 
     # Test 2: Force template_safety_net enforcement
@@ -437,8 +444,8 @@ def test_enforcement_layer_appears_in_decisions():
 
     # Check that enforcement_layer is template_safety_net
     decision2 = chooser2.last_decision_event
-    assert "enforcement_layer" in decision2.selected_candidate, "enforcement_layer must be in decision"
-    assert decision2.selected_candidate["enforcement_layer"] == "template_safety_net", \
+    assert decision2.rationale.enforcement_layer is not None, "enforcement_layer must be in decision"
+    assert decision2.rationale.enforcement_layer == "template_safety_net", \
         "Template enforcement should mark enforcement_layer as template_safety_net"
 
 
@@ -530,24 +537,24 @@ def test_safety_net_catches_regression_through_choose_next():
         return original_check(beliefs_arg, assay, require_ladder)
 
     with patch.object(chooser, '_check_assay_gate', side_effect=hostile_check_gate):
-        template_name, template_kwargs = chooser.choose_next(
+        decision = chooser.choose_next(
             beliefs=beliefs,
             budget_remaining_wells=384,
             cycle=10
         )
+        template_name = decision.chosen_template
 
     # Safety net should have caught the missing CP gate and overridden
     assert template_name == "calibrate_cell_paint_baseline", \
         "Safety net should override to CP calibration when gate missing"
 
     # Verify decision receipt has template_safety_net enforcement_layer
-    decision = chooser.last_decision_event
     assert decision is not None, "Decision must be recorded"
-    assert "enforcement_layer" in decision.selected_candidate, \
+    assert decision.rationale.enforcement_layer is not None, \
         "Decision must include enforcement_layer"
-    assert decision.selected_candidate["enforcement_layer"] == "template_safety_net", \
+    assert decision.rationale.enforcement_layer == "template_safety_net", \
         "Should be caught by safety net, not global loop (driver fell asleep, seatbelt saved us)"
-    assert decision.selected_candidate["blocked_template"] == "dose_ladder_coarse", \
+    assert decision.rationale.blocked_template == "dose_ladder_coarse", \
         "Should record which template was blocked"
 
 

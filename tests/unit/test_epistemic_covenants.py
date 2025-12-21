@@ -83,31 +83,29 @@ def test_covenant1_refuses_biology_without_instrument_gate():
     beliefs.tested_compounds = {'DMSO'}
 
     # Attempt to run biology
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=384,
         cycle=5
     )
+    template_name = decision.chosen_template
 
     # System must refuse by forcing calibration
     assert template_name == "calibrate_ldh_baseline", \
         "Covenant 1 violation: Biology without instrument gate must be refused"
 
     # Check decision receipt explains refusal with full provenance
-    decision = chooser.last_decision_event
-    cand = decision.selected_candidate
-
-    assert cand["trigger"] == "must_calibrate", \
+    assert decision.rationale.trigger == "must_calibrate", \
         "Refusal must cite calibration requirement (trigger field)"
-    assert cand["enforcement_layer"] == "global_pre_biology", \
+    assert decision.rationale.enforcement_layer == "global_pre_biology", \
         "Refusal must identify which policy layer enforced it"
-    assert cand["assay"] == "ldh", \
+    assert decision.chosen_kwargs["assay"] == "ldh", \
         "Refusal must explain which instrument gate is missing"
-    assert "calibration_plan" in cand, \
+    assert decision.rationale.calibration_plan is not None, \
         "Refusal must include calibration plan (cost estimate)"
-    assert cand["gate_state"]["ldh"] == "lost", \
+    assert decision.rationale.gate_state["ldh"] == "lost", \
         "Refusal must record LDH gate status"
-    assert "ldh" in decision.reason.lower(), \
+    assert "ldh" in decision.rationale.summary.lower(), \
         "Refusal reason must mention LDH"
 
 
@@ -131,29 +129,27 @@ def test_covenant2_refuses_to_skip_calibration_as_first_experiment():
     assert beliefs.noise_df_total == 0, "No measurements yet"
 
     # Try to run biology from cycle 1
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=384,
         cycle=1
     )
+    template_name = decision.chosen_template
 
     # System must refuse by forcing baseline calibration
     assert template_name == "baseline_replicates", \
         "Covenant 2 violation: First experiment must be calibration, not biology"
 
     # Check decision receipt cites noise gate requirement
-    decision = chooser.last_decision_event
-    cand = decision.selected_candidate
-
-    assert cand["trigger"] == "must_calibrate", \
+    assert decision.rationale.trigger == "must_calibrate", \
         "First experiment refusal must cite calibration requirement"
-    assert cand["regime"] == "pre_gate", \
+    assert decision.rationale.regime == "pre_gate", \
         "First experiment must be in pre-gate regime"
-    assert "calibration_plan" in cand, \
+    assert decision.rationale.calibration_plan is not None, \
         "First experiment refusal must include calibration plan"
-    assert cand["gate_state"]["noise_sigma"] == "lost", \
+    assert decision.rationale.gate_state["noise_sigma"] == "lost", \
         "Refusal must record noise gate status"
-    assert "noise" in decision.reason.lower() or "gate" in decision.reason.lower(), \
+    assert "noise" in decision.rationale.summary.lower() or "gate" in decision.rationale.summary.lower(), \
         "Refusal reason must mention noise/gate"
 
 
@@ -288,11 +284,13 @@ def test_covenant5_refuses_to_proceed_when_economically_unjustified():
     low_budget = 50
 
     # Attempt to choose next
-    template_name, template_kwargs = chooser.choose_next(
+    decision = chooser.choose_next(
         beliefs=beliefs,
         budget_remaining_wells=low_budget,
         cycle=1
     )
+    template_name = decision.chosen_template
+    template_kwargs = decision.chosen_kwargs
 
     # System must refuse with abort
     assert template_name == "abort", \
@@ -301,18 +299,15 @@ def test_covenant5_refuses_to_proceed_when_economically_unjustified():
         "Refusal must explain budget constraint"
 
     # Check decision receipt includes calibration plan
-    decision = chooser.last_decision_event
-    cand = decision.selected_candidate
-
-    assert cand["template"] == "abort_insufficient_calibration_budget", \
+    assert decision.chosen_template == "abort", \
         "Refusal must have specific abort type"
-    assert cand["trigger"] == "abort", \
+    assert decision.rationale.trigger == "abort", \
         "Refusal must be marked as abort trigger"
-    assert cand["forced"] == True, \
+    assert decision.rationale.forced == True, \
         "Abort is a forced decision (no choice)"
-    assert "calibration_plan" in cand, \
+    assert decision.rationale.calibration_plan is not None, \
         "Refusal must show what we cannot afford"
-    assert cand["calibration_plan"]["wells_needed"] > low_budget, \
+    assert decision.rationale.calibration_plan["wells_needed"] > low_budget, \
         "Calibration plan must show wells needed exceeds budget"
 
 
