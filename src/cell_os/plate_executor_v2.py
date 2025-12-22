@@ -178,6 +178,8 @@ def build_assignment_maps(design: Dict) -> Tuple[Dict, Dict, Dict]:
     """
     Precompute assignment maps for fast lookup and validate overlaps.
 
+    Note: v1 designs are converted to v2 format before this function is called.
+
     Returns:
         (well_to_tile, well_to_anchor, well_to_probe_type)
 
@@ -245,10 +247,96 @@ def parse_plate_design_v2(json_path: Path) -> Tuple[List[ParsedWell], Dict]:
     return wells, metadata
 
 
+def _convert_v1_to_v2_format(v1_design: Dict) -> Dict:
+    """
+    Convert v1 plate design format to v2 format for uniform processing.
+
+    v1 has simple structure: tiles, anchors, cell_lines
+    v2 has structured format: contrastive_tiles, biological_anchors, non_biological_provocations
+    """
+    # Build row_to_cell_line mapping from v1 cell_lines
+    row_to_cell_line = {}
+    for cell_line_id, cell_line_info in v1_design['cell_lines'].items():
+        for row in cell_line_info['rows']:
+            row_to_cell_line[row] = cell_line_info['name']
+
+    # Convert anchors to v2 format
+    biological_anchors = {
+        'anchors': []
+    }
+    anchor_wells_by_type = {}
+
+    for anchor_type, anchor_info in v1_design.get('anchors', {}).items():
+        biological_anchors['anchors'].append({
+            'anchor_id': anchor_type,
+            'treatment': f"ANCHOR_{anchor_type}",
+            'reagent': "Nocodazole",  # Default for v1
+            'dose_uM': anchor_info.get('dose', 1.0),
+            'notes': f"{anchor_type} anchor"
+        })
+        anchor_wells_by_type[anchor_type] = anchor_info['wells']
+
+    biological_anchors['wells'] = anchor_wells_by_type
+
+    # Convert tiles to v2 contrastive_tiles format
+    contrastive_tiles = {'tiles': []}
+    if 'tiles' in v1_design and 'wells' in v1_design['tiles']:
+        contrastive_tiles['tiles'].append({
+            'tile_id': 'TILE_V1',
+            'wells': v1_design['tiles']['wells'],
+            'description': v1_design['tiles'].get('description', 'Tile wells from v1')
+        })
+
+    # Build v2 design
+    v2_design = {
+        'schema_version': 'calibration_plate_v2',
+        'plate': v1_design['plate'],
+        'intent': v1_design.get('intent', 'Converted from v1 format'),
+        'global_defaults': {
+            'timepoint_hours': 48,  # Default
+            'default_assignment': {
+                'treatment': 'VEHICLE',
+                'reagent': 'DMSO',
+                'dose_uM': 0,
+                'cell_density': 'NOMINAL',
+                'stain_scale': 1.0,
+                'fixation_timing_offset_min': 0,
+                'imaging_focus_offset_um': 0,
+                'notes': 'Default for v1 conversion'
+            }
+        },
+        'cell_lines': {
+            'strategy': 'row_assignment',
+            'row_to_cell_line': row_to_cell_line
+        },
+        'biological_anchors': biological_anchors,
+        'contrastive_tiles': contrastive_tiles,
+        'non_biological_provocations': {
+            'background_controls': {
+                'wells_no_cells': []  # v1 doesn't have explicit background wells
+            },
+            'cell_density_gradient': {
+                'rule': {
+                    'LOW_cols': [],
+                    'HIGH_cols': [],
+                    'NOMINAL_cols': list(range(1, 25))
+                }
+            }
+        }
+    }
+
+    return v2_design
+
+
 def _load_and_validate_design(json_path: Path):
     """Load JSON design and build assignment maps."""
     with open(json_path) as f:
         design = json.load(f)
+
+    # Convert v1 to v2 format if needed
+    if design.get('schema_version') == 'calibration_plate_v1':
+        design = _convert_v1_to_v2_format(design)
+
     well_to_tile, well_to_anchor, well_to_probe_type = build_assignment_maps(design)
     return design, well_to_tile, well_to_anchor, well_to_probe_type
 
