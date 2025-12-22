@@ -31436,19 +31436,19 @@
   ],
   "metadata": {
     "cell_lines": [
-      "HepG2",
-      "A549"
+      "A549",
+      "HepG2"
     ],
     "treatments": [
-      "VEHICLE",
-      "ANCHOR_MORPH_TILE",
-      "VEHICLE_TILE_DENSITY_HIGH",
-      "VEHICLE_TILE_DENSITY_LOW",
       "ANCHOR_DEATH",
-      "ANCHOR_MORPH",
       "VEHICLE_TILE",
-      "NO_CELLS",
-      "ANCHOR_DEATH_TILE"
+      "VEHICLE_TILE_DENSITY_HIGH",
+      "ANCHOR_MORPH",
+      "VEHICLE",
+      "ANCHOR_DEATH_TILE",
+      "ANCHOR_MORPH_TILE",
+      "VEHICLE_TILE_DENSITY_LOW",
+      "NO_CELLS"
     ],
     "compounds": [
       "Thapsigargin",
@@ -32152,14 +32152,14 @@
       }
     },
     "background_wells": [
-      "P2",
-      "H23",
-      "I2",
-      "A2",
       "P23",
+      "I2",
       "I23",
+      "P2",
       "A23",
-      "H2"
+      "H2",
+      "H23",
+      "A2"
     ]
   }
 }
