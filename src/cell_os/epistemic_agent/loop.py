@@ -183,13 +183,19 @@ class EpistemicLoop:
                 self._log(f"  Inflated cost: {refusal_context['inflated_cost_wells']} wells")
                 self._log(f"  Budget remaining: {refusal_context['budget_remaining']} wells")
 
-                # Agent 3: Report all refusal reasons with priority
-                if refusal_context.get('blocked_by_threshold', False):
+                # Agent 3 Deadlock Fix: Report all refusal reasons with priority
+                if refusal_context.get('is_deadlocked', False):
+                    self._log(f"  → EPISTEMIC DEADLOCK: Debt requires calibration but calibration unaffordable")
+                    self._log(f"  → Debt: {refusal_context['debt_bits']:.3f} bits > {refusal_context['debt_threshold']:.1f} threshold")
+                    self._log(f"  → Budget remaining: {refusal_context['budget_remaining']} wells")
+                    self._log(f"  → Minimum calibration cost (inflated): ~{int(refusal_context['required_reserve'] * 1.5)} wells")
+                    self._log(f"  → TERMINAL: Agent cannot recover")
+                elif refusal_context.get('blocked_by_threshold', False):
                     self._log(f"  → Debt threshold ({refusal_context['debt_threshold']:.1f} bits) exceeded for non-calibration action")
-                if refusal_context.get('blocked_by_reserve', False):
+                elif refusal_context.get('blocked_by_reserve', False):
                     self._log(f"  → Budget reserve violation: would leave only {refusal_context['budget_after_action']} wells")
                     self._log(f"  → Minimum {refusal_context['required_reserve']} wells required for epistemic recovery (deadlock prevention)")
-                if refusal_context.get('blocked_by_cost', False):
+                elif refusal_context.get('blocked_by_cost', False):
                     self._log(f"  → Cost inflation from debt exceeds budget")
 
                 # Write refusal to permanent log
@@ -214,6 +220,20 @@ class EpistemicLoop:
                 )
 
                 self._log(f"\n  Refusal logged to: {self.refusals_file.name}")
+
+                # Agent 3 Deadlock Fix: Terminal abort on deadlock
+                if refusal_context.get('is_deadlocked', False):
+                    self._log(f"\n{'='*60}")
+                    self._log(f"EPISTEMIC DEADLOCK ABORT")
+                    self._log(f"{'='*60}")
+                    self._log(f"Agent cannot recover from debt without calibration,")
+                    self._log(f"but calibration is unaffordable. Terminal failure.")
+                    self._log(f"\nFinal state:")
+                    self._log(f"  Debt: {refusal_context['debt_bits']:.3f} bits")
+                    self._log(f"  Budget: {refusal_context['budget_remaining']} wells")
+                    self._log(f"  Cycles completed: {cycle}")
+                    break  # Terminal abort
+
                 self._log(f"  Agent marked as epistemically insolvent (consecutive refusals: {self.agent.beliefs.consecutive_refusals})")
                 self._log(f"  System must propose calibration to restore solvency")
 

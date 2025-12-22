@@ -364,22 +364,46 @@ class EpistemicController:
         self,
         base_cost: float,
         sensitivity: Optional[float] = None,
+        is_calibration: bool = False,
+        calibration_cap: float = 1.5,
     ) -> float:
         """
         Get cost inflated by epistemic debt.
 
+        Agent 3 Deadlock Fix: Calibration inflation is CAPPED to prevent
+        circular trap where debt requires calibration but calibration is
+        unaffordable due to debt.
+
         Args:
             base_cost: Base cost without debt penalty
             sensitivity: Debt sensitivity (uses config default if None)
+            is_calibration: If True, apply capped inflation
+            calibration_cap: Maximum multiplier for calibration (default: 1.5×)
 
         Returns:
             Inflated cost
+
+        Deadlock Prevention:
+        - Exploration: Full inflation (can be 2×, 3×, etc.)
+        - Calibration: Capped at calibration_cap (default 1.5×)
+        - This ensures recovery path is always survivable
         """
         if not self.config.enable_debt_tracking:
             return base_cost
 
         sensitivity = sensitivity or self.config.debt_sensitivity
-        return self.ledger.get_inflated_cost(base_cost, sensitivity)
+
+        # Get full inflation
+        full_inflated = self.ledger.get_inflated_cost(base_cost, sensitivity)
+
+        # Agent 3: Cap calibration inflation to prevent deadlock
+        if is_calibration:
+            multiplier = full_inflated / base_cost if base_cost > 0 else 1.0
+            capped_multiplier = min(multiplier, calibration_cap)
+            return base_cost * capped_multiplier
+
+        # Exploration gets full inflation
+        return full_inflated
 
     def get_cost_multiplier(self, base_cost: float = 100.0, sensitivity: Optional[float] = None) -> float:
         """
@@ -504,9 +528,16 @@ class EpistemicController:
         if calibration_templates is None:
             calibration_templates = {"baseline", "calibration", "dmso_replicates", "baseline_replicates"}
 
-        debt = self.get_total_debt()
-        inflated_cost = self.get_inflated_cost(float(base_cost_wells))
+        # Agent 3 Deadlock Fix: Determine calibration BEFORE inflation
         is_calibration = template_name in calibration_templates
+
+        debt = self.get_total_debt()
+
+        # Agent 3 Deadlock Fix: Pass is_calibration to get capped inflation
+        inflated_cost = self.get_inflated_cost(
+            base_cost=float(base_cost_wells),
+            is_calibration=is_calibration
+        )
 
         # Agent 3: Budget reserve enforcement
         # Non-calibration actions must leave enough budget for recovery
@@ -519,10 +550,25 @@ class EpistemicController:
         # Check debt threshold (hard block for non-calibration actions)
         blocked_by_threshold = (debt > debt_hard_threshold) and not is_calibration
 
-        # Determine refusal reason (precedence matters for clarity)
-        should_refuse = blocked_by_threshold or blocked_by_cost or blocked_by_reserve
+        # Agent 3 Deadlock Fix: Detect epistemic deadlock explicitly
+        # Deadlock = debt requires calibration BUT calibration is unaffordable
+        is_deadlocked = False
+        if debt > debt_hard_threshold:
+            # Agent must calibrate to recover
+            # Check if ANY calibration action is affordable
+            min_calib_inflated = self.get_inflated_cost(
+                base_cost=MIN_CALIBRATION_COST_WELLS,
+                is_calibration=True  # Capped inflation
+            )
+            # Deadlock: calibration required but unaffordable
+            is_deadlocked = (min_calib_inflated > budget_remaining)
 
-        if blocked_by_threshold:
+        # Determine refusal reason (precedence matters for clarity)
+        should_refuse = blocked_by_threshold or blocked_by_cost or blocked_by_reserve or is_deadlocked
+
+        if is_deadlocked:
+            refusal_reason = "epistemic_deadlock_detected"
+        elif blocked_by_threshold:
             refusal_reason = "epistemic_debt_action_blocked"
         elif blocked_by_reserve:
             refusal_reason = "insufficient_budget_for_epistemic_recovery"
@@ -543,6 +589,7 @@ class EpistemicController:
             "blocked_by_cost": blocked_by_cost,
             "blocked_by_reserve": blocked_by_reserve,
             "is_calibration": is_calibration,
+            "is_deadlocked": is_deadlocked,
         }
 
         return (should_refuse, refusal_reason, context)
