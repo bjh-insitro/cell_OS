@@ -216,12 +216,15 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Execute calibration plate with parallel processing')
+    parser.add_argument('plate_design', nargs='?',
+                        default='validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v2.json',
+                        help='Path to plate design JSON file')
     parser.add_argument('--seed', type=int, default=42, help='Random seed (default: 42)')
     parser.add_argument('--workers', type=int, default=None, help='Number of workers (default: auto-detect)')
     parser.add_argument('--auto-commit', action='store_true', help='Auto-commit and push results after completion')
     args = parser.parse_args()
 
-    json_path = Path("validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v2.json")
+    json_path = Path(args.plate_design)
 
     if not json_path.exists():
         print(f"✗ Plate design not found: {json_path}")
