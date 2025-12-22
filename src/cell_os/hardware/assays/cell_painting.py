@@ -26,6 +26,8 @@ from ..constants import (
     WASHOUT_INTENSITY_PENALTY,
     WASHOUT_INTENSITY_RECOVERY_H,
 )
+from ..injections.segmentation_failure import SegmentationFailureInjection
+from ..injections.base import InjectionContext
 
 if TYPE_CHECKING:
     from ..biological_virtual import VesselState
@@ -152,6 +154,12 @@ class CellPaintingAssay(AssaySimulator):
             result['morphology_measured'] = failure_result['morphology']
             result['well_failure'] = failure_result['failure_mode']
             result['qc_flag'] = 'FAIL'
+
+        # Apply segmentation failure (adversarial measurement layer)
+        # This changes sufficient statistics - not just noise
+        segmentation_result = self._apply_segmentation_failure(vessel, result, **kwargs)
+        if segmentation_result:
+            result.update(segmentation_result)
 
         return result
 
@@ -467,3 +475,114 @@ class CellPaintingAssay(AssaySimulator):
             'failure_mode': selected_mode,
             'effect': effect
         }
+
+    def _apply_segmentation_failure(
+        self, vessel: "VesselState", result: Dict[str, Any], **kwargs
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Apply segmentation failure (adversarial measurement layer).
+
+        This is NOT noise - it changes sufficient statistics:
+        - Cell count (merges/splits/drops)
+        - Feature values (texture attenuation, size bias)
+        - QC flags (survivorship bias)
+
+        Args:
+            vessel: Vessel state
+            result: Cell painting result dict
+            **kwargs: Must contain focus_offset_um, stain_scale, well_position
+
+        Returns:
+            Dict with updated fields or None if segmentation disabled
+        """
+        # Check if segmentation failure is enabled
+        enable_segmentation_failure = kwargs.get('enable_segmentation_failure', True)
+        if not enable_segmentation_failure:
+            return None
+
+        # Initialize segmentation injection (shared instance for determinism)
+        if not hasattr(self, '_segmentation_injection'):
+            self._segmentation_injection = SegmentationFailureInjection()
+
+        # Build injection context
+        ctx = InjectionContext(
+            simulated_time=self.vm.simulated_time,
+            run_context=self.vm.run_context,
+            well_position=kwargs.get('well_position', 'A1'),
+            plate_id=kwargs.get('plate_id', 'P1')
+        )
+
+        # Initialize state
+        rng = self.vm.rng_assay
+        state = self._segmentation_injection.initialize_state(ctx, rng)
+
+        # Extract parameters for segmentation quality computation
+        confluence = vessel.confluence
+        debris_level = self._estimate_debris_level(vessel)
+        focus_offset_um = kwargs.get('focus_offset_um', 0.0)
+        stain_scale = kwargs.get('stain_scale', 1.0)
+
+        # True cell count (before segmentation)
+        true_count = int(vessel.cell_count)
+
+        # Apply segmentation distortion
+        observed_count, distorted_morphology, qc_metadata = self._segmentation_injection.hook_cell_painting_assay(
+            ctx=ctx,
+            state=state,
+            true_count=true_count,
+            true_morphology=result['morphology'].copy(),
+            confluence=confluence,
+            debris_level=debris_level,
+            focus_offset_um=focus_offset_um,
+            stain_scale=stain_scale,
+            rng=rng
+        )
+
+        # Update result with segmentation distortions
+        updates = {
+            'cell_count_true': true_count,
+            'cell_count_observed': observed_count,
+            'morphology': distorted_morphology,
+            'morphology_measured': distorted_morphology,
+            'segmentation_quality': qc_metadata['segmentation_quality'],
+            'segmentation_qc_passed': qc_metadata['qc_passed'],
+            'segmentation_warnings': qc_metadata['qc_warnings'],
+            'merge_count': qc_metadata['merge_count'],
+            'split_count': qc_metadata['split_count'],
+            'size_bias': qc_metadata['size_bias'],
+        }
+
+        # If QC failed, mark result
+        if not qc_metadata['qc_passed']:
+            updates['qc_flag'] = 'SEGMENTATION_FAIL'
+            updates['data_quality'] = 'poor'
+
+        return updates
+
+    def _estimate_debris_level(self, vessel: "VesselState") -> float:
+        """
+        Estimate debris level from vessel state.
+
+        Debris increases with:
+        - Low viability (dead cells)
+        - High death rates
+        - Time since last washout
+        """
+        # Base debris from viability
+        debris_from_death = 1.0 - vessel.viability
+
+        # Debris from death mode (apoptotic bodies, necrotic debris)
+        death_mode_multiplier = 1.0
+        if vessel.death_mode == 'apoptosis':
+            death_mode_multiplier = 1.5  # Fragmented cells
+        elif vessel.death_mode == 'necrosis':
+            death_mode_multiplier = 2.0  # Ruptured cells
+        elif vessel.death_mode == 'silent':
+            death_mode_multiplier = 0.5  # Detached (not visible)
+
+        debris = debris_from_death * death_mode_multiplier
+
+        # Clamp to [0, 1]
+        debris = np.clip(debris, 0.0, 1.0)
+
+        return float(debris)
