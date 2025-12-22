@@ -1,7 +1,12 @@
 # CAL_384_RULES_WORLD_v4: Sparse Micro-Checkerboard Design
 
 **Date**: 2025-12-22
-**Status**: ✅ Generated and integrated into UI
+**Status**: ✅ Replaced and validated - ready for simulation
+
+**Version History**:
+- Initial v4: Single-well checkerboard (too aggressive) → `v4_checkerboard_experiment.json`
+- Current v4: 2×2 micro-checkerboard + CV islands (promoted from v4_best.json)
+- Validation: ✅ ALL CHECKS PASSED
 
 ---
 
@@ -315,7 +320,60 @@ V4 is **hypothesis-driven iterative refinement**:
 
 ---
 
-**Status**: ✅ Ready for simulation and comparative analysis
-**Files**: All generated and committed
-**UI**: Fully integrated into validation frontend
+## V4 Replacement and Validation (2025-12-22)
+
+### Why the Replacement?
+
+**Original v4** (now `v4_checkerboard_experiment.json`):
+- ❌ Single-well alternation (A1=A549, A2=HepG2, A3=A549...)
+- ❌ Too aggressive confound breaking (not aligned with v3 philosophy)
+- ❌ Missing explicit island assignments and exclusion rules
+- ❌ Schema v4 (requires viewer changes)
+
+**Replaced v4** (promoted from v4_best.json):
+- ✅ 2×2 micro-checkerboard (preserves v3 philosophy)
+- ✅ Explicit island assignments and exclusion rules
+- ✅ Proper cell line enforcement in well_to_cell_line
+- ✅ Schema v3 (compatible with existing infrastructure)
+
+### Validation Results
+
+**All checks passed** (scripts/validate_v4_islands.py):
+
+```
+✓ PASS: Island well count (72 wells)
+✓ PASS: Stain probe exclusion
+✓ PASS: Fixation probe exclusion
+✓ PASS: Focus probe exclusion
+✓ PASS: Background control exclusion
+✓ PASS: Density gradient exclusion (exclusion_rules override)
+✓ PASS: Cell line enforcement
+```
+
+**Key finding**: Islands placed in LOW/HIGH density columns but `exclusion_rules.forced_fields.cell_density = "NOMINAL"` overrides gradient.
+
+### Files Updated
+
+1. **CAL_384_RULES_WORLD_v4.json** - Replaced with validated version
+2. **CAL_384_RULES_WORLD_v4_checkerboard_experiment.json** - Original preserved
+3. **scripts/fix_v4_best.py** - Cell line enforcement and collision removal
+4. **scripts/validate_v4_islands.py** - Comprehensive validation suite
+
+### Provenance Chain
+
+```
+v4_initial (single-well)
+  → v4_checkerboard_experiment.json (preserved for reference)
+
+v4_best.json (from user)
+  → fix_v4_best.py (enforce islands)
+  → validate_v4_islands.py (verify correctness)
+  → CAL_384_RULES_WORLD_v4.json (promoted) ✅
+```
+
+---
+
+**Status**: ✅ Validated and ready for simulation
+**Files**: All committed and pushed
+**UI**: Fully integrated (schema v3 compatible)
 **Next**: Run 5-seed comparison (v4 vs v3 vs v2)
