@@ -512,8 +512,13 @@ class CellPaintingAssay(AssaySimulator):
             plate_id=kwargs.get('plate_id', 'P1')
         )
 
-        # Initialize state
-        rng = self.vm.rng_assay
+        # Create deterministic RNG for segmentation (separate from biology/assay streams)
+        from .._impl import stable_u32
+        well_position = kwargs.get('well_position', 'A1')
+        plate_id = kwargs.get('plate_id', 'P1')
+        seg_seed = stable_u32(f"segmentation_{self.vm.run_context.seed}_{plate_id}_{well_position}")
+        rng = np.random.default_rng(seg_seed)
+
         state = self._segmentation_injection.initialize_state(ctx, rng)
 
         # Extract parameters for segmentation quality computation
