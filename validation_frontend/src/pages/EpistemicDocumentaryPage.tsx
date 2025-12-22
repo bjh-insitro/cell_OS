@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { Moon, Sun, Zap } from 'lucide-react';
 import PlateDesignCatalog from '../components/PlateDesignCatalog';
+import CalibrationPlateViewer from '../components/CalibrationPlateViewer';
+import RunsBrowser from '../components/RunsBrowser';
 import PlateViewer, { WellData } from '../components/shared/PlateViewer';
 import PlateLegend, { LegendItem } from '../components/shared/PlateLegend';
 
@@ -725,12 +727,26 @@ function PlatePreview({ template, nReps, regime, forced, calibrationPlan, isDark
   );
 }
 
-type TabType = 'timeline' | 'catalog';
+type TabType = 'timeline' | 'catalog' | 'calibration' | 'runs';
+
+const AVAILABLE_DESIGNS = [
+  { id: 'v1', name: 'CAL_384_RULES_WORLD_v1', description: 'Simple calibration' },
+  { id: 'v2', name: 'CAL_384_RULES_WORLD_v2', description: 'Advanced calibration' },
+  { id: 'microscope', name: 'CAL_384_MICROSCOPE_BEADS_DYES_v1', description: 'Microscope calibration' },
+  { id: 'lh', name: 'CAL_384_LH_ARTIFACTS_v1', description: 'Liquid handler artifacts' },
+  { id: 'variance', name: 'CAL_VARIANCE_PARTITION_v1', description: 'Variance components' },
+  { id: 'wash', name: 'CAL_EL406_WASH_DAMAGE_v1', description: 'Wash stress' },
+  { id: 'dynamic', name: 'CAL_DYNAMIC_RANGE_v1', description: 'Dynamic range' }
+];
 
 export default function EpistemicDocumentaryPage() {
   const navigate = useNavigate();
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('timeline');
+  const [selectedDesign, setSelectedDesign] = useState('v1');
+  const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState(false);
+  const [plateData, setPlateData] = useState<any>(null);
 
   const RUN_BASE = "/demo_results/epistemic_agent/run_20251221_212354";
 
@@ -739,6 +755,22 @@ export default function EpistemicDocumentaryPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [speed, setSpeed] = useState(2);
+
+  const generateJHCommand = (plateId: string, seed: number = 42) => {
+    const platePath = `validation_frontend/public/plate_designs/${plateId}.json`;
+    return `cd ~/repos/cell_OS && PYTHONPATH=. python3 src/cell_os/plate_executor_v2_parallel.py ${platePath} --seed ${seed} --auto-pull --auto-commit`;
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCommand(true);
+    setTimeout(() => setCopiedCommand(false), 2000);
+  };
+
+  const handleSimulate = (data: any) => {
+    setPlateData(data);
+    setShowSimulateModal(true);
+  };
 
   useEffect(() => {
     async function load() {
@@ -905,6 +937,36 @@ export default function EpistemicDocumentaryPage() {
               <span className="mr-2">🧪</span>
               Plate Designs
             </button>
+            <button
+              onClick={() => setActiveTab('calibration')}
+              className={`px-4 py-3 text-sm font-medium transition-all ${
+                activeTab === 'calibration'
+                  ? isDarkMode
+                    ? 'text-indigo-400 border-b-2 border-indigo-400 bg-slate-800/50'
+                    : 'text-indigo-600 border-b-2 border-indigo-600 bg-white'
+                  : isDarkMode
+                    ? 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                    : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+              }`}
+            >
+              <span className="mr-2">🔬</span>
+              Calibration Plate
+            </button>
+            <button
+              onClick={() => setActiveTab('runs')}
+              className={`px-4 py-3 text-sm font-medium transition-all ${
+                activeTab === 'runs'
+                  ? isDarkMode
+                    ? 'text-indigo-400 border-b-2 border-indigo-400 bg-slate-800/50'
+                    : 'text-indigo-600 border-b-2 border-indigo-600 bg-white'
+                  : isDarkMode
+                    ? 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                    : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+              }`}
+            >
+              <span className="mr-2">🔄</span>
+              Runs
+            </button>
           </div>
         </div>
       </div>
@@ -913,6 +975,43 @@ export default function EpistemicDocumentaryPage() {
       <div className="container mx-auto px-6 py-6">
         {activeTab === 'catalog' ? (
           <PlateDesignCatalog isDarkMode={isDarkMode} />
+        ) : activeTab === 'calibration' ? (
+          <div className="space-y-4">
+            {/* Design Selector */}
+            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-white border border-zinc-200'}`}>
+              <div className="flex items-center justify-between">
+                <div className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                  Calibration Plate Design
+                </div>
+                <select
+                  value={selectedDesign}
+                  onChange={(e) => setSelectedDesign(e.target.value)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                    isDarkMode
+                      ? 'bg-slate-700 text-white border border-slate-600'
+                      : 'bg-white text-zinc-900 border border-zinc-300'
+                  }`}
+                >
+                  {AVAILABLE_DESIGNS.map(design => (
+                    <option key={design.id} value={design.id}>
+                      {design.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={`text-sm mt-2 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                {AVAILABLE_DESIGNS.find(d => d.id === selectedDesign)?.description}
+              </div>
+            </div>
+
+            <CalibrationPlateViewer
+              designVersion={selectedDesign}
+              isDarkMode={isDarkMode}
+              onSimulate={handleSimulate}
+            />
+          </div>
+        ) : activeTab === 'runs' ? (
+          <RunsBrowser isDarkMode={isDarkMode} />
         ) : (
           <>
             {/* Simple Progress Bar */}
@@ -1022,6 +1121,116 @@ export default function EpistemicDocumentaryPage() {
           </>
         )}
       </div>
+
+      {/* Simulate Modal */}
+      {showSimulateModal && plateData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className={`max-w-3xl w-full rounded-lg shadow-xl ${isDarkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white border border-zinc-200'}`}>
+            {/* Modal Header */}
+            <div className={`p-6 border-b ${isDarkMode ? 'border-slate-700' : 'border-zinc-200'}`}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    🚀 Run on JupyterHub
+                  </div>
+                  <div className={`text-sm mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                    {plateData.plate.plate_id} - Parallel Execution
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSimulateModal(false)}
+                  className={`text-2xl ${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-zinc-400 hover:text-zinc-900'}`}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {/* Instructions */}
+              <div>
+                <div className={`text-sm font-bold mb-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                  Instructions:
+                </div>
+                <ol className={`text-sm space-y-1 list-decimal list-inside ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                  <li>Copy the command below</li>
+                  <li>Open a terminal on JupyterHub</li>
+                  <li>Paste and run the command</li>
+                  <li>Results will auto-pull locally and appear in the Runs tab (~2-3 minutes)</li>
+                </ol>
+              </div>
+
+              {/* Command Box */}
+              <div>
+                <div className={`text-sm font-bold mb-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                  Command:
+                </div>
+                <div className="relative">
+                  <pre className={`p-4 rounded-lg text-sm font-mono overflow-x-auto ${isDarkMode ? 'bg-slate-900 text-green-400' : 'bg-zinc-100 text-zinc-900'}`}>
+                    {generateJHCommand(plateData.plate.plate_id)}
+                  </pre>
+                  <button
+                    onClick={() => copyToClipboard(generateJHCommand(plateData.plate.plate_id))}
+                    className={`absolute top-2 right-2 px-3 py-1 rounded text-xs font-medium transition-all ${
+                      copiedCommand
+                        ? isDarkMode
+                          ? 'bg-green-600 text-white'
+                          : 'bg-green-500 text-white'
+                        : isDarkMode
+                          ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                          : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+                    }`}
+                  >
+                    {copiedCommand ? '✓ Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Execution Details */}
+              <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-900/50' : 'bg-zinc-50'}`}>
+                <div className={`text-sm font-bold mb-2 ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+                  What happens:
+                </div>
+                <ul className={`text-sm space-y-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                  <li>✓ Auto-pulls latest code</li>
+                  <li>✓ Generates unique run ID (timestamp-based)</li>
+                  <li>✓ Executes 384 wells in parallel</li>
+                  <li>✓ Updates runs manifest</li>
+                  <li>✓ Auto-commits and pushes results</li>
+                  <li>✓ Expected duration: ~2-3 minutes</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className={`p-6 border-t ${isDarkMode ? 'border-slate-700' : 'border-zinc-200'}`}>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowSimulateModal(false)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${isDarkMode
+                    ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                    : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+                  }`}
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    copyToClipboard(generateJHCommand(plateData.plate.plate_id));
+                  }}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${isDarkMode
+                    ? 'bg-green-600 hover:bg-green-500 text-white'
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                  }`}
+                >
+                  {copiedCommand ? '✓ Copied!' : 'Copy Command'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

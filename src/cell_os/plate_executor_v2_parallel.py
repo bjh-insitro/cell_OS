@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from multiprocessing import Pool, cpu_count
+from datetime import datetime
 
 from src.cell_os.plate_executor_v2 import (
     parse_plate_design_v2,
@@ -34,13 +35,44 @@ def execute_well_worker(args: tuple) -> Dict[str, Any]:
     return execute_well(pw, base_seed, run_context, plate_id)
 
 
+def update_runs_manifest(output_dir: Path, run_info: Dict[str, Any]) -> None:
+    """
+    Update the runs manifest file with new run information.
+
+    Args:
+        output_dir: Directory where results are saved
+        run_info: Dictionary with run metadata
+    """
+    manifest_path = output_dir / "runs_manifest.json"
+
+    # Load existing manifest or create new one
+    if manifest_path.exists():
+        with open(manifest_path, 'r') as f:
+            manifest = json.load(f)
+    else:
+        manifest = {"runs": []}
+
+    # Add new run
+    manifest["runs"].append(run_info)
+
+    # Sort by timestamp (newest first)
+    manifest["runs"].sort(key=lambda x: x["timestamp"], reverse=True)
+
+    # Save manifest
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+
+    return manifest_path
+
+
 def execute_plate_design_parallel(
     json_path: Path,
     seed: int = 42,
     output_dir: Optional[Path] = None,
     verbose: bool = True,
     workers: Optional[int] = None,
-    auto_commit: bool = False
+    auto_commit: bool = False,
+    auto_pull: bool = False
 ) -> Dict[str, Any]:
     """
     Execute full 384-well plate simulation with parallel processing.
@@ -58,10 +90,29 @@ def execute_plate_design_parallel(
         verbose: Print progress messages
         workers: Number of parallel workers (None = auto-detect)
         auto_commit: If True, git commit and push results after successful execution
+        auto_pull: If True, git pull latest changes before execution
 
     Returns:
         Dictionary with results
     """
+    # Auto-pull if requested
+    if auto_pull:
+        import subprocess
+        try:
+            if verbose:
+                print(f"{'='*70}")
+                print(f"Pulling latest changes...")
+                print(f"{'='*70}")
+
+            subprocess.run(['git', 'pull'], check=True)
+
+            if verbose:
+                print(f"✓ Repository updated\n")
+        except subprocess.CalledProcessError as e:
+            if verbose:
+                print(f"⚠️  Git pull failed: {e}")
+                print(f"   Continuing with current code...\n")
+
     if workers is None:
         workers = max(1, cpu_count() - 1)
 
@@ -161,12 +212,38 @@ def execute_plate_design_parallel(
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        output_file = output_dir / f"{plate_id}_results_seed{seed}.json"
+        # Generate unique run ID based on timestamp
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = output_dir / f"{plate_id}_run_{run_id}_seed{seed}.json"
+
+        # Add run metadata to output
+        output["run_id"] = run_id
+        output["timestamp"] = datetime.now().isoformat()
+
         with open(output_file, 'w') as f:
             json.dump(output, f, indent=2)
 
         if verbose:
             print(f"\n✓ Results saved: {output_file}")
+            print(f"  Run ID: {run_id}")
+
+        # Update runs manifest
+        run_info = {
+            "run_id": run_id,
+            "timestamp": output["timestamp"],
+            "plate_id": plate_id,
+            "seed": seed,
+            "n_wells": output["n_wells"],
+            "n_success": output["n_success"],
+            "n_failed": output["n_failed"],
+            "cell_lines": output["metadata"]["cell_lines"],
+            "compounds": output["metadata"]["compounds"],
+            "file_path": str(output_file.relative_to(Path.cwd()))
+        }
+        manifest_path = update_runs_manifest(output_dir, run_info)
+
+        if verbose:
+            print(f"✓ Updated runs manifest: {manifest_path}")
 
         # Auto-commit and push if requested
         if auto_commit:
@@ -177,11 +254,12 @@ def execute_plate_design_parallel(
                     print(f"Auto-committing results...")
                     print(f"{'='*70}")
 
-                # Add results file
+                # Add results file and manifest
                 subprocess.run(['git', 'add', str(output_file)], check=True)
+                subprocess.run(['git', 'add', str(manifest_path)], check=True)
 
                 # Create commit message
-                commit_msg = f"""feat: add calibration plate results - {plate_id} seed{seed}
+                commit_msg = f"""feat: add calibration plate results - {plate_id} run {run_id}
 
 Executed: {output['n_wells']} wells
 Successful: {output['n_success']}
@@ -221,6 +299,7 @@ if __name__ == "__main__":
                         help='Path to plate design JSON file')
     parser.add_argument('--seed', type=int, default=42, help='Random seed (default: 42)')
     parser.add_argument('--workers', type=int, default=None, help='Number of workers (default: auto-detect)')
+    parser.add_argument('--auto-pull', action='store_true', help='Auto-pull latest changes before execution')
     parser.add_argument('--auto-commit', action='store_true', help='Auto-commit and push results after completion')
     args = parser.parse_args()
 
@@ -238,6 +317,7 @@ if __name__ == "__main__":
         output_dir=Path("validation_frontend/public/demo_results/calibration_plates"),
         verbose=True,
         workers=args.workers,
+        auto_pull=args.auto_pull,
         auto_commit=args.auto_commit
     )
 
