@@ -688,6 +688,14 @@ class BiologicalVirtualMachine(VirtualMachine):
             self._step_vessel(vessel, hours)
 
         # 4. Advance clock to end of interval (AFTER vessel stepping)
+        # Agent 1: Assert time monotonicity (fundamental causality invariant)
+        assert t1 >= t0, (
+            f"TIME MONOTONICITY VIOLATION: simulated_time would decrease!\n"
+            f"  t0 (before): {t0:.6f}h\n"
+            f"  t1 (after):  {t1:.6f}h\n"
+            f"  hours (input): {hours:.6f}h\n"
+            f"Time must never decrease (violates causality)."
+        )
         self.simulated_time = t1
 
     def _propose_hazard(self, vessel: VesselState, hazard_per_h: float, death_field: str):
@@ -835,6 +843,21 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel.viability = v1
         vessel.cell_count = c1
+
+        # Agent 1: Assert non-negative counts (fundamental physical invariant)
+        assert 0.0 <= vessel.viability <= 1.0, (
+            f"NON-NEGATIVE INVARIANT VIOLATION: viability out of bounds!\n"
+            f"  vessel_id: {vessel.vessel_id}\n"
+            f"  viability: {vessel.viability:.10f}\n"
+            f"  Expected: [0.0, 1.0]\n"
+            f"Viability must be a valid fraction."
+        )
+        assert vessel.cell_count >= 0.0, (
+            f"NON-NEGATIVE INVARIANT VIOLATION: negative cell count!\n"
+            f"  vessel_id: {vessel.vessel_id}\n"
+            f"  cell_count: {vessel.cell_count:.2f}\n"
+            f"Cell count must be non-negative."
+        )
 
         kill_total = float(max(0.0, v0 - v1))
         vessel._step_total_kill = kill_total
@@ -1512,6 +1535,14 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Corrected update using interval-average saturation
         vessel.cell_count = n0 * np.exp(effective_growth_rate * hours * gf_mean)
+
+        # Agent 1: Assert non-negative count after growth
+        assert vessel.cell_count >= 0.0, (
+            f"NON-NEGATIVE INVARIANT VIOLATION: negative cell count after growth!\n"
+            f"  vessel_id: {vessel.vessel_id}\n"
+            f"  cell_count: {vessel.cell_count:.2f}\n"
+            f"Growth should never produce negative counts."
+        )
 
         # Update confluence diagnostic
         vessel.confluence = vessel.cell_count / cap
