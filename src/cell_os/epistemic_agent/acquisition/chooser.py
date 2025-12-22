@@ -625,255 +625,268 @@ class TemplateChooser:
 
         return decision
 
-    def choose_next(
+    def _check_epistemic_insolvency(
         self,
         beliefs: BeliefState,
-        budget_remaining_wells: int = 384,
-        cycle: int = 0,
-        allow_expensive_calibration: bool = False
-    ) -> Decision:
-        """Choose next experiment template.
+        cycle: int
+    ) -> Optional[Decision]:
+        """Check for epistemic insolvency and handle bankruptcy/debt recovery.
 
-        v0.4.2: PAY-FOR-CALIBRATION REGIME with gate lock invariant.
-
-        Args:
-            beliefs: Current belief state
-            budget_remaining_wells: Remaining well budget
-            cycle: Current cycle number
-            allow_expensive_calibration: If False (default), block autonomous selection of
-                expensive calibration templates like calibrate_scrna_baseline. Requires
-                explicit user intent to enable.
-
-        Returns:
-            Decision: Canonical decision object with template, kwargs, and provenance
+        Returns Decision if insolvency forces action, None otherwise.
         """
-        remaining_wells = int(max(budget_remaining_wells, 0))
+        if not beliefs.epistemic_insolvent:
+            return None
 
-        # INSOLVENCY-FIRST RULE: If epistemically insolvent, force calibration
-        # This is policy adaptation, not enforcement weakening
-        # The agent learns: "I am insolvent, I must calibrate to restore solvency"
-        if beliefs.epistemic_insolvent:
-            # Backoff: if refused 3+ times, agent must declare bankruptcy
-            MAX_CONSECUTIVE_REFUSALS = 3
-            if beliefs.consecutive_refusals >= MAX_CONSECUTIVE_REFUSALS:
-                reason = (
-                    f"ABORT: Epistemic bankruptcy (debt={beliefs.epistemic_debt_bits:.2f} bits, "
-                    f"{beliefs.consecutive_refusals} consecutive refusals). "
-                    "Agent cannot restore solvency within budget constraints."
-                )
-                return self._set_last_decision(
-                    cycle=cycle,
-                    selected="abort_epistemic_bankruptcy",
-                    selected_score=0.0,
-                    reason=reason,
-                    selected_candidate={
-                        "template": "abort_epistemic_bankruptcy",
-                        "forced": True,
-                        "trigger": "insolvency_unrecoverable",
-                        "regime": "epistemic_bankruptcy",
-                        "enforcement_layer": "policy_boundary",
-                        "gate_state": self._get_gate_state(beliefs),
-                        "debt_bits": beliefs.epistemic_debt_bits,
-                        "consecutive_refusals": beliefs.consecutive_refusals
-                    },
-                    beliefs=beliefs,
-                    kwargs={"reason": reason}
-                )
-
-            # Force calibration to reduce debt
+        # Bankruptcy check
+        MAX_CONSECUTIVE_REFUSALS = 3
+        if beliefs.consecutive_refusals >= MAX_CONSECUTIVE_REFUSALS:
             reason = (
-                f"Restore solvency: debt={beliefs.epistemic_debt_bits:.2f} bits "
-                f"(refusals: {beliefs.consecutive_refusals})"
+                f"ABORT: Epistemic bankruptcy (debt={beliefs.epistemic_debt_bits:.2f} bits, "
+                f"{beliefs.consecutive_refusals} consecutive refusals). "
+                "Agent cannot restore solvency within budget constraints."
             )
             return self._set_last_decision(
                 cycle=cycle,
-                selected="baseline_replicates",
-                selected_score=1.0,
+                selected="abort_epistemic_bankruptcy",
+                selected_score=0.0,
                 reason=reason,
                 selected_candidate={
-                    "template": "baseline_replicates",
+                    "template": "abort_epistemic_bankruptcy",
                     "forced": True,
-                    "trigger": "epistemic_insolvency",
-                    "regime": "debt_recovery",
+                    "trigger": "insolvency_unrecoverable",
+                    "regime": "epistemic_bankruptcy",
                     "enforcement_layer": "policy_boundary",
                     "gate_state": self._get_gate_state(beliefs),
-                    "n_reps": 12,
-                    "debt_bits": beliefs.epistemic_debt_bits,  # provenance only
-                    "last_refusal_reason": beliefs.last_refusal_reason  # provenance only
+                    "debt_bits": beliefs.epistemic_debt_bits,
+                    "consecutive_refusals": beliefs.consecutive_refusals
                 },
                 beliefs=beliefs,
-                kwargs={"n_reps": 12}  # Only pass template parameters, not provenance
+                kwargs={"reason": reason}
             )
 
-        # Check gate lock invariant
+        # Force debt recovery
+        reason = (
+            f"Restore solvency: debt={beliefs.epistemic_debt_bits:.2f} bits "
+            f"(refusals: {beliefs.consecutive_refusals})"
+        )
+        return self._set_last_decision(
+            cycle=cycle,
+            selected="baseline_replicates",
+            selected_score=1.0,
+            reason=reason,
+            selected_candidate={
+                "template": "baseline_replicates",
+                "forced": True,
+                "trigger": "epistemic_insolvency",
+                "regime": "debt_recovery",
+                "enforcement_layer": "policy_boundary",
+                "gate_state": self._get_gate_state(beliefs),
+                "n_reps": 12,
+                "debt_bits": beliefs.epistemic_debt_bits,
+                "last_refusal_reason": beliefs.last_refusal_reason
+            },
+            beliefs=beliefs,
+            kwargs={"n_reps": 12}
+        )
+
+    def _check_noise_gate_lock(
+        self,
+        beliefs: BeliefState,
+        cycle: int
+    ) -> Optional[Decision]:
+        """Check noise gate lock and force recalibration if gate lost.
+
+        Returns Decision if gate lost, None if gate valid/not earned.
+        """
         stable = beliefs.noise_sigma_stable
         rel_width = beliefs.noise_rel_width
         drift_metric = beliefs.noise_drift_metric
-
-        enter_threshold = 0.25
         exit_threshold = 0.40
         drift_threshold = 0.20
-        df_min_sanity = 40
 
-        # Gate lock check: if stable=True, verify still valid
-        if stable:
-            # Integrity check
-            if rel_width is None:
-                reason = "ABORT: Gate integrity error (stable=True but rel_width=None)"
-                return self._set_last_decision(
-                    cycle=cycle,
-                    selected="abort_gate_integrity_error",
-                    selected_score=0.0,
-                    reason=reason,
-                    selected_candidate={
-                        "template": "abort_gate_integrity_error",
-                        "forced": True,
-                        "trigger": "abort",
-                        "regime": "integrity_error",
-                        "enforcement_layer": "global_pre_biology",
-                        "gate_state": self._get_gate_state(beliefs)
-                    },
-                    beliefs=beliefs,
-                    kwargs={"reason": reason}
-                )
-            
-            # Check if gate lost
-            drift_bad = (drift_metric is not None and drift_metric >= drift_threshold)
-            gate_revoked = (rel_width >= exit_threshold) or drift_bad
+        # Only check lock if gate claimed as stable
+        if not stable:
+            return None
 
-            if gate_revoked:
-                # Force recalibration
-                reason = f"Gate lost: rel_width={rel_width:.4f} or drift={drift_metric}. Force recalibration."
-                return self._set_last_decision(
-                    cycle=cycle,
-                    selected="baseline_replicates",
-                    selected_score=1.0,
-                    reason=reason,
-                    selected_candidate={
-                        "template": "baseline_replicates",
-                        "forced": True,
-                        "trigger": "gate_lock",
-                        "regime": "gate_revoked",
-                        "enforcement_layer": "global_pre_biology",
-                        "gate_state": self._get_gate_state(beliefs),
-                        "n_reps": 12
-                    },
-                    beliefs=beliefs,
-                    kwargs={"reason": reason, "n_reps": 12}
-                )
-        
-        # If gate not earned, force calibration
-        df_total = beliefs.noise_df_total
-        if not stable or (rel_width is not None and rel_width > enter_threshold):
-            # Estimate cost to earn gate
-            if rel_width and rel_width > 0:
-                c = rel_width * (df_total ** 0.5)
-                df_needed = int((c / enter_threshold) ** 2 * 1.25)  # safety factor
-            else:
-                df_needed = 140  # conservative floor
-
-            df_delta = max(0, df_needed - df_total)
-            wells_needed = ((df_delta + 11) // 11) * 12  # cycles of 12 wells
-
-            calibration_plan = {
-                "df_current": df_total,
-                "df_needed": df_needed,
-                "wells_needed": wells_needed,
-                "rel_width": rel_width
-            }
-
-            # Fail-fast if can't afford
-            if remaining_wells < wells_needed:
-                reason = f"ABORT: Cannot afford gate (need {wells_needed} wells, have {remaining_wells})"
-                return self._set_last_decision(
-                    cycle=cycle,
-                    selected="abort_insufficient_calibration_budget",
-                    selected_score=0.0,
-                    reason=reason,
-                    selected_candidate={
-                        "template": "abort_insufficient_calibration_budget",
-                        "forced": True,
-                        "trigger": "abort",
-                        "regime": "pre_gate",
-                        "enforcement_layer": "global_pre_biology",
-                        "gate_state": self._get_gate_state(beliefs),
-                        "calibration_plan": calibration_plan
-                    },
-                    beliefs=beliefs,
-                    kwargs={"reason": reason}
-                )
-
-            # Prioritize: baseline reps first, then edge if df >= 40
-            if not beliefs.edge_effect_confident and df_total >= 40:
-                reason = "Resolve edge confound before biology"
-                return self._set_last_decision(
-                    cycle=cycle,
-                    selected="edge_center_test",
-                    selected_score=1.0,
-                    reason=reason,
-                    selected_candidate={
-                        "template": "edge_center_test",
-                        "forced": True,
-                        "trigger": "must_calibrate",
-                        "regime": "pre_gate",
-                        "enforcement_layer": "global_pre_biology",
-                        "gate_state": self._get_gate_state(beliefs),
-                        "calibration_plan": calibration_plan
-                    },
-                    beliefs=beliefs,
-                    kwargs={"reason": reason}
-                )
-
-            # Use centralized batch sizing decision (Agent 3 mandate)
-            from .batch_sizing import choose_calibration_batch_size
-
-            batch_decision = choose_calibration_batch_size(
-                regime="pre_gate",
-                df_current=df_total,
-                df_needed=df_needed,
-                remaining_budget_wells=remaining_wells,
-                learn_plate_effects=True,
-                absolute_minimum_reserve=50,
-                scarcity_mode=False
-            )
-
-            reason = f"Earn noise gate: {batch_decision.reason_text}"
+        # Integrity check
+        if rel_width is None:
+            reason = "ABORT: Gate integrity error (stable=True but rel_width=None)"
             return self._set_last_decision(
                 cycle=cycle,
-                selected="baseline_replicates",
+                selected="abort_gate_integrity_error",
+                selected_score=0.0,
+                reason=reason,
+                selected_candidate={
+                    "template": "abort_gate_integrity_error",
+                    "forced": True,
+                    "trigger": "abort",
+                    "regime": "integrity_error",
+                    "enforcement_layer": "global_pre_biology",
+                    "gate_state": self._get_gate_state(beliefs)
+                },
+                beliefs=beliefs,
+                kwargs={"reason": reason}
+            )
+
+        # Check if gate lost
+        drift_bad = (drift_metric is not None and drift_metric >= drift_threshold)
+        gate_revoked = (rel_width >= exit_threshold) or drift_bad
+
+        if not gate_revoked:
+            return None  # Gate still valid
+
+        # Force recalibration
+        reason = f"Gate lost: rel_width={rel_width:.4f} or drift={drift_metric}. Force recalibration."
+        return self._set_last_decision(
+            cycle=cycle,
+            selected="baseline_replicates",
+            selected_score=1.0,
+            reason=reason,
+            selected_candidate={
+                "template": "baseline_replicates",
+                "forced": True,
+                "trigger": "gate_lock",
+                "regime": "gate_revoked",
+                "enforcement_layer": "global_pre_biology",
+                "gate_state": self._get_gate_state(beliefs),
+                "n_reps": 12
+            },
+            beliefs=beliefs,
+            kwargs={"reason": reason, "n_reps": 12}
+        )
+
+    def _enforce_noise_gate_entry(
+        self,
+        beliefs: BeliefState,
+        remaining_wells: int,
+        cycle: int
+    ) -> Optional[Decision]:
+        """Enforce noise gate entry calibration if gate not earned.
+
+        Returns Decision to force calibration, or None if gate earned.
+        """
+        stable = beliefs.noise_sigma_stable
+        rel_width = beliefs.noise_rel_width
+        enter_threshold = 0.25
+        df_min_sanity = 40
+
+        # Check if gate earned
+        if stable and (rel_width is None or rel_width <= enter_threshold):
+            return None  # Gate earned
+
+        # Compute calibration plan
+        df_total = beliefs.noise_df_total
+        if rel_width and rel_width > 0:
+            c = rel_width * (df_total ** 0.5)
+            df_needed = int((c / enter_threshold) ** 2 * 1.25)
+        else:
+            df_needed = 140
+
+        df_delta = max(0, df_needed - df_total)
+        wells_needed = ((df_delta + 11) // 11) * 12
+
+        calibration_plan = {
+            "df_current": df_total,
+            "df_needed": df_needed,
+            "wells_needed": wells_needed,
+            "rel_width": rel_width
+        }
+
+        # Affordability check
+        if remaining_wells < wells_needed:
+            reason = f"ABORT: Cannot afford gate (need {wells_needed} wells, have {remaining_wells})"
+            return self._set_last_decision(
+                cycle=cycle,
+                selected="abort_insufficient_calibration_budget",
+                selected_score=0.0,
+                reason=reason,
+                selected_candidate={
+                    "template": "abort_insufficient_calibration_budget",
+                    "forced": True,
+                    "trigger": "abort",
+                    "regime": "pre_gate",
+                    "enforcement_layer": "global_pre_biology",
+                    "gate_state": self._get_gate_state(beliefs),
+                    "calibration_plan": calibration_plan
+                },
+                beliefs=beliefs,
+                kwargs={"reason": reason}
+            )
+
+        # Priority: edge test if enough df
+        if not beliefs.edge_effect_confident and df_total >= df_min_sanity:
+            reason = "Resolve edge confound before biology"
+            return self._set_last_decision(
+                cycle=cycle,
+                selected="edge_center_test",
                 selected_score=1.0,
                 reason=reason,
                 selected_candidate={
-                    "template": "baseline_replicates",
+                    "template": "edge_center_test",
                     "forced": True,
                     "trigger": "must_calibrate",
                     "regime": "pre_gate",
                     "enforcement_layer": "global_pre_biology",
                     "gate_state": self._get_gate_state(beliefs),
-                    "calibration_plan": calibration_plan,
-                    "n_reps": batch_decision.n_reps,
-                    "coverage_strategy": batch_decision.coverage_strategy.value,
-                    "batch_sizing": {
-                        "wells_used": batch_decision.wells_used,
-                        "df_gain_expected": batch_decision.df_gain_expected,
-                        "cost_per_df": batch_decision.cost_per_df,
-                        "reason_code": batch_decision.reason_code
-                    }
+                    "calibration_plan": calibration_plan
                 },
                 beliefs=beliefs,
-                kwargs={"reason": reason, "n_reps": batch_decision.n_reps}
+                kwargs={"reason": reason}
             )
 
-        # Noise gate earned - now check cheap assay gates (LDH, CP) before biology
-        # v0.5.0: Force LDH + CP calibration (never force scRNA unless explicitly requested)
-        for assay in ["ldh", "cell_paint"]:  # Priority order: cheap gates first
+        # Use batch sizing decision (Agent 3 mandate)
+        from cell_os.epistemic_agent.batch_sizer import decide_calibration_batch_size
+        batch_decision = decide_calibration_batch_size(
+            df_current=df_total,
+            df_target=df_needed,
+            budget_wells=remaining_wells
+        )
+
+        reason = f"Earn noise gate (df={df_total}→{df_needed}): {batch_decision.reason_code}"
+        return self._set_last_decision(
+            cycle=cycle,
+            selected="baseline_replicates",
+            selected_score=1.0,
+            reason=reason,
+            selected_candidate={
+                "template": "baseline_replicates",
+                "forced": True,
+                "trigger": "must_calibrate",
+                "regime": "pre_gate",
+                "enforcement_layer": "global_pre_biology",
+                "gate_state": self._get_gate_state(beliefs),
+                "calibration_plan": calibration_plan,
+                "n_reps": batch_decision.n_reps,
+                "coverage_strategy": batch_decision.coverage_strategy.value,
+                "batch_sizing": {
+                    "wells_used": batch_decision.wells_used,
+                    "df_gain_expected": batch_decision.df_gain_expected,
+                    "cost_per_df": batch_decision.cost_per_df,
+                    "reason_code": batch_decision.reason_code
+                }
+            },
+            beliefs=beliefs,
+            kwargs={"reason": reason, "n_reps": batch_decision.n_reps}
+        )
+
+    def _enforce_cheap_assay_gates(
+        self,
+        beliefs: BeliefState,
+        remaining_wells: int,
+        cycle: int,
+        allow_expensive_calibration: bool
+    ) -> Optional[Decision]:
+        """Enforce cheap assay gates (LDH, CP) before biology.
+
+        Returns Decision to force calibration if gate missing, None if gates earned.
+        """
+        for assay in ["ldh", "cell_paint"]:
             gate_ok, block_reason = self._check_assay_gate(beliefs, assay, require_ladder=False)
             if not gate_ok:
-                # Compute calibration plan
                 calib_plan = self._compute_assay_calibration_plan(beliefs, assay)
                 wells_needed = calib_plan.get("wells_needed", 0)
 
-                # Fail-fast if can't afford
+                # Affordability check
                 if remaining_wells < wells_needed:
                     reason = f"ABORT: Cannot afford {assay} gate ({block_reason}, need {wells_needed} wells, have {remaining_wells})"
                     return self._set_last_decision(
@@ -896,10 +909,10 @@ class TemplateChooser:
                         kwargs={"reason": reason}
                     )
 
-                # Force calibration for this assay
+                # Force calibration
                 template_name = f"calibrate_{assay}_baseline"
 
-                # Policy check: validate template selection
+                # Policy check
                 is_valid, abort_reason = self._validate_template_selection(
                     template_name, allow_expensive_calibration, cycle, beliefs
                 )
@@ -943,21 +956,20 @@ class TemplateChooser:
                     kwargs={"reason": reason, "assay": assay, "n_reps": 12}
                 )
 
-        # Gate earned - allow biology
-        # v0.5.0: CP → scRNA upgrade trigger (DISABLED until real novelty metric exists)
-        # Currently disabled: novelty_score computation requires real CP feature extraction
-        # When enabled, this should check:
-        #   - novelty_score from CP morphology embeddings (e.g., Mahalanobis distance)
-        #   - ldh_viable from real LDH assay (viability > threshold)
-        #   - budget affordability for scRNA probe
-        # TODO: Enable when CP feature extraction is implemented
-        # if beliefs.cell_paint_sigma_stable and not beliefs.scrna_sigma_stable:
-        #     novelty_score = compute_morphology_novelty(latest_observation)
-        #     ldh_viable = check_ldh_viability(latest_observation)
-        #     if novelty_score >= 0.8 and ldh_viable and remaining_wells >= scrna_cost:
-        #         return ("scrna_upgrade_probe", {...})
+        return None  # All cheap gates earned
 
-        # Simple fallback: test compounds with dose ladder
+    def _select_biology_template(
+        self,
+        beliefs: BeliefState,
+        remaining_wells: int,
+        cycle: int,
+        allow_expensive_calibration: bool
+    ) -> Decision:
+        """Select biology template now that gates are earned.
+
+        Always returns a Decision (fallback to calibration maintenance).
+        """
+        # Simple exploration: dose-response for untested compounds
         tested = beliefs.tested_compounds - {'DMSO'}
         if not tested or len(tested) < 5:
             reason = "Explore compounds with dose-response"
@@ -990,4 +1002,56 @@ class TemplateChooser:
             trigger="scoring",
             regime="in_gate",
             additional_candidate_fields={"n_reps": 12}
+        )
+
+    def choose_next(
+        self,
+        beliefs: BeliefState,
+        budget_remaining_wells: int = 384,
+        cycle: int = 0,
+        allow_expensive_calibration: bool = False
+    ) -> Decision:
+        """Choose next experiment template.
+
+        v0.5.0: Refactored into focused enforcement checks.
+        v0.4.2: PAY-FOR-CALIBRATION REGIME with gate lock invariant.
+
+        Args:
+            beliefs: Current belief state
+            budget_remaining_wells: Remaining well budget
+            cycle: Current cycle number
+            allow_expensive_calibration: If False (default), block autonomous selection of
+                expensive calibration templates like calibrate_scrna_baseline. Requires
+                explicit user intent to enable.
+
+        Returns:
+            Decision: Canonical decision object with template, kwargs, and provenance
+        """
+        remaining_wells = int(max(budget_remaining_wells, 0))
+
+        # 1. Insolvency-first rule
+        insolvency_decision = self._check_epistemic_insolvency(beliefs, cycle)
+        if insolvency_decision:
+            return insolvency_decision
+
+        # 2. Gate lock validation
+        gate_lock_decision = self._check_noise_gate_lock(beliefs, cycle)
+        if gate_lock_decision:
+            return gate_lock_decision
+
+        # 3. Noise gate entry enforcement
+        noise_gate_decision = self._enforce_noise_gate_entry(beliefs, remaining_wells, cycle)
+        if noise_gate_decision:
+            return noise_gate_decision
+
+        # 4. Cheap assay gates enforcement (LDH, CP)
+        assay_gates_decision = self._enforce_cheap_assay_gates(
+            beliefs, remaining_wells, cycle, allow_expensive_calibration
+        )
+        if assay_gates_decision:
+            return assay_gates_decision
+
+        # 5. Biology template selection
+        return self._select_biology_template(
+            beliefs, remaining_wells, cycle, allow_expensive_calibration
         )
