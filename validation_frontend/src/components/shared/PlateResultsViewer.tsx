@@ -248,17 +248,39 @@ export default function PlateResultsViewer({
             </div>
           </div>
 
-          {/* Color gradient legend */}
+          {/* Color legend - stepped to match actual well colors */}
           <div className="mt-2">
             <div className={`text-xs mb-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-              Intensity gradient:
+              Intensity scale:
             </div>
-            <div className="h-3 rounded-full" style={{
-              background: `linear-gradient(to right, ${currentChannel?.color}30, ${currentChannel?.color})`
-            }} />
+            <div className="flex items-stretch h-6 rounded overflow-hidden border border-slate-600">
+              {/* 5 discrete steps matching getWellColor() logic */}
+              {[
+                { threshold: 0.0, label: minValue.toFixed(1) },
+                { threshold: 0.2, label: '' },
+                { threshold: 0.4, label: '' },
+                { threshold: 0.6, label: '' },
+                { threshold: 0.8, label: '' },
+                { threshold: 1.0, label: maxValue.toFixed(1) },
+              ].map((step, idx) => {
+                if (idx === 5) return null; // Skip the last one (just a label marker)
+                const normalized = (step.threshold + (idx < 4 ? 0.2 : 0)) / 2; // Midpoint of range
+                const colorClass = getWellColor(minValue + normalized * range);
+                return (
+                  <div
+                    key={idx}
+                    className={`flex-1 ${colorClass}`}
+                    title={`${(minValue + step.threshold * range).toFixed(2)} - ${(minValue + (step.threshold + 0.2) * range).toFixed(2)}`}
+                  />
+                );
+              }).filter(Boolean)}
+            </div>
             <div className="flex items-center justify-between text-xs mt-1">
-              <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>Low</span>
-              <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>High</span>
+              <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>{minValue.toFixed(1)}</span>
+              <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>
+                {((minValue + maxValue) / 2).toFixed(1)}
+              </span>
+              <span className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>{maxValue.toFixed(1)}</span>
             </div>
           </div>
         </div>
