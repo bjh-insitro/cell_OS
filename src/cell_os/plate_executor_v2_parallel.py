@@ -156,14 +156,20 @@ def execute_plate_design_parallel(
         import time
 
         # Smoke test: Execute one well first to catch errors early
-        print(f"\nRunning smoke test (1 well)...")
+        print(f"\nRunning smoke test (1 well)...", flush=True)
         test_start = time.time()
-        test_result = execute_well_worker((parsed_wells[0], seed, run_context, plate_id))
-        test_time = time.time() - test_start
-        print(f"✓ Smoke test passed in {test_time:.1f}s")
-        print(f"  Estimated total time: {test_time * len(parsed_wells) / workers:.0f}s with {workers} workers")
+        try:
+            test_result = execute_well_worker((parsed_wells[0], seed, run_context, plate_id))
+            test_time = time.time() - test_start
+            print(f"✓ Smoke test passed in {test_time:.1f}s", flush=True)
+            print(f"  Estimated total time: {test_time * len(parsed_wells) / workers:.0f}s with {workers} workers", flush=True)
+        except Exception as e:
+            print(f"✗ Smoke test failed: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            raise
 
-        print(f"\nExecuting {len(parsed_wells)} wells in parallel...")
+        print(f"\nExecuting {len(parsed_wells)} wells in parallel...", flush=True)
         start_time = time.time()
 
     # Prepare arguments for workers
