@@ -567,7 +567,8 @@ def execute_well(
     well_seed = stable_hash_seed(base_seed, pw.well_id, pw.cell_line)
 
     # Create fresh VM per well (fixes time accumulation bug)
-    vm = BiologicalVirtualMachine(seed=well_seed, run_context=run_context)
+    # Disable database to avoid SQLite locking in parallel execution
+    vm = BiologicalVirtualMachine(seed=well_seed, run_context=run_context, use_database=False)
 
     # Build measurement context
     measurement_ctx = MeasurementContext(
