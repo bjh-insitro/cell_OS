@@ -22,6 +22,7 @@ class Blocker(str, Enum):
     LOW_POSTERIOR_TOP = "LOW_POSTERIOR_TOP"  # Need more mechanism discrimination
     HIGH_NUISANCE = "HIGH_NUISANCE"  # Need to reduce confounding
     BAD_INPUT = "BAD_INPUT"  # Garbage inputs rejected
+    AMBIGUOUS_MECHANISMS = "AMBIGUOUS_MECHANISMS"  # Agent 2: Mechanisms too similar
 
 
 @dataclass(frozen=True)
@@ -34,10 +35,15 @@ class GovernanceInputs:
       - nuisance_prob: probability that the signal is explained by nuisance/context/pipeline (0..1)
       - evidence_strength: scalar "there is a signal" proxy (0..1)
           - used to prevent cowardice: if evidence_strength is high, NO_DETECTION is disallowed
+      - is_ambiguous: True if mechanisms are too similar to distinguish (Agent 2)
+      - likelihood_gap: Normalized gap between top-2 mechanism likelihoods (0..1) (Agent 2)
     """
     posterior: Dict[str, float]
     nuisance_prob: float
     evidence_strength: float
+    # Agent 2: Ambiguity detection from mechanism posterior
+    is_ambiguous: bool = False
+    likelihood_gap: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +110,17 @@ def decide_governance(
 
     # 1) Anti-cowardice: if evidence is strong, NO_DETECTION is not allowed.
     strong_evidence = x.evidence_strength >= t.evidence_min_for_detection
+
+    # Agent 2: Check ambiguity BEFORE commit decision
+    # If mechanisms are too similar, cannot commit regardless of top posterior
+    if x.is_ambiguous:
+        gap_str = f"{x.likelihood_gap:.3f}" if x.likelihood_gap is not None else "N/A"
+        return GovernanceDecision(
+            action=GovernanceAction.NO_COMMIT,
+            mechanism=None,
+            reason=f"no_commit: ambiguous classification (gap={gap_str})",
+            blockers={Blocker.AMBIGUOUS_MECHANISMS},
+        )
 
     # 2) Commit rule: requires both strong posterior and low nuisance.
     commit_allowed = (
