@@ -120,7 +120,7 @@ export default function CalibrationResultsLoaderPage() {
                     Try Again
                   </button>
                   <button
-                    onClick={() => navigate('/plate-designs')}
+                    onClick={() => navigate('/calibration-plate')}
                     className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all"
                   >
                     Back to Plate Designs
@@ -140,7 +140,7 @@ export default function CalibrationResultsLoaderPage() {
         {/* Header with back button and refresh */}
         <div className="flex items-center justify-between mb-6">
           <button
-            onClick={() => navigate('/plate-designs')}
+            onClick={() => navigate('/calibration-plate')}
             className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />

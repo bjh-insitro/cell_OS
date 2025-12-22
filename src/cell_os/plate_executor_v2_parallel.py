@@ -178,7 +178,7 @@ def execute_plate_design_parallel(
                     print(f"{'='*70}")
 
                 # Add results file
-                subprocess.run(['git', 'add', str(output_file)], check=True, cwd=output_dir.parent.parent)
+                subprocess.run(['git', 'add', str(output_file)], check=True)
 
                 # Create commit message
                 commit_msg = f"""feat: add calibration plate results - {plate_id} seed{seed}
@@ -192,13 +192,13 @@ Compounds: {', '.join(output['metadata']['compounds'])}
 🤖 Auto-committed by plate_executor_v2_parallel.py"""
 
                 # Commit
-                subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=output_dir.parent.parent)
+                subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
 
                 if verbose:
                     print(f"✓ Results committed")
 
                 # Push
-                subprocess.run(['git', 'push'], check=True, cwd=output_dir.parent.parent)
+                subprocess.run(['git', 'push'], check=True)
 
                 if verbose:
                     print(f"✓ Results pushed to remote")
