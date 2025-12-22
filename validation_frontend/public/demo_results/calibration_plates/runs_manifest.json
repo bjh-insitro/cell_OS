@@ -1,6 +1,24 @@
 {
   "runs": [
     {
+      "run_id": "20251222_222100",
+      "timestamp": "2025-12-22T22:21:00.078886",
+      "plate_id": "CAL_384_RULES_WORLD_v3",
+      "seed": 456,
+      "n_wells": 384,
+      "n_success": 384,
+      "n_failed": 0,
+      "cell_lines": [
+        "HepG2",
+        "A549"
+      ],
+      "compounds": [
+        "Thapsigargin",
+        "Nocodazole"
+      ],
+      "file_path": "validation_frontend/public/demo_results/calibration_plates/CAL_384_RULES_WORLD_v3_run_20251222_222100_seed456.json"
+    },
+    {
       "run_id": "20251222_222030",
       "timestamp": "2025-12-22T22:20:30.765236",
       "plate_id": "CAL_384_RULES_WORLD_v3",
