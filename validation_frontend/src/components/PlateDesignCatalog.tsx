@@ -43,6 +43,30 @@ const PLATE_DESIGNS: PlateDesign[] = [
     thumbnail_color: 'from-emerald-600 to-emerald-700'
   },
   {
+    id: 'cal_384_rules_world_v4',
+    name: 'CAL_384_RULES_WORLD_v4',
+    version: '4.0',
+    status: 'proposed',
+    intent: 'Sparse checkerboard + CV islands: v3 spatial benefits + unconfounded reproducibility measurement',
+    wells_total: 384,
+    wells_used: 384,
+    timepoint_hours: 48,
+    cell_lines: 2,
+    treatments: ['Sparse 2×2 checkerboard', '8× 3×3 CV islands (homogeneous)', 'Density gradient', 'Stain probes', 'Focus probes', 'Timing probes', 'Anchors (Nocodazole, Thapsigargin)'],
+    design_goals: [
+      'Preserve v3 spatial decorrelation (49% variance reduction)',
+      'Fix v3 tile CV regression with dedicated homogeneous islands',
+      'Measure clean reproducibility: 8× 3×3 islands (72 wells)',
+      'Vehicle islands: 6 (HepG2 + A549 in each quadrant)',
+      'Anchor islands: 2 (morph + death for dynamic range CV)',
+      'Islands excluded from all probes and density extremes',
+      'Test hypothesis: neighbor diversity was inflating v3 tile CV',
+      'Best of both: spatial decorrelation + tight local CV'
+    ],
+    cost_estimate: 1950,
+    thumbnail_color: 'from-teal-600 to-teal-700'
+  },
+  {
     id: 'cal_384_rules_world_v2',
     name: 'CAL_384_RULES_WORLD_v2',
     version: '2.0',
@@ -298,7 +322,7 @@ export default function PlateDesignCatalog({ isDarkMode }: PlateDesignCatalogPro
                 {selectedDesign.intent}
               </div>
             </div>
-            {(selectedDesign.id === 'cal_384_rules_world_v1' || selectedDesign.id === 'cal_384_rules_world_v2') && (
+            {(selectedDesign.id === 'cal_384_rules_world_v1' || selectedDesign.id === 'cal_384_rules_world_v2' || selectedDesign.id === 'cal_384_rules_world_v3' || selectedDesign.id === 'cal_384_rules_world_v4') && (
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowSimulateModal(true)}

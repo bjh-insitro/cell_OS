@@ -70,6 +70,11 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
           if (!response.ok) throw new Error('Failed to load v3 design');
           const data = await response.json();
           setPlateData(data);
+        } else if (designVersion === 'v4') {
+          const response = await fetch('/plate_designs/CAL_384_RULES_WORLD_v4.json');
+          if (!response.ok) throw new Error('Failed to load v4 design');
+          const data = await response.json();
+          setPlateData(data);
         } else if (designVersion === 'microscope') {
           const response = await fetch('/plate_designs/CAL_384_MICROSCOPE_BEADS_DYES_v1.json');
           if (!response.ok) throw new Error('Failed to load microscope design');
@@ -127,7 +132,7 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
     return <PlateViewerV1 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'calibration_plate_v2') {
     return <PlateViewerV2 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
-  } else if (plateData.schema_version === 'calibration_plate_v3') {
+  } else if (plateData.schema_version === 'calibration_plate_v3' || plateData.schema_version === 'calibration_plate_v4') {
     return <PlateViewerV3 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'microscope_calibration_plate_v1') {
     return <PlateViewerMicroscope plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
