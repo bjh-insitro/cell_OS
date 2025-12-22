@@ -91,9 +91,11 @@ logger = logging.getLogger(__name__)
 try:
     from ..database.repositories.simulation_params import SimulationParamsRepository
     DB_AVAILABLE = True
-except ImportError:
-    DB_AVAILABLE = False
-    logger.warning("SimulationParamsRepository not available, will use YAML fallback")
+except ImportError as e:
+    raise ImportError(
+        "SimulationParamsRepository is required but not available. "
+        "Cannot fall back to YAML. Please ensure database dependencies are installed."
+    ) from e
 
 # Import assay simulators
 from .assays import CellPaintingAssay, LDHViabilityAssay, ScRNASeqAssay
@@ -393,7 +395,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         super().__init__(simulation_speed=simulation_speed)
         self.vessel_states: Dict[str, VesselState] = {}
         self.simulated_time = 0.0
-        self.use_database = use_database and DB_AVAILABLE
+        self.use_database = use_database
 
         # Phase 5B: Sample run context if not provided
         # This injects correlated batch/lot/instrument effects
