@@ -65,6 +65,11 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
           if (!response.ok) throw new Error('Failed to load v2 design');
           const data = await response.json();
           setPlateData(data);
+        } else if (designVersion === 'v3') {
+          const response = await fetch('/plate_designs/CAL_384_RULES_WORLD_v3.json');
+          if (!response.ok) throw new Error('Failed to load v3 design');
+          const data = await response.json();
+          setPlateData(data);
         } else if (designVersion === 'microscope') {
           const response = await fetch('/plate_designs/CAL_384_MICROSCOPE_BEADS_DYES_v1.json');
           if (!response.ok) throw new Error('Failed to load microscope design');
