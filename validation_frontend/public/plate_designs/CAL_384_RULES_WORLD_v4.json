@@ -49,7 +49,7 @@
     ],
     "well_naming": "A1..P24"
   },
-  "intent": "V4: V3 micro-checkerboard + reproducibility islands (homogeneous CV tiles) with provocation exclusions. Promoted 2025-12-22: Preserves 2×2 micro-checkerboard philosophy from v3, adds 8× 3×3 CV islands with explicit exclusion rules.",
+  "intent": "V4: V3 micro-checkerboard + reproducibility islands (homogeneous CV tiles) with provocation exclusions. Promoted 2025-12-22: Preserves 2\u00d72 micro-checkerboard philosophy from v3, adds 8\u00d7 3\u00d73 CV islands with explicit exclusion rules.",
   "global_defaults": {
     "timepoint_hours": 48,
     "readouts": [
@@ -1056,5 +1056,44 @@
       "Islands override cell_line and force NOMINAL density and neutral probe settings for clean CV measurement.",
       "STAIN_LOW probe column wells that overlap islands have been removed from the stain probe set to avoid semantic double-labeling."
     ]
+  },
+  "plate_class": "CALIBRATION",
+  "plate_class_metadata": {
+    "purpose": "Measure technical noise floor and biological variability under controlled conditions",
+    "design_objectives": [
+      "minimize_cv",
+      "isolate_technical_variance",
+      "measure_perturbation_effects",
+      "establish_baseline_stability"
+    ],
+    "valid_metrics": [
+      "island_cv",
+      "vehicle_technical_floor",
+      "anchor_island_stability",
+      "perturbation_variance_inflation",
+      "inter_island_consistency"
+    ],
+    "invalid_metrics": [
+      "global_spatial_variance",
+      "row_column_decorrelation",
+      "mixed_region_cv",
+      "boring_wells_spatial_test"
+    ],
+    "interpretation_notes": [
+      "High spatial variance is EXPECTED due to homogeneous island clustering",
+      "Island CV (2-20%) measures technical + biological noise under controlled conditions",
+      "Vehicle islands establish baseline; anchor islands measure perturbation effects",
+      "Do NOT use spatial variance as quality metric - use island CV instead"
+    ],
+    "design_features": {
+      "cell_line_pattern": "homogeneous_islands",
+      "spatial_mixing": false,
+      "homogeneous_islands": true,
+      "island_count": 8,
+      "island_size": "3x3",
+      "anchor_placement": "island_based",
+      "forced_nominal_conditions": true,
+      "exclusion_rules_active": true
+    }
   }
 }

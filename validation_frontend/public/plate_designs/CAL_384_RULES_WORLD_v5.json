@@ -1064,5 +1064,32 @@
       "Islands override cell_line and force NOMINAL density and neutral probe settings for clean CV measurement.",
       "STAIN_LOW probe column wells that overlap islands have been removed from the stain probe set to avoid semantic double-labeling."
     ]
+  },
+  "plate_class": "HYBRID",
+  "plate_class_metadata": {
+    "purpose": "Exploratory design combining calibration islands with screening checkerboard",
+    "design_objectives": [
+      "measure_island_cv",
+      "maintain_spatial_decorrelation",
+      "test_hybrid_feasibility"
+    ],
+    "valid_metrics": [
+      "island_cv",
+      "boring_wells_spatial_variance"
+    ],
+    "invalid_metrics": [],
+    "interpretation_notes": [
+      "Hybrid plates compromise on both calibration and screening objectives",
+      "Use specialized plates (V3 or V4) for production work",
+      "V5 is exploratory - testing if single-well alternation + islands avoids V4 spatial artifacts"
+    ],
+    "design_features": {
+      "cell_line_pattern": "v3_checkerboard_with_islands",
+      "spatial_mixing": true,
+      "homogeneous_islands": true,
+      "island_count": 8,
+      "island_size": "3x3",
+      "base_pattern": "single_well_alternating"
+    }
   }
 }

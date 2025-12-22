@@ -885,5 +885,42 @@
       "name": "no_cell_background_stable",
       "description": "NO_CELLS wells should cluster tightly; if not, staining/background variability is large enough to masquerade as phenotype."
     }
-  ]
+  ],
+  "plate_class": "SCREENING",
+  "plate_class_metadata": {
+    "purpose": "Stress-test spatial model under realistic screening conditions",
+    "design_objectives": [
+      "maximize_spatial_decorrelation",
+      "stress_test_spatial_corrections",
+      "validate_hit_robustness",
+      "break_row_column_confounds"
+    ],
+    "valid_metrics": [
+      "spatial_variance",
+      "boring_wells_spatial_test",
+      "row_column_decorrelation",
+      "z_factor_under_stress",
+      "mixed_tile_cv",
+      "hit_robustness"
+    ],
+    "invalid_metrics": [
+      "island_cv",
+      "absolute_cv_as_biological_noise",
+      "technical_replicate_floor"
+    ],
+    "interpretation_notes": [
+      "High mixed tile CV (60-80%) is EXPECTED due to neighbor diversity",
+      "Spatial variance should be LOW (indicates successful decorrelation)",
+      "Z-factors represent realistic screening conditions, not ideal lab conditions",
+      "Do NOT use absolute CV to estimate biological noise - use calibration plates instead"
+    ],
+    "design_features": {
+      "cell_line_pattern": "single_well_alternating_checkerboard",
+      "spatial_mixing": true,
+      "homogeneous_islands": false,
+      "anchor_placement": "scattered",
+      "gradients_allowed": true,
+      "probes_allowed": true
+    }
+  }
 }
