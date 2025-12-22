@@ -2005,6 +2005,9 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel = self.vessel_states[vessel_id]
 
+        # Agent 1: Lock measurement purity - capture state before measurement
+        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+
         # Get cell line-specific noise parameters
         params = self.cell_line_params.get(vessel.cell_line, self.defaults)
         count_cv = params.get("cell_count_cv", self.defaults.get("cell_count_cv", 0.10))
@@ -2022,9 +2025,18 @@ class BiologicalVirtualMachine(VirtualMachine):
         if viability_cv > 0:
             measured_viability *= lognormal_multiplier(self.rng_assay, viability_cv)
         measured_viability = np.clip(measured_viability, 0.0, 1.0)
-        
+
         self._simulate_delay(0.5)
-        
+
+        # Agent 1: Assert measurement did not perturb biological state
+        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
+        assert state_before == state_after, (
+            f"MEASUREMENT PURITY VIOLATION: count_cells() mutated vessel state!\n"
+            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
+            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
+            f"Measurement functions must be read-only. Observer independence violated."
+        )
+
         return {
             "status": "success",
             "action": "count_cells",
@@ -2660,6 +2672,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel = self.vessel_states[vessel_id]
         cell_line = vessel.cell_line
 
+        # Agent 1: Lock measurement purity - capture state before measurement
+        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+
         # Get baseline morphology for this cell line
         baseline = self.thalamus_params['baseline_morphology'].get(cell_line, {})
         if not baseline:
@@ -2928,6 +2943,15 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         self._simulate_delay(2.0)  # Imaging takes time
 
+        # Agent 1: Assert measurement did not perturb biological state
+        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
+        assert state_before == state_after, (
+            f"MEASUREMENT PURITY VIOLATION: cell_painting_assay() mutated vessel state!\n"
+            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
+            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
+            f"Measurement functions must be read-only. Observer independence violated."
+        )
+
         result = {
             "status": "success",
             "action": "cell_painting",
@@ -2996,6 +3020,9 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel = self.vessel_states[vessel_id]
         cell_line = vessel.cell_line
+
+        # Agent 1: Lock measurement purity - capture state before measurement
+        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
 
         # Get baseline LDH for this cell line
         # LDH is released by dead/dying cells (inverse of ATP)
@@ -3188,6 +3215,15 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         self._simulate_delay(0.5)  # LDH assay is quick
 
+        # Agent 1: Assert measurement did not perturb biological state
+        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
+        assert state_before == state_after, (
+            f"MEASUREMENT PURITY VIOLATION: atp_viability_assay() mutated vessel state!\n"
+            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
+            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
+            f"Measurement functions must be read-only. Observer independence violated."
+        )
+
         result = {
             "status": "success",
             "action": "ldh_viability",
@@ -3263,6 +3299,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel = self.vessel_states[vessel_id]
         cell_line = vessel.cell_line
 
+        # Agent 1: Lock measurement purity - capture state before measurement
+        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+
         # Default params path
         if params_path is None:
             params_path = Path(__file__).parent.parent.parent.parent / "data" / "scrna_seq_params.yaml"
@@ -3334,6 +3373,15 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Apply time cost: scRNA takes longer, increasing drift exposure
         # This is CRITICAL: time_cost_h should increase nuisance risk in your planner
         self._simulate_delay(time_cost_h)
+
+        # Agent 1: Assert measurement did not perturb biological state
+        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
+        assert state_before == state_after, (
+            f"MEASUREMENT PURITY VIOLATION: scrna_seq_assay() mutated vessel state!\n"
+            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
+            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
+            f"Measurement functions must be read-only. Observer independence violated."
+        )
 
         return {
             "status": "success",
