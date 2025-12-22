@@ -24,6 +24,14 @@ class Mechanism(Enum):
     UNKNOWN = "unknown"
 
 
+# Agent 2: Ambiguity detection constants
+# These determine when to cap confidence and represent uncertainty explicitly
+GAP_CLEAR = 0.15  # Likelihood ratio gap for "clear" classification
+                  # If top-2 likelihoods are within this gap, posterior is ambiguous
+MAX_PROB_AMBIGUOUS = 0.75  # Maximum probability allowed in ambiguous cases
+                            # Prevents overconfidence when mechanisms overlap
+
+
 @dataclass
 class MechanismSignature:
     """
@@ -218,6 +226,45 @@ def compute_mechanism_posterior_v2(
         posterior_probs = {m: unnormalized[m] / Z for m in MECHANISM_SIGNATURES_V2}
         nuisance_prob = unnormalized["NUISANCE"] / Z
 
+    # Agent 2: Ambiguity detection (RE-ADDED after file state issue)
+    # Compute gap between top-2 mechanism likelihoods (before posterior transformation)
+    mech_likelihoods = {m: likelihoods[m] for m in MECHANISM_SIGNATURES_V2}
+    sorted_likes = sorted(mech_likelihoods.values(), reverse=True)
+
+    if len(sorted_likes) >= 2 and sorted_likes[0] > 0:
+        # Normalized gap: (top1 - top2) / top1 (scale-invariant)
+        likelihood_gap = (sorted_likes[0] - sorted_likes[1]) / sorted_likes[0]
+    else:
+        likelihood_gap = 1.0  # Degenerate case: treat as "clear"
+
+    is_ambiguous = (likelihood_gap < GAP_CLEAR)
+
+    # Cap max probability if ambiguous
+    if is_ambiguous:
+        top_mech = max(posterior_probs.items(), key=lambda x: x[1])[0]
+        top_prob = posterior_probs[top_mech]
+
+        if top_prob > MAX_PROB_AMBIGUOUS:
+            # Cap and redistribute
+            excess = top_prob - MAX_PROB_AMBIGUOUS
+            other_mechs = [m for m in posterior_probs.keys() if m != top_mech]
+            other_total = sum(posterior_probs[m] for m in other_mechs)
+
+            posterior_probs[top_mech] = MAX_PROB_AMBIGUOUS
+
+            if other_total > 0:
+                for m in other_mechs:
+                    posterior_probs[m] += excess * (posterior_probs[m] / other_total)
+            else:
+                for m in other_mechs:
+                    posterior_probs[m] += excess / len(other_mechs)
+
+    # Compute uncertainty metric (monotonic with gap)
+    if likelihood_gap < GAP_CLEAR:
+        uncertainty = 1.0 - (likelihood_gap / GAP_CLEAR)
+    else:
+        uncertainty = 0.0
+
     # CAUSAL ATTRIBUTION: Split-ledger accounting
     # Compute how much posterior change came from new evidence vs. nuisance reduction
     attribution_source = None
@@ -280,6 +327,12 @@ def compute_mechanism_posterior_v2(
             else:
                 attribution_source = "both"  # Mixed contribution
 
+    # Agent 2: Guardrail - prevent reintroduction of dishonesty
+    if is_ambiguous:
+        top_prob_check = max(posterior_probs.values())
+        assert top_prob_check <= MAX_PROB_AMBIGUOUS + 1e-9, \
+            f"Ambiguous classification violated confidence cap: {top_prob_check:.4f} > {MAX_PROB_AMBIGUOUS}"
+
     return MechanismPosterior(
         probabilities=posterior_probs,
         observed_features=observed,
@@ -287,7 +340,11 @@ def compute_mechanism_posterior_v2(
         prior=prior,
         nuisance=nuisance,
         nuisance_probability=nuisance_prob,
-        attribution_source=attribution_source
+        attribution_source=attribution_source,
+        # Agent 2: Ambiguity fields
+        uncertainty=uncertainty,
+        is_ambiguous=is_ambiguous,
+        likelihood_gap=likelihood_gap
     )
 
 
@@ -314,6 +371,13 @@ class MechanismPosterior:
     # CAUSAL ATTRIBUTION: Track where posterior concentration came from
     # Used to prevent "simulator candy" where nuisance actions mint unjustified certainty
     attribution_source: Optional[str] = None  # "evidence" | "nuisance_reweight" | "both"
+
+    # Agent 2: Explicit ambiguity representation
+    # uncertainty measures epistemic uncertainty when mechanisms overlap in morphology space
+    # This is NOT measurement noise - it's "how well can we distinguish mechanisms?"
+    uncertainty: Optional[float] = None  # 0.0 = clear separation, 1.0 = maximal ambiguity
+    is_ambiguous: Optional[bool] = None  # True if gap < GAP_CLEAR
+    likelihood_gap: Optional[float] = None  # Gap between top-2 likelihoods (normalized)
 
     @property
     def top_mechanism(self) -> Mechanism:
@@ -386,13 +450,26 @@ class MechanismPosterior:
             f"  Entropy: {self.entropy:.3f}",
             f"  Confidence (entropy-based): {self.confidence_heuristic:.3f}",
             f"  Confidence (calibrated): {self.confidence:.3f}",
-            f"  Nuisance fraction: {self.nuisance.nuisance_fraction:.3f}",
+        ]
+
+        # Agent 2: Add ambiguity information
+        if self.uncertainty is not None:
+            lines.append(f"  Uncertainty: {self.uncertainty:.3f}")
+        if self.is_ambiguous is not None:
+            amb_str = "YES" if self.is_ambiguous else "NO"
+            lines.append(f"  Ambiguous: {amb_str}")
+        if self.likelihood_gap is not None:
+            lines.append(f"  Likelihood gap: {self.likelihood_gap:.3f}")
+
+        lines.extend([
             f"",
             f"Full posterior:"
-        ]
+        ])
+
         for mech, prob in sorted(self.probabilities.items(), key=lambda x: -x[1]):
             marker = "→" if mech == self.top_mechanism else " "
             lines.append(f"{marker} {mech.value}: {prob:.3f}")
+
         return "\n".join(lines)
 
 
@@ -772,6 +849,112 @@ def compute_ece(
         ece += weight * abs(accuracy - mean_conf)
 
     return ece
+
+
+# =============================================================================
+# Agent 2: Classification Diagnostics Emission (RE-ADDED)
+# =============================================================================
+
+def emit_mechanism_classification_diagnostic(
+    posterior: MechanismPosterior,
+    cycle_id: Optional[int] = None,
+    design_id: Optional[str] = None,
+) -> Dict[str, any]:
+    """
+    Create diagnostic event for mechanism classification.
+
+    This event is emitted to diagnostics.jsonl to make classification observable.
+    Enables auditability of overconfidence and ambiguity.
+
+    Args:
+        posterior: MechanismPosterior object
+        cycle_id: Optional cycle number
+        design_id: Optional design identifier
+
+    Returns:
+        Dict ready for JSON serialization to diagnostics.jsonl
+
+    Example event:
+        {
+          "event": "mechanism_classification",
+          "cycle_id": 5,
+          "top1_mechanism": "er_stress",
+          "top1_prob": 0.62,
+          "top2_mechanism": "microtubule",
+          "top2_prob": 0.28,
+          "gap": 0.12,
+          "uncertainty": 0.35,
+          "is_ambiguous": true,
+          "n_channels_used": 3
+        }
+    """
+    # Get top 2 mechanisms
+    sorted_mechs = sorted(posterior.probabilities.items(), key=lambda x: -x[1])
+    top1_mech, top1_prob = sorted_mechs[0]
+    top2_mech, top2_prob = sorted_mechs[1] if len(sorted_mechs) >= 2 else (None, 0.0)
+
+    event = {
+        "event": "mechanism_classification",
+        "top1_mechanism": top1_mech.value,
+        "top1_prob": float(top1_prob),
+        "top2_mechanism": top2_mech.value if top2_mech else None,
+        "top2_prob": float(top2_prob),
+        "gap": float(posterior.likelihood_gap) if posterior.likelihood_gap is not None else None,
+        "uncertainty": float(posterior.uncertainty) if posterior.uncertainty is not None else None,
+        "is_ambiguous": posterior.is_ambiguous,
+        "n_channels_used": len(posterior.observed_features),
+    }
+
+    if cycle_id is not None:
+        event["cycle_id"] = cycle_id
+    if design_id is not None:
+        event["design_id"] = design_id
+
+    return event
+
+
+def emit_overconfidence_warning(
+    posterior: MechanismPosterior,
+    cycle_id: Optional[int] = None,
+    design_id: Optional[str] = None,
+) -> Optional[Dict[str, any]]:
+    """
+    Emit overconfidence warning if high confidence in ambiguous region.
+
+    Returns None if no warning needed.
+
+    Condition for warning:
+    - top1_prob > 0.75 (high confidence claimed)
+    - AND gap < GAP_CLEAR (mechanisms are not clearly separated)
+
+    This is passive observational only - does NOT block execution.
+
+    Args:
+        posterior: MechanismPosterior object
+        cycle_id: Optional cycle number
+        design_id: Optional design identifier
+
+    Returns:
+        Warning event dict or None
+    """
+    if posterior.top_probability > 0.75 and posterior.is_ambiguous:
+        warning = {
+            "event": "mechanism_overconfidence_warning",
+            "top_mechanism": posterior.top_mechanism.value,
+            "claimed_prob": float(posterior.top_probability),
+            "likelihood_gap": float(posterior.likelihood_gap) if posterior.likelihood_gap else None,
+            "uncertainty": float(posterior.uncertainty) if posterior.uncertainty else None,
+            "reason": f"High confidence ({posterior.top_probability:.2f}) claimed in ambiguous region (gap={posterior.likelihood_gap:.3f} < {GAP_CLEAR})",
+        }
+
+        if cycle_id is not None:
+            warning["cycle_id"] = cycle_id
+        if design_id is not None:
+            warning["design_id"] = design_id
+
+        return warning
+
+    return None
 
 
 if __name__ == "__main__":
