@@ -125,6 +125,17 @@ def execute_plate_design_parallel(
     for pw in parsed_wells:
         treatment_counts[pw.treatment] = treatment_counts.get(pw.treatment, 0) + 1
 
+    # Convert sets in parse_metadata to lists for JSON serialization
+    serializable_metadata = {}
+    for k, v in parse_metadata.items():
+        if isinstance(v, set):
+            serializable_metadata[k] = list(v)
+        elif isinstance(v, dict):
+            # Check if dict values are sets
+            serializable_metadata[k] = {dk: list(dv) if isinstance(dv, set) else dv for dk, dv in v.items()}
+        else:
+            serializable_metadata[k] = v
+
     output = {
         "plate_id": plate_id,
         "seed": seed,
@@ -139,7 +150,7 @@ def execute_plate_design_parallel(
             "treatments": list(treatments),
             "compounds": list(compounds),
             "treatment_counts": treatment_counts,
-            **parse_metadata
+            **serializable_metadata
         }
     }
 

@@ -317,7 +317,7 @@ def parse_plate_design_v2(json_path: Path) -> Tuple[List[ParsedWell], Dict]:
         'well_to_tile': well_to_tile,
         'well_to_anchor': well_to_anchor,
         'well_to_probe_type': well_to_probe_type,
-        'background_wells': background_wells
+        'background_wells': list(background_wells)  # Convert set to list for JSON
     }
 
     return wells, metadata
