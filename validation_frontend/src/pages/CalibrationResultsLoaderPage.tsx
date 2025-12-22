@@ -2,19 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react';
 import PlateResultsViewer, { WellMeasurement } from '../components/shared/PlateResultsViewer';
+import CalibrationQCAnalysis from '../components/CalibrationQCAnalysis';
 
 export default function CalibrationResultsLoaderPage() {
   const { plateId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const seed = searchParams.get('seed') || '42';
+  const runId = searchParams.get('run_id');
 
   const [measurements, setMeasurements] = useState<WellMeasurement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  const resultsPath = `/demo_results/calibration_plates/${plateId}_results_seed${seed}.json`;
+  // Construct results path based on whether we have a run_id
+  const resultsPath = runId
+    ? `/demo_results/calibration_plates/${plateId}_run_${runId}_seed${seed}.json`
+    : `/demo_results/calibration_plates/${plateId}_results_seed${seed}.json`;
 
   const loadResults = async () => {
     setLoading(true);
@@ -200,6 +205,19 @@ export default function CalibrationResultsLoaderPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* QC Analysis Section */}
+        <div className="mt-6">
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Quality Control Analysis
+            </h2>
+            <p className="text-slate-400 text-sm">
+              Statistical analysis and validation metrics for calibration plate quality
+            </p>
+          </div>
+          <CalibrationQCAnalysis measurements={measurements} isDarkMode={true} />
         </div>
       </div>
     </div>

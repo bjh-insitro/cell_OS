@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle, FlaskConical, Download } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Clock, CheckCircle, XCircle, FlaskConical, Download, Eye } from 'lucide-react';
 
 interface RunInfo {
   run_id: string;
@@ -23,6 +24,7 @@ interface RunsBrowserProps {
 }
 
 export default function RunsBrowser({ isDarkMode }: RunsBrowserProps) {
+  const navigate = useNavigate();
   const [manifest, setManifest] = useState<RunsManifest | null>(null);
   const [selectedRun, setSelectedRun] = useState<RunInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -210,18 +212,31 @@ export default function RunsBrowser({ isDarkMode }: RunsBrowserProps) {
                   </div>
                 </div>
 
-                <a
-                  href={`/${selectedRun.file_path}`}
-                  download
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    isDarkMode
-                      ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
-                  }`}
-                >
-                  <Download className="h-4 w-4" />
-                  Download
-                </a>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => navigate(`/calibration-results-loader/${selectedRun.plate_id}?run_id=${selectedRun.run_id}`)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                      isDarkMode
+                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                        : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                    }`}
+                  >
+                    <Eye className="h-4 w-4" />
+                    View Results
+                  </button>
+                  <a
+                    href={`/${selectedRun.file_path}`}
+                    download
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                      isDarkMode
+                        ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                        : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+                    }`}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </a>
+                </div>
               </div>
 
               {/* Execution stats */}
