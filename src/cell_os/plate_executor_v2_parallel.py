@@ -228,11 +228,12 @@ def execute_plate_design_parallel(
             print(f"  Run ID: {run_id}")
 
         # Update runs manifest
-        # Handle relative paths correctly
+        # Convert to absolute path first, then make relative to cwd
+        output_file_abs = output_file.resolve()
         try:
-            file_path_str = str(output_file.relative_to(Path.cwd()))
+            file_path_str = str(output_file_abs.relative_to(Path.cwd().resolve()))
         except ValueError:
-            # If output_file is already relative or can't compute relative path, use as-is
+            # If can't compute relative path, use the string representation
             file_path_str = str(output_file)
 
         run_info = {
