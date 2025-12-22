@@ -20,22 +20,6 @@ from src.cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from src.cell_os.core.assay import AssayType
 from src.cell_os.hardware.run_context import RunContext
 
-# Compound library for calibration anchors
-CALIBRATION_COMPOUND_LIBRARY = {
-    "Nocodazole": {
-        "IC50_A549": 0.5,    # µM
-        "IC50_HepG2": 0.6,   # µM
-        "mechanism": "MICROTUBULE",
-        "hill_slope": 2.0,
-    },
-    "Thapsigargin": {
-        "IC50_A549": 0.08,   # µM
-        "IC50_HepG2": 0.10,  # µM
-        "mechanism": "ER_STRESS",
-        "hill_slope": 2.5,
-    },
-}
-
 
 @dataclass
 class ParsedWell:
