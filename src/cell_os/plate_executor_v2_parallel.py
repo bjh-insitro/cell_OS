@@ -114,7 +114,8 @@ def execute_plate_design_parallel(
                 print(f"   Continuing with current code...\n")
 
     if workers is None:
-        workers = max(1, cpu_count() - 1)
+        # Cap at 32 workers to avoid overhead from too many processes
+        workers = min(32, max(1, cpu_count() - 1))
 
     if verbose:
         print(f"{'='*70}")
