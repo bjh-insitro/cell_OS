@@ -152,17 +152,43 @@ def execute_plate_design_parallel(
     plate_id = json_path.stem
 
     if verbose:
+        import sys
+        import time
+
+        # Smoke test: Execute one well first to catch errors early
+        print(f"\nRunning smoke test (1 well)...")
+        test_start = time.time()
+        test_result = execute_well_worker((parsed_wells[0], seed, run_context, plate_id))
+        test_time = time.time() - test_start
+        print(f"✓ Smoke test passed in {test_time:.1f}s")
+        print(f"  Estimated total time: {test_time * len(parsed_wells) / workers:.0f}s with {workers} workers")
+
         print(f"\nExecuting {len(parsed_wells)} wells in parallel...")
+        start_time = time.time()
 
     # Prepare arguments for workers
     worker_args = [(pw, seed, run_context, plate_id) for pw in parsed_wells]
 
-    # Execute in parallel
+    # Execute in parallel with progress tracking
     with Pool(processes=workers) as pool:
-        raw_results = pool.map(execute_well_worker, worker_args)
+        if verbose:
+            # Use imap_unordered for progress tracking
+            raw_results = []
+            for i, result in enumerate(pool.imap_unordered(execute_well_worker, worker_args, chunksize=1), 1):
+                raw_results.append(result)
+                if i % 50 == 0 or i == len(parsed_wells):
+                    elapsed = time.time() - start_time
+                    rate = i / elapsed if elapsed > 0 else 0
+                    eta = (len(parsed_wells) - i) / rate if rate > 0 else 0
+                    print(f"\r  Progress: {i}/{len(parsed_wells)} wells ({i*100//len(parsed_wells)}%) | "
+                          f"Rate: {rate:.1f} wells/sec | ETA: {eta:.0f}s", end='', flush=True)
+            print()  # newline after progress
+        else:
+            raw_results = pool.map(execute_well_worker, worker_args)
 
     if verbose:
-        print(f"\n✓ Simulation complete: {len(raw_results)} wells")
+        total_time = time.time() - start_time
+        print(f"\n✓ Simulation complete: {len(raw_results)} wells in {total_time:.1f}s")
 
     # Count successes vs failures
     n_success = sum(1 for r in raw_results if "error" not in r)
