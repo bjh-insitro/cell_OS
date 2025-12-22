@@ -1,0 +1,247 @@
+{
+  "schema_version": "calibration_plate_v2",
+  "plate": {
+    "plate_id": "CAL_384_RULES_WORLD_v2",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "Learn the measurement rules of the world before exploring biology (plate physics, pipeline behavior, noise floor, feature coupling, failure modes)",
+  "global_defaults": {
+    "timepoint_hours": 48,
+    "readouts": ["cell_painting", "ldh"],
+    "vehicle": {
+      "name": "DMSO",
+      "final_concentration_vv": 0.001,
+      "units": "v/v"
+    },
+    "random_seed": 24680,
+    "default_assignment": {
+      "treatment": "VEHICLE",
+      "reagent": "DMSO",
+      "dose_uM": 0,
+      "cell_density": "NOMINAL",
+      "stain_scale": 1.0,
+      "fixation_timing_offset_min": 0,
+      "imaging_focus_offset_um": 0,
+      "notes": "Default for all wells unless overridden"
+    }
+  },
+  "cell_lines": {
+    "strategy": "interleaved_rows",
+    "row_to_cell_line": {
+      "A": "HepG2",
+      "B": "A549",
+      "C": "HepG2",
+      "D": "A549",
+      "E": "HepG2",
+      "F": "A549",
+      "G": "HepG2",
+      "H": "A549",
+      "I": "HepG2",
+      "J": "A549",
+      "K": "HepG2",
+      "L": "A549",
+      "M": "HepG2",
+      "N": "A549",
+      "O": "HepG2",
+      "P": "A549"
+    },
+    "notes": [
+      "Interleaving breaks the confound between spatial position and cell line.",
+      "If operationally you must block by rows, keep this map for simulation anyway as the gold-standard calibration design."
+    ]
+  },
+  "calibration_axes": {
+    "plate_physics": ["edge_vs_interior", "row_col_gradients", "quadrant_bias", "local_neighborhood_effects"],
+    "pipeline_behavior": ["segmentation_stability", "illumination_correction", "feature_coupling", "outlier_rate"],
+    "readout_coupling": ["cell_painting_vs_ldh", "feature_family_variance"]
+  },
+  "non_biological_provocations": {
+    "cell_density_gradient": {
+      "purpose": "Expose density-driven confounds that masquerade as biology and stress segmentation",
+      "levels": {
+        "LOW": { "scale": 0.7 },
+        "NOMINAL": { "scale": 1.0 },
+        "HIGH": { "scale": 1.3 }
+      },
+      "rule": {
+        "LOW_cols": [1,2,3,4,5,6,7,8],
+        "NOMINAL_cols": [9,10,11,12,13,14,15,16],
+        "HIGH_cols": [17,18,19,20,21,22,23,24]
+      }
+    },
+    "stain_scale_probes": {
+      "purpose": "Measure sensitivity to staining intensity and normalization assumptions",
+      "levels": {
+        "STAIN_LOW": 0.9,
+        "STAIN_HIGH": 1.1
+      },
+      "wells": {
+        "STAIN_LOW": ["A6","B6","C6","D6","E6","F6","G6","H6","I6","J6","K6","L6","M6","N6","O6","P6"],
+        "STAIN_HIGH": ["A19","B19","C19","D19","E19","F19","G19","H19","I19","J19","K19","L19","M19","N19","O19","P19"]
+      }
+    },
+    "fixation_timing_probes": {
+      "purpose": "Detect timing sensitivity and whether time jitter is mistaken for mechanism",
+      "levels": {
+        "EARLY_FIX": -15,
+        "LATE_FIX": 15
+      },
+      "wells": {
+        "EARLY_FIX": ["A12","B12","C12","D12","I12","J12","K12","L12"],
+        "LATE_FIX": ["E12","F12","G12","H12","M12","N12","O12","P12"]
+      }
+    },
+    "imaging_focus_probes": {
+      "purpose": "Stress-test robustness of feature extraction to focus drift",
+      "levels": {
+        "FOCUS_MINUS": -2,
+        "FOCUS_PLUS": 2
+      },
+      "wells": {
+        "FOCUS_MINUS": ["A1","B1","C1","D1","I1","J1","K1","L1"],
+        "FOCUS_PLUS": ["E24","F24","G24","H24","M24","N24","O24","P24"]
+      }
+    },
+    "background_controls": {
+      "purpose": "Estimate staining/background and LDH baseline without cells (and detect contamination/bleed)",
+      "wells_no_cells": ["A2","A23","P2","P23","H2","H23","I2","I23"],
+      "assignment": {
+        "treatment": "NO_CELLS",
+        "reagent": "DMSO",
+        "dose_uM": 0,
+        "cell_density": "NONE",
+        "stain_scale": 1.0,
+        "fixation_timing_offset_min": 0,
+        "imaging_focus_offset_um": 0
+      }
+    }
+  },
+  "biological_anchors": {
+    "philosophy": "Anchors are for dynamic range and failure modes, not for discovering biology",
+    "anchors": [
+      {
+        "anchor_id": "ANCHOR_MORPH",
+        "reagent": "Nocodazole",
+        "dose_uM": 0.3,
+        "role": "strong morphology signature with survivable cells"
+      },
+      {
+        "anchor_id": "ANCHOR_DEATH",
+        "reagent": "Thapsigargin",
+        "dose_uM": 0.05,
+        "role": "stress phenotype plus LDH movement without instant plate-wide wipeout"
+      }
+    ],
+    "distribution": "sparse_and_spatially_distributed",
+    "wells": {
+      "ANCHOR_MORPH": [
+        "A9","A16","D3","D22","G9","G16","H3","H22",
+        "I9","I16","L3","L22","O9","O16","P3","P22"
+      ],
+      "ANCHOR_DEATH": [
+        "B10","B15","C4","C21","F10","F15","E4","E21",
+        "J10","J15","K4","K21","N10","N15","M4","M21"
+      ]
+    }
+  },
+  "contrastive_tiles": {
+    "purpose": "Local repeatability AND local sensitivity (same geometry, different semantics)",
+    "tile_shape": "2x2",
+    "tiles": [
+      {
+        "tile_id": "TILE_VEH_NW",
+        "wells": ["B2","B3","C2","C3"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "TILE_VEH_NE",
+        "wells": ["B22","B23","C22","C23"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "TILE_VEH_SW",
+        "wells": ["N2","N3","O2","O3"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "TILE_VEH_SE",
+        "wells": ["N22","N23","O22","O23"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "TILE_MORPH_LOCAL",
+        "wells": ["G10","G11","H10","H11"],
+        "assignment": { "treatment": "ANCHOR_MORPH_TILE", "reagent": "Nocodazole", "dose_uM": 0.3 }
+      },
+      {
+        "tile_id": "TILE_DEATH_LOCAL",
+        "wells": ["J14","J15","K14","K15"],
+        "assignment": { "treatment": "ANCHOR_DEATH_TILE", "reagent": "Thapsigargin", "dose_uM": 0.05 }
+      },
+      {
+        "tile_id": "TILE_DENSITY_STRESS_LOW",
+        "wells": ["D6","D7","E6","E7"],
+        "assignment": { "treatment": "VEHICLE_TILE_DENSITY_LOW", "reagent": "DMSO", "dose_uM": 0, "cell_density": "LOW" }
+      },
+      {
+        "tile_id": "TILE_DENSITY_STRESS_HIGH",
+        "wells": ["L18","L19","M18","M19"],
+        "assignment": { "treatment": "VEHICLE_TILE_DENSITY_HIGH", "reagent": "DMSO", "dose_uM": 0, "cell_density": "HIGH" }
+      }
+    ]
+  },
+  "resolution_rules": {
+    "order_of_precedence": [
+      "background_controls.wells_no_cells",
+      "contrastive_tiles.tiles[].assignment",
+      "biological_anchors.wells",
+      "non_biological_provocations.*.wells",
+      "non_biological_provocations.cell_density_gradient.rule",
+      "global_defaults.default_assignment"
+    ],
+    "derived_fields": {
+      "cell_line": "from cell_lines.row_to_cell_line",
+      "cell_density": "from density gradient by column unless explicitly set",
+      "stain_scale": "1.0 unless in STAIN_LOW or STAIN_HIGH wells",
+      "fixation_timing_offset_min": "0 unless in EARLY_FIX or LATE_FIX wells",
+      "imaging_focus_offset_um": "0 unless in FOCUS_MINUS or FOCUS_PLUS wells"
+    }
+  },
+  "expected_learning_deliverables": [
+    "Spatial correction model that generalizes across both cell lines (row/col/edge plus smooth 2D surface)",
+    "Noise floor per feature family under VEHICLE at LOW/NOMINAL/HIGH density",
+    "Quantified sensitivity to stain scaling (0.9x vs 1.1x) and whether normalization is distorting manifolds",
+    "Quantified sensitivity to fixation timing jitter and focus drift",
+    "LDH vs morphology coupling check: baseline independence and saturation behavior under ANCHOR_DEATH",
+    "Outlier and failure-mode catalog (segmentation failures, empty wells, illumination artifacts, edge evaporation signatures)"
+  ],
+  "sanity_checks": [
+    {
+      "name": "cell_line_invariance_to_plate_model",
+      "description": "After spatial correction, the plate-effect model should not need separate parameters per cell line to remove gross drift."
+    },
+    {
+      "name": "density_axis_detectable",
+      "description": "Vehicle morphology should show a consistent density axis; if not, either density modeling is wrong or features are over-normalized."
+    },
+    {
+      "name": "stain_scale_axis_detectable",
+      "description": "STAIN_LOW vs STAIN_HIGH should be separable primarily in intensity-like features; if it rotates the entire manifold, normalization is broken."
+    },
+    {
+      "name": "focus_probes_break_things_in_a_known_way",
+      "description": "FOCUS_MINUS/PLUS should degrade sharpness/texture features; if it changes everything equally, feature extraction is conflating signals."
+    },
+    {
+      "name": "anchors_are_orthogonal",
+      "description": "ANCHOR_MORPH and ANCHOR_DEATH should not collapse onto the same direction; if they do, you are mostly measuring generic sickness."
+    },
+    {
+      "name": "no_cell_background_stable",
+      "description": "NO_CELLS wells should cluster tightly; if not, staining/background variability is large enough to masquerade as phenotype."
+    }
+  ]
+}
