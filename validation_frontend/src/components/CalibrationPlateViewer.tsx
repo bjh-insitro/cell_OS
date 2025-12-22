@@ -127,6 +127,8 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
     return <PlateViewerV1 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'calibration_plate_v2') {
     return <PlateViewerV2 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
+  } else if (plateData.schema_version === 'calibration_plate_v3') {
+    return <PlateViewerV2 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'microscope_calibration_plate_v1') {
     return <PlateViewerMicroscope plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'liquid_handler_calibration_plate_v1') {
