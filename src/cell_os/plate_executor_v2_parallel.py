@@ -231,10 +231,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Run with all correctness fixes + parallel execution
+    # Save to public directory so frontend can fetch results
     results = execute_plate_design_parallel(
         json_path=json_path,
         seed=args.seed,
-        output_dir=Path("results/calibration_plates"),
+        output_dir=Path("validation_frontend/public/demo_results/calibration_plates"),
         verbose=True,
         workers=args.workers,
         auto_commit=args.auto_commit
