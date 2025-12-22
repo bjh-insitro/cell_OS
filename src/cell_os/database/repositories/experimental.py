@@ -1,9 +1,28 @@
 """
 Experimental results repository for database operations.
 """
-import pandas as pd
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from ..base import BaseRepository
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+# Lazy import - pandas only needed when using this repository
+_pandas = None
+
+def _get_pandas():
+    """Lazy load pandas when actually needed."""
+    global _pandas
+    if _pandas is None:
+        try:
+            import pandas as pd
+            _pandas = pd
+        except ImportError:
+            raise ImportError(
+                "pandas is required for ExperimentalRepository but is not installed. "
+                "Install with: pip install pandas"
+            )
+    return _pandas
 
 
 class ExperimentalRepository(BaseRepository):
@@ -101,6 +120,7 @@ class ExperimentalRepository(BaseRepository):
                     query += " AND plate_id = ?"
                     params.append(plate_id)
                     
+                pd = _get_pandas()
                 df = pd.read_sql_query(query, conn, params=params)
                 return df
         else:
@@ -121,6 +141,7 @@ class ExperimentalRepository(BaseRepository):
                     query += " AND plate_id = ?"
                     params.append(plate_id)
                     
+                pd = _get_pandas()
                 df = pd.read_sql_query(query, conn, params=params)
                 return df
             finally:
