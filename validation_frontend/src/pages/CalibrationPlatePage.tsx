@@ -58,10 +58,11 @@ export default function CalibrationPlatePage() {
 
   const currentDesign = AVAILABLE_DESIGNS.find(d => d.id === selectedDesign) || AVAILABLE_DESIGNS[0];
 
-  const generateJHCommand = (plateId: string, seed: number = 42, autoCommit: boolean = true) => {
+  const generateJHCommand = (plateId: string, seed: number = 42, autoCommit: boolean = true, autoPull: boolean = true) => {
     const platePath = `validation_frontend/public/plate_designs/${plateId}.json`;
     const baseCommand = `cd ~/repos/cell_OS && PYTHONPATH=. python3 src/cell_os/plate_executor_v2_parallel.py ${platePath} --seed ${seed}`;
-    return autoCommit ? `${baseCommand} --auto-commit` : baseCommand;
+    const withPull = autoPull ? `${baseCommand} --auto-pull` : baseCommand;
+    return autoCommit ? `${withPull} --auto-commit` : withPull;
   };
 
   const copyToClipboard = (text: string) => {
@@ -187,7 +188,7 @@ export default function CalibrationPlatePage() {
                   <li>Copy the command below</li>
                   <li>Open a terminal on JupyterHub</li>
                   <li>Paste and run the command</li>
-                  <li>Results will auto-commit when complete (~2-3 minutes)</li>
+                  <li>Auto-pulls latest code, then auto-commits results when complete (~2-3 minutes)</li>
                 </ol>
               </div>
 
@@ -223,6 +224,7 @@ export default function CalibrationPlatePage() {
                   What happens:
                 </div>
                 <ul className={`text-sm space-y-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                  <li>✓ Pulls latest code from repository</li>
                   <li>✓ Executes 384 wells in parallel (31 workers)</li>
                   <li>✓ Per-well isolated simulation (correct time semantics)</li>
                   <li>✓ All provocations applied (stain/focus/fixation)</li>
@@ -242,6 +244,12 @@ export default function CalibrationPlatePage() {
                     <strong>Custom seed:</strong>
                     <pre className={`mt-1 p-2 rounded text-xs ${isDarkMode ? 'bg-slate-900' : 'bg-zinc-100'}`}>
                       {generateJHCommand(plateData.plate.plate_id, 123)}
+                    </pre>
+                  </div>
+                  <div>
+                    <strong>Without auto-pull:</strong>
+                    <pre className={`mt-1 p-2 rounded text-xs ${isDarkMode ? 'bg-slate-900' : 'bg-zinc-100'}`}>
+                      {generateJHCommand(plateData.plate.plate_id, 42, true, false)}
                     </pre>
                   </div>
                   <div>
