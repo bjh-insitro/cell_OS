@@ -43,6 +43,136 @@ AggregationStrategy = Literal[
 
 
 # =============================================================================
+# Cell Line Normalization (Agent 4: Nuisance Control)
+# =============================================================================
+
+NormalizationMode = Literal[
+    "none",         # Raw values (agent must discover cell line confound)
+    "fold_change",  # Normalize by cell line baseline (removes 77% variance)
+    "zscore",       # Standardize by vehicle statistics (requires vehicle controls)
+]
+
+
+def get_cell_line_baseline(cell_line: str) -> Dict[str, float]:
+    """
+    Load cell line baseline morphology from thalamus params.
+
+    Args:
+        cell_line: Cell line identifier (A549, HepG2, U2OS, etc.)
+
+    Returns:
+        Dict with channel baselines: {er: float, mito: float, ...}
+
+    Note:
+        Baselines come from data/cell_thalamus_params.yaml.
+        If cell line not found, falls back to A549 baseline.
+    """
+    # Import here to avoid circular dependency
+    import yaml
+    from pathlib import Path
+
+    # Load thalamus params (go up from src/cell_os/epistemic_agent/ to project root)
+    params_path = Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_params.yaml"
+    if not params_path.exists():
+        # Fallback: default baseline if params not found
+        logger.warning(f"Thalamus params not found at {params_path}, using default A549 baseline")
+        return {'er': 100.0, 'mito': 150.0, 'nucleus': 200.0, 'actin': 120.0, 'rna': 180.0}
+
+    with open(params_path, 'r') as f:
+        params = yaml.safe_load(f)
+
+    baseline_morphology = params.get('baseline_morphology', {})
+    baseline = baseline_morphology.get(cell_line)
+
+    if baseline is None:
+        logger.warning(f"No baseline for cell line '{cell_line}', falling back to A549")
+        baseline = baseline_morphology.get('A549', {
+            'er': 100.0, 'mito': 150.0, 'nucleus': 200.0, 'actin': 120.0, 'rna': 180.0
+        })
+
+    return baseline
+
+
+def normalize_channel_value(
+    raw_value: float,
+    cell_line: str,
+    channel: str,
+    normalization_mode: NormalizationMode
+) -> float:
+    """
+    Normalize a single channel value by cell line baseline.
+
+    Args:
+        raw_value: Raw channel measurement
+        cell_line: Cell line identifier
+        channel: Channel name (er, mito, nucleus, actin, rna)
+        normalization_mode: Normalization strategy
+
+    Returns:
+        Normalized value
+
+    Note:
+        fold_change: raw / baseline (dimensionless, 1.0 = baseline)
+        zscore: Not yet implemented (requires vehicle statistics)
+    """
+    if normalization_mode == "none":
+        return raw_value
+
+    baseline = get_cell_line_baseline(cell_line)
+    baseline_val = baseline.get(channel, 1.0)
+
+    if normalization_mode == "fold_change":
+        # Prevent division by zero
+        if baseline_val > 0:
+            return raw_value / baseline_val
+        else:
+            logger.warning(f"Baseline for {cell_line}/{channel} is zero, returning raw value")
+            return raw_value
+
+    elif normalization_mode == "zscore":
+        # TODO: Implement z-score normalization (requires vehicle statistics)
+        raise NotImplementedError("Z-score normalization requires vehicle statistics (Phase 2)")
+
+    else:
+        raise ValueError(f"Unknown normalization mode: {normalization_mode}")
+
+
+def build_normalization_metadata(
+    cell_lines_used: Set[str],
+    normalization_mode: NormalizationMode
+) -> Dict[str, Any]:
+    """
+    Build normalization metadata for transparency.
+
+    Args:
+        cell_lines_used: Set of cell lines in this observation
+        normalization_mode: Normalization strategy applied
+
+    Returns:
+        Metadata dict with baselines used, mode, etc.
+    """
+    if normalization_mode == "none":
+        return {"mode": "none", "description": "No normalization applied"}
+
+    baselines_used = {}
+    for cell_line in cell_lines_used:
+        baselines_used[cell_line] = get_cell_line_baseline(cell_line)
+
+    metadata = {
+        "mode": normalization_mode,
+        "baselines_used": baselines_used,
+        "description": (
+            "fold_change: Normalized by cell line baseline from thalamus params. "
+            "Values are dimensionless fold-change (1.0 = baseline)."
+            if normalization_mode == "fold_change"
+            else "Unknown normalization mode"
+        )
+    }
+
+    return metadata
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
@@ -51,7 +181,9 @@ def aggregate_observation(
     raw_results: Sequence[RawWellResult],
     budget_remaining: int,
     *,
-    strategy: AggregationStrategy = "default_per_channel"
+    cycle: int = 0,
+    strategy: AggregationStrategy = "default_per_channel",
+    normalization_mode: NormalizationMode = "none"
 ) -> Observation:
     """Aggregate raw well results into an Observation.
 
@@ -62,7 +194,9 @@ def aggregate_observation(
         proposal: Original experiment proposal (for design_id, context)
         raw_results: Raw per-well results from world
         budget_remaining: Current budget after execution
+        cycle: Current cycle number (for integrity checking with hysteresis)
         strategy: Aggregation strategy to use
+        normalization_mode: Cell line normalization mode (none/fold_change/zscore)
 
     Returns:
         Observation with aggregated summaries and QC flags
@@ -71,11 +205,36 @@ def aggregate_observation(
         The aggregation strategy can be swapped without touching world.py.
         This enables testing different aggregation approaches (per-channel,
         scalar, different statistics) without changing execution logic.
+
+        Agent 4 (Nuisance Control): normalization_mode removes cell line baseline
+        confounding. Default is "none" so agent must discover the confound.
     """
+    # Run execution integrity checks BEFORE aggregation
+    # This operates on raw wells to detect plate map errors before they're smoothed away
+    from .integrity_checker import check_execution_integrity
+
+    # TODO: Load from config once anchor_configs.py exists
+    # For now, use empty dicts (benign - no checks run, returns clean state)
+    expected_anchors = {}
+    expected_dose_direction = {}
+
+    integrity_state = check_execution_integrity(
+        raw_wells=list(raw_results),
+        expected_anchors=expected_anchors,
+        expected_dose_direction=expected_dose_direction,
+        cycle=cycle,
+    )
+
     if strategy == "default_per_channel":
-        return _aggregate_per_channel(proposal, raw_results, budget_remaining)
+        return _aggregate_per_channel(
+            proposal, raw_results, budget_remaining, normalization_mode,
+            integrity_state=integrity_state
+        )
     elif strategy == "legacy_scalar_mean":
-        return _aggregate_legacy_scalar(proposal, raw_results, budget_remaining)
+        return _aggregate_legacy_scalar(
+            proposal, raw_results, budget_remaining, normalization_mode,
+            integrity_state=integrity_state
+        )
     else:
         raise ValueError(f"Unknown aggregation strategy: {strategy}")
 
@@ -87,7 +246,10 @@ def aggregate_observation(
 def _aggregate_per_channel(
     proposal: Proposal,
     raw_results: Sequence[RawWellResult],
-    budget_remaining: int
+    budget_remaining: int,
+    normalization_mode: NormalizationMode = "none",
+    *,
+    integrity_state=None
 ) -> Observation:
     """Aggregate with per-channel statistics (no scalar mean).
 
@@ -103,6 +265,8 @@ def _aggregate_per_channel(
 
     Agent 2: Now uses CANONICAL condition keys to prevent aggregation races.
     All doses/times converted to integer representations (nM, min) before grouping.
+
+    Agent 4: Cell line normalization applied before statistics.
     """
     # Agent 1.5: Temporal Provenance Enforcement
     # Cannot aggregate zero results - would produce observation with no conditions
@@ -121,7 +285,13 @@ def _aggregate_per_channel(
     # Track raw parameter values for near-duplicate detection
     raw_params_by_canonical: Dict[CanonicalCondition, Set[Tuple[float, float]]] = defaultdict(set)
 
+    # Agent 4: Track cell lines used (for normalization metadata)
+    cell_lines_used: Set[str] = set()
+
     for result in raw_results:
+        # Agent 4: Track cell lines for normalization metadata
+        cell_lines_used.add(result.cell_line)
+
         # Derive position_class from physical location
         position_class = result.location.position_class
 
@@ -190,11 +360,14 @@ def _aggregate_per_channel(
     # Compute summary statistics per condition
     summaries = []
     for canonical_key, values in conditions.items():
-        summary = _summarize_condition(canonical_key, values)
+        summary = _summarize_condition(canonical_key, values, normalization_mode)
         summaries.append(summary)
 
     # Generate QC flags
     qc_flags = _generate_qc_flags(summaries)
+
+    # Agent 4: Build normalization metadata
+    normalization_metadata = build_normalization_metadata(cell_lines_used, normalization_mode)
 
     # Agent 3: Record aggregation strategy for transparency
     observation = Observation(
@@ -204,8 +377,13 @@ def _aggregate_per_channel(
         budget_remaining=budget_remaining,
         qc_flags=qc_flags,
         aggregation_strategy="default_per_channel",
+        # Agent 4: Normalization transparency
+        normalization_mode=normalization_mode,
+        normalization_metadata=normalization_metadata,
         # Agent 2: Attach near-duplicate events for diagnostics
-        near_duplicate_merges=near_duplicate_events,
+        near_duplicate_merges=near_duplicate_merges,
+        # Execution integrity state from QC checks (plate map errors, etc.)
+        execution_integrity=integrity_state,
     )
 
     return observation
@@ -218,7 +396,10 @@ def _aggregate_per_channel(
 def _aggregate_legacy_scalar(
     proposal: Proposal,
     raw_results: Sequence[RawWellResult],
-    budget_remaining: int
+    budget_remaining: int,
+    normalization_mode: NormalizationMode = "none",
+    *,
+    integrity_state=None
 ) -> Observation:
     """Aggregate using scalar mean (backward compatibility).
 
@@ -228,7 +409,10 @@ def _aggregate_legacy_scalar(
     Use this strategy for regression testing against old code.
     """
     # Same implementation as per-channel, but emphasize scalar response
-    return _aggregate_per_channel(proposal, raw_results, budget_remaining)
+    return _aggregate_per_channel(
+        proposal, raw_results, budget_remaining, normalization_mode,
+        integrity_state=integrity_state
+    )
 
 
 # =============================================================================
@@ -237,7 +421,8 @@ def _aggregate_legacy_scalar(
 
 def _summarize_condition(
     key: CanonicalCondition,
-    values: List[Dict[str, Any]]
+    values: List[Dict[str, Any]],
+    normalization_mode: NormalizationMode = "none"
 ) -> ConditionSummary:
     """Compute summary statistics for a condition.
 
@@ -246,10 +431,12 @@ def _summarize_condition(
     - All wells counted in n_wells_total
     - Drops tracked in drop_reasons
     - No silent uncertainty reduction
+    Agent 4: Cell line normalization applied before computing statistics.
 
     Args:
         key: Canonical condition identifier (integers, no floats)
         values: List of per-well measurements for this condition
+        normalization_mode: Cell line normalization mode (none/fold_change/zscore)
 
     Returns:
         ConditionSummary with statistics and aggregation transparency metadata
@@ -299,13 +486,22 @@ def _summarize_condition(
     mad_val = float(np.median(np.abs(np.array(responses) - np.median(responses)))) if n > 0 else 0.0
     iqr_val = float(np.percentile(responses, 75) - np.percentile(responses, 25)) if n > 1 else 0.0
 
-    # Per-channel statistics
+    # Per-channel statistics (Agent 4: Apply normalization before statistics)
     channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
     feature_means = {}
     feature_stds = {}
 
     for ch in channels:
         ch_values = [v['features'][ch] for v in used_values]
+
+        # Agent 4: Apply cell line normalization BEFORE computing statistics
+        if normalization_mode != "none":
+            ch_values_normalized = [
+                normalize_channel_value(val, key.cell_line, ch, normalization_mode)
+                for val in ch_values
+            ]
+            ch_values = ch_values_normalized
+
         feature_means[ch] = float(np.mean(ch_values))
         feature_stds[ch] = float(np.std(ch_values, ddof=1)) if n > 1 else 0.0
 

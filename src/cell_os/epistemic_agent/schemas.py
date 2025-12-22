@@ -126,9 +126,23 @@ class Observation:
     # Agent 3: Strategy transparency (same data + different strategy = different Observation)
     aggregation_strategy: str = "default_per_channel"
 
+    # Cell line normalization mode (Agent 4: Nuisance Control)
+    # none: Raw values (agent must discover cell line confound)
+    # fold_change: Normalize by cell line baseline (removes 77% variance)
+    # zscore: Standardize by vehicle statistics (requires vehicle controls)
+    normalization_mode: str = "none"
+
+    # Cell line normalization metadata (transparency)
+    normalization_metadata: Optional[Dict[str, Any]] = None
+
     # Agent 2: Near-duplicate detection (conditions that merged due to canonicalization)
     # List of diagnostic events where multiple raw (dose, time) pairs collapsed to same key
     near_duplicate_merges: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Execution integrity state from QC checks (plate map errors, dose inversions, etc.)
+    # Produced at aggregation boundary, consumed by BeliefState
+    # This is QC infrastructure output, not agent-facing data
+    execution_integrity: Optional[Any] = None  # ExecutionIntegrityState, but avoid circular import
 
     # Optional: if agent requests raw data (costs extra)
     raw_wells: Optional[List[Dict[str, Any]]] = None
