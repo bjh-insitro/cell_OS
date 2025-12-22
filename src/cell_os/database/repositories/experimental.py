@@ -1,6 +1,7 @@
 """
 Experimental results repository for database operations.
 """
+from __future__ import annotations
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from ..base import BaseRepository
 
