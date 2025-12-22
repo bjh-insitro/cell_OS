@@ -848,7 +848,7 @@
       "global_defaults.default_assignment"
     ],
     "derived_fields": {
-      "cell_line": "from cell_lines.row_to_cell_line",
+      "cell_line": "from cell_lines.well_to_cell_line",
       "cell_density": "from density gradient by column unless explicitly set",
       "stain_scale": "1.0 unless in STAIN_LOW or STAIN_HIGH wells",
       "fixation_timing_offset_min": "0 unless in EARLY_FIX or LATE_FIX wells",
