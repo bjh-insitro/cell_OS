@@ -1,0 +1,469 @@
+"""
+Cell Painting assay simulator.
+
+Simulates 5-channel morphology imaging (ER, Mito, Nucleus, Actin, RNA)
+with realistic biological and technical noise.
+"""
+
+import re
+import logging
+import numpy as np
+from typing import Dict, Any, Optional, TYPE_CHECKING
+from datetime import datetime
+
+from .base import AssaySimulator
+from .._impl import stable_u32, lognormal_multiplier
+from ..run_context import pipeline_transform
+from ...sim import biology_core
+from ..constants import (
+    ENABLE_ER_STRESS,
+    ENABLE_MITO_DYSFUNCTION,
+    ENABLE_TRANSPORT_DYSFUNCTION,
+    ENABLE_INTERVENTION_COSTS,
+    ER_STRESS_MORPH_ALPHA,
+    MITO_DYSFUNCTION_MORPH_ALPHA,
+    TRANSPORT_DYSFUNCTION_MORPH_ALPHA,
+    WASHOUT_INTENSITY_PENALTY,
+    WASHOUT_INTENSITY_RECOVERY_H,
+)
+
+if TYPE_CHECKING:
+    from ..biological_virtual import VesselState
+
+logger = logging.getLogger(__name__)
+
+
+class CellPaintingAssay(AssaySimulator):
+    """
+    Cell Painting morphology assay simulator.
+
+    Returns 5-channel morphology features:
+    - ER (endoplasmic reticulum)
+    - Mito (mitochondria)
+    - Nucleus (nuclear morphology)
+    - Actin (cytoskeleton)
+    - RNA (translation sites)
+
+    Includes realistic noise:
+    - Biological variance (dose-dependent)
+    - Technical noise (plate, day, operator, well)
+    - Batch effects (run context, pipeline drift)
+    - Artifacts (washout, plating stress, well failures)
+    - Contact pressure bias (confluence confound)
+    """
+
+    def measure(self, vessel: "VesselState", **kwargs) -> Dict[str, Any]:
+        """
+        Simulate Cell Painting morphology assay.
+
+        MEASUREMENT TIMING: This assay reads at t_measure = vm.simulated_time,
+        which is t1 after advance_time() returns. This represents "readout after
+        interval of biology." All time-dependent artifacts (washout, plating)
+        use t_measure as reference.
+
+        Args:
+            vessel: Vessel state to measure
+            **kwargs: Additional parameters (plate_id, day, operator for technical noise)
+
+        Returns:
+            Dict with channel values and metadata
+        """
+        # Lock measurement purity - capture state before measurement
+        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+
+        # Lazy load thalamus params
+        if not hasattr(self.vm, 'thalamus_params') or self.vm.thalamus_params is None:
+            self.vm._load_cell_thalamus_params()
+
+        vessel_id = vessel.vessel_id
+        cell_line = vessel.cell_line
+
+        # Get baseline morphology for this cell line
+        baseline = self.vm.thalamus_params['baseline_morphology'].get(cell_line, {})
+        if not baseline:
+            logger.warning(f"No baseline morphology for {cell_line}, using A549")
+            baseline = self.vm.thalamus_params['baseline_morphology']['A549']
+
+        # Start with baseline
+        morph = {
+            'er': baseline['er'],
+            'mito': baseline['mito'],
+            'nucleus': baseline['nucleus'],
+            'actin': baseline['actin'],
+            'rna': baseline['rna']
+        }
+
+        # Apply compound effects via stress axes
+        morph, has_microtubule_compound = self._apply_compound_effects(vessel, morph, baseline)
+
+        # Apply latent stress state effects (morphology-first mechanisms)
+        morph = self._apply_latent_stress_effects(vessel, morph)
+
+        # Apply contact pressure bias (measurement confounder)
+        morph = self._apply_contact_pressure_bias(vessel, morph)
+
+        # Keep structural morphology (before viability scaling) for output
+        morph_struct = morph.copy()
+
+        # Compute transport dysfunction score for diagnostics
+        transport_dysfunction_score = self._compute_transport_dysfunction_score(
+            vessel, morph, baseline, has_microtubule_compound
+        )
+
+        # Apply measurement layer (viability + artifacts + noise)
+        morph = self._apply_measurement_layer(vessel, morph, **kwargs)
+
+        # Simulate delay
+        self.vm._simulate_delay(2.0)
+
+        # Assert measurement purity
+        self._assert_measurement_purity(vessel, state_before)
+
+        # Extract batch metadata
+        plate_id = kwargs.get('plate_id', 'P1')
+        batch_id = kwargs.get('batch_id', 'batch_default')
+
+        result = {
+            "status": "success",
+            "action": "cell_painting",
+            "vessel_id": vessel_id,
+            "cell_line": cell_line,
+            # Two-layer readout: structural (latent-driven) vs measured (intensity-scaled)
+            "morphology_struct": morph_struct,
+            "morphology_measured": morph,
+            "morphology": morph,  # Backward compatibility
+            "signal_intensity": 0.3 + 0.7 * vessel.viability,  # Viability factor
+            "transport_dysfunction_score": transport_dysfunction_score,
+            "death_mode": vessel.death_mode,
+            "viability": vessel.viability,
+            "timestamp": datetime.now().isoformat(),
+            # Pipeline drift metadata for epistemic control
+            "run_context_id": self.vm.run_context.context_id,
+            "batch_id": batch_id,
+            "plate_id": plate_id,
+            "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(),
+        }
+
+        # Check for well failure
+        well_position = kwargs.get('well_position', 'A1')
+        failure_result = self._apply_well_failure(morph, well_position, plate_id, batch_id)
+        if failure_result:
+            result['morphology'] = failure_result['morphology']
+            result['morphology_measured'] = failure_result['morphology']
+            result['well_failure'] = failure_result['failure_mode']
+            result['qc_flag'] = 'FAIL'
+
+        return result
+
+    def _apply_compound_effects(
+        self, vessel: "VesselState", morph: Dict[str, float], baseline: Dict[str, float]
+    ) -> tuple[Dict[str, float], bool]:
+        """Apply compound-induced morphology changes via stress axes."""
+        # Read authoritative compound concentrations
+        if self.vm.injection_mgr is not None and self.vm.injection_mgr.has_vessel(vessel.vessel_id):
+            compounds_snapshot = self.vm.injection_mgr.get_all_compounds_uM(vessel.vessel_id)
+        else:
+            compounds_snapshot = vessel.compounds
+
+        has_microtubule_compound = False
+
+        for compound_name, dose_uM in compounds_snapshot.items():
+            if dose_uM == 0:
+                continue
+
+            # Look up compound params
+            compound_params = self.vm.thalamus_params['compounds'].get(compound_name, {})
+            if not compound_params:
+                logger.warning(f"Unknown compound for morphology: {compound_name}")
+                continue
+
+            stress_axis = compound_params['stress_axis']
+
+            # Track microtubule compounds for transport dysfunction diagnostic
+            if stress_axis == "microtubule":
+                has_microtubule_compound = True
+                continue  # Skip direct rendering (handled by latent state)
+
+            # Get adjusted potency from vessel metadata
+            meta = vessel.compound_meta.get(compound_name)
+            if meta:
+                ec50 = meta['ic50_uM']
+                hill_slope = meta['hill_slope']
+                potency_scalar = meta.get('potency_scalar', 1.0)
+            else:
+                ec50 = compound_params['ec50_uM']
+                hill_slope = compound_params['hill_slope']
+                potency_scalar = 1.0
+
+            intensity = compound_params['intensity']
+            axis_effects = self.vm.thalamus_params['stress_axes'][stress_axis]['channels']
+
+            # Calculate dose response (Hill equation)
+            dose_effect = intensity * potency_scalar * (dose_uM ** hill_slope) / (ec50 ** hill_slope + dose_uM ** hill_slope)
+
+            # Apply to each channel
+            for channel, axis_strength in axis_effects.items():
+                morph[channel] *= (1.0 + dose_effect * axis_strength)
+
+        return morph, has_microtubule_compound
+
+    def _apply_latent_stress_effects(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+        """Apply latent stress state effects (morphology-first mechanisms)."""
+        if ENABLE_ER_STRESS and vessel.er_stress > 0:
+            morph['er'] *= (1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress)
+
+        if ENABLE_MITO_DYSFUNCTION and vessel.mito_dysfunction > 0:
+            morph['mito'] *= max(0.1, 1.0 - MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction)
+
+        if ENABLE_TRANSPORT_DYSFUNCTION and vessel.transport_dysfunction > 0:
+            morph['actin'] *= (1.0 + TRANSPORT_DYSFUNCTION_MORPH_ALPHA * vessel.transport_dysfunction)
+
+        return morph
+
+    def _apply_contact_pressure_bias(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+        """Apply contact pressure-dependent morphology bias (measurement confounder)."""
+        p = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
+        if p > 0.01:
+            # Bounded, monotonic, channel-specific shifts
+            shifts = {
+                "nucleus": -0.08,
+                "actin": +0.10,
+                "er": +0.06,
+                "mito": -0.05,
+                "rna": -0.04,
+            }
+            for channel, coeff in shifts.items():
+                if channel in morph:
+                    morph[channel] = morph[channel] * (1.0 + coeff * p)
+        return morph
+
+    def _compute_transport_dysfunction_score(
+        self, vessel: "VesselState", morph: Dict[str, float], baseline: Dict[str, float], has_microtubule: bool
+    ) -> float:
+        """Compute transport dysfunction score from morphology (diagnostic only)."""
+        if has_microtubule:
+            return biology_core.compute_transport_dysfunction_score(
+                cell_line=vessel.cell_line,
+                stress_axis="microtubule",
+                actin_signal=morph['actin'],
+                mito_signal=morph['mito'],
+                baseline_actin=baseline['actin'],
+                baseline_mito=baseline['mito']
+            )
+        return 0.0
+
+    def _apply_measurement_layer(
+        self, vessel: "VesselState", morph: Dict[str, float], **kwargs
+    ) -> Dict[str, float]:
+        """Apply measurement layer: viability scaling, washout artifacts, noise, batch effects."""
+        t_measure = self.vm.simulated_time
+
+        # 1. Viability factor (biological signal attenuation)
+        viability_factor = 0.3 + 0.7 * vessel.viability
+
+        # 2. Washout multiplier (measurement artifact)
+        washout_multiplier = self._compute_washout_multiplier(vessel, t_measure)
+
+        # Apply biology + measurement factors
+        for channel in morph:
+            morph[channel] *= viability_factor * washout_multiplier
+
+        # 3. Biological noise (dose-dependent)
+        morph = self._add_biological_noise(vessel, morph)
+
+        # 4. Plating artifacts (early timepoint variance inflation)
+        morph = self._add_plating_artifacts(vessel, morph, t_measure)
+
+        # 5. Technical noise (plate/day/operator/well/edge effects)
+        morph = self._add_technical_noise(vessel, morph, **kwargs)
+
+        # 6. Pipeline drift (batch-dependent feature extraction)
+        plate_id = kwargs.get('plate_id', 'P1')
+        batch_id = kwargs.get('batch_id', 'batch_default')
+        morph = pipeline_transform(
+            morphology=morph,
+            context=self.vm.run_context,
+            batch_id=batch_id,
+            plate_id=plate_id
+        )
+
+        return morph
+
+    def _compute_washout_multiplier(self, vessel: "VesselState", t_measure: float) -> float:
+        """Compute washout artifact multiplier."""
+        washout_multiplier = 1.0
+
+        if ENABLE_INTERVENTION_COSTS and vessel.last_washout_time is not None:
+            time_since_washout = t_measure - vessel.last_washout_time
+            if time_since_washout < WASHOUT_INTENSITY_RECOVERY_H:
+                # Deterministic penalty
+                recovery_fraction = time_since_washout / WASHOUT_INTENSITY_RECOVERY_H
+                washout_penalty = WASHOUT_INTENSITY_PENALTY * (1.0 - recovery_fraction)
+                washout_multiplier *= (1.0 - washout_penalty)
+
+        # Stochastic contamination artifact
+        if vessel.washout_artifact_until_time and t_measure < vessel.washout_artifact_until_time:
+            remaining_time = vessel.washout_artifact_until_time - t_measure
+            decay_fraction = remaining_time / WASHOUT_INTENSITY_RECOVERY_H
+            artifact_effect = vessel.washout_artifact_magnitude * decay_fraction
+            washout_multiplier *= (1.0 - artifact_effect)
+
+        return washout_multiplier
+
+    def _add_biological_noise(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+        """Add dose-dependent biological noise."""
+        stress_level = 1.0 - vessel.viability
+        stress_multiplier = self.vm.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
+        effective_bio_cv = self.vm.thalamus_params['biological_noise']['cell_line_cv'] * (
+            1.0 + stress_level * (stress_multiplier - 1.0)
+        )
+
+        if effective_bio_cv > 0:
+            for channel in morph:
+                morph[channel] *= lognormal_multiplier(self.vm.rng_assay, effective_bio_cv)
+
+        return morph
+
+    def _add_plating_artifacts(self, vessel: "VesselState", morph: Dict[str, float], t_measure: float) -> Dict[str, float]:
+        """Add plating artifact variance inflation (early timepoints unreliable)."""
+        if vessel.plating_context is not None:
+            time_since_seed = t_measure - vessel.seed_time
+            tau_recovery = vessel.plating_context['tau_recovery_h']
+
+            post_dissoc_stress = vessel.plating_context['post_dissociation_stress']
+            artifact_magnitude = post_dissoc_stress * float(np.exp(-time_since_seed / tau_recovery))
+
+            clumpiness = vessel.plating_context['clumpiness']
+            clump_variance = clumpiness * float(np.exp(-time_since_seed / (tau_recovery * 0.5)))
+
+            if artifact_magnitude > 0.01 or clump_variance > 0.01:
+                artifact_cv = artifact_magnitude + clump_variance
+                for channel in morph:
+                    morph[channel] *= lognormal_multiplier(self.vm.rng_assay, artifact_cv)
+
+        return morph
+
+    def _add_technical_noise(self, vessel: "VesselState", morph: Dict[str, float], **kwargs) -> Dict[str, float]:
+        """Add technical noise from plate/day/operator/well/edge effects."""
+        tech_noise = self.vm.thalamus_params['technical_noise']
+
+        plate_id = kwargs.get('plate_id', 'P1')
+        batch_id = kwargs.get('batch_id', 'batch_default')
+        day = kwargs.get('day', 1)
+        operator = kwargs.get('operator', 'OP1')
+        well_position = kwargs.get('well_position', 'A1')
+
+        # Deterministic batch effects (seeded by context + batch ID)
+        plate_factor = self._get_batch_factor('plate', plate_id, batch_id, tech_noise['plate_cv'])
+        day_factor = self._get_batch_factor('day', day, batch_id, tech_noise['day_cv'])
+        operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
+
+        # Non-deterministic well factor (uses assay RNG)
+        well_cv = tech_noise['well_cv']
+        well_factor = lognormal_multiplier(self.vm.rng_assay, well_cv) if well_cv > 0 else 1.0
+
+        # Edge effect
+        edge_effect = tech_noise.get('edge_effect', 0.0)
+        is_edge = self._is_edge_well(well_position)
+        edge_factor = (1.0 - edge_effect) if is_edge else 1.0
+
+        # Run context modifiers (lot/instrument effects)
+        meas_mods = self.vm.run_context.get_measurement_modifiers()
+        illumination_bias = meas_mods['illumination_bias']
+        channel_biases = meas_mods['channel_biases']
+
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * illumination_bias
+
+        # Apply total factor + per-channel biases
+        for channel in morph:
+            channel_bias = channel_biases.get(channel, 1.0)
+            morph[channel] *= total_tech_factor * channel_bias
+            morph[channel] = max(0.0, morph[channel])
+
+        return morph
+
+    def _get_batch_factor(self, prefix: str, identifier: Any, batch_id: str, cv: float) -> float:
+        """Get deterministic batch effect factor."""
+        if cv <= 0:
+            return 1.0
+        rng = np.random.default_rng(stable_u32(f"{prefix}_{self.vm.run_context.seed}_{batch_id}_{identifier}"))
+        return lognormal_multiplier(rng, cv)
+
+    def _is_edge_well(self, well_position: str, plate_format: int = 384) -> bool:
+        """Detect if well is on plate edge."""
+        match = re.search(r'([A-P])(\d{1,2})$', well_position)
+        if not match:
+            return False
+
+        row = match.group(1)
+        col = int(match.group(2))
+
+        if plate_format == 384:
+            return row in ['A', 'P'] or col in [1, 24]
+        elif plate_format == 96:
+            return row in ['A', 'H'] or col in [1, 12]
+        return False
+
+    def _apply_well_failure(
+        self, morph: Dict[str, float], well_position: str, plate_id: str, batch_id: str
+    ) -> Optional[Dict]:
+        """Apply random well failures (bubbles, contamination, etc.)."""
+        tech_noise = self.vm.thalamus_params.get('technical_noise', {})
+        failure_rate = tech_noise.get('well_failure_rate', 0.0)
+
+        if failure_rate <= 0:
+            return None
+
+        # Seed failures by run context + plate + well
+        rng_failure = np.random.default_rng(
+            stable_u32(f"well_failure_{self.vm.run_context.seed}_{batch_id}_{plate_id}_{well_position}")
+        )
+        if rng_failure.random() > failure_rate:
+            return None
+
+        # Select failure mode
+        failure_modes = self.vm.thalamus_params.get('well_failure_modes', {})
+        if not failure_modes:
+            return None
+
+        modes = list(failure_modes.keys())
+        probs = [failure_modes[mode].get('probability', 0.0) for mode in modes]
+        total_prob = sum(probs)
+        if total_prob <= 0:
+            return None
+
+        probs = [p / total_prob for p in probs]
+        selected_mode = rng_failure.choice(modes, p=probs)
+        effect = failure_modes[selected_mode].get('effect', 'no_signal')
+
+        # Apply failure effect
+        failed_morph = morph.copy()
+
+        if effect == 'no_signal':
+            for channel in failed_morph:
+                failed_morph[channel] = rng_failure.uniform(0.1, 2.0)
+        elif effect == 'outlier_high':
+            for channel in failed_morph:
+                failed_morph[channel] *= rng_failure.uniform(5.0, 20.0)
+        elif effect == 'outlier_low':
+            for channel in failed_morph:
+                failed_morph[channel] *= rng_failure.uniform(0.05, 0.3)
+        elif effect == 'partial_signal':
+            failed_channels = rng_failure.choice(
+                list(failed_morph.keys()),
+                size=rng_failure.integers(1, len(failed_morph)),
+                replace=False
+            )
+            for channel in failed_channels:
+                failed_morph[channel] = rng_failure.uniform(0.1, 2.0)
+        elif effect == 'mixed_signal':
+            mix_ratio = rng_failure.uniform(0.3, 0.7)
+            for channel in failed_morph:
+                neighbor_signal = failed_morph[channel] * rng_failure.uniform(0.5, 2.0)
+                failed_morph[channel] = mix_ratio * failed_morph[channel] + (1 - mix_ratio) * neighbor_signal
+
+        return {
+            'morphology': failed_morph,
+            'failure_mode': selected_mode,
+            'effect': effect
+        }

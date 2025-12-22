@@ -1,7 +1,53 @@
 """
-Biological Virtual Machine
+Biological Virtual Machine - Core Simulation Engine
 
-Enhanced VirtualMachine with biological state tracking and realistic synthetic data generation.
+A high-fidelity cell culture simulator with rigorous death accounting, realistic noise,
+and modular extension points for assays and stress mechanisms.
+
+ARCHITECTURE
+============
+
+Core VM (this file):
+    • Time advancement & scheduling
+    • Vessel operations (seed, feed, passage, treat, washout)
+    • Growth dynamics & confluence management
+    • Death accounting with conservation law enforcement
+    • Parameter loading from database or YAML
+    • RNG stream management (biology, assay, operations)
+
+Delegated Subsystems:
+    • Assays (src/cell_os/hardware/assays/):
+        - CellPaintingAssay - 5-channel morphology
+        - LDHViabilityAssay - Scalar readouts (LDH, ATP, UPR, trafficking)
+        - ScRNASeqAssay - Single-cell transcriptomics
+
+    • Stress Mechanisms (src/cell_os/hardware/stress_mechanisms/):
+        - ERStressMechanism - ER stress dynamics
+        - MitoDysfunctionMechanism - Mitochondrial dysfunction
+        - TransportDysfunctionMechanism - Cytoskeletal transport
+        - NutrientDepletionMechanism - Glucose/glutamine consumption
+        - MitoticCatastropheMechanism - Mitotic failure
+
+KEY INVARIANTS
+==============
+1. Conservation Laws: Σ(all death fields) ≤ 1.0 - viability (strictly enforced)
+2. Observer Independence: Assays cannot affect biology (read-only)
+3. Competing Risks: Death hazards combine multiplicatively (no double-counting)
+4. Epistemic Subpopulations: Subpops are epistemic-only (all sync to vessel viability)
+
+EXTENSION POINTS
+================
+• Add new assays: Inherit from AssaySimulator, implement measure()
+• Add new stress mechanisms: Inherit from StressMechanism, implement update()
+• Add new death causes: Add field to TRACKED_DEATH_FIELDS in constants.py
+
+REFERENCES
+==========
+See also:
+    • VesselState - State container for individual vessels
+    • InjectionManager - Volume tracking & evaporation
+    • RunContext - Batch effects & epistemic drift
+    • biology_core - Single source of truth for biology
 
 Last major semantic fixes: 2025-12-20 10:09:11 PST
 - Fixed death accounting honesty (death_unknown vs death_unattributed split)
@@ -14,34 +60,13 @@ Last major semantic fixes: 2025-12-20 10:09:11 PST
 - Fixed washout contamination (now actually affects measurements)
 """
 
-import time
 import logging
-import hashlib
 import numpy as np
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 from .virtual import VirtualMachine
-
-# Death accounting epsilon (for conservation law enforcement)
-DEATH_EPS = 1e-9
-
-# Tracked death fields (allowlist for _propose_hazard validation)
-# These are the ONLY fields that contribute to death accounting
-# Any typo or new field must be explicitly added here AND to conservation checks
-TRACKED_DEATH_FIELDS = {
-    "death_compound",
-    "death_starvation",
-    "death_mitotic_catastrophe",
-    "death_er_stress",
-    "death_mito_dysfunction",
-    "death_confluence",
-    "death_unknown",  # Known unknowns (seeding stress, contamination)
-    # death_unattributed is NOT in this list (it's computed, not proposed)
-    # death_transport_dysfunction is NOT in this list (Phase 2 stub, no hazard in v1)
-}
-
 
 class ConservationViolationError(Exception):
     """Raised when death accounting violates conservation law."""
@@ -70,109 +95,48 @@ except ImportError:
     DB_AVAILABLE = False
     logger.warning("SimulationParamsRepository not available, will use YAML fallback")
 
+# Import assay simulators
+from .assays import CellPaintingAssay, LDHViabilityAssay, ScRNASeqAssay
 
-###############################################################################
-# Mechanism feature flags (keep simple, no config plumbing needed yet)
-###############################################################################
-ENABLE_NUTRIENT_DEPLETION = True
-ENABLE_MITOTIC_CATASTROPHE = True
-
-# Nutrient defaults (DMEM-ish, intentionally coarse)
-DEFAULT_MEDIA_GLUCOSE_mM = 25.0
-DEFAULT_MEDIA_GLUTAMINE_mM = 4.0
-
-# Nutrient stress thresholds (below these, stress begins)
-GLUCOSE_STRESS_THRESHOLD_mM = 5.0
-GLUTAMINE_STRESS_THRESHOLD_mM = 1.0
-
-# Max starvation death intensity (per hour) at full depletion
-MAX_STARVATION_RATE_PER_H = 0.05
-
-# Mitosis model
-DEFAULT_DOUBLING_TIME_H = 24.0
-
-# Feeding costs (prevents "feed every hour" dominant strategy)
-ENABLE_FEEDING_COSTS = True
-FEEDING_TIME_COST_H = 0.25  # Operator time per feed operation
-FEEDING_CONTAMINATION_RISK = 0.002  # 0.2% chance of introducing contamination
-
-# Intervention costs (Phase 3: washout costs prevent free micro-cycling)
-ENABLE_INTERVENTION_COSTS = True
-WASHOUT_TIME_COST_H = 0.25  # Operator time per washout operation
-WASHOUT_CONTAMINATION_RISK = 0.001  # 0.1% chance (lower than feeding)
-WASHOUT_INTENSITY_PENALTY = 0.05  # 5% intensity drop for 12h (measurement artifact)
-WASHOUT_INTENSITY_RECOVERY_H = 12.0  # Recovery time for intensity penalty
-
-# ER stress dynamics (morphology-first, death-later mechanism)
-ENABLE_ER_STRESS = True
-ER_STRESS_K_ON = 0.25  # Induction rate constant (per hour)
-ER_STRESS_K_OFF = 0.05  # Decay rate constant (per hour)
-ER_STRESS_DEATH_THETA = 0.7  # Stress level for death onset
-ER_STRESS_DEATH_WIDTH = 0.08  # Sigmoid width for death transition
-ER_STRESS_H_MAX = 0.03  # Max death hazard (per hour) at full stress
-ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
-
-# Mito dysfunction dynamics (morphology-first, death-later mechanism)
-ENABLE_MITO_DYSFUNCTION = True
-MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
-MITO_DYSFUNCTION_K_OFF = 0.05  # Decay rate constant (per hour)
-MITO_DYSFUNCTION_DEATH_THETA = 0.6  # Stress level for death onset (lower than ER)
-MITO_DYSFUNCTION_DEATH_WIDTH = 0.1  # Sigmoid width for death transition
-MITO_DYSFUNCTION_H_MAX = 0.05  # Max death hazard (per hour) at full stress (nastier than ER)
-MITO_DYSFUNCTION_MORPH_ALPHA = 0.4  # Morphology scaling factor (40% loss at S=1)
-
-# Transport dysfunction dynamics (morphology-first, no death hazard in v1)
-ENABLE_TRANSPORT_DYSFUNCTION = True
-TRANSPORT_DYSFUNCTION_K_ON = 0.35  # Induction rate constant (per hour) - faster than ER/mito
-TRANSPORT_DYSFUNCTION_K_OFF = 0.08  # Decay rate constant (per hour) - faster recovery
-TRANSPORT_DYSFUNCTION_MORPH_ALPHA = 0.6  # Morphology scaling factor (60% increase at S=1)
-
-# Phase 4 Option 3: Cross-talk (transport → mito coupling)
-# Prolonged transport dysfunction induces secondary mito dysfunction
-ENABLE_TRANSPORT_MITO_COUPLING = True
-TRANSPORT_MITO_COUPLING_DELAY_H = 18.0  # Delay before coupling activates
-TRANSPORT_MITO_COUPLING_THRESHOLD = 0.6  # Transport dysfunction must exceed this
-TRANSPORT_MITO_COUPLING_RATE = 0.02  # Mito dysfunction induction rate (per hour)
+# Import stress mechanism simulators
+from .stress_mechanisms import (
+    ERStressMechanism,
+    MitoDysfunctionMechanism,
+    TransportDysfunctionMechanism,
+    NutrientDepletionMechanism,
+    MitoticCatastropheMechanism,
+)
 
 
-def stable_u32(s: str) -> int:
-    """
-    Stable deterministic hash for RNG seeding.
+# Import constants from shared module (feature flags and core parameters only)
+from .constants import (
+    # Feature flags (control which mechanisms are active)
+    ENABLE_NUTRIENT_DEPLETION,
+    ENABLE_MITOTIC_CATASTROPHE,
+    ENABLE_ER_STRESS,
+    ENABLE_MITO_DYSFUNCTION,
+    ENABLE_TRANSPORT_DYSFUNCTION,
+    ENABLE_FEEDING_COSTS,
+    ENABLE_INTERVENTION_COSTS,
+    # Core parameters (used directly by VM)
+    DEFAULT_MEDIA_GLUCOSE_mM,
+    DEFAULT_MEDIA_GLUTAMINE_mM,
+    DEFAULT_DOUBLING_TIME_H,
+    FEEDING_TIME_COST_H,
+    FEEDING_CONTAMINATION_RISK,
+    WASHOUT_TIME_COST_H,
+    WASHOUT_CONTAMINATION_RISK,
+    WASHOUT_INTENSITY_RECOVERY_H,
+    # Death accounting
+    DEATH_EPS,
+    TRACKED_DEATH_FIELDS,
+)
+# Note: Mechanism-specific parameters (ER_STRESS_K_ON, etc.) are now imported
+# only by the mechanism modules in stress_mechanisms/
 
-    Unlike Python's hash(), this is NOT salted per process, so it gives
-    consistent seeds across runs and machines. Critical for reproducibility.
 
-    Args:
-        s: String to hash
-
-    Returns:
-        Unsigned 32-bit integer suitable for RNG seeding
-    """
-    return int.from_bytes(hashlib.blake2s(s.encode(), digest_size=4).digest(), "little")
-
-
-def lognormal_multiplier(rng: np.random.Generator, cv: float) -> float:
-    """
-    Sample a strictly-positive multiplicative noise factor with mean=1.
-
-    Uses lognormal distribution to guarantee positivity, unlike normal(1.0, cv)
-    which can go negative for large cv.
-
-    If X ~ lognormal(μ, σ), then E[X] = exp(μ + σ²/2).
-    Setting E[X] = 1 gives μ = -σ²/2.
-
-    Args:
-        rng: Random number generator
-        cv: Coefficient of variation (σ in log-space)
-
-    Returns:
-        Positive multiplicative factor with E[factor] ≈ 1
-    """
-    if cv <= 0:
-        return 1.0
-    sigma = cv
-    mu = -0.5 * sigma ** 2
-    return float(rng.lognormal(mean=mu, sigma=sigma))
+# Import shared utilities
+from ._impl import stable_u32, lognormal_multiplier
 
 
 class VesselState:
@@ -471,7 +435,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_assay = ValidatedRNG(
             np.random.default_rng(seed + 3),
             stream_name="assay",
-            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "add_noise"},
+            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression"},
             enforce=True
         )
 
@@ -491,6 +455,18 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         self._load_parameters(params_file)
         self._load_raw_yaml_for_nested_params(params_file)  # Load nested params for CellROX/segmentation
+
+        # Initialize assay simulators
+        self._cell_painting_assay = CellPaintingAssay(self)
+        self._ldh_viability_assay = LDHViabilityAssay(self)
+        self._scrna_seq_assay = ScRNASeqAssay(self)
+
+        # Initialize stress mechanism simulators
+        self._er_stress = ERStressMechanism(self)
+        self._mito_dysfunction = MitoDysfunctionMechanism(self)
+        self._transport_dysfunction = TransportDysfunctionMechanism(self)
+        self._nutrient_depletion = NutrientDepletionMechanism(self)
+        self._mitotic_catastrophe = MitoticCatastropheMechanism(self)
     
     def _load_parameters(self, params_file: Optional[str] = None):
         """Load simulation parameters from database or YAML file."""
@@ -952,428 +928,6 @@ class BiologicalVirtualMachine(VirtualMachine):
             for subpop in vessel.subpopulations.values():
                 subpop['viability'] = vessel.viability
 
-    def _update_nutrient_depletion(self, vessel: VesselState, hours: float):
-        """
-        Nutrient depletion driven by viable cell load.
-        Uses last_feed_time as the reset clock, but maintains explicit nutrient levels.
-
-        IMPORTANT: Uses interval-average viable cells (trapezoid rule) to avoid dt-sensitivity.
-        Boundary-sampled consumption creates 20-30% error for different step sizes.
-        """
-        # Zero time → zero consumption (no phantom effects)
-        if hours <= 0:
-            return
-
-        # If feeding was never called, we still treat media as aging since seed.
-        # last_feed_time already exists; it becomes meaningful with feed_vessel().
-
-        # Read authoritative nutrients from InjectionManager if present
-        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
-            vessel.media_glucose_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glucose")
-            vessel.media_glutamine_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glutamine")
-
-        # Convert vessel_capacity into a coarse proxy for "media volume"
-        # Higher capacity means effectively more media buffering.
-        # This keeps the model stable without adding a new volume field everywhere.
-        media_buffer = max(1.0, float(vessel.vessel_capacity) / 1e7)  # ~1.0 at default capacity
-
-        # Interval-average viable cells using trapezoid rule
-        # Start-of-interval viable cells
-        viable_cells_t0 = float(vessel.cell_count * vessel.viability)
-
-        # Predict end-of-interval viable cells (simple predictor: exponential growth)
-        # This is a crude approximation but sufficient for O(dt²) accuracy in trapezoid rule
-        # Assumption: cells grow at baseline rate during interval (ignores death, saturation)
-        # This is conservative - overestimates consumption slightly, but prevents underestimation
-        cell_line_params = self.cell_line_params.get(vessel.cell_line, self.defaults)
-        baseline_doubling_h = cell_line_params.get("doubling_time_h", 24.0)
-        growth_rate = np.log(2.0) / baseline_doubling_h
-
-        # Predict viable cells at t1 (exponential growth from t0)
-        viable_cells_t1_pred = viable_cells_t0 * np.exp(growth_rate * hours)
-
-        # Interval-average viable cells (trapezoid rule)
-        # For exponential growth: exact average = n0 * (exp(r*dt) - 1) / (r*dt)
-        # But trapezoid is simpler and has same O(dt²) accuracy:
-        viable_cells_mean = 0.5 * (viable_cells_t0 + viable_cells_t1_pred)
-        viable_cells_mean = float(max(0.0, viable_cells_mean))
-
-        # Consumption rates in mM per hour, scaled by interval-average viable cell load.
-        # These are intentionally simple and tunable.
-        # Scaling chosen so depletion happens on multi-day timescales near confluence.
-        glucose_drop = (viable_cells_mean / 1e7) * (0.8 / media_buffer) * hours   # mM
-        glutamine_drop = (viable_cells_mean / 1e7) * (0.12 / media_buffer) * hours # mM
-
-        vessel.media_glucose_mM = max(0.0, vessel.media_glucose_mM - glucose_drop)
-        vessel.media_glutamine_mM = max(0.0, vessel.media_glutamine_mM - glutamine_drop)
-
-        # Sync depleted nutrients back into InjectionManager spine
-        # CRITICAL: Stamp with END of interval (t0 + hours), not start (t0)
-        # We simulated depletion over [t0, t1), so the result belongs at t1
-        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
-            t_end = float(self.simulated_time + hours)
-            self.injection_mgr.set_nutrients_mM(
-                vessel.vessel_id,
-                {"glucose": float(vessel.media_glucose_mM), "glutamine": float(vessel.media_glutamine_mM)},
-                now_h=t_end,
-            )
-
-        glucose_stress = max(0.0, (GLUCOSE_STRESS_THRESHOLD_mM - vessel.media_glucose_mM) / GLUCOSE_STRESS_THRESHOLD_mM)
-        glutamine_stress = max(0.0, (GLUTAMINE_STRESS_THRESHOLD_mM - vessel.media_glutamine_mM) / GLUTAMINE_STRESS_THRESHOLD_mM)
-        nutrient_stress = max(glucose_stress, glutamine_stress)
-
-        if nutrient_stress <= 0.0:
-            return
-
-        starvation_rate = MAX_STARVATION_RATE_PER_H * nutrient_stress
-        self._propose_hazard(vessel, starvation_rate, "death_starvation")
-
-    def _apply_mitotic_catastrophe(self, vessel: VesselState, stress_axis: str, dose_uM: float, ic50_uM: float, hours: float):
-        """
-        Mitotic catastrophe: only affects dividing cells and only for microtubule-axis stress.
-
-        CRITICAL: Skips non-dividing cells (neurons) based on proliferation index.
-        Neurons (iPSC_NGN2) die from transport collapse (death_compound), not mitotic failure.
-
-        Hazard formulation:
-        - Cells attempt mitosis at rate = ln(2) / doubling_time (per hour)
-        - Each attempt fails with probability p_fail = dose / (dose + IC50)
-        - Instantaneous mitotic death rate = mitosis_rate * p_fail (deaths per hour)
-
-        This composes cleanly with competing risks without interval probability math.
-        """
-        # Zero time = zero physics (no hazard proposals on flush-only steps)
-        if hours <= 0:
-            return
-
-        if stress_axis != "microtubule":
-            return
-
-        # Skip non-dividing cells (neurons, post-mitotic cells)
-        # Use proliferation index from biology_core (0.1 for iPSC_NGN2 = barely divides)
-        prolif_index = biology_core.PROLIF_INDEX.get(vessel.cell_line, 1.0)
-        if prolif_index < 0.3:  # Threshold: below 0.3 = post-mitotic
-            return
-
-        viable_cells = vessel.cell_count * vessel.viability
-        if viable_cells <= 0:
-            return
-
-        # Mitosis attempt rate (per hour)
-        dt = max(1e-6, float(getattr(vessel, "doubling_time_h", DEFAULT_DOUBLING_TIME_H)))
-        mitosis_rate = float(np.log(2.0) / dt)
-
-        # Failure probability per mitotic attempt [0-1]
-        ic50 = max(1e-9, float(ic50_uM))
-        p_fail = float(dose_uM / (dose_uM + ic50))
-
-        # Instantaneous mitotic death hazard (deaths per hour)
-        # Future extension: multiply by proliferative_fraction if tracking senescence
-        hazard_mitotic = mitosis_rate * p_fail
-
-        self._propose_hazard(vessel, hazard_mitotic, "death_mitotic_catastrophe")
-
-    def _update_er_stress(self, vessel: VesselState, hours: float):
-        """
-        Update ER stress latent state and propose death hazard if stressed.
-
-        Phase 5: Now operates on subpopulations with shifted IC50 and death thresholds.
-        This creates natural variance in stress response:
-        - Sensitive cells stress faster, die earlier
-        - Resistant cells stress slower, die later
-        - Mixture width collapses confidence margins naturally
-
-        ER stress is a morphology-first, death-later mechanism:
-        - Morphology shifts early (ER channel increases)
-        - Death hazard kicks in only after sustained high stress
-
-        Dynamics (per subpopulation):
-        - dS/dt = k_on * f_axis(dose, ic50_shifted) * (1-S) - k_off * S
-        - f_axis = dose/(dose + ic50_shifted) for ER-stress axis compounds
-        - Death hazard = h_max * sigmoid((S - theta_shifted)/width)
-        """
-        # Contact pressure induces mild ER stress (crowding → ER load, slower protein folding)
-        # This is BIOLOGY FEEDBACK, not just measurement bias
-        # Steady state: S_ss = k_contact*p / (k_off + k_contact*p)
-        # With k_contact = 0.02, k_off = 0.05: at p=1.0, S_ss = 0.29 (mild, not deadly)
-        contact_pressure = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
-        contact_stress_rate = 0.02 * contact_pressure  # Mild accumulation, observable but not overwhelming
-
-        if not vessel.compounds:
-            # No compounds, but contact pressure can still induce ER stress
-            for subpop_name, subpop in vessel.subpopulations.items():
-                S = subpop['er_stress']
-
-                # Decay existing stress
-                dS_dt = -ER_STRESS_K_OFF * S
-
-                # Add contact pressure contribution
-                dS_dt += contact_stress_rate * (1.0 - S)
-
-                subpop['er_stress'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-
-            # Update scalar for backward compatibility
-            vessel.er_stress = vessel.er_stress_mixture
-            return
-
-        # Update each subpopulation with shifted IC50
-        for subpop_name, subpop in vessel.subpopulations.items():
-            ic50_shift = subpop['ic50_shift']
-            threshold_shift = subpop['stress_threshold_shift']
-
-            # Compute induction term from all ER-stress compounds (with shifted IC50)
-            induction_total = 0.0
-            for compound, dose_uM in vessel.compounds.items():
-                if dose_uM <= 0:
-                    continue
-
-                meta = vessel.compound_meta.get(compound)
-                if not meta:
-                    continue
-
-                stress_axis = meta['stress_axis']
-                ic50_uM = meta['ic50_uM']
-                potency_scalar = meta.get('potency_scalar', 1.0)
-
-                # Only ER-stress and proteostasis axes induce ER stress
-                if stress_axis not in ["er_stress", "proteostasis"]:
-                    continue
-
-                # Apply IC50 shift: sensitive cells have lower IC50, resistant have higher
-                ic50_shifted = ic50_uM * ic50_shift
-                f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
-                induction_total += f_axis
-
-            # Clamp induction to [0, 1] if multiple compounds
-            induction_total = float(min(1.0, induction_total))
-
-            # Phase 5B: Apply run context stress sensitivity
-            bio_mods = self.run_context.get_biology_modifiers()
-            k_on_effective = ER_STRESS_K_ON * bio_mods['stress_sensitivity']
-
-            # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S + contact_stress * (1-S)
-            # Contact stress term (computed above) acts like a weak inducer
-            S = subpop['er_stress']
-            dS_dt = k_on_effective * induction_total * (1.0 - S) - ER_STRESS_K_OFF * S + contact_stress_rate * (1.0 - S)
-            subpop['er_stress'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-
-        # Update scalar for backward compatibility (weighted mixture)
-        vessel.er_stress = vessel.er_stress_mixture
-
-        # Propose vessel-level death hazard from WEIGHTED PER-SUBPOP HAZARDS
-        # Each subpop has shifted threshold (sensitive dies earlier) and contributes
-        # proportionally to its fraction. This is adversarially honest: no comforting
-        # mean, but also no weird "max stress + fraction at risk" hybrid.
-        hazard_er_total = 0.0
-
-        for subpop_name, subpop in vessel.subpopulations.items():
-            threshold_shift = subpop['stress_threshold_shift']
-            S = subpop['er_stress']
-
-            # Shifted threshold: sensitive (shift < 1.0) die at lower stress
-            # theta_shifted = THETA * shift, so sensitive (0.8) → 0.56, resistant (1.2) → 0.84
-            theta_shifted = ER_STRESS_DEATH_THETA * threshold_shift
-            width_shifted = ER_STRESS_DEATH_WIDTH * threshold_shift
-
-            if S > theta_shifted:
-                x = (S - theta_shifted) / width_shifted
-                sigmoid = float(1.0 / (1.0 + np.exp(-x)))
-                hazard_subpop = ER_STRESS_H_MAX * sigmoid * subpop['fraction']
-                hazard_er_total += hazard_subpop
-
-        if hazard_er_total > 0:
-            self._propose_hazard(vessel, hazard_er_total, "death_er_stress")
-
-    def _update_mito_dysfunction(self, vessel: VesselState, hours: float):
-        """
-        Update mito dysfunction latent state and propose death hazard if stressed.
-
-        Phase 5: Now operates on subpopulations with shifted IC50 and death thresholds.
-
-        Mito dysfunction is a morphology-first, death-later mechanism:
-        - Morphology shifts early (mito channel decreases)
-        - Death hazard kicks in only after sustained high stress
-
-        Phase 4 Option 3: Cross-talk from transport dysfunction
-        - Prolonged transport dysfunction (>18h above threshold) induces mito dysfunction
-        - Small second-order effect (rate = 0.02/h)
-        """
-        # Phase 4 Option 3: Check for transport → mito coupling (uses mixture)
-        coupling_induction = 0.0
-        if ENABLE_TRANSPORT_MITO_COUPLING:
-            transport_mixture = vessel.transport_dysfunction_mixture
-            if transport_mixture > TRANSPORT_MITO_COUPLING_THRESHOLD:
-                if vessel.transport_high_since is None:
-                    vessel.transport_high_since = self.simulated_time
-                time_above_threshold = self.simulated_time - vessel.transport_high_since
-                if time_above_threshold >= TRANSPORT_MITO_COUPLING_DELAY_H:
-                    coupling_induction = TRANSPORT_MITO_COUPLING_RATE
-            else:
-                vessel.transport_high_since = None
-
-        # Contact pressure induces mild mito dysfunction (crowding → metabolic stress, less ATP)
-        # This is BIOLOGY FEEDBACK, not just measurement bias
-        # Steady state: S_ss = k_contact*p / (k_off + k_contact*p)
-        # With k_contact = 0.015, k_off = 0.05: at p=1.0, S_ss = 0.23 (mild)
-        contact_pressure = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
-        contact_mito_rate = 0.015 * contact_pressure  # Slightly lower than ER (mito more resilient)
-
-        if not vessel.compounds and coupling_induction <= 0:
-            # No compounds, no coupling, but contact pressure can still induce mito dysfunction
-            for subpop_name, subpop in vessel.subpopulations.items():
-                S = subpop['mito_dysfunction']
-                dS_dt = -MITO_DYSFUNCTION_K_OFF * S  # Decay
-                dS_dt += contact_mito_rate * (1.0 - S)  # Contact pressure contribution
-                subpop['mito_dysfunction'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-            vessel.mito_dysfunction = vessel.mito_dysfunction_mixture
-            return
-
-        # Update each subpopulation with shifted IC50
-        for subpop_name, subpop in vessel.subpopulations.items():
-            ic50_shift = subpop['ic50_shift']
-            threshold_shift = subpop['stress_threshold_shift']
-
-            # Compute induction term from all mitochondrial compounds (with shifted IC50)
-            induction_total = 0.0
-            for compound, dose_uM in vessel.compounds.items():
-                if dose_uM <= 0:
-                    continue
-
-                meta = vessel.compound_meta.get(compound)
-                if not meta:
-                    continue
-
-                stress_axis = meta['stress_axis']
-                ic50_uM = meta['ic50_uM']
-                potency_scalar = meta.get('potency_scalar', 1.0)
-
-                # Only mitochondrial axis induces mito dysfunction
-                if stress_axis != "mitochondrial":
-                    continue
-
-                # Apply IC50 shift
-                ic50_shifted = ic50_uM * ic50_shift
-                f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
-                induction_total += f_axis
-
-            # Add coupling induction (same for all subpopulations)
-            induction_total += coupling_induction
-
-            # Clamp induction to [0, 1]
-            induction_total = float(min(1.0, induction_total))
-
-            # Phase 5B: Apply run context stress sensitivity
-            bio_mods = self.run_context.get_biology_modifiers()
-            k_on_effective = MITO_DYSFUNCTION_K_ON * bio_mods['stress_sensitivity']
-
-            # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S + contact_mito * (1-S)
-            # Contact stress term (computed above) acts like a weak inducer
-            S = subpop['mito_dysfunction']
-            dS_dt = k_on_effective * induction_total * (1.0 - S) - MITO_DYSFUNCTION_K_OFF * S + contact_mito_rate * (1.0 - S)
-            subpop['mito_dysfunction'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-
-        # Update scalar for backward compatibility
-        vessel.mito_dysfunction = vessel.mito_dysfunction_mixture
-
-        # Propose vessel-level death hazard from WEIGHTED PER-SUBPOP HAZARDS
-        hazard_mito_total = 0.0
-
-        for subpop_name, subpop in vessel.subpopulations.items():
-            threshold_shift = subpop['stress_threshold_shift']
-            S = subpop['mito_dysfunction']
-
-            # Shifted threshold: sensitive (shift < 1.0) die at lower stress
-            # theta_shifted = THETA * shift, so sensitive (0.8) → 0.48, resistant (1.2) → 0.72
-            theta_shifted = MITO_DYSFUNCTION_DEATH_THETA * threshold_shift
-            width_shifted = MITO_DYSFUNCTION_DEATH_WIDTH * threshold_shift
-
-            if S > theta_shifted:
-                x = (S - theta_shifted) / width_shifted
-                sigmoid = float(1.0 / (1.0 + np.exp(-x)))
-                hazard_subpop = MITO_DYSFUNCTION_H_MAX * sigmoid * subpop['fraction']
-                hazard_mito_total += hazard_subpop
-
-        if hazard_mito_total > 0:
-            self._propose_hazard(vessel, hazard_mito_total, "death_mito_dysfunction")
-
-    def _update_transport_dysfunction(self, vessel: VesselState, hours: float):
-        """
-        Update transport dysfunction latent state (morphology-first, no death in v1).
-
-        Phase 5: Now operates on subpopulations with shifted IC50.
-
-        Transport dysfunction is triggered by microtubule disruption:
-        - Morphology shifts early (actin channel increases)
-        - NO death hazard in v1 (already have mitotic catastrophe for microtubules)
-
-        Dynamics:
-        - dS/dt = k_on * f_axis(dose, ic50_shifted) * (1-S) - k_off * S
-        - Faster onset/recovery than ER/mito (k_on=0.35, k_off=0.08)
-
-        This creates temporal separation from ER/mito signatures.
-        """
-        # Contact pressure induces mild transport dysfunction (crowding → reduced cytoplasmic space, impaired trafficking)
-        # This is BIOLOGY FEEDBACK, not just measurement bias
-        # Steady state: S_ss = k_contact*p / (k_off + k_contact*p)
-        # With k_contact = 0.01, k_off = 0.08: at p=1.0, S_ss = 0.11 (mild, transport more resilient)
-        contact_pressure = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
-        contact_transport_rate = 0.01 * contact_pressure  # Milder than ER/mito (transport more resilient)
-
-        if not vessel.compounds:
-            # No compounds, but contact pressure can still induce transport dysfunction
-            for subpop_name, subpop in vessel.subpopulations.items():
-                S = subpop['transport_dysfunction']
-                dS_dt = -TRANSPORT_DYSFUNCTION_K_OFF * S  # Decay
-                dS_dt += contact_transport_rate * (1.0 - S)  # Contact pressure contribution
-                subpop['transport_dysfunction'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-            vessel.transport_dysfunction = vessel.transport_dysfunction_mixture
-            return
-
-        # Update each subpopulation with shifted IC50
-        for subpop_name, subpop in vessel.subpopulations.items():
-            ic50_shift = subpop['ic50_shift']
-
-            # Compute induction term from all microtubule compounds (with shifted IC50)
-            induction_total = 0.0
-            for compound, dose_uM in vessel.compounds.items():
-                if dose_uM <= 0:
-                    continue
-
-                meta = vessel.compound_meta.get(compound)
-                if not meta:
-                    continue
-
-                stress_axis = meta['stress_axis']
-                ic50_uM = meta['ic50_uM']
-                potency_scalar = meta.get('potency_scalar', 1.0)
-
-                # Only microtubule axis induces transport dysfunction
-                if stress_axis != "microtubule":
-                    continue
-
-                # Apply IC50 shift
-                ic50_shifted = ic50_uM * ic50_shift
-                f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
-                induction_total += f_axis
-
-            # Clamp induction to [0, 1]
-            induction_total = float(min(1.0, induction_total))
-
-            # Phase 5B: Apply run context stress sensitivity
-            bio_mods = self.run_context.get_biology_modifiers()
-            k_on_effective = TRANSPORT_DYSFUNCTION_K_ON * bio_mods['stress_sensitivity']
-
-            # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S + contact_transport * (1-S)
-            # Contact stress term (computed above) acts like a weak inducer
-            S = subpop['transport_dysfunction']
-            dS_dt = k_on_effective * induction_total * (1.0 - S) - TRANSPORT_DYSFUNCTION_K_OFF * S + contact_transport_rate * (1.0 - S)
-            subpop['transport_dysfunction'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-
-            # NO death hazard in v1 (already have mitotic catastrophe for microtubules)
-
-        # Update scalar for backward compatibility
-        vessel.transport_dysfunction = vessel.transport_dysfunction_mixture
-
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
@@ -1411,16 +965,16 @@ class BiologicalVirtualMachine(VirtualMachine):
         # IMPORTANT: Transport dysfunction must update BEFORE mito dysfunction
         # so that cross-talk coupling sees current transport state
         if ENABLE_NUTRIENT_DEPLETION:
-            self._update_nutrient_depletion(vessel, hours)
+            self._nutrient_depletion.update(vessel, hours)
 
         if ENABLE_ER_STRESS:
-            self._update_er_stress(vessel, hours)
+            self._er_stress.update(vessel, hours)
 
         if ENABLE_TRANSPORT_DYSFUNCTION:
-            self._update_transport_dysfunction(vessel, hours)
+            self._transport_dysfunction.update(vessel, hours)
 
         if ENABLE_MITO_DYSFUNCTION:
-            self._update_mito_dysfunction(vessel, hours)
+            self._mito_dysfunction.update(vessel, hours)
 
         self._apply_compound_attrition(vessel, hours)
 
@@ -1605,7 +1159,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             # IMPORTANT: This happens BEFORE attrition check because it's independent
             # (dividing cells can fail mitosis even if they haven't committed to death yet)
             if ENABLE_MITOTIC_CATASTROPHE:
-                self._apply_mitotic_catastrophe(
+                self._mitotic_catastrophe.apply(
                     vessel=vessel,
                     stress_axis=stress_axis,
                     dose_uM=float(dose_uM),
@@ -2692,592 +2246,28 @@ class BiologicalVirtualMachine(VirtualMachine):
         Returns:
             Dict with channel values and metadata
         """
-        # Lazy load thalamus params
-        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
-            self._load_cell_thalamus_params()
-
         if vessel_id not in self.vessel_states:
             logger.warning(f"Vessel {vessel_id} not found")
             return {"status": "error", "message": "Vessel not found"}
-
-        vessel = self.vessel_states[vessel_id]
-        cell_line = vessel.cell_line
-
-        # Agent 1: Lock measurement purity - capture state before measurement
-        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
-
-        # Get baseline morphology for this cell line
-        baseline = self.thalamus_params['baseline_morphology'].get(cell_line, {})
-        if not baseline:
-            logger.warning(f"No baseline morphology for {cell_line}, using A549")
-            baseline = self.thalamus_params['baseline_morphology']['A549']
-
-        # Start with baseline
-        morph = {
-            'er': baseline['er'],
-            'mito': baseline['mito'],
-            'nucleus': baseline['nucleus'],
-            'actin': baseline['actin'],
-            'rna': baseline['rna']
-        }
-
-        # Apply compound effects via stress axes
-        # Track if any microtubule compound is present (for transport dysfunction diagnostic)
-        # Read authoritative compound concentrations from InjectionManager
-        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel_id):
-            compounds_snapshot = self.injection_mgr.get_all_compounds_uM(vessel_id)
-        else:
-            compounds_snapshot = vessel.compounds
-
-        has_microtubule_compound = False
-        for compound_name, dose_uM in compounds_snapshot.items():
-            if dose_uM == 0:
-                continue
-
-            # Look up compound params
-            compound_params = self.thalamus_params['compounds'].get(compound_name, {})
-            if not compound_params:
-                logger.warning(f"Unknown compound for morphology: {compound_name}")
-                continue
-
-            stress_axis = compound_params['stress_axis']
-
-            # Track if this is a microtubule compound (for transport dysfunction diagnostic)
-            if stress_axis == "microtubule":
-                has_microtubule_compound = True
-
-            # Use adjusted potency from vessel.compound_meta if available (includes cell-line
-            # sensitivity, run context modifiers, potency_scalar). Falls back to baseline if not.
-            meta = vessel.compound_meta.get(compound_name)
-            if meta:
-                # Use adjusted values stored during treat_with_compound
-                ec50 = meta['ic50_uM']  # Adjusted for cell line, run context, etc.
-                hill_slope = meta['hill_slope']
-                potency_scalar = meta.get('potency_scalar', 1.0)
-            else:
-                # Fallback to baseline (compound present but not via treat_with_compound)
-                ec50 = compound_params['ec50_uM']
-                hill_slope = compound_params['hill_slope']
-                potency_scalar = 1.0
-
-            intensity = compound_params['intensity']
-
-            # Microtubule phenotypes are ONLY rendered via transport dysfunction latent state
-            # (applied below, affects actin). Skip direct axis_effects to avoid double-counting.
-            # Mitotic catastrophe (viability effect) is handled in _apply_compound_attrition.
-            if stress_axis == "microtubule":
-                continue  # Skip morphology loop, latent state will handle it
-
-            # Get stress axis channel effects (non-microtubule)
-            axis_effects = self.thalamus_params['stress_axes'][stress_axis]['channels']
-
-            # Calculate dose response (Hill equation)
-            # Effect ranges from 0 (no dose) to intensity (saturating dose)
-            # Apply potency_scalar to modulate induction rate (latent state coupling)
-            dose_effect = intensity * potency_scalar * (dose_uM ** hill_slope) / (ec50 ** hill_slope + dose_uM ** hill_slope)
-
-            # Apply to each channel
-            for channel, axis_strength in axis_effects.items():
-                # Channel response = baseline * (1 + dose_effect * axis_strength)
-                # Positive axis_strength increases signal, negative decreases
-                morph[channel] *= (1.0 + dose_effect * axis_strength)
-
-        # Apply ER stress latent state to ER channel (morphology-first mechanism)
-        # ER stress increases ER channel intensity before death kicks in
-        if ENABLE_ER_STRESS and vessel.er_stress > 0:
-            morph['er'] *= (1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress)
-
-        # Apply mito dysfunction latent state to mito channel (morphology-first mechanism)
-        # Mito dysfunction decreases mito signal (contrast with ER increase)
-        if ENABLE_MITO_DYSFUNCTION and vessel.mito_dysfunction > 0:
-            morph['mito'] *= max(0.1, 1.0 - MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction)
-
-        # Apply transport dysfunction latent state to actin channel (morphology-first mechanism)
-        # Transport dysfunction increases actin signal (contrast with mito decrease, matches actin bundling)
-        if ENABLE_TRANSPORT_DYSFUNCTION and vessel.transport_dysfunction > 0:
-            morph['actin'] *= (1.0 + TRANSPORT_DYSFUNCTION_MORPH_ALPHA * vessel.transport_dysfunction)
-
-        # Apply contact pressure to morphology (measurement confounder, not mechanism)
-        # High confluence systematically shifts morphology even at fixed mechanism
-        p = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
-        if p > 0.01:
-            morph = self._apply_confluence_morphology_bias(morph, p)
-
-        # CRITICAL: Compute transport dysfunction from STRUCTURAL morphology (before viability scaling)
-        # Uses biology_core for consistent dysfunction computation
-        # This prevents measurement attenuation (dead cells are dim) from masquerading as
-        # structural worsening (cytoskeleton more broken), which would create runaway feedback
-
-        # Keep a copy of structural morphology (before viability scaling) for output
-        morph_struct = morph.copy()
-
-        # Compute dysfunction score from morphology for diagnostic purposes
-        # NOTE: This is NOT used to update the latent state (that's done by _update_transport_dysfunction())
-        # For Phase 2, transport dysfunction is a proper latent state driven by exposure dynamics
-        # Use "microtubule" axis deterministically if any microtubule compound is present
-        if has_microtubule_compound:
-            transport_dysfunction_score = biology_core.compute_transport_dysfunction_score(
-                cell_line=cell_line,
-                stress_axis="microtubule",
-                actin_signal=morph['actin'],
-                mito_signal=morph['mito'],
-                baseline_actin=baseline['actin'],
-                baseline_mito=baseline['mito']
-            )
-        else:
-            transport_dysfunction_score = 0.0
-
-        # DO NOT overwrite vessel.transport_dysfunction here!
-        # The latent state is managed by _update_transport_dysfunction() during _step_vessel()
-        # Assays observe the latent, they don't modify it (observer independence)
-
-        # === MEASUREMENT LAYER: Separate biology from artifacts ===
-        # t_measure is the time this readout is taken (after advance_time, at end of interval)
-        t_measure = self.simulated_time
-
-        # 1. Viability factor (BIOLOGICAL signal attenuation: dead cells are dim)
-        viability_factor = 0.3 + 0.7 * vessel.viability  # Dead cells retain 30% signal
-
-        # 2. Washout multiplier (MEASUREMENT artifact: sample handling, not biology)
-        washout_multiplier = 1.0
-        if ENABLE_INTERVENTION_COSTS and vessel.last_washout_time is not None:
-            time_since_washout = t_measure - vessel.last_washout_time
-            if time_since_washout < WASHOUT_INTENSITY_RECOVERY_H:
-                # Deterministic penalty: 5% intensity drop, linear recovery over 12h
-                recovery_fraction = time_since_washout / WASHOUT_INTENSITY_RECOVERY_H
-                washout_penalty = WASHOUT_INTENSITY_PENALTY * (1.0 - recovery_fraction)
-                washout_multiplier *= (1.0 - washout_penalty)
-                logger.debug(f"Washout intensity penalty: {washout_penalty:.1%} (Δt={time_since_washout:.1f}h)")
-
-        # Stochastic contamination artifact (separate from deterministic penalty)
-        if vessel.washout_artifact_until_time and t_measure < vessel.washout_artifact_until_time:
-            remaining_time = vessel.washout_artifact_until_time - t_measure
-            decay_fraction = remaining_time / WASHOUT_INTENSITY_RECOVERY_H
-            artifact_effect = vessel.washout_artifact_magnitude * decay_fraction
-            washout_multiplier *= (1.0 - artifact_effect)
-            logger.debug(f"Washout contamination artifact: {artifact_effect:.1%} intensity drop")
-
-        # Apply biology (viability), then measurement (washout)
-        # This separation makes it clear: viability is biology, washout is instrument/handling
-        for channel in morph:
-            morph[channel] *= viability_factor * washout_multiplier
-
-        # Calculate stress level (for dose-dependent noise)
-        # Higher stress = higher variability (heterogeneous death timing)
-        stress_level = 1.0 - vessel.viability  # 0 (healthy) to 1 (dead)
-        stress_multiplier = self.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
-        effective_bio_cv = self.thalamus_params['biological_noise']['cell_line_cv'] * (1.0 + stress_level * (stress_multiplier - 1.0))
-
-        # Add biological noise (dose-dependent, only if CV > 0)
-        if effective_bio_cv > 0:
-            for channel in morph:
-                morph[channel] *= lognormal_multiplier(self.rng_assay, effective_bio_cv)
-
-        # 3. Plating artifacts (MEASUREMENT variance inflation: early timepoints unreliable)
-        # Post-dissociation stress and clumpiness inflate apparent heterogeneity, decay over time
-        if vessel.plating_context is not None:
-            time_since_seed = t_measure - vessel.seed_time
-            tau_recovery = vessel.plating_context['tau_recovery_h']
-
-            # Artifact decays exponentially: artifact(t) = A * exp(-t / tau)
-            post_dissoc_stress = vessel.plating_context['post_dissociation_stress']
-            artifact_magnitude = post_dissoc_stress * float(np.exp(-time_since_seed / tau_recovery))
-
-            # Clumpiness inflates variance early (spatial heterogeneity)
-            clumpiness = vessel.plating_context['clumpiness']
-            clump_variance = clumpiness * float(np.exp(-time_since_seed / (tau_recovery * 0.5)))  # Decays faster
-
-            # Apply as additional variance to morphology (measurement layer, not biology)
-            if artifact_magnitude > 0.01 or clump_variance > 0.01:
-                # Inflate variance by artifact + clumpiness
-                artifact_cv = artifact_magnitude + clump_variance
-                for channel in morph:
-                    morph[channel] *= lognormal_multiplier(self.rng_assay, artifact_cv)
-
-                logger.debug(
-                    f"Plating artifact @ {time_since_seed:.1f}h: stress={artifact_magnitude:.3f}, "
-                    f"clump={clump_variance:.3f}, CV={artifact_cv:.3f}"
-                )
-
-        # Add technical noise (plate, day, operator effects)
-        tech_noise = self.thalamus_params['technical_noise']
-        plate_cv = tech_noise['plate_cv']
-        day_cv = tech_noise['day_cv']
-        operator_cv = tech_noise['operator_cv']
-        well_cv = tech_noise['well_cv']
-        edge_effect = tech_noise.get('edge_effect', 0.0)
-
-        # Apply technical factors
-        # Extract batch information from kwargs if provided
-        plate_id = kwargs.get('plate_id', 'P1')
-        batch_id = kwargs.get('batch_id', 'batch_default')
-        day = kwargs.get('day', 1)
-        operator = kwargs.get('operator', 'OP1')
-        well_position = kwargs.get('well_position', 'A1')
-
-        # Consistent batch effects per plate/day/operator (deterministic seeding)
-        # Only apply if CV > 0
-        plate_factor = 1.0
-        if plate_cv > 0:
-            rng_plate = np.random.default_rng(stable_u32(f"plate_{self.run_context.seed}_{batch_id}_{plate_id}"))
-            plate_factor = lognormal_multiplier(rng_plate, plate_cv)
-
-        day_factor = 1.0
-        if day_cv > 0:
-            rng_day = np.random.default_rng(stable_u32(f"day_{self.run_context.seed}_{batch_id}_{day}"))
-            day_factor = lognormal_multiplier(rng_day, day_cv)
-
-        operator_factor = 1.0
-        if operator_cv > 0:
-            rng_operator = np.random.default_rng(stable_u32(f"op_{self.run_context.seed}_{batch_id}_{operator}"))
-            operator_factor = lognormal_multiplier(rng_operator, operator_cv)
-
-        # Well factor uses assay RNG (non-deterministic)
-        well_factor = 1.0
-        if well_cv > 0:
-            well_factor = lognormal_multiplier(self.rng_assay, well_cv)
-
-        # Edge effect: wells on plate edges show reduced signal (evaporation, temperature gradient)
-        is_edge = self._is_edge_well(well_position)
-        edge_factor = (1.0 - edge_effect) if is_edge else 1.0
-
-        # Phase 5B: Apply run context measurement modifiers (lot/instrument effects)
-        meas_mods = self.run_context.get_measurement_modifiers()
-        illumination_bias = meas_mods['illumination_bias']
-        channel_biases = meas_mods['channel_biases']
-
-        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * illumination_bias
-
-        # Apply total tech factor PLUS per-channel biases (reagent lot effects)
-        for channel in morph:
-            channel_bias = channel_biases.get(channel, 1.0)
-            morph[channel] *= total_tech_factor * channel_bias
-            morph[channel] = max(0.0, morph[channel])  # No negative signals
-
-        # Apply random well failures (bubbles, contamination, etc.)
-        failure_result = self._apply_well_failure(morph, well_position, plate_id, batch_id)
-        if failure_result:
-            morph = failure_result['morphology']
-            failure_mode = failure_result['failure_mode']
-        else:
-            failure_mode = None
-
-        # Phase 5B Injection #3: Pipeline drift (batch-dependent feature extraction)
-        # Apply after all "true" technical noise, before returning features
-        # This creates "same biology, different features" outcomes per batch
-        morph = pipeline_transform(
-            morphology=morph,
-            context=self.run_context,
-            batch_id=batch_id,
-            plate_id=plate_id
-        )
-
-        self._simulate_delay(2.0)  # Imaging takes time
-
-        # Agent 1: Assert measurement did not perturb biological state
-        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
-        assert state_before == state_after, (
-            f"MEASUREMENT PURITY VIOLATION: cell_painting_assay() mutated vessel state!\n"
-            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
-            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
-            f"Measurement functions must be read-only. Observer independence violated."
-        )
-
-        result = {
-            "status": "success",
-            "action": "cell_painting",
-            "vessel_id": vessel_id,
-            "cell_line": cell_line,
-            # Two-layer readout: structural (latent-driven) vs measured (intensity-scaled)
-            "morphology_struct": morph_struct,  # Structural features (latent-driven, before viability scaling)
-            "morphology_measured": morph,  # Measured features (after viability scaling + noise)
-            "morphology": morph,  # Backward compatibility alias for morphology_measured
-            "signal_intensity": viability_factor,  # Explicit intensity scaling factor (viability-driven)
-            "transport_dysfunction_score": transport_dysfunction_score,
-            "death_mode": vessel.death_mode,
-            "viability": vessel.viability,
-            "timestamp": datetime.now().isoformat(),
-            # Fix #7: Expose pipeline drift metadata for epistemic control
-            "run_context_id": self.run_context.context_id,
-            "batch_id": batch_id,
-            "plate_id": plate_id,
-            "measurement_modifiers": self.run_context.get_measurement_modifiers(),
-        }
-
-        if failure_mode:
-            result['well_failure'] = failure_mode
-            result['qc_flag'] = 'FAIL'
-
-        return result
+        return self._cell_painting_assay.measure(self.vessel_states[vessel_id], **kwargs)
 
     def atp_viability_assay(self, vessel_id: str, **kwargs) -> Dict[str, Any]:
         """
         Simulate LDH cytotoxicity assay (orthogonal scalar readout).
 
-        MEASUREMENT TIMING: This assay reads at t_measure = self.simulated_time,
-        which is t1 after advance_time() returns. All time-dependent artifacts
-        (washout) use t_measure as reference.
-
-        Also returns UPR_marker (unfolded protein response proxy) which scales
-        linearly with ER stress latent state. This creates a second sensor
-        for ER stress beyond morphology.
-
-        LDH (lactate dehydrogenase) release measures membrane integrity - only rises
-        when cells die and membranes rupture. Orthogonal to Cell Painting morphology.
-
-        Key advantages over ATP:
-        - Not confounded by mitochondrial dysfunction (CCCP, oligomycin crash ATP but may not kill cells)
-        - True cytotoxicity measurement (membrane rupture = cell death)
-        - Orthogonal to Cell Painting (supernatant biochemistry vs cellular morphology)
-
-        LDH signal is INVERSELY proportional to viability:
-        - High viability (0.95) → Low LDH (from 5% dead cells)
-        - Low viability (0.30) → High LDH (from 70% dead cells)
+        Returns LDH, ATP, UPR, and trafficking marker signals.
 
         Args:
             vessel_id: Vessel identifier
-            **kwargs: Additional parameters (plate_id, day, operator for technical noise)
+            **kwargs: Additional parameters (plate_id, day, operator, well_position)
 
         Returns:
-            Dict with LDH signal and metadata
+            Dict with scalar readouts and metadata
         """
-        # Lazy load thalamus params
-        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
-            self._load_cell_thalamus_params()
-
         if vessel_id not in self.vessel_states:
             logger.warning(f"Vessel {vessel_id} not found")
             return {"status": "error", "message": "Vessel not found"}
-
-        vessel = self.vessel_states[vessel_id]
-        cell_line = vessel.cell_line
-
-        # Agent 1: Lock measurement purity - capture state before measurement
-        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
-
-        # Get baseline LDH for this cell line
-        # LDH is released by dead/dying cells (inverse of ATP)
-        baseline_ldh = self.thalamus_params['baseline_atp'].get(cell_line, 50000.0)  # Keep same param name for backward compat
-
-        # LDH scales with dead cell biomass
-        # High viability (0.95) = low LDH (from 5% dead cells)
-        # Low viability (0.30) = high LDH (from 70% dead cells)
-        #
-        # CRITICAL: Avoid division by viability (explodes at low viability).
-        # Instead, use death fraction directly from ledgers: 1 - viability.
-        #
-        # LDH signal should be proportional to:
-        # 1. Total cells in well (live + dead, approximated by current cell count + death scaling)
-        # 2. Death fraction
-        #
-        # Simplest stable formulation:
-        # LDH ∝ baseline_per_cell × cell_count × (1 - viability) / viability
-        # But to avoid division by viability, use:
-        # LDH ∝ baseline_per_cell × cell_count × (1 / viability - 1)
-        # Which simplifies to: baseline × cell_count × death_fraction / viability
-        #
-        # Even better: just use cell_count (live cells) times a death-amplification factor
-        # that asymptotes sensibly. For death_fraction d:
-        # amplification = d / max(0.1, 1 - d)
-        # This gives: d=0.1 → 0.11×, d=0.5 → 1.0×, d=0.9 → 9.0×, d=0.99 → 99× (but clamped)
-
-        death_fraction = 1.0 - vessel.viability
-        death_amplification = death_fraction / max(0.1, 1.0 - death_fraction)
-        death_amplification = min(death_amplification, 10.0)  # Cap at 10× to prevent explosions
-
-        # LDH signal: baseline per cell × viable cell count × death amplification
-        cell_count_factor = vessel.cell_count / 1e6  # Normalize to 1M cells
-        ldh_signal = baseline_ldh * cell_count_factor * death_amplification
-
-        # Calculate stress level (for dose-dependent noise)
-        stress_level = 1.0 - vessel.viability  # 0 (healthy) to 1 (dead)
-        stress_multiplier = self.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
-        effective_bio_cv = self.thalamus_params['biological_noise']['cell_line_cv'] * (1.0 + stress_level * (stress_multiplier - 1.0))
-
-        # Add biological noise (dose-dependent, only if CV > 0)
-        if effective_bio_cv > 0:
-            ldh_signal *= lognormal_multiplier(self.rng_assay, effective_bio_cv)
-
-        # === MEASUREMENT LAYER: Separate biology from artifacts ===
-        # t_measure is the time this readout is taken (after advance_time, at end of interval)
-        t_measure = self.simulated_time
-
-        # Washout multiplier (MEASUREMENT artifact: sample handling, not biology)
-        # Apply to all scalar assays (LDH, ATP, UPR, trafficking)
-        washout_multiplier = 1.0
-        if ENABLE_INTERVENTION_COSTS and vessel.last_washout_time is not None:
-            time_since_washout = t_measure - vessel.last_washout_time
-            if time_since_washout < WASHOUT_INTENSITY_RECOVERY_H:
-                # Deterministic penalty: 5% intensity drop, linear recovery over 12h
-                recovery_fraction = time_since_washout / WASHOUT_INTENSITY_RECOVERY_H
-                washout_penalty = WASHOUT_INTENSITY_PENALTY * (1.0 - recovery_fraction)
-                washout_multiplier *= (1.0 - washout_penalty)
-                logger.debug(f"Washout intensity penalty (scalar): {washout_penalty:.1%} (Δt={time_since_washout:.1f}h)")
-
-        # Stochastic contamination artifact (separate from deterministic penalty)
-        if vessel.washout_artifact_until_time and t_measure < vessel.washout_artifact_until_time:
-            remaining_time = vessel.washout_artifact_until_time - t_measure
-            decay_fraction = remaining_time / WASHOUT_INTENSITY_RECOVERY_H
-            artifact_effect = vessel.washout_artifact_magnitude * decay_fraction
-            washout_multiplier *= (1.0 - artifact_effect)
-            logger.debug(f"Washout contamination artifact (scalar): {artifact_effect:.1%}")
-
-        # Apply washout (measurement artifact, not biology)
-        ldh_signal *= washout_multiplier
-
-        # Add technical noise (plate, day, operator effects)
-        tech_noise = self.thalamus_params['technical_noise']
-        plate_cv = tech_noise['plate_cv']
-        day_cv = tech_noise['day_cv']
-        operator_cv = tech_noise['operator_cv']
-        well_cv = tech_noise['well_cv']
-        edge_effect = tech_noise.get('edge_effect', 0.0)
-
-        # Extract batch information from kwargs if provided
-        plate_id = kwargs.get('plate_id', 'P1')
-        batch_id = kwargs.get('batch_id', 'batch_default')  # MOVED HERE
-        day = kwargs.get('day', 1)
-        operator = kwargs.get('operator', 'OP1')
-        well_position = kwargs.get('well_position', 'A1')
-
-        # Consistent batch effects per plate/day/operator (deterministic seeding)
-        # Only apply if CV > 0
-        plate_factor = 1.0
-        if plate_cv > 0:
-            rng_plate = np.random.default_rng(stable_u32(f"plate_{self.run_context.seed}_{batch_id}_{plate_id}"))
-            plate_factor = lognormal_multiplier(rng_plate, plate_cv)
-
-        day_factor = 1.0
-        if day_cv > 0:
-            rng_day = np.random.default_rng(stable_u32(f"day_{self.run_context.seed}_{batch_id}_{day}"))
-            day_factor = lognormal_multiplier(rng_day, day_cv)
-
-        operator_factor = 1.0
-        if operator_cv > 0:
-            rng_operator = np.random.default_rng(stable_u32(f"op_{self.run_context.seed}_{batch_id}_{operator}"))
-            operator_factor = lognormal_multiplier(rng_operator, operator_cv)
-
-        # Well factor uses assay RNG (non-deterministic)
-        well_factor = 1.0
-        if well_cv > 0:
-            well_factor = lognormal_multiplier(self.rng_assay, well_cv)
-
-        # Edge effect: wells on plate edges show reduced signal
-        is_edge = self._is_edge_well(well_position)
-        edge_factor = (1.0 - edge_effect) if is_edge else 1.0
-
-        # Phase 5B: Apply run context measurement modifiers (instrument + kit lot effects)
-        # CRITICAL: reader_gain is correlated with illumination_bias (imaging),
-        # so cross-modality disagreement teaches caution (not "always trust scalars")
-        meas_mods = self.run_context.get_measurement_modifiers()
-        reader_gain = meas_mods['reader_gain']  # Plate reader instrument drift (correlated with imaging)
-        scalar_assay_biases = meas_mods['scalar_assay_biases']  # Per-assay kit lot effects
-
-        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * reader_gain
-        ldh_signal *= total_tech_factor * scalar_assay_biases['LDH']
-        ldh_signal = max(0.0, ldh_signal)
-
-        # Apply random well failures (same as morphology)
-        # For scalar assays, failures manifest as extreme outliers
-        failure_rate = tech_noise.get('well_failure_rate', 0.0)
-        if failure_rate > 0:
-            # Use same seeding strategy as morphology (includes run context + batch + plate)
-            rng_failure = np.random.default_rng(stable_u32(f"well_failure_{self.run_context.seed}_{batch_id}_{plate_id}_{well_position}"))
-            if rng_failure.random() <= failure_rate:
-                # Failed well - random extreme value
-                ldh_signal *= rng_failure.choice([0.01, 0.05, 0.1, 5.0, 10.0, 20.0])
-                failure_mode = 'assay_failure'
-                qc_flag = 'FAIL'
-            else:
-                failure_mode = None
-                qc_flag = None
-        else:
-            failure_mode = None
-            qc_flag = None
-
-        # UPR marker (unfolded protein response proxy) - second ER stress sensor
-        # Scales linearly with ER stress latent state
-        # Baseline ~100, increases to ~300 at full ER stress
-        baseline_upr = 100.0
-        upr_marker = baseline_upr * (1.0 + 2.0 * vessel.er_stress)
-
-        # Add biological noise to UPR marker
-        if effective_bio_cv > 0:
-            upr_marker *= lognormal_multiplier(self.rng_assay, effective_bio_cv)
-
-        # Apply washout (measurement artifact, same as LDH)
-        upr_marker *= washout_multiplier
-
-        # Add technical noise + run context modifiers (kit lot + reader gain)
-        upr_marker *= total_tech_factor * scalar_assay_biases['UPR']
-        upr_marker = max(0.0, upr_marker)
-
-        # ATP signal (mito dysfunction proxy) - decreases with mito dysfunction
-        # Baseline ~100, decreases to ~30 at full dysfunction
-        baseline_atp = 100.0
-        atp_signal = baseline_atp * max(0.3, 1.0 - 0.7 * vessel.mito_dysfunction)
-
-        # Add biological noise to ATP signal
-        if effective_bio_cv > 0:
-            atp_signal *= lognormal_multiplier(self.rng_assay, effective_bio_cv)
-
-        # Apply washout (measurement artifact, same as LDH)
-        atp_signal *= washout_multiplier
-
-        # Add technical noise + run context modifiers (kit lot + reader gain)
-        atp_signal *= total_tech_factor * scalar_assay_biases['ATP']
-        atp_signal = max(0.0, atp_signal)
-
-        # Trafficking marker (transport dysfunction proxy) - increases with transport dysfunction
-        # Baseline ~100, increases to ~250 at full dysfunction
-        baseline_trafficking = 100.0
-        trafficking_marker = baseline_trafficking * (1.0 + 1.5 * vessel.transport_dysfunction)
-
-        # Add biological noise to trafficking marker
-        if effective_bio_cv > 0:
-            trafficking_marker *= lognormal_multiplier(self.rng_assay, effective_bio_cv)
-
-        # Apply washout (measurement artifact, same as LDH)
-        trafficking_marker *= washout_multiplier
-
-        # Add technical noise + run context modifiers (kit lot + reader gain)
-        trafficking_marker *= total_tech_factor * scalar_assay_biases['TRAFFICKING']
-        trafficking_marker = max(0.0, trafficking_marker)
-
-        self._simulate_delay(0.5)  # LDH assay is quick
-
-        # Agent 1: Assert measurement did not perturb biological state
-        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
-        assert state_before == state_after, (
-            f"MEASUREMENT PURITY VIOLATION: atp_viability_assay() mutated vessel state!\n"
-            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
-            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
-            f"Measurement functions must be read-only. Observer independence violated."
-        )
-
-        result = {
-            "status": "success",
-            "action": "ldh_viability",
-            "vessel_id": vessel_id,
-            "cell_line": cell_line,
-            "ldh_signal": ldh_signal,
-            "atp_signal": atp_signal,  # Mito dysfunction proxy (100 baseline, 30 at full dysfunction)
-            "upr_marker": upr_marker,  # ER stress proxy (100 baseline, 300 at full stress)
-            "trafficking_marker": trafficking_marker,  # Transport dysfunction proxy (100 baseline, 250 at full dysfunction)
-            "viability": vessel.viability,
-            "cell_count": vessel.cell_count,
-            "death_mode": vessel.death_mode,
-            "death_compound": vessel.death_compound,
-            "death_confluence": vessel.death_confluence,
-            "death_unknown": vessel.death_unknown,
-            "timestamp": datetime.now().isoformat()
-        }
-
-        if failure_mode:
-            result['well_failure'] = failure_mode
-            result['qc_flag'] = qc_flag
-
-        return result
+        return self._ldh_viability_assay.measure(self.vessel_states[vessel_id], **kwargs)
 
     def scrna_seq_assay(
         self,
@@ -3288,157 +2278,28 @@ class BiologicalVirtualMachine(VirtualMachine):
         params_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Simulate single-cell RNA-seq for a vessel using existing latent biology.
+        Simulate single-cell RNA-seq assay.
 
-        MEASUREMENT TIMING: This assay reads at t_measure = self.simulated_time,
-        which is t1 after advance_time() returns. Reads latent stress states
-        (er_stress, mito_dysfunction, transport_dysfunction) as-of measurement time.
-
-        Returns:
-        - gene_names: Ordered list of gene symbols
-        - cell_ids: Ordered list of cell identifiers
-        - counts: UMI count matrix (n_cells × n_genes), int32 numpy array
-        - meta: Per-cell metadata (subpop assignments, library sizes, latents)
-
-        Technical artifacts included:
-        - Dropout (low-expression genes randomly undetected)
-        - Library size variation (UMIs per cell)
-        - Batch effects (multiplicative per-gene biases, stronger than imaging)
-        - Ambient RNA contamination
-        - Subpopulation heterogeneity (coupled to your existing 3-bucket model)
-
-        IMPORTANT: scRNA-seq has STRONGER batch effects than imaging. If you use
-        this in your epistemic loop, you will discover new failure modes where
-        modalities disagree. This is GOOD - it forces robust belief systems.
+        Returns UMI count matrix with realistic batch effects and technical noise.
 
         Args:
             vessel_id: Vessel identifier
             n_cells: Number of cells to profile (default 1000)
             batch_id: Optional batch identifier for batch effects
-            params_path: Optional path to scrna_seq_params.yaml (default: data/scrna_seq_params.yaml)
+            params_path: Optional path to scrna_seq_params.yaml
 
         Returns:
             Dict with counts, metadata, and run information
         """
-        # Lazy load transcriptomics module
-        from .transcriptomics import simulate_scrna_counts
-
         if vessel_id not in self.vessel_states:
             logger.warning(f"Vessel {vessel_id} not found")
             return {"status": "error", "message": "Vessel not found"}
-
-        vessel = self.vessel_states[vessel_id]
-        cell_line = vessel.cell_line
-
-        # Agent 1: Lock measurement purity - capture state before measurement
-        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
-
-        # Default params path
-        if params_path is None:
-            params_path = Path(__file__).parent.parent.parent.parent / "data" / "scrna_seq_params.yaml"
-
-        # Map vessel latent states to transcriptomics program names
-        # IMPORTANT: You currently track er_stress, mito_dysfunction, transport_dysfunction
-        # oxidative_stress and dna_damage are placeholders (you can add these latents later)
-        vessel_latents = {
-            "er_stress": float(vessel.er_stress),
-            "mito_dysfunction": float(vessel.mito_dysfunction),
-            "transport_dysfunction": float(vessel.transport_dysfunction),
-            # Placeholder latents (not tracked yet, but gene programs exist)
-            "oxidative_stress": 0.0,
-            "dna_damage": 0.0,
-            # Contact pressure (measurement confounder, drives systematic program shift)
-            "contact_inhibition": float(getattr(vessel, "contact_pressure", 0.0)),
-        }
-
-        # Extract subpopulation fractions from vessel
-        subpop_fractions = {
-            name: float(subpop['fraction'])
-            for name, subpop in vessel.subpopulations.items()
-        }
-
-        # Couple to RunContext if available (correlated batch drift)
-        run_context_latent = None
-        if hasattr(self, "run_context") and self.run_context is not None:
-            # Use a simple hash of context_id as latent (deterministic per run)
-            # This creates correlated drift across imaging + scRNA in same run
-            run_context_latent = float(hash(self.run_context.context_id) % 1000) / 1000.0 - 0.5
-
-        # Use assay RNG for observer independence (measurement doesn't perturb biology)
-        # This follows your existing RNG discipline from cell_painting_assay
-        result = simulate_scrna_counts(
-            cell_line=cell_line,
-            vessel_latents=vessel_latents,
-            viability=float(vessel.viability),
+        return self._scrna_seq_assay.measure(
+            self.vessel_states[vessel_id],
             n_cells=n_cells,
-            rng=self.rng_assay,
-            params_path=str(params_path),
-            batch_id=batch_id if batch_id is not None else "default",
-            subpop_fractions=subpop_fractions,
-            run_context_latent=run_context_latent,
+            batch_id=batch_id,
+            params_path=params_path
         )
-
-        # Load cost model from params
-        import yaml
-        with open(params_path) as f:
-            params = yaml.safe_load(f)
-
-        costs = params.get("costs", {})
-        time_cost_h = float(costs.get("time_cost_h", 4.0))
-        reagent_cost_usd = float(costs.get("reagent_cost_usd", 200.0))
-        min_cells = int(costs.get("min_cells", 500))
-        soft_penalty = float(costs.get("soft_penalty_if_underpowered", 0.25))
-
-        is_underpowered = (n_cells < min_cells)
-
-        # Apply cost inflation from epistemic debt (if enabled)
-        actual_cost_usd = reagent_cost_usd
-        cost_multiplier = 1.0
-        epistemic_debt = 0.0
-
-        if self.epistemic_controller is not None:
-            actual_cost_usd = self.epistemic_controller.get_inflated_cost(reagent_cost_usd)
-            cost_multiplier = self.epistemic_controller.get_cost_multiplier()
-            epistemic_debt = self.epistemic_controller.get_total_debt()
-
-        # Apply time cost: scRNA takes longer, increasing drift exposure
-        # This is CRITICAL: time_cost_h should increase nuisance risk in your planner
-        self._simulate_delay(time_cost_h)
-
-        # Agent 1: Assert measurement did not perturb biological state
-        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
-        assert state_before == state_after, (
-            f"MEASUREMENT PURITY VIOLATION: scrna_seq_assay() mutated vessel state!\n"
-            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
-            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
-            f"Measurement functions must be read-only. Observer independence violated."
-        )
-
-        return {
-            "status": "success",
-            "action": "scrna_seq",
-            "vessel_id": vessel_id,
-            "cell_line": cell_line,
-            "gene_names": result.gene_names,
-            "cell_ids": result.cell_ids,
-            "counts": result.counts,  # numpy array (n_cells, n_genes), int32
-            "meta": result.meta,
-            "n_cells": len(result.cell_ids),
-            "n_genes": len(result.gene_names),
-            "timestamp": datetime.now().isoformat(),
-            # Expose batch metadata for epistemic control
-            "batch_id": batch_id,
-            "run_context_id": self.run_context.context_id if hasattr(self, "run_context") else None,
-            # Cost model: scRNA is expensive and slow
-            "time_cost_h": time_cost_h,
-            "reagent_cost_usd": reagent_cost_usd,
-            "actual_cost_usd": actual_cost_usd,  # After debt inflation
-            "cost_multiplier": cost_multiplier,
-            "epistemic_debt": epistemic_debt,
-            "min_cells_required": min_cells,
-            "is_underpowered": is_underpowered,
-            "soft_penalty_if_underpowered": soft_penalty if is_underpowered else 0.0,
-        }
 
     def _update_contact_pressure(self, vessel: VesselState, dt_h: float):
         """
