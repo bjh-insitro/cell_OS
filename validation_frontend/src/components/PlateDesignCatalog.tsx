@@ -19,6 +19,30 @@ interface PlateDesign {
 
 const PLATE_DESIGNS: PlateDesign[] = [
   {
+    id: 'cal_384_rules_world_v3',
+    name: 'CAL_384_RULES_WORLD_v3',
+    version: '3.0',
+    status: 'proposed',
+    intent: 'Micro-checkerboard: decorrelate biology from geometry without neighbor chaos',
+    wells_total: 384,
+    wells_used: 384,
+    timepoint_hours: 48,
+    cell_lines: 2,
+    treatments: ['2×2 tiled HepG2/A549', 'Density gradient', 'Stain probes', 'Focus probes', 'Timing probes', 'Anchors (Nocodazole, Thapsigargin)', 'Contrastive tiles'],
+    design_goals: [
+      'Decorrelate row/column from cell line (2×2 micro-checkerboard)',
+      'Minimal confound structure: row ⊥ biology, column ⊥ biology',
+      'Preserve local biology sanity (no single-well checkerboard)',
+      'Maintain density gradient orthogonality',
+      'Test spatial correction with minimal assumptions',
+      'Interrogate pipeline assumptions about neighbor coupling',
+      'Stress-test focus/stain/timing probes with tiled layout',
+      'Validate anchor separability with checkerboard background'
+    ],
+    cost_estimate: 1950,
+    thumbnail_color: 'from-emerald-600 to-emerald-700'
+  },
+  {
     id: 'cal_384_rules_world_v2',
     name: 'CAL_384_RULES_WORLD_v2',
     version: '2.0',

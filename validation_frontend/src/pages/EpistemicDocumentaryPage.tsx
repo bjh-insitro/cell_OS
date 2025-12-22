@@ -732,6 +732,7 @@ type TabType = 'timeline' | 'catalog' | 'calibration' | 'runs';
 const AVAILABLE_DESIGNS = [
   { id: 'v1', name: 'CAL_384_RULES_WORLD_v1', description: 'Simple calibration' },
   { id: 'v2', name: 'CAL_384_RULES_WORLD_v2', description: 'Advanced calibration' },
+  { id: 'v3', name: 'CAL_384_RULES_WORLD_v3', description: 'Micro-checkerboard' },
   { id: 'microscope', name: 'CAL_384_MICROSCOPE_BEADS_DYES_v1', description: 'Microscope calibration' },
   { id: 'lh', name: 'CAL_384_LH_ARTIFACTS_v1', description: 'Liquid handler artifacts' },
   { id: 'variance', name: 'CAL_VARIANCE_PARTITION_v1', description: 'Variance components' },
