@@ -51,35 +51,44 @@ export default function PlateDesignComparisonPage() {
   }, []);
 
   const loadAllResults = async () => {
-    const v1Map = new Map<number, PlateResult>();
-    const v2Map = new Map<number, PlateResult>();
+    try {
+      const v1Map = new Map<number, PlateResult>();
+      const v2Map = new Map<number, PlateResult>();
 
-    // Load manifest to get file paths
-    const manifest = await fetch('/demo_results/calibration_plates/runs_manifest.json').then(r => r.json());
+      // Load manifest to get file paths
+      const manifest = await fetch('/demo_results/calibration_plates/runs_manifest.json').then(r => r.json());
 
-    for (const seed of SEEDS) {
-      // Find v1 and v2 results for this seed
-      const v1Run = manifest.runs.find((r: any) =>
-        r.plate_id === 'CAL_384_RULES_WORLD_v1' && r.seed === seed
-      );
-      const v2Run = manifest.runs.find((r: any) =>
-        r.plate_id === 'CAL_384_RULES_WORLD_v2' && r.seed === seed
-      );
+      for (const seed of SEEDS) {
+        // Find v1 and v2 results for this seed
+        const v1Run = manifest.runs.find((r: any) =>
+          r.plate_id === 'CAL_384_RULES_WORLD_v1' && r.seed === seed
+        );
+        const v2Run = manifest.runs.find((r: any) =>
+          r.plate_id === 'CAL_384_RULES_WORLD_v2' && r.seed === seed
+        );
 
-      if (v1Run) {
-        const data = await fetch(`/${v1Run.file_path}`).then(r => r.json());
-        v1Map.set(seed, data);
+        if (v1Run) {
+          // Strip validation_frontend/public/ prefix if present
+          const path = v1Run.file_path.replace('validation_frontend/public/', '');
+          const data = await fetch(`/${path}`).then(r => r.json());
+          v1Map.set(seed, data);
+        }
+
+        if (v2Run) {
+          // Strip validation_frontend/public/ prefix if present
+          const path = v2Run.file_path.replace('validation_frontend/public/', '');
+          const data = await fetch(`/${path}`).then(r => r.json());
+          v2Map.set(seed, data);
+        }
       }
 
-      if (v2Run) {
-        const data = await fetch(`/${v2Run.file_path}`).then(r => r.json());
-        v2Map.set(seed, data);
-      }
+      setV1Data(v1Map);
+      setV2Data(v2Map);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading comparison data:', error);
+      setLoading(false);
     }
-
-    setV1Data(v1Map);
-    setV2Data(v2Map);
-    setLoading(false);
   };
 
   const getFeatureValue = (wellData: WellData, feature: string): number => {
