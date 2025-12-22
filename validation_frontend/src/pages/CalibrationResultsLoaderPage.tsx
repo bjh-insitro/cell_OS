@@ -31,24 +31,24 @@ export default function CalibrationResultsLoaderPage() {
 
       // Convert flat_results to WellMeasurement format
       const converted: WellMeasurement[] = data.flat_results.map((r: any) => ({
-        well_id: r.well_id,
+        wellId: r.well_id,
         row: r.row,
         col: r.col,
-        measurements: {
+        channels: {
+          dna: r.morph_nucleus || 0,
           er: r.morph_er || 0,
+          agp: r.morph_actin || 0,
           mito: r.morph_mito || 0,
-          nucleus: r.morph_nucleus || 0,
-          actin: r.morph_actin || 0,
           rna: r.morph_rna || 0
         },
         metadata: {
-          cell_line: r.cell_line,
-          compound: r.compound,
-          dose_uM: r.dose_uM,
+          cellLine: r.cell_line,
+          treatment: r.treatment,
+          dose: r.dose_uM,
           time_h: r.time_h,
           viability: r.viability,
           n_cells: r.n_cells,
-          treatment: r.treatment,
+          compound: r.compound,
           cell_density: r.cell_density,
           stain_scale: r.stain_scale,
           focus_offset_um: r.focus_offset_um,

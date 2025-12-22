@@ -92,7 +92,6 @@ class PlateMapErrorInjection(Injection):
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__(config)
         self.config = config or {}
 
         # Error rate (Bernoulli per plate)
@@ -344,3 +343,30 @@ class PlateMapErrorInjection(Injection):
             'error_description': state.error_parameters.get('description', 'None'),
             'forensic_signature': state.forensic_signature if state.error_active else 'None'
         }
+
+    # Required abstract method implementations (minimal stubs for now)
+    def create_state(self, vessel_id: str, context: InjectionContext) -> PlateMapErrorState:
+        """Create initial state (sampled per plate, not per vessel)."""
+        rng = np.random.default_rng()
+        return self.initialize_state(context, rng)
+
+    def apply_time_step(self, state: PlateMapErrorState, dt: float, context: InjectionContext) -> None:
+        """No time evolution for plate map errors."""
+        pass
+
+    def on_event(self, state: PlateMapErrorState, context: InjectionContext) -> None:
+        """No event-driven updates."""
+        pass
+
+    def get_biology_modifiers(self, state: PlateMapErrorState, context: InjectionContext) -> Dict[str, Any]:
+        """Plate map errors don't modify biology."""
+        return {}
+
+    def get_measurement_modifiers(self, state: PlateMapErrorState, context: InjectionContext) -> Dict[str, Any]:
+        """No measurement modifiers."""
+        return {}
+
+    def pipeline_transform(self, observation: Dict[str, Any], state: PlateMapErrorState,
+                          context: InjectionContext) -> Dict[str, Any]:
+        """No pipeline transform (errors happen at execution, not measurement)."""
+        return observation

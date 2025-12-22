@@ -106,7 +106,6 @@ class SegmentationFailureInjection(Injection):
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__(config)
         self.config = config or {}
 
         # Severity knobs
@@ -402,3 +401,30 @@ class SegmentationFailureInjection(Injection):
             'size_bias': state.size_bias,
             'warnings': state.qc_warnings
         }
+
+    # Required abstract method implementations (minimal stubs for now)
+    def create_state(self, vessel_id: str, context: InjectionContext) -> SegmentationFailureState:
+        """Create initial state."""
+        return SegmentationFailureState()
+
+    def apply_time_step(self, state: SegmentationFailureState, dt: float, context: InjectionContext) -> None:
+        """No time evolution for segmentation state."""
+        pass
+
+    def on_event(self, state: SegmentationFailureState, context: InjectionContext) -> None:
+        """No event-driven updates."""
+        pass
+
+    def get_biology_modifiers(self, state: SegmentationFailureState, context: InjectionContext) -> Dict[str, Any]:
+        """Segmentation doesn't modify biology."""
+        return {}
+
+    def get_measurement_modifiers(self, state: SegmentationFailureState, context: InjectionContext) -> Dict[str, Any]:
+        """Return segmentation quality as modifier."""
+        return {'segmentation_quality': state.segmentation_quality}
+
+    def pipeline_transform(self, observation: Dict[str, Any], state: SegmentationFailureState,
+                          context: InjectionContext) -> Dict[str, Any]:
+        """Transform observations through segmentation distortion."""
+        # Would apply count/feature distortions here
+        return observation
