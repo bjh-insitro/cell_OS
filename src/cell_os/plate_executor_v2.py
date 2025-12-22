@@ -225,102 +225,170 @@ def parse_plate_design_v2(json_path: Path) -> Tuple[List[ParsedWell], Dict]:
     Returns:
         (parsed_wells, metadata) where metadata contains precomputed maps
     """
-    with open(json_path) as f:
-        design = json.load(f)
-
-    # Precompute assignment maps and validate
-    well_to_tile, well_to_anchor, well_to_probe_type = build_assignment_maps(design)
-
-    plate = design["plate"]
-    global_defaults = design["global_defaults"]
-    cell_lines_map = design["cell_lines"]["row_to_cell_line"]
-    non_bio = design["non_biological_provocations"]
-    anchors_data = {a['anchor_id']: a for a in design['biological_anchors']['anchors']}
-
-    # Background wells set (highest precedence)
-    background_wells = set(non_bio['background_controls']['wells_no_cells'])
+    design, well_to_tile, well_to_anchor, well_to_probe_type = _load_and_validate_design(json_path)
+    design_components = _extract_design_components(design)
+    background_wells = set(design_components['non_bio']['background_controls']['wells_no_cells'])
 
     wells = []
-    rows = plate["rows"]
-    cols = plate["cols"]
-
-    for row in rows:
-        for col in cols:
+    for row in design_components['rows']:
+        for col in design_components['cols']:
             well_id = f"{row}{col}"
+            assignment = _build_well_assignment(
+                well_id, row, col,
+                design_components,
+                well_to_tile, well_to_anchor, well_to_probe_type,
+                background_wells
+            )
+            wells.append(_create_parsed_well(well_id, row, col, assignment))
 
-            # Start with defaults
-            assignment = global_defaults["default_assignment"].copy()
-            assignment["timepoint_hours"] = global_defaults["timepoint_hours"]
-            assignment["cell_line"] = cell_lines_map[row]
+    metadata = _build_metadata(well_to_tile, well_to_anchor, well_to_probe_type, background_wells)
+    return wells, metadata
 
-            # Apply density gradient by column
-            if col in non_bio["cell_density_gradient"]["rule"]["LOW_cols"]:
-                assignment["cell_density"] = "LOW"
-            elif col in non_bio["cell_density_gradient"]["rule"]["HIGH_cols"]:
-                assignment["cell_density"] = "HIGH"
-            else:
-                assignment["cell_density"] = "NOMINAL"
 
-            # Apply probe settings
-            if well_id in well_to_probe_type:
-                probes = well_to_probe_type[well_id]
-                if 'stain_scale_probes' in probes:
-                    level = probes['stain_scale_probes']
-                    assignment["stain_scale"] = non_bio["stain_scale_probes"]["levels"][level]
-                if 'fixation_timing_probes' in probes:
-                    level = probes['fixation_timing_probes']
-                    assignment["fixation_timing_offset_min"] = non_bio["fixation_timing_probes"]["levels"][level]
-                if 'imaging_focus_probes' in probes:
-                    level = probes['imaging_focus_probes']
-                    assignment["imaging_focus_offset_um"] = non_bio["imaging_focus_probes"]["levels"][level]
+def _load_and_validate_design(json_path: Path):
+    """Load JSON design and build assignment maps."""
+    with open(json_path) as f:
+        design = json.load(f)
+    well_to_tile, well_to_anchor, well_to_probe_type = build_assignment_maps(design)
+    return design, well_to_tile, well_to_anchor, well_to_probe_type
 
-            # Apply anchors
-            if well_id in well_to_anchor:
-                anchor_id = well_to_anchor[well_id]
-                anchor = anchors_data[anchor_id]
-                assignment["treatment"] = anchor_id
-                assignment["reagent"] = anchor["reagent"]
-                assignment["dose_uM"] = anchor["dose_uM"]
 
-            # Apply tiles (overrides anchors)
-            if well_id in well_to_tile:
-                tile = well_to_tile[well_id]
-                tile_assignment = tile["assignment"]
-                assignment["treatment"] = tile_assignment["treatment"]
-                assignment["reagent"] = tile_assignment["reagent"]
-                assignment["dose_uM"] = tile_assignment["dose_uM"]
-                if "cell_density" in tile_assignment:
-                    assignment["cell_density"] = tile_assignment["cell_density"]
+def _extract_design_components(design: Dict) -> Dict:
+    """Extract key components from design specification."""
+    return {
+        'plate': design["plate"],
+        'rows': design["plate"]["rows"],
+        'cols': design["plate"]["cols"],
+        'global_defaults': design["global_defaults"],
+        'cell_lines_map': design["cell_lines"]["row_to_cell_line"],
+        'non_bio': design["non_biological_provocations"],
+        'anchors_data': {a['anchor_id']: a for a in design['biological_anchors']['anchors']}
+    }
 
-            # Apply background (highest precedence)
-            if well_id in background_wells:
-                bg_assignment = non_bio["background_controls"]["assignment"]
-                assignment.update(bg_assignment)
 
-            # Create ParsedWell
-            wells.append(ParsedWell(
-                well_id=well_id,
-                row=row,
-                col=col,
-                cell_line=assignment["cell_line"],
-                treatment=assignment["treatment"],
-                reagent=assignment["reagent"],
-                dose_uM=assignment["dose_uM"],
-                cell_density=assignment["cell_density"],
-                stain_scale=assignment.get("stain_scale", 1.0),
-                fixation_timing_offset_min=assignment.get("fixation_timing_offset_min", 0),
-                imaging_focus_offset_um=assignment.get("imaging_focus_offset_um", 0),
-                timepoint_hours=assignment["timepoint_hours"]
-            ))
+def _build_well_assignment(
+    well_id: str,
+    row: str,
+    col: int,
+    design_components: Dict,
+    well_to_tile: Dict,
+    well_to_anchor: Dict,
+    well_to_probe_type: Dict,
+    background_wells: set
+) -> Dict:
+    """Build complete assignment for a single well by applying precedence rules."""
+    global_defaults = design_components['global_defaults']
+    cell_lines_map = design_components['cell_lines_map']
+    non_bio = design_components['non_bio']
+    anchors_data = design_components['anchors_data']
 
-    metadata = {
+    # Initialize with defaults
+    assignment = global_defaults["default_assignment"].copy()
+    assignment["timepoint_hours"] = global_defaults["timepoint_hours"]
+    assignment["cell_line"] = cell_lines_map[row]
+
+    # Apply modifications in precedence order (lowest to highest)
+    _apply_density_gradient(assignment, col, non_bio)
+    _apply_probe_settings(assignment, well_id, well_to_probe_type, non_bio)
+    _apply_anchor(assignment, well_id, well_to_anchor, anchors_data)
+    _apply_tile(assignment, well_id, well_to_tile)
+    _apply_background(assignment, well_id, background_wells, non_bio)
+
+    return assignment
+
+
+def _apply_density_gradient(assignment: Dict, col: int, non_bio: Dict):
+    """Apply cell density gradient based on column."""
+    gradient = non_bio["cell_density_gradient"]["rule"]
+    if col in gradient["LOW_cols"]:
+        assignment["cell_density"] = "LOW"
+    elif col in gradient["HIGH_cols"]:
+        assignment["cell_density"] = "HIGH"
+    else:
+        assignment["cell_density"] = "NOMINAL"
+
+
+def _apply_probe_settings(assignment: Dict, well_id: str, well_to_probe_type: Dict, non_bio: Dict):
+    """Apply probe settings (stain scale, fixation timing, imaging focus)."""
+    if well_id not in well_to_probe_type:
+        return
+
+    probes = well_to_probe_type[well_id]
+    if 'stain_scale_probes' in probes:
+        level = probes['stain_scale_probes']
+        assignment["stain_scale"] = non_bio["stain_scale_probes"]["levels"][level]
+    if 'fixation_timing_probes' in probes:
+        level = probes['fixation_timing_probes']
+        assignment["fixation_timing_offset_min"] = non_bio["fixation_timing_probes"]["levels"][level]
+    if 'imaging_focus_probes' in probes:
+        level = probes['imaging_focus_probes']
+        assignment["imaging_focus_offset_um"] = non_bio["imaging_focus_probes"]["levels"][level]
+
+
+def _apply_anchor(assignment: Dict, well_id: str, well_to_anchor: Dict, anchors_data: Dict):
+    """Apply biological anchor (treatment, reagent, dose)."""
+    if well_id not in well_to_anchor:
+        return
+
+    anchor_id = well_to_anchor[well_id]
+    anchor = anchors_data[anchor_id]
+    assignment["treatment"] = anchor_id
+    assignment["reagent"] = anchor["reagent"]
+    assignment["dose_uM"] = anchor["dose_uM"]
+
+
+def _apply_tile(assignment: Dict, well_id: str, well_to_tile: Dict):
+    """Apply contrastive tile (overrides anchors)."""
+    if well_id not in well_to_tile:
+        return
+
+    tile = well_to_tile[well_id]
+    tile_assignment = tile["assignment"]
+    assignment["treatment"] = tile_assignment["treatment"]
+    assignment["reagent"] = tile_assignment["reagent"]
+    assignment["dose_uM"] = tile_assignment["dose_uM"]
+    if "cell_density" in tile_assignment:
+        assignment["cell_density"] = tile_assignment["cell_density"]
+
+
+def _apply_background(assignment: Dict, well_id: str, background_wells: set, non_bio: Dict):
+    """Apply background control (highest precedence)."""
+    if well_id in background_wells:
+        bg_assignment = non_bio["background_controls"]["assignment"]
+        assignment.update(bg_assignment)
+
+
+def _create_parsed_well(well_id: str, row: str, col: int, assignment: Dict) -> ParsedWell:
+    """Create ParsedWell object from assignment dictionary."""
+    return ParsedWell(
+        well_id=well_id,
+        row=row,
+        col=col,
+        cell_line=assignment["cell_line"],
+        treatment=assignment["treatment"],
+        reagent=assignment["reagent"],
+        dose_uM=assignment["dose_uM"],
+        cell_density=assignment["cell_density"],
+        stain_scale=assignment.get("stain_scale", 1.0),
+        fixation_timing_offset_min=assignment.get("fixation_timing_offset_min", 0),
+        imaging_focus_offset_um=assignment.get("imaging_focus_offset_um", 0),
+        timepoint_hours=assignment["timepoint_hours"]
+    )
+
+
+def _build_metadata(
+    well_to_tile: Dict,
+    well_to_anchor: Dict,
+    well_to_probe_type: Dict,
+    background_wells: set
+) -> Dict:
+    """Build metadata dictionary with precomputed maps."""
+    return {
         'well_to_tile': well_to_tile,
         'well_to_anchor': well_to_anchor,
         'well_to_probe_type': well_to_probe_type,
         'background_wells': list(background_wells)  # Convert set to list for JSON
     }
-
-    return wells, metadata
 
 
 # ============================================================================

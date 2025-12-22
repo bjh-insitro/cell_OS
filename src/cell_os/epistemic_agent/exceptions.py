@@ -8,7 +8,61 @@ and force a fix.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
+
+
+# Type aliases for execution integrity
+IntegritySeverity = Literal["none", "warning", "halt", "fatal"]
+IntegrityAction = Literal["none", "continue", "cautious", "soft_halt", "hard_halt", "diagnose"]
+
+
+@dataclass
+class IntegrityViolation:
+    """
+    A single execution integrity violation with evidence.
+
+    This is a fact: a measurable signal that something went wrong.
+    The violation does NOT encode what action to take - that's for policy.
+
+    Examples:
+    - "anchor_position_mismatch": Anchors appear in wrong wells
+    - "replicate_clustering_failed": Replicates don't cluster as expected
+    - "dose_monotonicity_broken": Dose-response is inverted or non-monotonic
+    """
+    code: str  # Machine-readable violation type
+    severity: IntegritySeverity  # Local severity for this violation
+    summary: str  # Human-readable one-liner
+    evidence: Dict[str, Any] = field(default_factory=dict)
+    supporting_conditions: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ExecutionIntegrityState:
+    """
+    Current state of execution integrity tracking.
+
+    This is the single source of truth for "do we trust the plate map?"
+
+    Design principles:
+    - Violations are facts (measurable signals)
+    - Severity is aggregate judgment (based on violations)
+    - Action is policy recommendation (not hardcoded)
+    - Hysteresis prevents noise-triggered halts
+    """
+    suspect: bool = False
+    severity: IntegritySeverity = "none"
+    recommended_action: IntegrityAction = "none"
+    violations: List[IntegrityViolation] = field(default_factory=list)
+
+    # Hysteresis: prevent false alarms from noisy signals
+    last_check_cycle: Optional[int] = None
+    consecutive_bad_checks: int = 0
+    consecutive_good_checks: int = 0
+
+    # Recovery protocol tracking
+    diagnosis_in_progress: bool = False
+    last_diagnostic_template: Optional[str] = None
+    last_diagnostic_result: Optional[str] = None  # "cleared" | "confirmed" | "inconclusive"
 
 
 class EpistemicInvariantError(RuntimeError):
@@ -244,3 +298,54 @@ class TemporalProvenanceError(EpistemicInvariantError):
                 self.details,
             ),
         )
+
+
+class ExecutionIntegrityViolation(RuntimeError):
+    """
+    Raised when execution integrity checks detect plate map errors.
+
+    This is NOT an epistemic invariant violation - it's a detected
+    failure in the physical execution layer (robot errors, swapped reagents, etc.)
+
+    The agent detected this, which is GOOD. The question is what to do about it.
+
+    Usage:
+    - In CI/deterministic tests: throw on "halt" or "fatal"
+    - In interactive exploration: soft halt and propose diagnostic
+    - In production: escalate to human intervention
+
+    Structured fields:
+    - integrity_state: Full execution integrity state with violations
+    - message: Human-readable error description
+    """
+
+    def __init__(self, message: str, integrity_state: ExecutionIntegrityState):
+        super().__init__(message)
+        self.integrity_state = integrity_state
+
+    def __reduce__(self):
+        """Enable pickle serialization for multiprocessing and persistence."""
+        return (
+            self.__class__,
+            (self.args[0], self.integrity_state),
+        )
+
+
+class ExecutionIntegrityFatal(ExecutionIntegrityViolation):
+    """
+    Raised when execution integrity failure is unrecoverable.
+
+    This is the "stop everything, human required" state.
+
+    Triggers:
+    - Multiple simultaneous violations (e.g., anchors wrong + dose inverted)
+    - Violations with high spatial consistency (rigid transforms like column shift)
+    - Diagnostic confirms systematic error
+
+    The agent cannot self-heal from this. Requires:
+    - Manual plate inspection
+    - Re-running experiments
+    - Investigation of root cause (robot calibration, worklist error, etc.)
+    """
+
+    pass

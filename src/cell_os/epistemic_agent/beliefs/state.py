@@ -18,7 +18,11 @@ from dataclasses import dataclass, field
 import math
 import numpy as np
 from .ledger import EvidenceEvent, cond_key
-from ..exceptions import BeliefLedgerInvariantError
+from ..exceptions import (
+    BeliefLedgerInvariantError,
+    ExecutionIntegrityState,
+    IntegrityViolation,
+)
 
 
 def _inv_norm_cdf(p: float) -> float:
@@ -157,6 +161,9 @@ class BeliefState:
     epistemic_debt_bits: float = 0.0         # Last known debt level
     consecutive_refusals: int = 0            # Count of refusals in a row (backoff trigger)
     last_refusal_reason: Optional[str] = None  # Most recent refusal reason
+
+    # Execution integrity tracking (plate map error detection)
+    execution_integrity: ExecutionIntegrityState = field(default_factory=ExecutionIntegrityState)
 
     # Evidence ledger
     _cycle: int = 0
@@ -843,250 +850,285 @@ class BeliefState:
         v0.4.2: Gate based on rel_width ≤ 0.25 (not arbitrary df threshold).
         Emits gate_event when earned, gate_loss when revoked.
         """
-        # Find DMSO baseline conditions
-        dmso_conditions = [c for c in conditions if c.compound == 'DMSO' and c.position_tag == 'center']
-
+        dmso_conditions = self._find_dmso_baselines(conditions)
         if not dmso_conditions:
             return
 
         for cond in dmso_conditions:
-            n = cond.n_wells
             condition_key = cond_key(cond)
 
-            # 1) Track per-channel CV for transparency
-            if cond.feature_means:
-                new_cv_by_channel = dict(self.baseline_cv_by_channel)  # Copy existing
-                for ch, mean_val in cond.feature_means.items():
-                    std_val = cond.feature_stds.get(ch, 0.0)
-                    if mean_val > 0:
-                        new_cv_by_channel[ch] = float(std_val / mean_val)
+            # Update calibration tracking
+            self._update_channel_cvs(cond, condition_key)
 
-                self._set(
-                    "baseline_cv_by_channel",
-                    new_cv_by_channel,
-                    evidence={"n_wells": n, "condition": condition_key},
-                    supporting_conditions=[condition_key],
-                    note=f"Updated baseline CV from {n} DMSO wells"
-                )
+            # Update pooled variance and compute sigma + CI
+            rel_width = self._update_pooled_variance(cond, condition_key)
+
+            # Detect drift in sigma estimates
+            drift_metric = self._update_drift_metric(cond)
+
+            # Evaluate gate status with hysteresis
+            self._update_noise_gate_status(rel_width, drift_metric, condition_key)
+
+            # Emit diagnostic event
+            self._emit_noise_diagnostic(cond, condition_key, diagnostics_out)
+
+    def _find_dmso_baselines(self, conditions: List) -> List:
+        """Extract DMSO baseline conditions from center wells."""
+        return [c for c in conditions if c.compound == 'DMSO' and c.position_tag == 'center']
+
+    def _update_channel_cvs(self, cond, condition_key: str):
+        """Update per-channel CV tracking and calibration counters."""
+        n = cond.n_wells
+
+        # Track per-channel CV for transparency
+        if cond.feature_means:
+            new_cv_by_channel = dict(self.baseline_cv_by_channel)
+            for ch, mean_val in cond.feature_means.items():
+                std_val = cond.feature_stds.get(ch, 0.0)
+                if mean_val > 0:
+                    new_cv_by_channel[ch] = float(std_val / mean_val)
 
             self._set(
-                "calibration_reps",
-                self.calibration_reps + n,
+                "baseline_cv_by_channel",
+                new_cv_by_channel,
                 evidence={"n_wells": n, "condition": condition_key},
                 supporting_conditions=[condition_key],
-                note=f"Added {n} calibration replicates"
+                note=f"Updated baseline CV from {n} DMSO wells"
+            )
+
+        self._set(
+            "calibration_reps",
+            self.calibration_reps + n,
+            evidence={"n_wells": n, "condition": condition_key},
+            supporting_conditions=[condition_key],
+            note=f"Added {n} calibration replicates"
+        )
+
+        self._set(
+            "baseline_std_scalar",
+            float(cond.std),
+            evidence={"value": float(cond.std), "condition": condition_key},
+            supporting_conditions=[condition_key],
+            note="Updated baseline std"
+        )
+
+        self._set(
+            "baseline_cv_scalar",
+            float(cond.cv),
+            evidence={"value": float(cond.cv), "condition": condition_key},
+            supporting_conditions=[condition_key],
+            note="Updated baseline CV"
+        )
+
+        new_cv_history = list(self.cv_history)
+        new_cv_history.append(float(cond.cv))
+        self._set(
+            "cv_history",
+            new_cv_history,
+            evidence={"cv": float(cond.cv), "condition": condition_key},
+            supporting_conditions=[condition_key],
+            note="Added CV to history"
+        )
+
+    def _update_pooled_variance(self, cond, condition_key: str) -> Optional[float]:
+        """Update pooled variance and compute sigma + CI.
+
+        Returns:
+            Relative width of CI (rel_width), or None if not computable
+        """
+        n = cond.n_wells
+        df = n - 1
+        sse = df * (float(cond.std) ** 2)
+
+        self._set(
+            "noise_df_total",
+            self.noise_df_total + df,
+            evidence={"df": df, "sse": sse, "condition": condition_key},
+            supporting_conditions=[condition_key],
+            note=f"Added {df} df from calibration"
+        )
+
+        self._set(
+            "noise_sse_total",
+            self.noise_sse_total + sse,
+            evidence={"df": df, "sse": sse, "condition": condition_key},
+            supporting_conditions=[condition_key],
+            note=f"Added {sse:.4f} SSE from calibration"
+        )
+
+        # Compute pooled sigma + CI
+        if self.noise_df_total > 0 and self.noise_sse_total > 0:
+            sigma2_hat = self.noise_sse_total / self.noise_df_total
+            sigma_hat = math.sqrt(max(sigma2_hat, 0.0))
+            ci_low, ci_high = _sigma_ci_from_pooled(self.noise_sse_total, self.noise_df_total, alpha=0.05)
+
+            self._set(
+                "noise_sigma_hat",
+                sigma_hat,
+                evidence={"sigma": sigma_hat, "df": self.noise_df_total},
+                supporting_conditions=[condition_key],
+                note="Updated pooled noise estimate"
             )
 
             self._set(
-                "baseline_std_scalar",
-                float(cond.std),
-                evidence={"value": float(cond.std), "condition": condition_key},
+                "noise_ci_low",
+                ci_low,
+                evidence={"ci_low": ci_low, "ci_high": ci_high, "df": self.noise_df_total},
                 supporting_conditions=[condition_key],
-                note="Updated baseline std"
+                note="Updated noise CI lower bound"
             )
 
             self._set(
-                "baseline_cv_scalar",
-                float(cond.cv),
-                evidence={"value": float(cond.cv), "condition": condition_key},
+                "noise_ci_high",
+                ci_high,
+                evidence={"ci_low": ci_low, "ci_high": ci_high, "df": self.noise_df_total},
                 supporting_conditions=[condition_key],
-                note="Updated baseline CV"
+                note="Updated noise CI upper bound"
             )
 
-            new_cv_history = list(self.cv_history)
-            new_cv_history.append(float(cond.cv))
-            self._set(
-                "cv_history",
-                new_cv_history,
-                evidence={"cv": float(cond.cv), "condition": condition_key},
-                supporting_conditions=[condition_key],
-                note="Added CV to history"
-            )
-
-            # 2) Pooled variance update using (n, std)
-            df = n - 1
-            sse = df * (float(cond.std) ** 2)
-
-            self._set(
-                "noise_df_total",
-                self.noise_df_total + df,
-                evidence={"df": df, "sse": sse, "condition": condition_key},
-                supporting_conditions=[condition_key],
-                note=f"Added {df} df from calibration"
-            )
-
-            self._set(
-                "noise_sse_total",
-                self.noise_sse_total + sse,
-                evidence={"df": df, "sse": sse, "condition": condition_key},
-                supporting_conditions=[condition_key],
-                note=f"Added {sse:.4f} SSE from calibration"
-            )
-
-            # 3) Compute pooled sigma + CI
-            if self.noise_df_total > 0 and self.noise_sse_total > 0:
-                sigma2_hat = self.noise_sse_total / self.noise_df_total
-                sigma_hat = math.sqrt(max(sigma2_hat, 0.0))
-                ci_low, ci_high = _sigma_ci_from_pooled(self.noise_sse_total, self.noise_df_total, alpha=0.05)
-
-                self._set(
-                    "noise_sigma_hat",
-                    sigma_hat,
-                    evidence={"sigma": sigma_hat, "df": self.noise_df_total},
-                    supporting_conditions=[condition_key],
-                    note="Updated pooled noise estimate"
-                )
-
-                self._set(
-                    "noise_ci_low",
-                    ci_low,
-                    evidence={"ci_low": ci_low, "ci_high": ci_high, "df": self.noise_df_total},
-                    supporting_conditions=[condition_key],
-                    note="Updated noise CI lower bound"
-                )
-
-                self._set(
-                    "noise_ci_high",
-                    ci_high,
-                    evidence={"ci_low": ci_low, "ci_high": ci_high, "df": self.noise_df_total},
-                    supporting_conditions=[condition_key],
-                    note="Updated noise CI upper bound"
-                )
-
-                if ci_low is not None and ci_high is not None and sigma_hat > 0:
-                    # TEMP FIX: use abs() since ci_low/ci_high swap bug in chi2 approx
-                    rel_width = abs(ci_high - ci_low) / sigma_hat
-                else:
-                    rel_width = None
-
-                rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "unknown"
-                self._set(
-                    "noise_rel_width",
-                    rel_width,
-                    evidence={"rel_width": rel_width, "df": self.noise_df_total},
-                    supporting_conditions=[condition_key],
-                    note=f"Noise CI width: {rel_width_str}"
-                )
+            if ci_low is not None and ci_high is not None and sigma_hat > 0:
+                # TEMP FIX: use abs() since ci_low/ci_high swap bug in chi2 approx
+                rel_width = abs(ci_high - ci_low) / sigma_hat
             else:
-                sigma_hat = None
                 rel_width = None
 
-            # 4) Drift detection on per-cycle sigma estimates
-            drift_metric = None
-            sigma_cycle = float(cond.std)
-            self.noise_sigma_cycle_history.append(sigma_cycle)
-            if len(self.noise_sigma_cycle_history) > 20:
-                self.noise_sigma_cycle_history = self.noise_sigma_cycle_history[-20:]
-
-            k = 5
-            if len(self.noise_sigma_cycle_history) >= 2 * k and self.noise_sigma_hat:
-                prev = self.noise_sigma_cycle_history[-2*k:-k]
-                recent = self.noise_sigma_cycle_history[-k:]
-                prev_m = float(np.mean(prev))
-                recent_m = float(np.mean(recent))
-                drift_metric = abs(recent_m - prev_m) / float(self.noise_sigma_hat)
-            self.noise_drift_metric = drift_metric
-
-            # 5) Gate with hysteresis on relative CI width + df sanity + drift
-            # ROBUST GATE: Requires K consecutive stable observations (not one lucky batch)
-            enter_threshold = 0.25
-            exit_threshold = 0.40
-            df_min_sanity = 40  # Sanity floor: prevent nonsense claims at tiny df
-            drift_threshold = 0.20
-            NOISE_GATE_STREAK_K = 3  # Must see stability K consecutive times
-
-            drift_bad = (drift_metric is not None and drift_metric >= drift_threshold)
-
-            # Separate one-time df check from per-observation stability check
-            # df_min_sanity: One-time gate to prevent earning before enough data
-            # current_observation_stable: Per-observation check (rel_width + drift)
-            has_enough_data = (self.noise_df_total >= df_min_sanity)
-            current_observation_stable = (
-                rel_width is not None and
-                rel_width <= enter_threshold and
-                not drift_bad
+            rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "unknown"
+            self._set(
+                "noise_rel_width",
+                rel_width,
+                evidence={"rel_width": rel_width, "df": self.noise_df_total},
+                supporting_conditions=[condition_key],
+                note=f"Noise CI width: {rel_width_str}"
             )
+            return rel_width
+        else:
+            return None
 
-            # Gate logic with sequential stability requirement
-            new_stable = self.noise_sigma_stable
-            if not self.noise_sigma_stable:
-                # Not yet stable: accumulate evidence
-                if has_enough_data:
-                    # Only start counting streak once we have enough data
-                    if current_observation_stable:
-                        # Increment streak
-                        self.noise_gate_streak += 1
-                        # Earn gate only if we've seen K consecutive stable observations
-                        if self.noise_gate_streak >= NOISE_GATE_STREAK_K:
-                            new_stable = True
-                    else:
-                        # Reset streak on instability
-                        self.noise_gate_streak = 0
+    def _update_drift_metric(self, cond) -> Optional[float]:
+        """Detect drift in sigma estimates using rolling window comparison.
+
+        Returns:
+            Drift metric (normalized change in sigma), or None if insufficient data
+        """
+        sigma_cycle = float(cond.std)
+        self.noise_sigma_cycle_history.append(sigma_cycle)
+        if len(self.noise_sigma_cycle_history) > 20:
+            self.noise_sigma_cycle_history = self.noise_sigma_cycle_history[-20:]
+
+        k = 5
+        if len(self.noise_sigma_cycle_history) >= 2 * k and self.noise_sigma_hat:
+            prev = self.noise_sigma_cycle_history[-2*k:-k]
+            recent = self.noise_sigma_cycle_history[-k:]
+            prev_m = float(np.mean(prev))
+            recent_m = float(np.mean(recent))
+            drift_metric = abs(recent_m - prev_m) / float(self.noise_sigma_hat)
+            self.noise_drift_metric = drift_metric
+            return drift_metric
+
+        self.noise_drift_metric = None
+        return None
+
+    def _update_noise_gate_status(self, rel_width: Optional[float], drift_metric: Optional[float], condition_key: str):
+        """Evaluate gate status with hysteresis and sequential stability requirement."""
+        # Gate thresholds
+        enter_threshold = 0.25
+        exit_threshold = 0.40
+        df_min_sanity = 40
+        drift_threshold = 0.20
+        NOISE_GATE_STREAK_K = 3
+
+        drift_bad = (drift_metric is not None and drift_metric >= drift_threshold)
+        has_enough_data = (self.noise_df_total >= df_min_sanity)
+        current_observation_stable = (
+            rel_width is not None and
+            rel_width <= enter_threshold and
+            not drift_bad
+        )
+
+        # Gate logic with sequential stability requirement
+        new_stable = self.noise_sigma_stable
+        if not self.noise_sigma_stable:
+            # Not yet stable: accumulate evidence
+            if has_enough_data:
+                if current_observation_stable:
+                    self.noise_gate_streak += 1
+                    if self.noise_gate_streak >= NOISE_GATE_STREAK_K:
+                        new_stable = True
                 else:
-                    # Not enough data yet - reset streak
                     self.noise_gate_streak = 0
             else:
-                # Already stable: check for revocation
-                # Revoke if clearly degraded or drifting
-                should_revoke = (
-                    drift_bad or
-                    (rel_width is not None and rel_width >= exit_threshold)
-                )
-                if should_revoke:
-                    new_stable = False
-                    self.noise_gate_streak = 0  # Reset streak on revocation
-
-            # Record belief change only if it flips
-            # Format note strings (avoid conditionals in format specs)
-            rel_width_str = f"{self.noise_rel_width:.3f}" if self.noise_rel_width is not None else "N/A"
-            drift_str = f"{drift_metric:.3f}" if drift_metric is not None else "N/A"
-
-            self._set(
-                "noise_sigma_stable",
-                new_stable,
-                evidence={
-                    "pooled_df": self.noise_df_total,
-                    "pooled_sigma": self.noise_sigma_hat,
-                    "ci_low": self.noise_ci_low,
-                    "ci_high": self.noise_ci_high,
-                    "rel_width": self.noise_rel_width,
-                    "enter_threshold": enter_threshold,
-                    "exit_threshold": exit_threshold,
-                    "df_min_sanity": df_min_sanity,
-                    "drift_metric": drift_metric,
-                    "drift_threshold": drift_threshold,
-                },
-                supporting_conditions=[condition_key],
-                note=(
-                    f"noise_sigma_stable={new_stable} (df={self.noise_df_total}, "
-                    f"rel_width={rel_width_str}, drift={drift_str}, "
-                    f"streak={self.noise_gate_streak}/{NOISE_GATE_STREAK_K})"
-                ),
+                self.noise_gate_streak = 0
+        else:
+            # Already stable: check for revocation
+            should_revoke = (
+                drift_bad or
+                (rel_width is not None and rel_width >= exit_threshold)
             )
-            self.noise_sigma_stable = new_stable
+            if should_revoke:
+                new_stable = False
+                self.noise_gate_streak = 0
 
-            # 6) Always emit diagnostic record for this calibration cycle
-            from .ledger import NoiseDiagnosticEvent
-            diagnostics_out.append(
-                NoiseDiagnosticEvent(
-                    cycle=self._cycle,
-                    condition_key=condition_key,
-                    n_wells=n,
-                    std_cycle=sigma_cycle,
-                    mean_cycle=float(cond.mean),
-                    pooled_df=self.noise_df_total,
-                    pooled_sigma=self.noise_sigma_hat or 0.0,
-                    ci_low=self.noise_ci_low,
-                    ci_high=self.noise_ci_high,
-                    rel_width=self.noise_rel_width,
-                    drift_metric=drift_metric,
-                    noise_sigma_stable=self.noise_sigma_stable,
-                    enter_threshold=enter_threshold,
-                    exit_threshold=exit_threshold,
-                    df_min=df_min_sanity,
-                    drift_threshold=drift_threshold,
-                )
+        # Format note strings
+        rel_width_str = f"{self.noise_rel_width:.3f}" if self.noise_rel_width is not None else "N/A"
+        drift_str = f"{drift_metric:.3f}" if drift_metric is not None else "N/A"
+
+        self._set(
+            "noise_sigma_stable",
+            new_stable,
+            evidence={
+                "pooled_df": self.noise_df_total,
+                "pooled_sigma": self.noise_sigma_hat,
+                "ci_low": self.noise_ci_low,
+                "ci_high": self.noise_ci_high,
+                "rel_width": self.noise_rel_width,
+                "enter_threshold": enter_threshold,
+                "exit_threshold": exit_threshold,
+                "df_min_sanity": df_min_sanity,
+                "drift_metric": drift_metric,
+                "drift_threshold": drift_threshold,
+            },
+            supporting_conditions=[condition_key],
+            note=(
+                f"noise_sigma_stable={new_stable} (df={self.noise_df_total}, "
+                f"rel_width={rel_width_str}, drift={drift_str}, "
+                f"streak={self.noise_gate_streak}/{NOISE_GATE_STREAK_K})"
+            ),
+        )
+        self.noise_sigma_stable = new_stable
+
+    def _emit_noise_diagnostic(self, cond, condition_key: str, diagnostics_out: List):
+        """Emit diagnostic event for this calibration cycle."""
+        from .ledger import NoiseDiagnosticEvent
+
+        n = cond.n_wells
+        sigma_cycle = float(cond.std)
+
+        # Gate thresholds (match _update_noise_gate_status)
+        enter_threshold = 0.25
+        exit_threshold = 0.40
+        df_min_sanity = 40
+        drift_threshold = 0.20
+
+        diagnostics_out.append(
+            NoiseDiagnosticEvent(
+                cycle=self._cycle,
+                condition_key=condition_key,
+                n_wells=n,
+                std_cycle=sigma_cycle,
+                mean_cycle=float(cond.mean),
+                pooled_df=self.noise_df_total,
+                pooled_sigma=self.noise_sigma_hat or 0.0,
+                ci_low=self.noise_ci_low,
+                ci_high=self.noise_ci_high,
+                rel_width=self.noise_rel_width,
+                drift_metric=self.noise_drift_metric,
+                noise_sigma_stable=self.noise_sigma_stable,
+                enter_threshold=enter_threshold,
+                exit_threshold=exit_threshold,
+                df_min=df_min_sanity,
+                drift_threshold=drift_threshold,
             )
+        )
 
     def _update_edge_beliefs(self, conditions: List):
         """Detect edge effects by comparing edge vs center wells."""
@@ -1436,6 +1478,148 @@ class BeliefState:
                 supporting_conditions=[cond_key(c) for c in dmso_conditions],
                 note=f"scRNA metric source: {metric_source}"
             )
+
+    def update_execution_integrity(self, conditions: List, cycle: int) -> None:
+        """
+        Check for execution integrity violations (plate map errors).
+
+        This method computes a new ExecutionIntegrityState by running sanity checks:
+        - Anchor position verification (are known compounds in expected wells?)
+        - Replicate clustering (do replicates produce similar phenotypes?)
+        - Dose monotonicity (is dose-response curve sensible?)
+
+        Design principles:
+        - Violations are facts (measurable signals)
+        - Severity is aggregate judgment (based on violation count and consistency)
+        - Action is policy recommendation (not hardcoded here)
+        - Hysteresis prevents noise-triggered halts
+
+        Args:
+            conditions: List of conditions from current observation
+            cycle: Current cycle number (for hysteresis tracking)
+        """
+        # Compute new integrity state by running all checks
+        new_state = self._compute_execution_integrity_state(conditions, cycle)
+
+        # Use _set() to record state change with evidence
+        condition_keys = [cond_key(c) for c in conditions]
+
+        self._set(
+            "execution_integrity",
+            new_state,
+            evidence={
+                "violations": [v.code for v in new_state.violations],
+                "severity": new_state.severity,
+                "recommended_action": new_state.recommended_action,
+                "consecutive_bad_checks": new_state.consecutive_bad_checks,
+                "consecutive_good_checks": new_state.consecutive_good_checks,
+            },
+            supporting_conditions=condition_keys,
+            note=f"Integrity: {new_state.severity} ({len(new_state.violations)} violations: {[v.code for v in new_state.violations]})",
+        )
+
+    def _compute_execution_integrity_state(
+        self,
+        conditions: List,
+        cycle: int
+    ) -> ExecutionIntegrityState:
+        """
+        Compute new execution integrity state from observations.
+
+        This is where the actual sanity checks run. Each check returns
+        an IntegrityViolation or None.
+
+        Returns:
+            ExecutionIntegrityState with violations, severity, and recommended action
+        """
+        # Start with current state for hysteresis
+        prev_state = self.execution_integrity
+
+        # Run all sanity checks
+        violations: List[IntegrityViolation] = []
+
+        # TODO: Implement actual checkers (next phase)
+        # violations.extend(self._check_anchor_positions(conditions) or [])
+        # violations.extend(self._check_replicate_clustering(conditions) or [])
+        # violations.extend(self._check_dose_monotonicity(conditions) or [])
+
+        # Aggregate severity based on violations
+        severity, recommended_action = self._compute_integrity_severity(
+            violations=violations,
+            prev_state=prev_state
+        )
+
+        # Update hysteresis counters
+        consecutive_bad = prev_state.consecutive_bad_checks
+        consecutive_good = prev_state.consecutive_good_checks
+
+        if len(violations) > 0:
+            consecutive_bad += 1
+            consecutive_good = 0
+        else:
+            consecutive_bad = 0
+            consecutive_good += 1
+
+        return ExecutionIntegrityState(
+            suspect=(len(violations) > 0),
+            severity=severity,
+            recommended_action=recommended_action,
+            violations=violations,
+            last_check_cycle=cycle,
+            consecutive_bad_checks=consecutive_bad,
+            consecutive_good_checks=consecutive_good,
+            diagnosis_in_progress=prev_state.diagnosis_in_progress,
+            last_diagnostic_template=prev_state.last_diagnostic_template,
+            last_diagnostic_result=prev_state.last_diagnostic_result,
+        )
+
+    def _compute_integrity_severity(
+        self,
+        violations: List[IntegrityViolation],
+        prev_state: ExecutionIntegrityState
+    ) -> Tuple[str, str]:
+        """
+        Compute aggregate severity and recommended action from violations.
+
+        Escalation rules:
+        - 0 violations: "none", "continue"
+        - 1 violation (first occurrence): "warning", "cautious"
+        - 1 violation (2+ consecutive): "halt", "diagnose"
+        - 2+ violations: "halt", "diagnose"
+        - Any "fatal" violation: "fatal", "hard_halt"
+
+        Args:
+            violations: List of detected violations
+            prev_state: Previous execution integrity state (for hysteresis)
+
+        Returns:
+            (severity, recommended_action) tuple
+        """
+        if not violations:
+            # No violations: clear or stay clear
+            if prev_state.consecutive_good_checks >= 2:
+                return ("none", "continue")
+            else:
+                # Still in recovery period
+                return (prev_state.severity, "continue")
+
+        # Check for any fatal-level violations
+        fatal_violations = [v for v in violations if v.severity == "fatal"]
+        if fatal_violations:
+            return ("fatal", "hard_halt")
+
+        # Multiple violations or sustained single violation
+        n_violations = len(violations)
+        if n_violations >= 2:
+            return ("halt", "diagnose")
+
+        # Single violation: check hysteresis
+        if prev_state.consecutive_bad_checks >= 1:
+            # Sustained violation
+            return ("halt", "diagnose")
+        else:
+            # First occurrence
+            return ("warning", "cautious")
 
     @property
     def calibration_entropy_bits(self) -> float:

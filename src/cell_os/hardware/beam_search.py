@@ -931,229 +931,292 @@ class BeamSearch:
         Returns:
             List of successor nodes (CONTINUE + optional COMMIT)
         """
+        # Ensure node state is populated before expansion
+        if not self._ensure_node_state_populated(node):
+            return []
+
         successors = []
 
-        # 1) Compute prefix_current once for COMMIT gating
-        # Only needed if node belief state not yet populated
-        prefix_current = None
-        if node.t_step > 0 and (node.calibrated_confidence_current <= 0.0 or node.predicted_axis_current == "UNKNOWN"):
-            try:
-                prefix_current = self.runner.rollout_prefix(node.schedule)
-                self._populate_node_from_prefix(node, prefix_current)
-            except Exception as e:
-                # If current state failed, can't expand from here
-                if getattr(self, 'debug_commit_decisions', False):
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"Failed to compute prefix_current for node at t={node.t_step}: {e}", exc_info=True)
-                return []
+        # Generate CONTINUE successors (exploration actions)
+        continue_successors = self._generate_continue_successors(node)
+        successors.extend(continue_successors)
 
-        # 2) Generate CONTINUE successors
+        # Generate terminal successors (COMMIT/NO_DETECTION if governance allows)
+        terminal_successors = self._generate_terminal_successors(node)
+        successors.extend(terminal_successors)
+
+        return successors
+
+    def _ensure_node_state_populated(self, node: BeamNode) -> bool:
+        """Ensure node belief state is populated before expansion.
+
+        Returns:
+            True if state is valid, False if expansion should be aborted
+        """
+        if node.t_step == 0:
+            return True  # Root node has no state yet
+
+        # Check if state needs population
+        if node.calibrated_confidence_current > 0.0 and node.predicted_axis_current != "UNKNOWN":
+            return True  # Already populated
+
+        # Compute and populate state
+        try:
+            prefix_current = self.runner.rollout_prefix(node.schedule)
+            self._populate_node_from_prefix(node, prefix_current)
+            return True
+        except Exception as e:
+            if getattr(self, 'debug_commit_decisions', False):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to compute prefix_current for node at t={node.t_step}: {e}", exc_info=True)
+            return False
+
+    def _generate_continue_successors(self, node: BeamNode) -> List[BeamNode]:
+        """Generate CONTINUE successors by trying all legal action combinations."""
+        successors = []
         has_dosed = any(a.dose_fraction > 0 for a in node.schedule)
 
-        # GOVERNANCE-DRIVEN BIASING: If in NO_COMMIT state, compute action bias from blockers
-        # This makes NO_COMMIT productive by prioritizing actions that resolve blockers
-        gov_decision_for_bias = self._apply_governance_contract(node) if node.t_step > 0 else None
-        action_bias = {}
-        if gov_decision_for_bias and gov_decision_for_bias.action == GovernanceAction.NO_COMMIT:
-            evidence_strength = node.posterior_top_prob_current
-            action_bias = compute_action_bias(gov_decision_for_bias.blockers, evidence_strength)
+        # Compute action bias from governance blockers (if in NO_COMMIT state)
+        action_bias = self._compute_action_bias(node, has_dosed)
 
         for dose_level in self.dose_levels:
             for washout in [False, True]:
                 for feed in [False, True]:
-                    # Legality checks
+                    # Skip illegal actions
                     if washout and not has_dosed:
-                        continue  # Can't washout if nothing dosed yet
-
-                    # Create action
-                    action = Action(
-                        dose_fraction=dose_level,
-                        washout=washout,
-                        feed=feed
-                    )
-
-                    # Create successor
-                    new_schedule = node.schedule + [action]
-                    new_washout = node.washout_count + (1 if washout else 0)
-                    new_feed = node.feed_count + (1 if feed else 0)
-
-                    # Early pruning: intervention budget
-                    if new_washout + new_feed > self.max_interventions:
-                        self.nodes_pruned_interventions += 1
                         continue
 
-                    # ACTUAL prefix rollout (runs VM to current timestep + 1)
-                    try:
-                        prefix_result = self.runner.rollout_prefix(new_schedule)
-                    except Exception as e:
-                        # Simulation failed (probably death or error)
-                        if getattr(self, 'debug_commit_decisions', False):
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.warning(f"Prefix rollout failed for schedule {new_schedule}: {e}")
-                        self.nodes_pruned_death += 1
-                        continue
-
-                    # Early pruning: death trajectory
-                    if prefix_result.viability < (1.0 - self.death_tolerance):
-                        self.nodes_pruned_death += 1
-                        continue
-
-                    # Compute heuristic score using REAL observations
-                    # Keep exploration heuristic CLEAN: classifier_margin + viability - ops
-                    viability_bonus = prefix_result.viability
-                    confidence_bonus = prefix_result.classifier_margin  # Phase5 classifier margin
-                    ops_penalty = new_washout + new_feed
-
-                    heuristic = (
-                        self.w_mechanism * confidence_bonus +
-                        self.w_viability * viability_bonus -
-                        self.w_interventions * ops_penalty
+                    action = Action(dose_fraction=dose_level, washout=washout, feed=feed)
+                    successor = self._try_create_continue_node(
+                        node, action, has_dosed, action_bias
                     )
-
-                    # APPLY GOVERNANCE BIAS: Multiply heuristic by action intent bias
-                    # This prioritizes actions that resolve blockers (productive NO_COMMIT)
-                    if action_bias:
-                        intent = classify_action_intent(action, has_dosed)
-                        bias_multiplier = action_bias.get(intent, 1.0)
-                        heuristic *= bias_multiplier
-
-                    # Create CONTINUE successor
-                    successor = BeamNode(
-                        t_step=node.t_step + 1,
-                        schedule=new_schedule,
-                        action_type="CONTINUE",
-                        is_terminal=False,
-                        washout_count=new_washout,
-                        feed_count=new_feed,
-                        heuristic_score=heuristic,
-                        commit_utility=None  # Only for COMMIT nodes
-                    )
-
-                    # Populate belief state from prefix rollout
-                    self._populate_node_from_prefix(successor, prefix_result)
-
-                    successors.append(successor)
-
-        # 3) Generate COMMIT successor (if governance contract allows)
-        if node.t_step > 0:  # Can't commit at root
-            # GOVERNANCE CHOKE POINT: All terminal decisions must pass through contract
-            gov_decision = self._apply_governance_contract(node)
-
-            if gov_decision.action == GovernanceAction.COMMIT:
-                elapsed_time_h = node.t_step * self.runner.step_h
-                ops_penalty = node.washout_count + node.feed_count
-                viability = node.viability_current
-                cal_conf = node.calibrated_confidence_current
-
-                commit_util = self._compute_commit_utility(
-                    calibrated_conf=cal_conf,
-                    elapsed_time_h=elapsed_time_h,
-                    ops_penalty=ops_penalty,
-                    viability=viability
-                )
-
-                commit_node = BeamNode(
-                    t_step=node.t_step,  # NO ADVANCE (COMMIT doesn't advance time)
-                    schedule=node.schedule,  # Same schedule (COMMIT is decision, not action)
-                    action_type="COMMIT",
-                    is_terminal=True,
-                    washout_count=node.washout_count,
-                    feed_count=node.feed_count,
-                    commit_utility=commit_util,
-                    commit_target=gov_decision.mechanism,  # CONTRACT: mechanism approved by governance
-                    heuristic_score=0.0  # Not used for terminals
-                )
-
-                # Copy belief state from parent (COMMIT doesn't change state)
-                commit_node.viability_current = node.viability_current
-                commit_node.actin_fold_current = node.actin_fold_current
-                commit_node.confidence_margin_current = node.confidence_margin_current
-                commit_node.posterior_top_prob_current = node.posterior_top_prob_current
-                commit_node.posterior_margin_current = node.posterior_margin_current
-                commit_node.nuisance_frac_current = node.nuisance_frac_current
-                commit_node.calibrated_confidence_current = node.calibrated_confidence_current
-                commit_node.predicted_axis_current = node.predicted_axis_current
-                commit_node.nuisance_mean_shift_mag_current = node.nuisance_mean_shift_mag_current
-                commit_node.nuisance_var_inflation_current = node.nuisance_var_inflation_current
-
-                # Forensic logging
-                if getattr(self, 'debug_commit_decisions', False):
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(
-                        f"COMMIT node created at t={node.t_step} ({elapsed_time_h:.1f}h): "
-                        f"predicted_axis={node.predicted_axis_current} "
-                        f"is_concrete_mech=True "  # Always true now (gated above)
-                        f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
-                        f"posterior_margin={node.posterior_margin_current:.3f} "
-                        f"nuisance_frac={node.nuisance_frac_current:.3f} "
-                        f"nuisance_mean_shift_mag={node.nuisance_mean_shift_mag_current:.3f} "
-                        f"nuisance_var_inflation={node.nuisance_var_inflation_current:.3f} "
-                        f"calibrated_conf={cal_conf:.3f} "
-                        f"commit_utility={commit_util:.3f} "
-                        f"threshold={commit_threshold:.3f}"
-                    )
-
-                successors.append(commit_node)
-
-            elif gov_decision.action == GovernanceAction.NO_DETECTION:
-                # CONTRACT: NO_DETECTION only allowed when contract permits (low evidence)
-                cal_conf = node.calibrated_confidence_current
-                elapsed_time_h = node.t_step * self.runner.step_h
-                ops_penalty = node.washout_count + node.feed_count
-
-                no_det_util = self._compute_no_detection_utility(
-                    calibrated_conf=cal_conf,
-                    elapsed_time_h=elapsed_time_h,
-                    ops_penalty=ops_penalty
-                )
-
-                no_det_node = BeamNode(
-                    t_step=node.t_step,  # NO ADVANCE (terminal decision)
-                    schedule=node.schedule,
-                    action_type="NO_DETECTION",
-                    is_terminal=True,
-                    washout_count=node.washout_count,
-                    feed_count=node.feed_count,
-                    no_detection_utility=no_det_util,
-                    heuristic_score=0.0  # Not used for terminals
-                )
-
-                # Copy belief state from parent
-                no_det_node.viability_current = node.viability_current
-                no_det_node.actin_fold_current = node.actin_fold_current
-                no_det_node.confidence_margin_current = node.confidence_margin_current
-                no_det_node.posterior_top_prob_current = node.posterior_top_prob_current
-                no_det_node.posterior_margin_current = node.posterior_margin_current
-                no_det_node.nuisance_frac_current = node.nuisance_frac_current
-                no_det_node.calibrated_confidence_current = node.calibrated_confidence_current
-                no_det_node.predicted_axis_current = node.predicted_axis_current
-                no_det_node.nuisance_mean_shift_mag_current = node.nuisance_mean_shift_mag_current
-                no_det_node.nuisance_var_inflation_current = node.nuisance_var_inflation_current
-
-                # Forensic logging
-                if getattr(self, 'debug_commit_decisions', False):
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(
-                        f"NO_DETECTION node created at t={node.t_step} ({elapsed_time_h:.1f}h): "
-                        f"predicted_axis={node.predicted_axis_current} "
-                        f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
-                        f"nuisance_frac={node.nuisance_frac_current:.3f} "
-                        f"calibrated_conf={cal_conf:.3f} "
-                        f"no_detection_utility={no_det_util:.3f} "
-                        f"threshold={no_detection_threshold:.3f}"
-                    )
-
-                successors.append(no_det_node)
-
-            # else: gov_decision.action == GovernanceAction.NO_COMMIT
-            #   CONTRACT: No terminal node created, beam search continues exploring
-            #   This is the correct behavior when evidence exists but confidence isn't sufficient
+                    if successor is not None:
+                        successors.append(successor)
 
         return successors
+
+    def _compute_action_bias(self, node: BeamNode, has_dosed: bool) -> Dict[ActionIntent, float]:
+        """Compute action intent biases from governance blockers."""
+        if node.t_step == 0:
+            return {}
+
+        gov_decision = self._apply_governance_contract(node)
+        if not gov_decision or gov_decision.action != GovernanceAction.NO_COMMIT:
+            return {}
+
+        evidence_strength = node.posterior_top_prob_current
+        return compute_action_bias(gov_decision.blockers, evidence_strength)
+
+    def _try_create_continue_node(
+        self,
+        node: BeamNode,
+        action: Action,
+        has_dosed: bool,
+        action_bias: Dict[ActionIntent, float]
+    ) -> Optional[BeamNode]:
+        """Try to create a CONTINUE successor node. Returns None if pruned."""
+        new_schedule = node.schedule + [action]
+        new_washout = node.washout_count + (1 if action.washout else 0)
+        new_feed = node.feed_count + (1 if action.feed else 0)
+
+        # Early pruning: intervention budget
+        if new_washout + new_feed > self.max_interventions:
+            self.nodes_pruned_interventions += 1
+            return None
+
+        # Rollout prefix to get actual observations
+        try:
+            prefix_result = self.runner.rollout_prefix(new_schedule)
+        except Exception as e:
+            if getattr(self, 'debug_commit_decisions', False):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Prefix rollout failed for schedule {new_schedule}: {e}")
+            self.nodes_pruned_death += 1
+            return None
+
+        # Early pruning: death trajectory
+        if prefix_result.viability < (1.0 - self.death_tolerance):
+            self.nodes_pruned_death += 1
+            return None
+
+        # Compute heuristic score
+        heuristic = self._compute_heuristic_score(
+            prefix_result, new_washout, new_feed, action, has_dosed, action_bias
+        )
+
+        # Create successor node
+        successor = BeamNode(
+            t_step=node.t_step + 1,
+            schedule=new_schedule,
+            action_type="CONTINUE",
+            is_terminal=False,
+            washout_count=new_washout,
+            feed_count=new_feed,
+            heuristic_score=heuristic,
+            commit_utility=None
+        )
+
+        self._populate_node_from_prefix(successor, prefix_result)
+        return successor
+
+    def _compute_heuristic_score(
+        self,
+        prefix_result,
+        washout_count: int,
+        feed_count: int,
+        action: Action,
+        has_dosed: bool,
+        action_bias: Dict[ActionIntent, float]
+    ) -> float:
+        """Compute exploration heuristic with optional governance bias."""
+        viability_bonus = prefix_result.viability
+        confidence_bonus = prefix_result.classifier_margin
+        ops_penalty = washout_count + feed_count
+
+        heuristic = (
+            self.w_mechanism * confidence_bonus +
+            self.w_viability * viability_bonus -
+            self.w_interventions * ops_penalty
+        )
+
+        # Apply governance bias if active
+        if action_bias:
+            intent = classify_action_intent(action, has_dosed)
+            bias_multiplier = action_bias.get(intent, 1.0)
+            heuristic *= bias_multiplier
+
+        return heuristic
+
+    def _generate_terminal_successors(self, node: BeamNode) -> List[BeamNode]:
+        """Generate terminal successors (COMMIT/NO_DETECTION) if governance allows."""
+        if node.t_step == 0:
+            return []  # Can't commit at root
+
+        successors = []
+        gov_decision = self._apply_governance_contract(node)
+
+        if gov_decision.action == GovernanceAction.COMMIT:
+            commit_node = self._create_commit_node(node, gov_decision)
+            successors.append(commit_node)
+        elif gov_decision.action == GovernanceAction.NO_DETECTION:
+            no_det_node = self._create_no_detection_node(node)
+            successors.append(no_det_node)
+        # else: NO_COMMIT - continue exploring
+
+        return successors
+
+    def _create_commit_node(self, node: BeamNode, gov_decision: GovernanceDecision) -> BeamNode:
+        """Create a COMMIT terminal node."""
+        elapsed_time_h = node.t_step * self.runner.step_h
+        ops_penalty = node.washout_count + node.feed_count
+        cal_conf = node.calibrated_confidence_current
+
+        commit_util = self._compute_commit_utility(
+            calibrated_conf=cal_conf,
+            elapsed_time_h=elapsed_time_h,
+            ops_penalty=ops_penalty,
+            viability=node.viability_current
+        )
+
+        commit_node = BeamNode(
+            t_step=node.t_step,
+            schedule=node.schedule,
+            action_type="COMMIT",
+            is_terminal=True,
+            washout_count=node.washout_count,
+            feed_count=node.feed_count,
+            commit_utility=commit_util,
+            commit_target=gov_decision.mechanism,
+            heuristic_score=0.0
+        )
+
+        self._copy_belief_state(commit_node, node)
+        self._log_commit_decision(node, commit_util)
+
+        return commit_node
+
+    def _create_no_detection_node(self, node: BeamNode) -> BeamNode:
+        """Create a NO_DETECTION terminal node."""
+        elapsed_time_h = node.t_step * self.runner.step_h
+        ops_penalty = node.washout_count + node.feed_count
+        cal_conf = node.calibrated_confidence_current
+
+        no_det_util = self._compute_no_detection_utility(
+            calibrated_conf=cal_conf,
+            elapsed_time_h=elapsed_time_h,
+            ops_penalty=ops_penalty
+        )
+
+        no_det_node = BeamNode(
+            t_step=node.t_step,
+            schedule=node.schedule,
+            action_type="NO_DETECTION",
+            is_terminal=True,
+            washout_count=node.washout_count,
+            feed_count=node.feed_count,
+            no_detection_utility=no_det_util,
+            heuristic_score=0.0
+        )
+
+        self._copy_belief_state(no_det_node, node)
+        self._log_no_detection_decision(node, no_det_util)
+
+        return no_det_node
+
+    def _copy_belief_state(self, target: BeamNode, source: BeamNode):
+        """Copy belief state fields from source to target node."""
+        target.viability_current = source.viability_current
+        target.actin_fold_current = source.actin_fold_current
+        target.confidence_margin_current = source.confidence_margin_current
+        target.posterior_top_prob_current = source.posterior_top_prob_current
+        target.posterior_margin_current = source.posterior_margin_current
+        target.nuisance_frac_current = source.nuisance_frac_current
+        target.calibrated_confidence_current = source.calibrated_confidence_current
+        target.predicted_axis_current = source.predicted_axis_current
+        target.nuisance_mean_shift_mag_current = source.nuisance_mean_shift_mag_current
+        target.nuisance_var_inflation_current = source.nuisance_var_inflation_current
+
+    def _log_commit_decision(self, node: BeamNode, commit_util: float):
+        """Log forensic details of COMMIT decision."""
+        if not getattr(self, 'debug_commit_decisions', False):
+            return
+
+        import logging
+        logger = logging.getLogger(__name__)
+        elapsed_time_h = node.t_step * self.runner.step_h
+
+        logger.info(
+            f"COMMIT node created at t={node.t_step} ({elapsed_time_h:.1f}h): "
+            f"predicted_axis={node.predicted_axis_current} "
+            f"is_concrete_mech=True "
+            f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
+            f"posterior_margin={node.posterior_margin_current:.3f} "
+            f"nuisance_frac={node.nuisance_frac_current:.3f} "
+            f"nuisance_mean_shift_mag={node.nuisance_mean_shift_mag_current:.3f} "
+            f"nuisance_var_inflation={node.nuisance_var_inflation_current:.3f} "
+            f"calibrated_conf={node.calibrated_confidence_current:.3f} "
+            f"commit_utility={commit_util:.3f}"
+        )
+
+    def _log_no_detection_decision(self, node: BeamNode, no_det_util: float):
+        """Log forensic details of NO_DETECTION decision."""
+        if not getattr(self, 'debug_commit_decisions', False):
+            return
+
+        import logging
+        logger = logging.getLogger(__name__)
+        elapsed_time_h = node.t_step * self.runner.step_h
+
+        logger.info(
+            f"NO_DETECTION node created at t={node.t_step} ({elapsed_time_h:.1f}h): "
+            f"predicted_axis={node.predicted_axis_current} "
+            f"posterior_top_prob={node.posterior_top_prob_current:.3f} "
+            f"nuisance_frac={node.nuisance_frac_current:.3f} "
+            f"calibrated_conf={node.calibrated_confidence_current:.3f} "
+            f"no_detection_utility={no_det_util:.3f}"
+        )
 
     def _prune_and_select(self, nodes: List[BeamNode]) -> List[BeamNode]:
         """
