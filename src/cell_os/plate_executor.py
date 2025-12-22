@@ -152,6 +152,153 @@ def parse_plate_design_v2(json_path: Path) -> List[ParsedWell]:
     return wells
 
 
+def parse_plate_design_v3(json_path: Path) -> List[ParsedWell]:
+    """
+    Parse CAL_384_RULES_WORLD_v3/v4/v5.json into list of ParsedWell objects.
+
+    Supports:
+    - well_to_cell_line (checkerboard patterns)
+    - reproducibility_islands with exclusion_rules
+
+    Resolution order (first match wins):
+    1. background_controls.wells_no_cells
+    2. contrastive_tiles.tiles[].assignment
+    3. reproducibility_islands (with forced settings)
+    4. biological_anchors.wells
+    5. non_biological_provocations (stain, timing, focus)
+    6. cell_density_gradient by column
+    7. global_defaults.default_assignment
+    """
+    with open(json_path) as f:
+        design = json.load(f)
+
+    plate = design["plate"]
+    global_defaults = design["global_defaults"]
+    cell_lines_map = design["cell_lines"]["well_to_cell_line"]
+    non_bio = design["non_biological_provocations"]
+    anchors = design["biological_anchors"]
+    tiles = design["contrastive_tiles"]
+
+    # Handle reproducibility islands if present
+    island_wells_set = set()
+    island_assignments = {}
+
+    if "reproducibility_islands" in design:
+        islands = design["reproducibility_islands"]["islands"]
+        exclusion_rules = design["reproducibility_islands"].get("exclusion_rules", {})
+        forced_fields = exclusion_rules.get("forced_fields", {})
+
+        for island in islands:
+            island_assignment = island.get("assignment", {})
+            for well in island["wells"]:
+                island_wells_set.add(well)
+                # Merge island assignment with forced fields
+                assignment = {
+                    "cell_line": island["cell_line"],
+                    "treatment": island_assignment.get("treatment", "VEHICLE"),
+                    "reagent": island_assignment.get("reagent", "DMSO"),
+                    "dose_uM": island_assignment.get("dose_uM", 0),
+                }
+                # Apply forced fields
+                assignment.update(forced_fields)
+                island_assignments[well] = assignment
+
+    # Build well assignments
+    wells = []
+    rows = plate["rows"]
+    cols = plate["cols"]
+
+    for row in rows:
+        for col in cols:
+            well_id = f"{row}{col}"
+
+            # Start with global defaults
+            assignment = global_defaults["default_assignment"].copy()
+            assignment["timepoint_hours"] = global_defaults["timepoint_hours"]
+
+            # Get cell_line from well_to_cell_line map
+            assignment["cell_line"] = cell_lines_map[well_id]
+
+            # Apply cell density gradient by column (unless overridden later)
+            if col in non_bio["cell_density_gradient"]["rule"]["LOW_cols"]:
+                assignment["cell_density"] = "LOW"
+            elif col in non_bio["cell_density_gradient"]["rule"]["HIGH_cols"]:
+                assignment["cell_density"] = "HIGH"
+            else:
+                assignment["cell_density"] = "NOMINAL"
+
+            # Apply non-biological provocations (unless in island)
+            if well_id not in island_wells_set:
+                # Stain scale probes
+                if well_id in non_bio["stain_scale_probes"]["wells"]["STAIN_LOW"]:
+                    assignment["stain_scale"] = non_bio["stain_scale_probes"]["levels"]["STAIN_LOW"]
+                elif well_id in non_bio["stain_scale_probes"]["wells"]["STAIN_HIGH"]:
+                    assignment["stain_scale"] = non_bio["stain_scale_probes"]["levels"]["STAIN_HIGH"]
+
+                # Fixation timing probes
+                if well_id in non_bio["fixation_timing_probes"]["wells"]["EARLY_FIX"]:
+                    assignment["fixation_timing_offset_min"] = non_bio["fixation_timing_probes"]["levels"]["EARLY_FIX"]
+                elif well_id in non_bio["fixation_timing_probes"]["wells"]["LATE_FIX"]:
+                    assignment["fixation_timing_offset_min"] = non_bio["fixation_timing_probes"]["levels"]["LATE_FIX"]
+
+                # Focus probes
+                if well_id in non_bio["imaging_focus_probes"]["wells"]["FOCUS_MINUS"]:
+                    assignment["imaging_focus_offset_um"] = non_bio["imaging_focus_probes"]["levels"]["FOCUS_MINUS"]
+                elif well_id in non_bio["imaging_focus_probes"]["wells"]["FOCUS_PLUS"]:
+                    assignment["imaging_focus_offset_um"] = non_bio["imaging_focus_probes"]["levels"]["FOCUS_PLUS"]
+
+                # Biological anchors
+                if well_id in anchors["wells"]["ANCHOR_MORPH"]:
+                    anchor = [a for a in anchors["anchors"] if a["anchor_id"] == "ANCHOR_MORPH"][0]
+                    assignment["treatment"] = "ANCHOR_MORPH"
+                    assignment["reagent"] = anchor["reagent"]
+                    assignment["dose_uM"] = anchor["dose_uM"]
+                elif well_id in anchors["wells"]["ANCHOR_DEATH"]:
+                    anchor = [a for a in anchors["anchors"] if a["anchor_id"] == "ANCHOR_DEATH"][0]
+                    assignment["treatment"] = "ANCHOR_DEATH"
+                    assignment["reagent"] = anchor["reagent"]
+                    assignment["dose_uM"] = anchor["dose_uM"]
+
+            # Reproducibility islands (high precedence)
+            if well_id in island_assignments:
+                assignment.update(island_assignments[well_id])
+
+            # Contrastive tiles (higher precedence except background)
+            for tile in tiles["tiles"]:
+                if well_id in tile["wells"]:
+                    tile_assignment = tile["assignment"]
+                    assignment["treatment"] = tile_assignment["treatment"]
+                    assignment["reagent"] = tile_assignment["reagent"]
+                    assignment["dose_uM"] = tile_assignment["dose_uM"]
+                    # Tile may override density
+                    if "cell_density" in tile_assignment:
+                        assignment["cell_density"] = tile_assignment["cell_density"]
+                    break
+
+            # Background controls (highest precedence)
+            if well_id in non_bio["background_controls"]["wells_no_cells"]:
+                bg_assignment = non_bio["background_controls"]["assignment"]
+                assignment.update(bg_assignment)
+
+            # Create ParsedWell
+            wells.append(ParsedWell(
+                well_id=well_id,
+                row=row,
+                col=col,
+                cell_line=assignment["cell_line"],
+                treatment=assignment["treatment"],
+                reagent=assignment["reagent"],
+                dose_uM=assignment["dose_uM"],
+                cell_density=assignment["cell_density"],
+                stain_scale=assignment.get("stain_scale", 1.0),
+                fixation_timing_offset_min=assignment.get("fixation_timing_offset_min", 0),
+                imaging_focus_offset_um=assignment.get("imaging_focus_offset_um", 0),
+                timepoint_hours=assignment["timepoint_hours"]
+            ))
+
+    return wells
+
+
 def parsed_wells_to_wellspecs(parsed_wells: List[ParsedWell]) -> List[WellSpec]:
     """
     Convert ParsedWell objects to WellSpec objects for simulation.
@@ -227,8 +374,17 @@ def execute_plate_design(
         print(f"{'='*70}")
         print(f"\nLoading plate design: {json_path.name}")
 
-    # Parse plate design
-    parsed_wells = parse_plate_design_v2(json_path)
+    # Auto-detect parser version based on plate format
+    with open(json_path) as f:
+        design = json.load(f)
+
+    if "well_to_cell_line" in design["cell_lines"]:
+        # V3/V4/V5 format with well-based cell line assignment
+        parsed_wells = parse_plate_design_v3(json_path)
+    else:
+        # V2 format with row-based cell line assignment
+        parsed_wells = parse_plate_design_v2(json_path)
+
     if verbose:
         print(f"✓ Parsed {len(parsed_wells)} wells")
 
