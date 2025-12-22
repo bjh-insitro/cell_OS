@@ -30,6 +30,8 @@ from .assay_deception import AssayDeceptionInjection
 from .coalition_dynamics import CoalitionDynamicsInjection
 from .identifiability_limits import IdentifiabilityLimitsInjection
 from .cursed_plate import CursedPlateInjection
+from .segmentation_failure import SegmentationFailureInjection
+from .plate_map_error import PlateMapErrorInjection
 
 __all__ = [
     'InjectionState',
@@ -47,4 +49,6 @@ __all__ = [
     'CoalitionDynamicsInjection',
     'IdentifiabilityLimitsInjection',
     'CursedPlateInjection',
+    'SegmentationFailureInjection',
+    'PlateMapErrorInjection',
 ]
