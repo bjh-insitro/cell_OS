@@ -1,0 +1,143 @@
+{
+  "schema_version": "calibration_plate_v1",
+  "plate": {
+    "plate_id": "CAL_SOURCE_PLATE_INTEGRITY_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "Source-plate integrity and transfer mapping: detect source evaporation gradients, addressing mistakes, and source-to-destination carryover",
+  "global_defaults": {
+    "timepoint_hours": 48,
+    "readouts": ["cell_painting", "ldh"],
+    "vehicle": {
+      "name": "DMSO",
+      "final_concentration_vv": 0.001,
+      "units": "v/v"
+    },
+    "default_assignment": {
+      "treatment": "VEHICLE",
+      "reagent": "DMSO",
+      "dose_uM": 0
+    }
+  },
+  "cell_lines": {
+    "strategy": "interleaved_rows",
+    "row_to_cell_line": {
+      "A": "HepG2", "B": "A549",
+      "C": "HepG2", "D": "A549",
+      "E": "HepG2", "F": "A549",
+      "G": "HepG2", "H": "A549",
+      "I": "HepG2", "J": "A549",
+      "K": "HepG2", "L": "A549",
+      "M": "HepG2", "N": "A549",
+      "O": "HepG2", "P": "A549"
+    }
+  },
+  "source_plate": {
+    "plate_id": "SRC_96_v1",
+    "format": "96",
+    "purpose": "Represent the dosing source plate; differences downstream implicate the source, not the assay plate",
+    "compounds": [
+      { "name": "Nocodazole", "source_label": "NOC" }
+    ],
+    "source_wells": {
+      "NOC_SAME_DOSE_CORNERS": [
+        { "source_well": "A1", "dose_uM": 0.3, "tag": "corner" },
+        { "source_well": "A12", "dose_uM": 0.3, "tag": "corner" },
+        { "source_well": "H1", "dose_uM": 0.3, "tag": "corner" },
+        { "source_well": "H12", "dose_uM": 0.3, "tag": "corner" }
+      ],
+      "NOC_EDGE_CENTER_SAME_DOSE": [
+        { "source_well": "A6", "dose_uM": 0.3, "tag": "edge_center" },
+        { "source_well": "H6", "dose_uM": 0.3, "tag": "edge_center" },
+        { "source_well": "D1", "dose_uM": 0.3, "tag": "mid_edge" },
+        { "source_well": "D12", "dose_uM": 0.3, "tag": "mid_edge" }
+      ],
+      "NOC_ADJACENT_DOSES_FOR_CARRYOVER": [
+        { "source_well": "E5", "dose_uM": 0.05, "tag": "adjacent_low" },
+        { "source_well": "E6", "dose_uM": 1.0, "tag": "adjacent_high" }
+      ],
+      "SOURCE_BLANKS": [
+        { "source_well": "F5", "dose_uM": 0, "tag": "blank" },
+        { "source_well": "F6", "dose_uM": 0, "tag": "blank" }
+      ]
+    }
+  },
+  "destination_design": {
+    "regions": [
+      {
+        "region_id": "DEST_VEHICLE_BASELINE",
+        "cols": [1,2,3,4,5,6,7,8],
+        "rows": "ALL",
+        "assignment": {
+          "treatment": "VEHICLE",
+          "reagent": "DMSO",
+          "dose_uM": 0
+        }
+      },
+      {
+        "region_id": "DEST_SAME_DOSE_MULTI_SOURCE",
+        "cols": [9,10,11,12,13,14,15,16],
+        "rows": "ALL",
+        "assignment": {
+          "treatment": "TRANSFER_TEST",
+          "reagent": "Nocodazole",
+          "dose_uM": 0.3,
+          "transfer_group": "same_dose_multi_source"
+        }
+      },
+      {
+        "region_id": "DEST_ADJACENT_SOURCE_CARRYOVER",
+        "cols": [17,18,19,20,21,22,23,24],
+        "rows": "ALL",
+        "assignment": {
+          "treatment": "TRANSFER_TEST",
+          "reagent": "Nocodazole",
+          "dose_uM": "FROM_SOURCE",
+          "transfer_group": "adjacent_source_carryover"
+        }
+      }
+    ],
+    "transfer_plan": [
+      {
+        "transfer_group": "same_dose_multi_source",
+        "transfers": [
+          { "source_well": "A1", "dest_cols": [9,10], "dest_rows": "ALL" },
+          { "source_well": "A12", "dest_cols": [11,12], "dest_rows": "ALL" },
+          { "source_well": "H1", "dest_cols": [13,14], "dest_rows": "ALL" },
+          { "source_well": "H12", "dest_cols": [15,16], "dest_rows": "ALL" }
+        ],
+        "notes": "Same nominal dose from different source locations; differences implicate source gradients or addressing errors."
+      },
+      {
+        "transfer_group": "adjacent_source_carryover",
+        "transfers": [
+          { "source_well": "E5", "dest_cols": [17,18,19,20], "dest_rows": "ALL", "expected_dose_uM": 0.05 },
+          { "source_well": "E6", "dest_cols": [21,22], "dest_rows": "ALL", "expected_dose_uM": 1.0 },
+          { "source_well": "F5", "dest_cols": [23], "dest_rows": "ALL", "expected_dose_uM": 0 },
+          { "source_well": "F6", "dest_cols": [24], "dest_rows": "ALL", "expected_dose_uM": 0 }
+        ],
+        "notes": "Adjacent low/high plus blanks; contamination or evaporation shows up as wrong phenotypes in low or blank columns."
+      }
+    ]
+  },
+  "resolution_rules": {
+    "order_of_precedence": [
+      "destination_design.transfer_plan",
+      "destination_design.regions[].assignment",
+      "global_defaults.default_assignment"
+    ],
+    "derived_fields": {
+      "cell_line": "from cell_lines.row_to_cell_line",
+      "dose_uM": "FROM_SOURCE if transfer specifies expected_dose_uM else region assignment"
+    }
+  },
+  "analysis_questions": [
+    "Do identical-dose transfers differ by source location?",
+    "Do source blanks behave as true blanks?",
+    "Does low-dose source behave consistently across destination columns?",
+    "Are differences better explained by source geometry than by plate position?"
+  ]
+}
