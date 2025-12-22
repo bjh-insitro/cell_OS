@@ -360,11 +360,15 @@ class BeliefState:
 
         setattr(self, field_name, new_value)
 
+        # Convert sets to sorted lists for JSON serialization
+        prev_serializable = sorted(list(prev_value)) if isinstance(prev_value, set) else prev_value
+        new_serializable = sorted(list(new_value)) if isinstance(new_value, set) else new_value
+
         self._events.append(EvidenceEvent(
             cycle=self._cycle,
             belief=field_name,
-            prev=prev_value,
-            new=new_value,
+            prev=prev_serializable,
+            new=new_serializable,
             evidence=evidence,
             supporting_conditions=supporting_conditions,
             note=note,
@@ -451,31 +455,37 @@ class BeliefState:
                 )
             # Assay-specific gates
             elif field_name == "ldh_sigma_stable":
+                rel_width_val = evidence.get('rel_width')
+                rel_width_str = f"{rel_width_val:.4f}" if rel_width_val is not None else "N/A"
                 self._emit_gate_loss(
                     "ldh",
                     prev=prev_value,
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: ldh (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, proxy:noisy_morphology)",
+                    note=f"Gate lost: ldh (rel_width={rel_width_str}, proxy:noisy_morphology)",
                 )
             elif field_name == "cell_paint_sigma_stable":
+                rel_width_val = evidence.get('rel_width')
+                rel_width_str = f"{rel_width_val:.4f}" if rel_width_val is not None else "N/A"
                 self._emit_gate_loss(
                     "cell_paint",
                     prev=prev_value,
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: cell_paint (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, proxy:noisy_morphology)",
+                    note=f"Gate lost: cell_paint (rel_width={rel_width_str}, proxy:noisy_morphology)",
                 )
             elif field_name == "scrna_sigma_stable":
+                rel_width_val = evidence.get('rel_width')
+                rel_width_str = f"{rel_width_val:.4f}" if rel_width_val is not None else "N/A"
                 self._emit_gate_loss(
                     "scrna",
                     prev=prev_value,
                     new=new_value,
                     evidence=evidence,
                     supporting_conditions=supporting_conditions,
-                    note=f"Gate lost: scrna (rel_width={evidence.get('rel_width'):.4f if evidence.get('rel_width') else 'N/A'}, proxy:noisy_morphology)",
+                    note=f"Gate lost: scrna (rel_width={rel_width_str}, proxy:noisy_morphology)",
                 )
 
     def _emit_gate_event(
@@ -767,8 +777,6 @@ class BeliefState:
         Raises:
             TemporalProvenanceError: If observation lacks temporal metadata
         """
-        self.total_observations += 1
-
         # Extract conditions from observation
         conditions = observation.conditions if hasattr(observation, 'conditions') else []
 
@@ -777,10 +785,44 @@ class BeliefState:
         evidence_time_h = self._extract_evidence_time_h_from_conditions(conditions)
         self._current_evidence_time_h = evidence_time_h
 
+        # Use condition keys for evidence tracking
+        condition_keys = [cond_key(c) for c in conditions]
+
+        # Track total observations
+        self._set(
+            "total_observations",
+            self.total_observations + 1,
+            evidence={"observation_count": len(conditions)},
+            supporting_conditions=condition_keys,
+            note=f"Observation #{self.total_observations + 1}"
+        )
+
         # Track compounds and cell lines
+        new_compounds = set(self.tested_compounds)
+        new_cell_lines = set(self.tested_cell_lines)
         for cond in conditions:
-            self.tested_compounds.add(cond.compound)
-            self.tested_cell_lines.add(cond.cell_line)
+            new_compounds.add(cond.compound)
+            new_cell_lines.add(cond.cell_line)
+
+        # Note: Store as sets internally but only update if changed
+        # _set() will detect changes and emit events appropriately
+        if new_compounds != self.tested_compounds:
+            self._set(
+                "tested_compounds",
+                new_compounds,
+                evidence={"n_compounds": len(new_compounds), "compounds": sorted(list(new_compounds))},
+                supporting_conditions=condition_keys,
+                note=f"Tested {len(new_compounds)} compounds"
+            )
+
+        if new_cell_lines != self.tested_cell_lines:
+            self._set(
+                "tested_cell_lines",
+                new_cell_lines,
+                evidence={"n_cell_lines": len(new_cell_lines), "cell_lines": sorted(list(new_cell_lines))},
+                supporting_conditions=condition_keys,
+                note=f"Tested {len(new_cell_lines)} cell lines"
+            )
 
         # Update noise model, edge effects, dose/time beliefs
         diagnostics_out = []
@@ -813,21 +855,73 @@ class BeliefState:
 
             # 1) Track per-channel CV for transparency
             if cond.feature_means:
+                new_cv_by_channel = dict(self.baseline_cv_by_channel)  # Copy existing
                 for ch, mean_val in cond.feature_means.items():
                     std_val = cond.feature_stds.get(ch, 0.0)
                     if mean_val > 0:
-                        self.baseline_cv_by_channel[ch] = float(std_val / mean_val)
+                        new_cv_by_channel[ch] = float(std_val / mean_val)
 
-            self.calibration_reps += n
-            self.baseline_std_scalar = float(cond.std)
-            self.baseline_cv_scalar = float(cond.cv)
-            self.cv_history.append(float(cond.cv))
+                self._set(
+                    "baseline_cv_by_channel",
+                    new_cv_by_channel,
+                    evidence={"n_wells": n, "condition": condition_key},
+                    supporting_conditions=[condition_key],
+                    note=f"Updated baseline CV from {n} DMSO wells"
+                )
+
+            self._set(
+                "calibration_reps",
+                self.calibration_reps + n,
+                evidence={"n_wells": n, "condition": condition_key},
+                supporting_conditions=[condition_key],
+                note=f"Added {n} calibration replicates"
+            )
+
+            self._set(
+                "baseline_std_scalar",
+                float(cond.std),
+                evidence={"value": float(cond.std), "condition": condition_key},
+                supporting_conditions=[condition_key],
+                note="Updated baseline std"
+            )
+
+            self._set(
+                "baseline_cv_scalar",
+                float(cond.cv),
+                evidence={"value": float(cond.cv), "condition": condition_key},
+                supporting_conditions=[condition_key],
+                note="Updated baseline CV"
+            )
+
+            new_cv_history = list(self.cv_history)
+            new_cv_history.append(float(cond.cv))
+            self._set(
+                "cv_history",
+                new_cv_history,
+                evidence={"cv": float(cond.cv), "condition": condition_key},
+                supporting_conditions=[condition_key],
+                note="Added CV to history"
+            )
 
             # 2) Pooled variance update using (n, std)
             df = n - 1
             sse = df * (float(cond.std) ** 2)
-            self.noise_df_total += df
-            self.noise_sse_total += sse
+
+            self._set(
+                "noise_df_total",
+                self.noise_df_total + df,
+                evidence={"df": df, "sse": sse, "condition": condition_key},
+                supporting_conditions=[condition_key],
+                note=f"Added {df} df from calibration"
+            )
+
+            self._set(
+                "noise_sse_total",
+                self.noise_sse_total + sse,
+                evidence={"df": df, "sse": sse, "condition": condition_key},
+                supporting_conditions=[condition_key],
+                note=f"Added {sse:.4f} SSE from calibration"
+            )
 
             # 3) Compute pooled sigma + CI
             if self.noise_df_total > 0 and self.noise_sse_total > 0:
@@ -835,16 +929,44 @@ class BeliefState:
                 sigma_hat = math.sqrt(max(sigma2_hat, 0.0))
                 ci_low, ci_high = _sigma_ci_from_pooled(self.noise_sse_total, self.noise_df_total, alpha=0.05)
 
-                self.noise_sigma_hat = sigma_hat
-                self.noise_ci_low = ci_low
-                self.noise_ci_high = ci_high
+                self._set(
+                    "noise_sigma_hat",
+                    sigma_hat,
+                    evidence={"sigma": sigma_hat, "df": self.noise_df_total},
+                    supporting_conditions=[condition_key],
+                    note="Updated pooled noise estimate"
+                )
+
+                self._set(
+                    "noise_ci_low",
+                    ci_low,
+                    evidence={"ci_low": ci_low, "ci_high": ci_high, "df": self.noise_df_total},
+                    supporting_conditions=[condition_key],
+                    note="Updated noise CI lower bound"
+                )
+
+                self._set(
+                    "noise_ci_high",
+                    ci_high,
+                    evidence={"ci_low": ci_low, "ci_high": ci_high, "df": self.noise_df_total},
+                    supporting_conditions=[condition_key],
+                    note="Updated noise CI upper bound"
+                )
 
                 if ci_low is not None and ci_high is not None and sigma_hat > 0:
                     # TEMP FIX: use abs() since ci_low/ci_high swap bug in chi2 approx
                     rel_width = abs(ci_high - ci_low) / sigma_hat
                 else:
                     rel_width = None
-                self.noise_rel_width = rel_width
+
+                rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "unknown"
+                self._set(
+                    "noise_rel_width",
+                    rel_width,
+                    evidence={"rel_width": rel_width, "df": self.noise_df_total},
+                    supporting_conditions=[condition_key],
+                    note=f"Noise CI width: {rel_width_str}"
+                )
             else:
                 sigma_hat = None
                 rel_width = None
@@ -971,6 +1093,7 @@ class BeliefState:
         # Find matched edge/center pairs (same compound/dose/time)
         edge_conditions = {}
         center_conditions = {}
+        supporting = []  # Initialize for all code paths
 
         for cond in conditions:
             key = (cond.cell_line, cond.compound, cond.dose_uM, cond.time_h, cond.assay)
@@ -983,10 +1106,9 @@ class BeliefState:
         matched_pairs = set(edge_conditions.keys()) & set(center_conditions.keys())
 
         if matched_pairs:
-            self.edge_tests_run += 1
-
             # Compare by channel (feature_means)
-            supporting = []
+            new_effects_by_channel = dict(self.edge_effect_strength_by_channel)  # Copy existing
+
             for key in matched_pairs:
                 edge = edge_conditions[key]
                 center = center_conditions[key]
@@ -1003,13 +1125,33 @@ class BeliefState:
                                 effect = (edge_val - center_val) / center_val
 
                                 # Accumulate effects (running average)
-                                if channel not in self.edge_effect_strength_by_channel:
-                                    self.edge_effect_strength_by_channel[channel] = effect
+                                if channel not in new_effects_by_channel:
+                                    new_effects_by_channel[channel] = effect
                                 else:
                                     # Exponential moving average
                                     alpha = 0.7  # weight new observation more
-                                    old = self.edge_effect_strength_by_channel[channel]
-                                    self.edge_effect_strength_by_channel[channel] = alpha * effect + (1 - alpha) * old
+                                    old = new_effects_by_channel[channel]
+                                    new_effects_by_channel[channel] = alpha * effect + (1 - alpha) * old
+
+            # Update tracked fields using _set()
+            self._set(
+                "edge_tests_run",
+                self.edge_tests_run + 1,
+                evidence={"n_tests": self.edge_tests_run + 1, "n_pairs": len(matched_pairs)},
+                supporting_conditions=supporting,
+                note=f"Edge test #{self.edge_tests_run + 1}"
+            )
+
+            self._set(
+                "edge_effect_strength_by_channel",
+                new_effects_by_channel,
+                evidence={
+                    "n_channels": len(new_effects_by_channel),
+                    "effects_sample": {k: float(v) for k, v in list(new_effects_by_channel.items())[:3]}
+                },
+                supporting_conditions=supporting,
+                note=f"Updated edge effects for {len(new_effects_by_channel)} channels"
+            )
 
         # Determine confidence: effect is consistent (abs > 5%) and we have 2+ tests
         if self.edge_tests_run >= 2 and self.edge_effect_strength_by_channel:
@@ -1175,10 +1317,19 @@ class BeliefState:
             df_total += df
             sse_total += sse
 
-        # Update fields
+        # Update fields using _set() for proper tracking
         current_df = getattr(self, df_field)
-        setattr(self, df_field, current_df + df_total)
         total_df = current_df + df_total
+
+        condition_keys = [cond_key(c) for c in dmso_conditions]
+
+        self._set(
+            df_field,
+            total_df,
+            evidence={"df_added": df_total, "sse_added": sse_total, "assay": assay},
+            supporting_conditions=condition_keys,
+            note=f"Added {df_total} df for {assay} assay"
+        )
 
         # Compute pooled sigma + CI
         if total_df > 0 and sse_total > 0:
@@ -1190,7 +1341,15 @@ class BeliefState:
                 rel_width = abs(ci_high - ci_low) / sigma_hat
             else:
                 rel_width = None
-            setattr(self, rel_width_field, rel_width)
+
+            rel_width_str = f"{rel_width:.3f}" if rel_width is not None else "unknown"
+            self._set(
+                rel_width_field,
+                rel_width,
+                evidence={"rel_width": rel_width, "df": total_df, "assay": assay},
+                supporting_conditions=condition_keys,
+                note=f"{assay} CI width: {rel_width_str}"
+            )
         else:
             rel_width = None
 
@@ -1234,7 +1393,13 @@ class BeliefState:
                     note=f"scrna shadow stats (df={total_df}, rel_width={rel_width_str}, source=proxy:noisy_morphology, actionable=false)",
                 )
                 # Set metric_source explicitly (derived, not static default)
-                self.scrna_metric_source = "proxy:noisy_morphology"
+                self._set(
+                    "scrna_metric_source",
+                    "proxy:noisy_morphology",
+                    evidence={"assay": "scrna", "source": "proxy"},
+                    supporting_conditions=[cond_key(c) for c in dmso_conditions],
+                    note="scRNA using proxy morphology metrics"
+                )
                 return  # Don't update stable field or emit gate_event
 
         # Record belief change (for ldh, cell_paint, or if scrna already stable)
@@ -1260,11 +1425,17 @@ class BeliefState:
             supporting_conditions=[cond_key(c) for c in dmso_conditions],
             note=f"{assay}_sigma_stable={new_stable} (df={total_df}, rel_width={rel_width_str}, {metric_source})",
         )
-        setattr(self, stable_field, new_stable)
+        # Note: _set() already updated the field, no need for setattr()
 
         # Set metric_source explicitly for scRNA (future: also set for real transcriptome measurements)
         if assay == "scrna":
-            self.scrna_metric_source = metric_source  # When real scRNA exists, this will be "scrna:transcriptome"
+            self._set(
+                "scrna_metric_source",
+                metric_source,
+                evidence={"assay": "scrna", "source": metric_source},
+                supporting_conditions=[cond_key(c) for c in dmso_conditions],
+                note=f"scRNA metric source: {metric_source}"
+            )
 
     @property
     def calibration_entropy_bits(self) -> float:

@@ -466,34 +466,49 @@ def get_secondary_antibody(species: str, fluorophore: str) -> Optional[Dict]:
 
 def get_panel_cost(panel_name: str, volume_ml: float) -> float:
     """
-    Estimate cost for a Cell Painting panel based on volume.
-    
+    Calculate cost for a Cell Painting panel based on volume.
+
+    Uses VERIFIED vendor pricing from inventory database (ThermoFisher, Dec 2024).
+    Costs are calculated per well (50 µL) from working concentrations.
+
     Args:
         panel_name: Name of the marker/panel (e.g., "mitotracker", "core", "posh")
         volume_ml: Volume in mL
-        
+
     Returns:
-        Estimated cost in USD
+        Cost in USD based on verified pricing
     """
-    # Rough cost estimates per mL for different markers
-    # These are approximations based on typical working concentrations
-    cost_per_ml = {
-        "mitotracker": 0.50,  # MitoTracker Deep Red
-        "mitoprobe": 0.75,    # Custom FISH probes
-        "hoechst": 0.05,      # Hoechst 33342
-        "concanavalin": 0.25, # ConA-Alexa488
-        "phalloidin": 0.40,   # Phalloidin-568
-        "wga": 0.30,          # WGA-Alexa555
-        "bodipy": 0.20,       # BODIPY 493/503
-        "core": 1.50,         # Full core panel
-        "posh": 2.00,         # POSH panel with MitoProbe
-        "neuropaint": 2.50,   # NeuroPaint with antibodies
-        "hepatopaint": 1.70,  # HepatoPaint
-        "alspaint": 3.50,     # ALSPaint with multiple antibodies
+    # VERIFIED cost per well (50 µL) from ThermoFisher pricing + Broad protocol
+    # All prices verified Dec 2024, calculated with proper dilutions
+    cost_per_well_50ul = {
+        "mitotracker": 0.007,      # MitoTracker Deep Red FM (M22426)
+        "hoechst": 0.00006,        # Hoechst 33342 (H3570) - negligible
+        "concanavalin": 0.026,     # ConA-Alexa488 (C11252)
+        "phalloidin": 0.902,       # Phalloidin-568 (A12380) - EXPENSIVE!
+        "wga": 0.006,              # WGA-Alexa555 (W32464)
+
+        # Composite panels (sum of components)
+        "core": 0.941,             # 5-channel: Hoechst + ConA + Phalloidin + WGA + Mito
+        "standard_cocktail": 0.935, # 4-channel post-fix: Hoechst + ConA + Phalloidin + WGA
+
+        # Other panels (approximations pending verification)
+        "mitoprobe": 1.50,         # Custom FISH probes (not verified)
+        "bodipy": 0.20,            # BODIPY 493/503 (not verified)
+        "posh": 2.00,              # POSH panel with MitoProbe (not verified)
+        "neuropaint": 2.50,        # NeuroPaint with antibodies (not verified)
+        "hepatopaint": 1.70,       # HepatoPaint (not verified)
+        "alspaint": 3.50,          # ALSPaint with multiple antibodies (not verified)
     }
-    
-    # Default to $1/mL if unknown
-    return cost_per_ml.get(panel_name.lower(), 1.0) * volume_ml
+
+    # Convert volume_ml to number of 50 µL wells
+    # 1 mL = 1000 µL = 20 wells of 50 µL each
+    wells_per_ml = 20.0
+    n_wells = volume_ml * wells_per_ml
+
+    # Get cost per well, default to $1/mL if unknown
+    cost_per_well = cost_per_well_50ul.get(panel_name.lower(), 1.0 / wells_per_ml)
+
+    return cost_per_well * n_wells
 
 
 

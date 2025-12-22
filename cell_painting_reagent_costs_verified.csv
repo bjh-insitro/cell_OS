@@ -1,0 +1,15 @@
+Reagent,Catalog,Vendor,Pack_Size,Pack_Price_USD,Working_Conc,Cost_Per_Well_USD,Percent_of_Total,Verification_Date,Notes
+Hoechst 33342,H3570,ThermoFisher,10 mL @ 10mg/mL,120.54,1.0 µg/mL,0.00006,0.01%,2024-12-21,Nuclear stain (DAPI channel)
+Concanavalin A Alexa 488,C11252,ThermoFisher,5 mg,208.28,12.5 µg/mL,0.026,2.8%,2024-12-21,ER/Golgi stain (FITC channel)
+Phalloidin Alexa 568,A12380,ThermoFisher,300 units,541.20,0.33 µM,0.902,95.8%,2024-12-21,F-actin stain (TRITC channel) - MOST EXPENSIVE
+WGA Alexa 555,W32464,ThermoFisher,5 mg,396.88,1.5 µg/mL,0.006,0.6%,2024-12-21,Golgi/plasma membrane stain (Cy3 channel)
+MitoTracker Deep Red FM,M22426,ThermoFisher,20x50 µg,423.12,0.5 µM,0.007,0.7%,2024-12-21,Mitochondria stain (Cy5 channel)
+TOTAL,,,,1690.02,,0.941,100%,2024-12-21,5-channel Cell Painting per well cost
+
+# Metadata
+# Plate format: 384-well
+# Staining volume per well: 50 µL
+# Protocol: Broad Institute Cell Painting (5-channel)
+# All prices verified from ThermoFisher Scientific website December 2024
+# Cost per well calculated using proper dilutions from working stock to final concentration
+# Key finding: Phalloidin accounts for 95.8% of total reagent cost

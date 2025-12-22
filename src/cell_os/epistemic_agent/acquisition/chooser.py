@@ -824,7 +824,20 @@ class TemplateChooser:
                     kwargs={"reason": reason}
                 )
 
-            reason = f"Earn noise gate (df={df_total}, need~{df_needed})"
+            # Use centralized batch sizing decision (Agent 3 mandate)
+            from .batch_sizing import choose_calibration_batch_size
+
+            batch_decision = choose_calibration_batch_size(
+                regime="pre_gate",
+                df_current=df_total,
+                df_needed=df_needed,
+                remaining_budget_wells=remaining_wells,
+                learn_plate_effects=True,
+                absolute_minimum_reserve=50,
+                scarcity_mode=False
+            )
+
+            reason = f"Earn noise gate: {batch_decision.reason_text}"
             return self._set_last_decision(
                 cycle=cycle,
                 selected="baseline_replicates",
@@ -838,10 +851,17 @@ class TemplateChooser:
                     "enforcement_layer": "global_pre_biology",
                     "gate_state": self._get_gate_state(beliefs),
                     "calibration_plan": calibration_plan,
-                    "n_reps": 12
+                    "n_reps": batch_decision.n_reps,
+                    "coverage_strategy": batch_decision.coverage_strategy.value,
+                    "batch_sizing": {
+                        "wells_used": batch_decision.wells_used,
+                        "df_gain_expected": batch_decision.df_gain_expected,
+                        "cost_per_df": batch_decision.cost_per_df,
+                        "reason_code": batch_decision.reason_code
+                    }
                 },
                 beliefs=beliefs,
-                kwargs={"reason": reason, "n_reps": 12}
+                kwargs={"reason": reason, "n_reps": batch_decision.n_reps}
             )
 
         # Noise gate earned - now check cheap assay gates (LDH, CP) before biology

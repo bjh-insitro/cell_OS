@@ -138,6 +138,13 @@ const LandingPage: React.FC = () => {
                             <span>🔬</span>
                             <span>Epistemic Provenance</span>
                         </button>
+                        <button
+                            onClick={() => navigate('/documentary')}
+                            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-full shadow-lg hover:shadow-indigo-500/25 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 justify-center"
+                        >
+                            <span>🎬</span>
+                            <span>Documentary</span>
+                        </button>
                     </div>
                 </div>
 

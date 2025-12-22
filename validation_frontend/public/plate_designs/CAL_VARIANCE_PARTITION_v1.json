@@ -1,0 +1,127 @@
+{
+  "schema_version": "calibration_plate_v1",
+  "plate": {
+    "plate_id": "CAL_VARIANCE_PARTITION_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "Replicate-of-replicates plate: estimate noise floor and variance components (local, spatial, quadrant, cell line) to prevent fantasy error bars",
+  "global_defaults": {
+    "timepoint_hours": 48,
+    "readouts": ["cell_painting", "ldh"],
+    "vehicle": {
+      "name": "DMSO",
+      "final_concentration_vv": 0.001,
+      "units": "v/v"
+    },
+    "default_assignment": {
+      "treatment": "VEHICLE",
+      "reagent": "DMSO",
+      "dose_uM": 0
+    }
+  },
+  "cell_lines": {
+    "strategy": "interleaved_rows",
+    "row_to_cell_line": {
+      "A": "HepG2", "B": "A549",
+      "C": "HepG2", "D": "A549",
+      "E": "HepG2", "F": "A549",
+      "G": "HepG2", "H": "A549",
+      "I": "HepG2", "J": "A549",
+      "K": "HepG2", "L": "A549",
+      "M": "HepG2", "N": "A549",
+      "O": "HepG2", "P": "A549"
+    }
+  },
+  "design": {
+    "anchor": {
+      "name": "Nocodazole",
+      "dose_uM": 0.3,
+      "treatment": "ANCHOR_MORPH"
+    },
+    "quadrants": [
+      { "quadrant_id": "Q1_NW", "rows": ["A","B","C","D","E","F","G","H"], "cols": [1,2,3,4,5,6,7,8] },
+      { "quadrant_id": "Q2_NE", "rows": ["A","B","C","D","E","F","G","H"], "cols": [17,18,19,20,21,22,23,24] },
+      { "quadrant_id": "Q3_SW", "rows": ["I","J","K","L","M","N","O","P"], "cols": [1,2,3,4,5,6,7,8] },
+      { "quadrant_id": "Q4_SE", "rows": ["I","J","K","L","M","N","O","P"], "cols": [17,18,19,20,21,22,23,24] }
+    ],
+    "replicate_tiles": [
+      {
+        "tile_id": "VEH_TILE_Q1",
+        "wells": ["B2","B3","C2","C3"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "VEH_TILE_Q2",
+        "wells": ["B22","B23","C22","C23"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "VEH_TILE_Q3",
+        "wells": ["N2","N3","O2","O3"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "VEH_TILE_Q4",
+        "wells": ["N22","N23","O22","O23"],
+        "assignment": { "treatment": "VEHICLE_TILE", "reagent": "DMSO", "dose_uM": 0 }
+      },
+      {
+        "tile_id": "ANCH_TILE_Q1",
+        "wells": ["E6","E7","F6","F7"],
+        "assignment": { "treatment": "ANCHOR_TILE", "reagent": "Nocodazole", "dose_uM": 0.3 }
+      },
+      {
+        "tile_id": "ANCH_TILE_Q2",
+        "wells": ["E18","E19","F18","F19"],
+        "assignment": { "treatment": "ANCHOR_TILE", "reagent": "Nocodazole", "dose_uM": 0.3 }
+      },
+      {
+        "tile_id": "ANCH_TILE_Q3",
+        "wells": ["M6","M7","N6","N7"],
+        "assignment": { "treatment": "ANCHOR_TILE", "reagent": "Nocodazole", "dose_uM": 0.3 }
+      },
+      {
+        "tile_id": "ANCH_TILE_Q4",
+        "wells": ["M18","M19","N18","N19"],
+        "assignment": { "treatment": "ANCHOR_TILE", "reagent": "Nocodazole", "dose_uM": 0.3 }
+      }
+    ],
+    "distributed_replicates": {
+      "purpose": "Same condition repeated in many scattered wells to quantify global vs local variance.",
+      "sets": [
+        {
+          "set_id": "VEH_SCATTER",
+          "assignment": { "treatment": "VEHICLE_SCATTER", "reagent": "DMSO", "dose_uM": 0 },
+          "wells": ["A1","A12","A24","H1","H12","H24","I1","I12","I24","P1","P12","P24","D9","E15","J9","K15"]
+        },
+        {
+          "set_id": "ANCH_SCATTER",
+          "assignment": { "treatment": "ANCHOR_SCATTER", "reagent": "Nocodazole", "dose_uM": 0.3 },
+          "wells": ["B10","C21","F10","G21","J10","K21","N10","O21","D4","E21","L4","M21","C4","B21","K4","J21"]
+        }
+      ]
+    }
+  },
+  "resolution_rules": {
+    "order_of_precedence": [
+      "design.replicate_tiles[].assignment",
+      "design.distributed_replicates.sets[].assignment",
+      "global_defaults.default_assignment"
+    ],
+    "derived_fields": {
+      "cell_line": "from cell_lines.row_to_cell_line"
+    }
+  },
+  "analysis_questions": [
+    "How much variance is local (tile) vs global (scatter)?",
+    "Do quadrant effects remain after spatial correction?",
+    "Is anchor variance dominated by biology or by measurement noise?",
+    "What replication level is needed to resolve a given effect size?"
+  ],
+  "run_notes": [
+    "To estimate day effects, run this exact template on 2 different days and treat day as a random effect in a mixed model."
+  ]
+}

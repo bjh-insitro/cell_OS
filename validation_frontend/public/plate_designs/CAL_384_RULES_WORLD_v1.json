@@ -1,0 +1,80 @@
+{
+  "schema_version": "calibration_plate_v1",
+  "intent": "Learn the measurement rules of the world before exploring biology",
+  "plate": {
+    "plate_id": "CAL_384_RULES_WORLD_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+  },
+  "cell_lines": {
+    "A": {
+      "rows": ["A","B","C","D","E","F","G","H"],
+      "name": "HepG2"
+    },
+    "B": {
+      "rows": ["I","J","K","L","M","N","O","P"],
+      "name": "A549"
+    }
+  },
+  "anchors": {
+    "MILD": {
+      "wells": ["A1","A12","A24","D6","D18","H1","H12","H24","I1","I12","I24","L6","L18","P1","P12","P24"],
+      "dose": 1,
+      "dose_unit": "µM"
+    },
+    "STRONG": {
+      "wells": ["B3","B22","E9","E16","G3","G22","H6","H18","J3","J22","M9","M16","O3","O22","P6","P18"],
+      "dose": 100,
+      "dose_unit": "µM"
+    }
+  },
+  "tiles": {
+    "wells": [
+      "B2","B3","C2","C3",
+      "B22","B23","C22","C23",
+      "G2","G3","H2","H3",
+      "G22","G23","H22","H23",
+      "J2","J3","K2","K3",
+      "J22","J23","K22","K23",
+      "O2","O3","P2","P3",
+      "O22","O23","P22","P23"
+    ],
+    "description": "2x2 vehicle (DMSO) replicates for spatial QC - assesses local vs global variation"
+  },
+  "design_goals": [
+    "Learn plate spatial effects (edges, gradients)",
+    "Learn noise floor (tiles show local vs global variation)",
+    "Learn feature family variance",
+    "Learn cell line-specific spatial sensitivity (HepG2, A549)",
+    "Establish dynamic range with anchors",
+    "Avoid compound exploration - this is about the instrument"
+  ],
+  "sanity_checks": [
+    "Spatial surface exists (row/col/edge effects)",
+    "LDH is flatter than morphology (handling check)",
+    "Anchors separate from vehicle",
+    "Cell lines separate under vehicle",
+    "Tile repeatability < plate-wide variation"
+  ],
+  "statistics": {
+    "total_wells": 384,
+    "vehicle_wells": 288,
+    "vehicle_percent": 75,
+    "anchor_wells": 32,
+    "anchor_percent": 8,
+    "tile_wells": 32,
+    "tile_percent": 8,
+    "cell_lines": 2,
+    "timepoint_hours": 48
+  },
+  "cost_estimate": {
+    "total_usd": 1850,
+    "breakdown": {
+      "plate": 150,
+      "reagents": 500,
+      "imaging": 800,
+      "analysis": 400
+    }
+  }
+}

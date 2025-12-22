@@ -204,6 +204,66 @@ class AnalysisOps:
             sub_steps=[]
         )
 
+    def op_ldh_assay(self, vessel_id: str, num_wells: int = None, name: str = None) -> UnitOp:
+        """LDH Cytotoxicity Assay (CyQUANT).
+
+        Measures lactate dehydrogenase release as marker of cytotoxicity.
+        Uses verified pricing from ThermoFisher C20301.
+        """
+        v = self.vessels.get(vessel_id)
+        items = []
+
+        # Determine number of wells
+        if num_wells is None:
+            # Infer from vessel type
+            if "384" in vessel_id:
+                num_wells = 384
+            elif "96" in vessel_id:
+                num_wells = 96
+            elif "6" in vessel_id:
+                num_wells = 6
+            else:
+                num_wells = 1
+
+        # LDH assay reagent (ThermoFisher C20301: $0.52/test, verified 2024-12)
+        items.append(BOMItem(
+            resource_id="cyquant_ldh_c20301",
+            quantity=num_wells
+        ))
+
+        # Plate reader usage (if needed for fluorescence detection)
+        # Typically ~5 min for full 384-well plate
+        read_time_hours = 0.1  # 6 minutes
+        items.append(BOMItem(
+            resource_id="plate_reader_usage",
+            quantity=read_time_hours
+        ))
+
+        # Calculate costs
+        if hasattr(self, 'calculate_costs_from_items'):
+            mat_cost, inst_cost = self.calculate_costs_from_items(items)
+        else:
+            # Fallback costs
+            mat_cost = 0.52 * num_wells  # $0.52 per test
+            inst_cost = 5.0  # Plate reader time
+
+        return UnitOp(
+            uo_id=f"LDH_{vessel_id}",
+            name=name if name else f"LDH Cytotoxicity Assay ({num_wells} wells)",
+            layer="readout",
+            category="assay",
+            time_score=30,  # 30 minutes total
+            cost_score=2,
+            automation_fit=1,
+            failure_risk=0,
+            staff_attention=1,
+            instrument="Plate Reader",
+            material_cost_usd=mat_cost,
+            instrument_cost_usd=inst_cost,
+            sub_steps=[],
+            items=items
+        )
+
     def op_flow_cytometry(self, vessel_id: str, num_samples: int = 96, name: str = None) -> UnitOp:
         items = []
         

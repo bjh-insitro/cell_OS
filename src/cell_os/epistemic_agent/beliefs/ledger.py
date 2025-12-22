@@ -8,8 +8,32 @@ Every belief change gets a receipt with:
 """
 
 import json
+import math
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional
+
+
+def _json_dumps_safe(obj: Any, **kwargs) -> str:
+    """JSON serializer that handles infinity and NaN values.
+
+    Converts:
+    - float('inf') → null
+    - float('-inf') → null
+    - float('nan') → null
+
+    This ensures valid JSON output for JSONL files.
+    """
+    def _convert(o):
+        if isinstance(o, float):
+            if math.isinf(o) or math.isnan(o):
+                return None
+        elif isinstance(o, dict):
+            return {k: _convert(v) for k, v in o.items()}
+        elif isinstance(o, (list, tuple)):
+            return [_convert(item) for item in o]
+        return o
+
+    return json.dumps(_convert(obj), **kwargs)
 
 
 @dataclass(frozen=True)
@@ -39,7 +63,7 @@ class EvidenceEvent:
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
-        return json.dumps(self.to_dict(), sort_keys=True)
+        return _json_dumps_safe(self.to_dict(), sort_keys=True)
 
 
 def cond_key(cond) -> str:
@@ -124,7 +148,7 @@ class DecisionEvent:
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
-        return json.dumps(self.to_dict(), sort_keys=True)
+        return _json_dumps_safe(self.to_dict(), sort_keys=True)
 
 
 def append_decisions_jsonl(path, decisions: List[DecisionEvent]):
@@ -174,7 +198,7 @@ class RefusalEvent:
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
-        return json.dumps(self.to_dict(), sort_keys=True)
+        return _json_dumps_safe(self.to_dict(), sort_keys=True)
 
 
 def append_refusals_jsonl(path, refusals: List[RefusalEvent]):
@@ -210,7 +234,7 @@ class NoiseDiagnosticEvent:
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
-        return json.dumps(self.to_dict(), sort_keys=True)
+        return _json_dumps_safe(self.to_dict(), sort_keys=True)
 
 
 def append_noise_diagnostics_jsonl(path, diagnostics: List[NoiseDiagnosticEvent]):

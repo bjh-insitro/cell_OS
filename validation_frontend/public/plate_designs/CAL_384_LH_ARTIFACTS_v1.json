@@ -1,0 +1,238 @@
+{
+  "schema_version": "liquid_handler_calibration_plate_v1",
+  "plate": {
+    "plate_id": "CAL_384_LH_ARTIFACTS_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "Reveal liquid-handler artifacts (channel bias, order drift, carryover, mixing sensitivity) while keeping biology minimal and interpretable",
+  "assumptions": {
+    "liquid_handler": {
+      "head_type": "8_channel",
+      "dispense_direction": "column_wise",
+      "passes_per_column": 2,
+      "pass_1_rows": ["A","B","C","D","E","F","G","H"],
+      "pass_2_rows": ["I","J","K","L","M","N","O","P"],
+      "order_within_pass": "A->H (or I->P)",
+      "column_order": "1->24",
+      "notes": [
+        "This is the canonical mapping for an 8-channel head dispensing down a column in two passes.",
+        "If your robot dispenses row-wise or uses 16/96 head, keep the concept but regenerate channel mapping accordingly."
+      ]
+    }
+  },
+  "global_defaults": {
+    "timepoint_hours": 48,
+    "readouts": ["cell_painting", "ldh"],
+    "vehicle": { "name": "DMSO", "final_concentration_vv": 0.001, "units": "v/v" },
+    "default_assignment": {
+      "treatment": "VEHICLE",
+      "reagent": "DMSO",
+      "dose_uM": 0,
+      "mix_program_id": "MIX_STANDARD",
+      "notes": "Vehicle baseline well"
+    }
+  },
+  "cell_lines": {
+    "strategy": "interleaved_rows",
+    "row_to_cell_line": {
+      "A": "HepG2",
+      "B": "A549",
+      "C": "HepG2",
+      "D": "A549",
+      "E": "HepG2",
+      "F": "A549",
+      "G": "HepG2",
+      "H": "A549",
+      "I": "HepG2",
+      "J": "A549",
+      "K": "HepG2",
+      "L": "A549",
+      "M": "HepG2",
+      "N": "A549",
+      "O": "HepG2",
+      "P": "A549"
+    }
+  },
+  "lh_metadata": {
+    "derive_per_well": {
+      "dispense_pass": "rows A-H => 1, rows I-P => 2",
+      "channel_id": "within pass, A/I=1, B/J=2, C/K=3, D/L=4, E/M=5, F/N=6, G/O=7, H/P=8",
+      "dispense_order_index": "monotonic index along column-wise dispense path: for col in 1..24, pass in 1..2, row in pass_rows"
+    },
+    "why_it_matters": [
+      "If baseline morphology or LDH clusters by channel_id, you have channel bias (tips, pressure, calibration, clogging).",
+      "If curves differ by dispense_order_index (early vs late), you have order drift (warming, evaporation in source, settling, timing)."
+    ]
+  },
+  "reagents": {
+    "vehicle": "DMSO",
+    "carryover_high": {
+      "name": "CARRYOVER_HIGH",
+      "example": "Nocodazole",
+      "dose_uM": 3.0,
+      "role": "strong enough to detect contamination into neighboring/next-dispensed blanks"
+    },
+    "dose_ladder": {
+      "name": "LADDER_COMPOUND",
+      "example": "Nocodazole",
+      "doses_uM": [0.003, 0.006, 0.012, 0.024, 0.049, 0.098, 0.195, 0.391, 0.781, 1.56, 3.12, 6.25],
+      "role": "monotonic response probe for order drift and CV across repeats"
+    }
+  },
+  "regions": {
+    "R1_channel_stripes_baseline": {
+      "purpose": "Detect channel-specific bias under pure vehicle",
+      "wells": "ALL wells except those overridden by other regions",
+      "expected_signal": "No true biological structure; any structure aligning with channel_id/dispense_pass is handler artifact"
+    },
+    "R2_order_drift_ladder_repeat_early": {
+      "purpose": "Detect drift over dispense time (early region)",
+      "compound": "LADDER_COMPOUND",
+      "map": {
+        "columns": [7,8,9,10,11,12],
+        "dose_mapping": {
+          "col7": 0.003,
+          "col8": 0.006,
+          "col9": 0.012,
+          "col10": 0.024,
+          "col11": 0.049,
+          "col12": 0.098
+        },
+        "rows": "ALL",
+        "assignment": {
+          "treatment": "LADDER",
+          "reagent": "Nocodazole",
+          "mix_program_id": "MIX_STANDARD",
+          "notes": "Ladder early region"
+        }
+      }
+    },
+    "R3_order_drift_ladder_repeat_late": {
+      "purpose": "Detect drift over dispense time (late region)",
+      "compound": "LADDER_COMPOUND",
+      "map": {
+        "columns": [19,20,21,22,23,24],
+        "dose_mapping": {
+          "col19": 0.195,
+          "col20": 0.391,
+          "col21": 0.781,
+          "col22": 1.56,
+          "col23": 3.12,
+          "col24": 6.25
+        },
+        "rows": "ALL",
+        "assignment": {
+          "treatment": "LADDER",
+          "reagent": "Nocodazole",
+          "mix_program_id": "MIX_STANDARD",
+          "notes": "Ladder late region"
+        }
+      }
+    },
+    "R4_carryover_checkerboard_along_path": {
+      "purpose": "Detect carryover/contamination into blanks along dispense path",
+      "design": "Alternating HIGH vs BLANK along the actual dispense order in a compact region",
+      "region_bounds": { "cols": [1,2], "rows": "ALL" },
+      "rule": {
+        "alternation": "by dispense_order_index within this region",
+        "even_index_assignment": {
+          "treatment": "CARRYOVER_HIGH",
+          "reagent": "Nocodazole",
+          "dose_uM": 3.0,
+          "mix_program_id": "MIX_STANDARD",
+          "notes": "High well in carryover test"
+        },
+        "odd_index_assignment": {
+          "treatment": "CARRYOVER_BLANK",
+          "reagent": "DMSO",
+          "dose_uM": 0,
+          "mix_program_id": "MIX_STANDARD",
+          "notes": "Blank immediately adjacent in time to high wells"
+        }
+      }
+    },
+    "R5_mix_program_tiles": {
+      "purpose": "Detect under-mixing vs over-mixing sensitivity at fixed nominal dose",
+      "compound": "LADDER_COMPOUND",
+      "fixed_dose_uM": 0.391,
+      "tiles": [
+        {
+          "tile_id": "MIX_MINIMAL_TILE_1",
+          "wells": ["E13","E14","F13","F14"],
+          "assignment": {
+            "treatment": "MIX_TEST",
+            "reagent": "Nocodazole",
+            "dose_uM": 0.391,
+            "mix_program_id": "MIX_MINIMAL",
+            "notes": "Minimal mixing"
+          }
+        },
+        {
+          "tile_id": "MIX_AGGRESSIVE_TILE_1",
+          "wells": ["G13","G14","H13","H14"],
+          "assignment": {
+            "treatment": "MIX_TEST",
+            "reagent": "Nocodazole",
+            "dose_uM": 0.391,
+            "mix_program_id": "MIX_AGGRESSIVE",
+            "notes": "Aggressive mixing"
+          }
+        },
+        {
+          "tile_id": "MIX_MINIMAL_TILE_2",
+          "wells": ["M13","M14","N13","N14"],
+          "assignment": {
+            "treatment": "MIX_TEST",
+            "reagent": "Nocodazole",
+            "dose_uM": 0.391,
+            "mix_program_id": "MIX_MINIMAL",
+            "notes": "Minimal mixing (late plate position)"
+          }
+        },
+        {
+          "tile_id": "MIX_AGGRESSIVE_TILE_2",
+          "wells": ["O13","O14","P13","P14"],
+          "assignment": {
+            "treatment": "MIX_TEST",
+            "reagent": "Nocodazole",
+            "dose_uM": 0.391,
+            "mix_program_id": "MIX_AGGRESSIVE",
+            "notes": "Aggressive mixing (late plate position)"
+          }
+        }
+      ]
+    }
+  },
+  "resolution_rules": {
+    "order_of_precedence": [
+      "R5_mix_program_tiles.tiles[].assignment",
+      "R4_carryover_checkerboard_along_path.rule",
+      "R2_order_drift_ladder_repeat_early.map",
+      "R3_order_drift_ladder_repeat_late.map",
+      "global_defaults.default_assignment"
+    ],
+    "derived_fields": {
+      "cell_line": "from cell_lines.row_to_cell_line",
+      "dispense_pass": "from lh_metadata.derive_per_well.dispense_pass",
+      "channel_id": "from lh_metadata.derive_per_well.channel_id",
+      "dispense_order_index": "from lh_metadata.derive_per_well.dispense_order_index"
+    }
+  },
+  "analysis_questions_this_plate_should_answer": [
+    "Do baseline wells cluster by channel_id? (channel bias)",
+    "Do baseline wells cluster by dispense_pass? (head/plate handling asymmetry between passes)",
+    "Do dose-response curves differ between early ladder region (cols 7-12) and late ladder region (cols 19-24)? (order drift)",
+    "Do carryover blanks show detectable phenotype/LDH shift relative to other blanks? (carryover)",
+    "Does aggressive mixing reduce within-tile dispersion or shift mean response? (mixing sensitivity)",
+    "Are any of the above effects cell-line-specific? (interaction terms)"
+  ],
+  "expected_failure_signatures": {
+    "channel_bias": "Striping or clustering aligned to channel_id under VEHICLE",
+    "order_drift": "Systematic shift in ladder curves between early vs late regions or monotonic trend vs dispense_order_index",
+    "carryover": "Blanks immediately following highs resemble lows or intermediate doses",
+    "mixing_artifact": "MIX_MINIMAL shows higher variance or inconsistent effect size vs MIX_AGGRESSIVE"
+  }
+}

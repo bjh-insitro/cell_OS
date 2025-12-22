@@ -1,0 +1,187 @@
+{
+  "schema_version": "microscope_calibration_plate_v1",
+  "plate": {
+    "plate_id": "CAL_384_MICROSCOPE_BEADS_DYES_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "Microscope calibration before any biology: illumination/flat-field, channel registration, focus map, PSF-ish checks, camera noise/fixed-pattern, vignetting, crosstalk",
+  "global_defaults": {
+    "no_cells": true,
+    "no_staining": true,
+    "imaging_modes": ["widefield_fluorescence"],
+    "readouts": ["images_only"],
+    "notes": [
+      "This plate is run BEFORE the measurement-rule plate.",
+      "Goal is to learn the microscope's behavior: illumination non-uniformity, focus drift, chromatic shift, bleed-through, and repeatability.",
+      "All wells are either dye solutions (flat-field), multicolor beads (registration), dark wells (camera baseline), or blanks."
+    ]
+  },
+  "materials": {
+    "DARK": {
+      "type": "buffer_only",
+      "description": "Imaging buffer or PBS only. Used to measure camera offset, dark current proxy, and background."
+    },
+    "BLANK": {
+      "type": "empty",
+      "description": "No liquid (if permitted) or minimal buffer. Used to detect dust, autofluorescence, and plate plastic artifacts."
+    },
+    "FLATFIELD_DYE_LOW": {
+      "type": "fluorescent_dye_solution",
+      "description": "Uniform fluorescent dye (or premix) at low intensity. Used for flat-field + linearity checks without saturation.",
+      "channels_targeted": ["all_fluor_channels_in_panel"]
+    },
+    "FLATFIELD_DYE_HIGH": {
+      "type": "fluorescent_dye_solution",
+      "description": "Uniform fluorescent dye (or premix) at higher intensity. Used to check saturation, shading correction stability, and exposure robustness.",
+      "channels_targeted": ["all_fluor_channels_in_panel"]
+    },
+    "MULTICOLOR_BEADS_SPARSE": {
+      "type": "fluorescent_beads",
+      "description": "Sparse multicolor beads (e.g., TetraSpeck-like). Used for chromatic registration, PSF-ish spot shape, and focus sensitivity.",
+      "density": "sparse"
+    },
+    "MULTICOLOR_BEADS_DENSE": {
+      "type": "fluorescent_beads",
+      "description": "Denser beads. Used for repeatability, field curvature hints, and robust registration stats.",
+      "density": "dense"
+    },
+    "FOCUS_BEADS": {
+      "type": "fluorescent_beads",
+      "description": "Beads optimized for autofocus (bright, stable). Used to map focus performance and field curvature.",
+      "density": "medium"
+    }
+  },
+  "layout_strategy": {
+    "principles": [
+      "Put flat-field dye everywhere (including edges) to map illumination and vignetting.",
+      "Put beads in a spatially distributed pattern to measure chromatic shifts across the field.",
+      "Include repeated tiles to estimate local repeatability (same material, same settings).",
+      "Include dark wells to measure camera baseline and background drift."
+    ],
+    "default_assignment": {
+      "material": "FLATFIELD_DYE_LOW",
+      "notes": "Most wells are flat-field dye low by default"
+    }
+  },
+  "explicit_assignments": {
+    "dark_wells": {
+      "material": "DARK",
+      "wells": [
+        "A1","A24","P1","P24",
+        "H1","H24","I1","I24",
+        "A12","P12","H12","I12"
+      ],
+      "notes": "Camera baseline/background across corners and mid-edges"
+    },
+    "blank_wells": {
+      "material": "BLANK",
+      "wells": ["B1","B24","O1","O24"],
+      "notes": "Optional. If your plate handling hates empty wells, fill with DARK instead."
+    },
+    "flatfield_high": {
+      "material": "FLATFIELD_DYE_HIGH",
+      "wells": [
+        "C12","D12","E12","F12","G12","J12","K12","L12","M12","N12",
+        "C13","D13","E13","F13","G13","J13","K13","L13","M13","N13"
+      ],
+      "notes": "Central band for high-intensity flat-field and exposure stress"
+    },
+    "multicolor_beads_sparse": {
+      "material": "MULTICOLOR_BEADS_SPARSE",
+      "wells": [
+        "A6","A19","P6","P19",
+        "H6","H19","I6","I19",
+        "D6","D19","M6","M19"
+      ],
+      "notes": "Spatially distributed sparse beads for chromatic registration across plate"
+    },
+    "multicolor_beads_dense": {
+      "material": "MULTICOLOR_BEADS_DENSE",
+      "wells": [
+        "B12","B13","O12","O13",
+        "H2","H23","I2","I23"
+      ],
+      "notes": "Denser bead stats for robust registration and field-dependent effects"
+    },
+    "focus_beads_map": {
+      "material": "FOCUS_BEADS",
+      "wells": [
+        "C3","C8","C17","C22",
+        "F3","F8","F17","F22",
+        "K3","K8","K17","K22",
+        "N3","N8","N17","N22"
+      ],
+      "notes": "Grid to characterize autofocus performance and field curvature"
+    }
+  },
+  "repeatability_tiles": {
+    "purpose": "Estimate local repeatability and detect small focus/illumination drifts",
+    "tile_shape": "2x2",
+    "tiles": [
+      {
+        "tile_id": "TILE_FF_LOW_NW",
+        "material": "FLATFIELD_DYE_LOW",
+        "wells": ["B2","B3","C2","C3"]
+      },
+      {
+        "tile_id": "TILE_FF_LOW_NE",
+        "material": "FLATFIELD_DYE_LOW",
+        "wells": ["B22","B23","C22","C23"]
+      },
+      {
+        "tile_id": "TILE_FF_LOW_SW",
+        "material": "FLATFIELD_DYE_LOW",
+        "wells": ["N2","N3","O2","O3"]
+      },
+      {
+        "tile_id": "TILE_FF_LOW_SE",
+        "material": "FLATFIELD_DYE_LOW",
+        "wells": ["N22","N23","O22","O23"]
+      },
+      {
+        "tile_id": "TILE_BEADS_SPARSE_LOCAL",
+        "material": "MULTICOLOR_BEADS_SPARSE",
+        "wells": ["G10","G11","H10","H11"]
+      },
+      {
+        "tile_id": "TILE_BEADS_DENSE_LOCAL",
+        "material": "MULTICOLOR_BEADS_DENSE",
+        "wells": ["J14","J15","K14","K15"]
+      }
+    ]
+  },
+  "imaging_protocol_expectations": {
+    "acquire": [
+      "Use the exact objective, filters, exposures, binning, and autofocus mode you will use for Cell Painting.",
+      "Acquire at least 2 fields per well for flat-field wells; more if you want a good illumination map.",
+      "For bead wells, capture enough beads per field to estimate shift vectors per channel (sparse) and robust stats (dense).",
+      "Include at least one full-plate pass twice (same day) to quantify repeatability."
+    ],
+    "compute": [
+      "Per-channel flat-field image (illumination profile) and shading correction.",
+      "Per-channel chromatic registration map (shift vectors across the field).",
+      "Focus success rate and best-focus z distribution across the plate.",
+      "Background and camera offset estimates from DARK wells.",
+      "Bleed-through / crosstalk estimates from single-channel dominance (if your dye/bead set allows)."
+    ],
+    "pass_fail": [
+      "Flat-field correction reduces intensity CV across the plate by a large factor (your threshold).",
+      "Registration errors are below your pixel threshold across the field.",
+      "Autofocus succeeds at high rate across the plate and does not systematically fail on edges.",
+      "No catastrophic hot pixels, striping, or field-dependent artifacts remain unmodeled."
+    ]
+  },
+  "handoff": {
+    "next_plate": "CAL_384_RULES_WORLD_v1",
+    "why": [
+      "Once illumination + registration + focus are characterized, the next plate can attribute remaining structure to workflow + biology rather than optics."
+    ],
+    "reference": {
+      "file": "CAL_384_RULES_WORLD_v1.json",
+      "note": "This microscope calibration plate is intended as the step immediately before the rules-of-world plate."
+    }
+  }
+}

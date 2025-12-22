@@ -1,0 +1,110 @@
+{
+  "schema_version": "calibration_plate_v1",
+  "plate": {
+    "plate_id": "CAL_EL406_WASH_DAMAGE_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "EL406 wash/fix/stain protocol stress test: isolate aspiration shear, residual volume, and wash program effects that create fake morphology",
+  "global_defaults": {
+    "timepoint_hours": 48,
+    "readouts": ["cell_painting", "ldh"],
+    "vehicle": {
+      "name": "DMSO",
+      "final_concentration_vv": 0.001,
+      "units": "v/v"
+    },
+    "default_assignment": {
+      "treatment": "VEHICLE",
+      "reagent": "DMSO",
+      "dose_uM": 0,
+      "wash_program_id": "WASH_STANDARD"
+    }
+  },
+  "cell_lines": {
+    "strategy": "single_line_recommended",
+    "recommended_cell_line": "A549",
+    "row_to_cell_line": {
+      "A": "A549","B": "A549","C": "A549","D": "A549",
+      "E": "A549","F": "A549","G": "A549","H": "A549",
+      "I": "A549","J": "A549","K": "A549","L": "A549",
+      "M": "A549","N": "A549","O": "A549","P": "A549"
+    },
+    "notes": [
+      "This plate is about wash physics; mixing cell lines is optional and usually adds noise.",
+      "If you insist on two lines, run this plate twice (one per line) rather than interleaving."
+    ]
+  },
+  "wash_programs": [
+    {
+      "wash_program_id": "WASH_GENTLE",
+      "aspiration_height_mm": 1.8,
+      "dispense_speed": "low",
+      "wash_cycles": 2,
+      "dwell_time_s": 10,
+      "notes": "Minimize shear; risk of residual stain/background"
+    },
+    {
+      "wash_program_id": "WASH_STANDARD",
+      "aspiration_height_mm": 1.2,
+      "dispense_speed": "medium",
+      "wash_cycles": 3,
+      "dwell_time_s": 10,
+      "notes": "Reference protocol"
+    },
+    {
+      "wash_program_id": "WASH_HARSH_LOW_HEIGHT",
+      "aspiration_height_mm": 0.6,
+      "dispense_speed": "medium",
+      "wash_cycles": 3,
+      "dwell_time_s": 10,
+      "notes": "Higher shear risk, likely to damage cells or detach"
+    },
+    {
+      "wash_program_id": "WASH_HARSH_MORE_CYCLES",
+      "aspiration_height_mm": 1.2,
+      "dispense_speed": "high",
+      "wash_cycles": 5,
+      "dwell_time_s": 5,
+      "notes": "Aggressive wash; tests repeated aspiration/dispense stress"
+    }
+  ],
+  "design": {
+    "program_blocks_by_columns": [
+      { "wash_program_id": "WASH_GENTLE", "cols": [1,2,3,4,5,6] },
+      { "wash_program_id": "WASH_STANDARD", "cols": [7,8,9,10,11,12] },
+      { "wash_program_id": "WASH_HARSH_LOW_HEIGHT", "cols": [13,14,15,16,17,18] },
+      { "wash_program_id": "WASH_HARSH_MORE_CYCLES", "cols": [19,20,21,22,23,24] }
+    ],
+    "no_cells_background": {
+      "wells": ["A1","A24","P1","P24","H12","I12"],
+      "assignment": {
+        "treatment": "NO_CELLS",
+        "reagent": "DMSO",
+        "dose_uM": 0,
+        "cell_density": "NONE",
+        "wash_program_id": "WASH_STANDARD"
+      },
+      "purpose": "Separate background/stain residue from cell-dependent signal and detect wash-dependent background differences"
+    }
+  },
+  "resolution_rules": {
+    "order_of_precedence": [
+      "design.no_cells_background.assignment",
+      "design.program_blocks_by_columns",
+      "global_defaults.default_assignment"
+    ],
+    "derived_fields": {
+      "cell_line": "from cell_lines.row_to_cell_line",
+      "wash_program_id": "from design.program_blocks_by_columns by column"
+    }
+  },
+  "analysis_questions": [
+    "Does morphology shift systematically by wash_program_id (wash creates phenotype)?",
+    "Does LDH rise under harsh programs (physical damage)?",
+    "Do no-cells wells show wash-dependent residue/background (insufficient washing)?",
+    "Does segmentation failure spike under specific wash programs?"
+  ]
+}

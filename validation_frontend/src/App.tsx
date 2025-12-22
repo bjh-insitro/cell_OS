@@ -7,6 +7,9 @@ import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
 import ViewingPage from './pages/CellThalamus/ViewingPage';
 import AutonomousLoopPage from './pages/AutonomousLoopPage';
 import EpistemicProvenancePage from './pages/EpistemicProvenancePageNew';
+import EpistemicDocumentaryPage from './pages/EpistemicDocumentaryPage';
+import CalibrationPlatePage from './pages/CalibrationPlatePage';
+import CalibrationResultsPage from './pages/CalibrationResultsPage';
 
 function App() {
     return (
@@ -19,6 +22,9 @@ function App() {
                 <Route path="/cell-thalamus/viewing" element={<ViewingPage />} />
                 <Route path="/autonomous-loop" element={<AutonomousLoopPage />} />
                 <Route path="/epistemic-provenance" element={<EpistemicProvenancePage />} />
+                <Route path="/documentary" element={<EpistemicDocumentaryPage />} />
+                <Route path="/calibration-plate" element={<CalibrationPlatePage />} />
+                <Route path="/calibration-results/:plateId" element={<CalibrationResultsPage />} />
                 <Route path="/under-development" element={<UnderDevelopmentPage />} />
             </Routes>
         </Router>

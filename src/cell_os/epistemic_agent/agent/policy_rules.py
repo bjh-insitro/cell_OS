@@ -90,7 +90,9 @@ class RuleBasedPolicy:
         self,
         cap: dict,
         n_reps: int = 12,
-        reason: str = "Measure baseline noise"
+        reason: str = "Measure baseline noise",
+        coverage_strategy: str = "center_only",  # Ignored, for Documentary only
+        **extra_kwargs  # Ignore other Documentary-only params
     ) -> Proposal:
         """Template: DMSO replicates at center position."""
         design_id = f"baseline_{uuid.uuid4().hex[:8]}"

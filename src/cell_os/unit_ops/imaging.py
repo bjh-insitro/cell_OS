@@ -80,9 +80,17 @@ class ImagingOps:
         )
 
     def op_cell_painting(self, vessel_id: str) -> UnitOp:
-        """Standard Cell Painting Staining Protocol."""
+        """Standard Cell Painting Staining Protocol.
+
+        Handles both macro-scale (flasks, 6/12-well plates) and micro-scale (96/384-well plates).
+        Uses appropriate pipette types based on vessel scale.
+        """
         v = self.vessels.get(vessel_id)
-        
+
+        # Detect plate scale for appropriate consumables
+        is_microplate = "384" in vessel_id or "96" in vessel_id
+        pipette_type = "pipette_tip_200ul_filter" if is_microplate else "pipette_10ml"
+
         steps = []
         items = []
         
@@ -104,7 +112,7 @@ class ImagingOps:
             sub_steps=[]
         ))
         items.append(BOMItem(resource_id="mitotracker", quantity=v.working_volume_ml)) # Assuming quantity matches volume for now
-        items.append(BOMItem(resource_id="pipette_10ml", quantity=1)) # Tip usage
+        items.append(BOMItem(resource_id=pipette_type, quantity=1)) # Tip usage
         
         # 2. Fixation
         steps.append(UnitOp(
@@ -123,8 +131,8 @@ class ImagingOps:
             sub_steps=[]
         ))
         items.append(BOMItem(resource_id="paraformaldehyde", quantity=v.working_volume_ml))
-        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
-        
+        items.append(BOMItem(resource_id=pipette_type, quantity=1))
+
         # 3. Permeabilization
         steps.append(UnitOp(
             uo_id="Perm",
@@ -142,8 +150,8 @@ class ImagingOps:
             sub_steps=[]
         ))
         items.append(BOMItem(resource_id="triton_x100", quantity=v.working_volume_ml))
-        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
-        
+        items.append(BOMItem(resource_id=pipette_type, quantity=1))
+
         # 4. Staining (Phalloidin, ConA, Hoechst, Syto14, WGA)
         cocktail_cost = cp.get_panel_cost("standard_cocktail", v.working_volume_ml)
         steps.append(UnitOp(
@@ -162,8 +170,8 @@ class ImagingOps:
             sub_steps=[]
         ))
         items.append(BOMItem(resource_id="cell_painting_cocktail", quantity=v.working_volume_ml))
-        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
-        
+        items.append(BOMItem(resource_id=pipette_type, quantity=1))
+
         # 5. Wash
         steps.append(UnitOp(
             uo_id="Wash_Final",
@@ -181,7 +189,7 @@ class ImagingOps:
             sub_steps=[]
         ))
         items.append(BOMItem(resource_id="pbs", quantity=v.working_volume_ml * 3)) # 3 washes
-        items.append(BOMItem(resource_id="pipette_10ml", quantity=1))
+        items.append(BOMItem(resource_id=pipette_type, quantity=1))
         
         # Liquid Handler usage for all steps
         items.append(BOMItem(resource_id="liquid_handler_usage", quantity=1.0)) # 1 run

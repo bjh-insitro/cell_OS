@@ -148,7 +148,7 @@ vessels:
     type: Plate
     name: "96-Well Glass Bottom Plate"
     vendor: "Cellvis"
-    catalog_number: "P96-1.5H-N" 
+    catalog_number: "P96-1.5H-N"
     surface_area_cm2: 0.32
     working_volume_ml: 0.15
     coating_volume_ml: 0.1
@@ -156,6 +156,21 @@ vessels:
     well_count: 96
     footprint: SBS_Standard
     volume_unit: mL
+
+  # --- 384-WELL PLATES ---
+  plate_384well:
+    type: Plate
+    name: "PhenoPlate 384-well (CellCarrier Ultra)"
+    vendor: "FISHER SCIENTIFIC"
+    catalog_number: "50-209-8071"
+    surface_area_cm2: 0.11
+    working_volume_ml: 0.05
+    coating_volume_ml: 0.025
+    max_volume_ml: 0.11
+    well_count: 384
+    footprint: SBS_Standard
+    volume_unit: mL
+    consumable_id: phenoplate_384  # Link to inventory pricing (verified $32.92)
 
   # --- T-FLASKS ---
   flask_t25:

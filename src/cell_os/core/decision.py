@@ -18,6 +18,30 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence
 from datetime import datetime, timezone
 import json
+import math
+
+
+def _json_dumps_safe(obj: Any, **kwargs) -> str:
+    """JSON serializer that handles infinity and NaN values.
+
+    Converts:
+    - float('inf') → null
+    - float('-inf') → null
+    - float('nan') → null
+
+    This ensures valid JSON output for JSONL files.
+    """
+    def _convert(o):
+        if isinstance(o, float):
+            if math.isinf(o) or math.isnan(o):
+                return None
+        elif isinstance(o, dict):
+            return {k: _convert(v) for k, v in o.items()}
+        elif isinstance(o, (list, tuple)):
+            return [_convert(item) for item in o]
+        return o
+
+    return json.dumps(_convert(obj), **kwargs)
 
 
 @dataclass(frozen=True)
@@ -165,7 +189,7 @@ class Decision:
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
-        return json.dumps(self.to_dict(), sort_keys=True)
+        return _json_dumps_safe(self.to_dict(), sort_keys=True)
 
     @classmethod
     def now_utc(cls) -> str:
