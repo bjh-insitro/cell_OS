@@ -39,7 +39,8 @@ def execute_plate_design_parallel(
     seed: int = 42,
     output_dir: Optional[Path] = None,
     verbose: bool = True,
-    workers: Optional[int] = None
+    workers: Optional[int] = None,
+    auto_commit: bool = False
 ) -> Dict[str, Any]:
     """
     Execute full 384-well plate simulation with parallel processing.
@@ -56,6 +57,7 @@ def execute_plate_design_parallel(
         output_dir: Optional directory to save results
         verbose: Print progress messages
         workers: Number of parallel workers (None = auto-detect)
+        auto_commit: If True, git commit and push results after successful execution
 
     Returns:
         Dictionary with results
@@ -166,11 +168,58 @@ def execute_plate_design_parallel(
         if verbose:
             print(f"\n✓ Results saved: {output_file}")
 
+        # Auto-commit and push if requested
+        if auto_commit:
+            import subprocess
+            try:
+                if verbose:
+                    print(f"\n{'='*70}")
+                    print(f"Auto-committing results...")
+                    print(f"{'='*70}")
+
+                # Add results file
+                subprocess.run(['git', 'add', str(output_file)], check=True, cwd=output_dir.parent.parent)
+
+                # Create commit message
+                commit_msg = f"""feat: add calibration plate results - {plate_id} seed{seed}
+
+Executed: {n_wells} wells
+Successful: {n_success}
+Failed: {n_failed}
+Cell lines: {', '.join(output['metadata']['cell_lines'])}
+Compounds: {', '.join(output['metadata']['compounds'])}
+
+🤖 Auto-committed by plate_executor_v2_parallel.py"""
+
+                # Commit
+                subprocess.run(['git', 'commit', '-m', commit_msg], check=True, cwd=output_dir.parent.parent)
+
+                if verbose:
+                    print(f"✓ Results committed")
+
+                # Push
+                subprocess.run(['git', 'push'], check=True, cwd=output_dir.parent.parent)
+
+                if verbose:
+                    print(f"✓ Results pushed to remote")
+
+            except subprocess.CalledProcessError as e:
+                if verbose:
+                    print(f"⚠️  Git operation failed: {e}")
+                    print(f"   Results saved but not committed. You can commit manually.")
+
     return output
 
 
 if __name__ == "__main__":
     import sys
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Execute calibration plate with parallel processing')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed (default: 42)')
+    parser.add_argument('--workers', type=int, default=None, help='Number of workers (default: auto-detect)')
+    parser.add_argument('--auto-commit', action='store_true', help='Auto-commit and push results after completion')
+    args = parser.parse_args()
 
     json_path = Path("validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v2.json")
 
@@ -181,10 +230,11 @@ if __name__ == "__main__":
     # Run with all correctness fixes + parallel execution
     results = execute_plate_design_parallel(
         json_path=json_path,
-        seed=42,
+        seed=args.seed,
         output_dir=Path("results/calibration_plates"),
         verbose=True,
-        workers=None  # Auto-detect CPUs
+        workers=args.workers,
+        auto_commit=args.auto_commit
     )
 
     print(f"\n{'='*70}")
