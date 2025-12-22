@@ -128,7 +128,7 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
   } else if (plateData.schema_version === 'calibration_plate_v2') {
     return <PlateViewerV2 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'calibration_plate_v3') {
-    return <PlateViewerV2 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
+    return <PlateViewerV3 plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'microscope_calibration_plate_v1') {
     return <PlateViewerMicroscope plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'liquid_handler_calibration_plate_v1') {
@@ -1345,6 +1345,255 @@ function PlateViewerLiquidHandler({ plateData, isDarkMode, onSimulate }: { plate
             <div>• <strong>Order drift:</strong> Systematic shift in curves between early vs late, or monotonic trend with dispense order</div>
             <div>• <strong>Carryover:</strong> Blanks after highs resemble low/intermediate doses</div>
             <div>• <strong>Mixing artifact:</strong> MIX_MINIMAL shows higher variance or inconsistent effect size</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// V3 Viewer (micro-checkerboard with well_to_cell_line mapping)
+function PlateViewerV3({ plateData, isDarkMode, onSimulate }: { plateData: any; isDarkMode: boolean; onSimulate?: (plateData: any) => void }) {
+  const rows = plateData.plate.rows;
+  const cols = plateData.plate.cols;
+
+  const downloadPlateJSON = () => {
+    const dataStr = JSON.stringify(plateData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    const exportFileDefaultName = `${plateData.plate.plate_id}.json`;
+
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  // Helper to get well assignments for v3 (same structure as v2)
+  const getWellAssignment = (wellId: string) => {
+    const row = wellId[0];
+    const col = parseInt(wellId.slice(1));
+
+    // Background controls (no cells)
+    if (plateData.non_biological_provocations?.background_controls?.wells_no_cells?.includes(wellId)) {
+      return { type: 'no_cells', detail: 'No cells' };
+    }
+
+    // Tiles
+    for (const tile of plateData.contrastive_tiles?.tiles || []) {
+      if (tile.wells.includes(wellId)) {
+        return { type: 'tile', detail: tile.tile_id };
+      }
+    }
+
+    // Anchors
+    if (plateData.biological_anchors?.wells?.ANCHOR_MORPH?.includes(wellId)) {
+      return { type: 'anchor_morph', detail: 'Nocodazole 0.3µM' };
+    }
+    if (plateData.biological_anchors?.wells?.ANCHOR_DEATH?.includes(wellId)) {
+      return { type: 'anchor_death', detail: 'Thapsigargin 0.05µM' };
+    }
+
+    // Probes
+    const probes = plateData.non_biological_provocations || {};
+    if (probes.stain_scale_probes?.wells?.STAIN_LOW?.includes(wellId)) {
+      return { type: 'stain_low', detail: 'Stain 0.9x' };
+    }
+    if (probes.stain_scale_probes?.wells?.STAIN_HIGH?.includes(wellId)) {
+      return { type: 'stain_high', detail: 'Stain 1.1x' };
+    }
+    if (probes.fixation_timing_probes?.wells?.EARLY_FIX?.includes(wellId)) {
+      return { type: 'fix_early', detail: 'Early fix -15min' };
+    }
+    if (probes.fixation_timing_probes?.wells?.LATE_FIX?.includes(wellId)) {
+      return { type: 'fix_late', detail: 'Late fix +15min' };
+    }
+    if (probes.imaging_focus_probes?.wells?.FOCUS_MINUS?.includes(wellId)) {
+      return { type: 'focus_minus', detail: 'Focus -2µm' };
+    }
+    if (probes.imaging_focus_probes?.wells?.FOCUS_PLUS?.includes(wellId)) {
+      return { type: 'focus_plus', detail: 'Focus +2µm' };
+    }
+
+    // Density gradient
+    const densityGradient = probes.cell_density_gradient?.rule;
+    let density = 'NOMINAL';
+    if (densityGradient) {
+      if (densityGradient.LOW_cols?.includes(col)) density = 'LOW';
+      else if (densityGradient.HIGH_cols?.includes(col)) density = 'HIGH';
+    }
+
+    return { type: 'vehicle', detail: `Vehicle (${density} density)` };
+  };
+
+  const getWellColor = (assignment: any) => {
+    switch (assignment.type) {
+      case 'no_cells': return 'bg-slate-900/90';
+      case 'anchor_morph': return 'bg-purple-600/90';
+      case 'anchor_death': return 'bg-red-600/90';
+      case 'tile': return 'bg-blue-500/90';
+      case 'stain_low': return 'bg-yellow-600/90';
+      case 'stain_high': return 'bg-orange-600/90';
+      case 'fix_early': return 'bg-cyan-600/90';
+      case 'fix_late': return 'bg-teal-600/90';
+      case 'focus_minus': return 'bg-pink-600/90';
+      case 'focus_plus': return 'bg-rose-600/90';
+      default: return 'bg-slate-700/70';
+    }
+  };
+
+  const getCellLineBorderColor = (wellId: string) => {
+    // V3 uses well_to_cell_line instead of row_to_cell_line
+    const cellLine = plateData.cell_lines?.well_to_cell_line?.[wellId];
+    return cellLine === 'HepG2' ? '#ec4899' : '#a855f7';
+  };
+
+  const wellData: WellData[] = [];
+  rows.forEach((row: string) => {
+    cols.forEach((col: number) => {
+      const wellId = `${row}${col}`;
+      const assignment = getWellAssignment(wellId);
+      const cellLine = plateData.cell_lines?.well_to_cell_line?.[wellId] || 'Unknown';
+
+      wellData.push({
+        id: wellId,
+        color: getWellColor(assignment),
+        borderColor: getCellLineBorderColor(wellId),
+        borderWidth: 2,
+        tooltip: {
+          title: wellId,
+          lines: [
+            assignment.detail,
+            cellLine,
+          ],
+        },
+      });
+    });
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">
+              {plateData.plate.plate_id}
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
+              {plateData.intent}
+            </p>
+            <p className="text-sm text-slate-400">
+              384-well plate (16 rows × 24 columns) - 2×2 Micro-Checkerboard
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {onSimulate && (
+              <button
+                onClick={() => onSimulate(plateData)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-all text-sm font-medium"
+              >
+                <Play className="h-4 w-4" />
+                Simulate
+              </button>
+            )}
+            <button
+              onClick={downloadPlateJSON}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-sm font-medium"
+            >
+              <Download className="h-4 w-4" />
+              Download JSON
+            </button>
+          </div>
+        </div>
+
+        <PlateViewer
+          format="384"
+          wells={wellData}
+          isDarkMode={isDarkMode}
+          size="medium"
+          showLabels={false}
+          showAxisLabels={true}
+        />
+
+        {/* Legend */}
+        <div className="mt-6 space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-white mb-3">Compounds (fill):</div>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-slate-700/70"></div>
+                <span className="text-slate-300">Vehicle (DMSO)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-purple-600/90"></div>
+                <span className="text-slate-300">Anchor Morph (Nocodazole 0.3µM)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-600/90"></div>
+                <span className="text-slate-300">Anchor Death (Thapsigargin 0.05µM)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-blue-500/90"></div>
+                <span className="text-slate-300">Tiles (2x2 replicates)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-yellow-600/90"></div>
+                <span className="text-slate-300">Stain Low (0.9x)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-600/90"></div>
+                <span className="text-slate-300">Stain High (1.1x)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-cyan-600/90"></div>
+                <span className="text-slate-300">Fix Early (-15min)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-teal-600/90"></div>
+                <span className="text-slate-300">Fix Late (+15min)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-pink-600/90"></div>
+                <span className="text-slate-300">Focus Minus (-2µm)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-rose-600/90"></div>
+                <span className="text-slate-300">Focus Plus (+2µm)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-slate-900/90"></div>
+                <span className="text-slate-300">No Cells (background)</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-white mb-3">Cell lines (border, 2×2 micro-checkerboard):</div>
+            <div className="flex gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-purple-500 rounded"></div>
+                <span className="text-slate-300">A549 (tiled per well)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-pink-500 rounded"></div>
+                <span className="text-slate-300">HepG2 (tiled per well)</span>
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 mt-2">
+              2×2 tiling: each 2×2 block contains both cell lines, breaking row/column confounds
+            </div>
+          </div>
+        </div>
+
+        {/* Key Design Principle callout */}
+        <div className="mt-6 p-4 rounded-lg bg-emerald-900/20 border border-emerald-700/50">
+          <div className="text-sm font-semibold text-emerald-300 mb-2">
+            V3 Design Principle:
+          </div>
+          <div className="text-xs text-emerald-200 space-y-1">
+            <div>• <strong>Minimal confound structure:</strong> Cell line ⊥ row, cell line ⊥ column (decorrelated)</div>
+            <div>• <strong>Local biology sanity:</strong> 2×2 tiling preserves neighbor relationships (not single-well checkerboard)</div>
+            <div>• <strong>Spatial correction test:</strong> Tests whether spatial models need fewer parameters with decorrelated layout</div>
+            <div>• <strong>Neighbor coupling probe:</strong> Does local variance inflate compared to v2? If so, v2 safer</div>
           </div>
         </div>
       </div>
