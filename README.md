@@ -334,6 +334,95 @@ The repository has **10,000+ lines of tests** enforcing epistemic invariants, no
 
 ---
 
+## 🎨 Validation Frontend & QC Tools
+
+**NEW**: Interactive web UI for calibration plate analysis and run management.
+
+### Quick Start
+
+```bash
+# Terminal 1: Start dev server (local machine)
+cd validation_frontend
+npm install
+npm run dev
+
+# Terminal 2: Run calibration plate on JupyterHub
+cd ~/repos/cell_OS
+PYTHONPATH=. python3 src/cell_os/plate_executor_v2_parallel.py \
+  validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v2.json \
+  --seed 42 --auto-pull --auto-commit
+
+# Terminal 3: Auto-pull results (local machine)
+./auto_pull.sh
+```
+
+### Features
+
+#### 1. 📊 Epistemic Documentary (`/documentary`)
+- **Timeline Tab**: Cycle-by-cycle agent decision visualization
+- **Plate Designs Tab**: Browse calibration plate catalog
+- **Calibration Plate Tab**: Interactive plate design viewer with simulate button
+- **Runs Tab**: Browse all simulation runs with filtering and comparison
+
+#### 2. 🧪 Calibration Plate Executor
+- **Unique Run IDs**: Timestamp-based identifiers for each run
+- **Runs Manifest**: Automatic tracking of all runs in `runs_manifest.json`
+- **Auto-pull/Auto-commit**: Seamless workflow from JupyterHub → GitHub → local UI
+- **Parallel Execution**: 384 wells in ~2-3 minutes on 31 workers
+
+#### 3. 🔬 QC Analysis Dashboard
+After running a plate, click "View Results" to see:
+
+**Replicate Precision (Tile CV)**
+- Coefficient of variation for 2x2 replicate tiles
+- Color-coded: Green (< 10%), Yellow (10-20%), Red (> 20%)
+- Target: < 10% for excellent reproducibility
+
+**Assay Quality (Z-Factor)**
+- Industry-standard validation metric
+- Compares DMSO vs MILD/STRONG anchors
+- Z' > 0.5 = excellent, 0-0.5 = acceptable, < 0 = poor
+
+**Spatial Effects**
+- Bar charts showing mean signal by row/column
+- Detects edge effects and gradients
+- Helps identify position-dependent artifacts
+
+**Channel Correlation Matrix**
+- Pearson correlation between all channels
+- Identifies redundant vs orthogonal features
+- Color intensity = correlation strength
+
+#### 4. 🔄 Run Management
+- **Browse all runs**: Filterable by plate design
+- **Compare runs**: View multiple runs side-by-side
+- **Download results**: Export JSON for analysis
+- **Auto-refresh**: New runs appear automatically
+
+### Workflow
+
+```mermaid
+graph LR
+    A[Design Plate] --> B[Simulate on JH]
+    B --> C[Auto-commit]
+    C --> D[Auto-pull local]
+    D --> E[View in UI]
+    E --> F[QC Analysis]
+    F --> G[Pass/Fail Decision]
+```
+
+### Available Plate Designs
+
+1. **CAL_384_RULES_WORLD_v1** - Simple calibration (anchors + tiles)
+2. **CAL_384_RULES_WORLD_v2** - Advanced (density gradient + probes)
+3. **CAL_384_MICROSCOPE_BEADS_DYES_v1** - Instrument calibration
+4. **CAL_384_LH_ARTIFACTS_v1** - Liquid handler QC
+5. **CAL_VARIANCE_PARTITION_v1** - Variance decomposition
+6. **CAL_EL406_WASH_DAMAGE_v1** - Wash stress testing
+7. **CAL_DYNAMIC_RANGE_v1** - Dynamic range mapping
+
+---
+
 ## 📂 Project Structure
 
 ```
@@ -350,13 +439,30 @@ cell_OS/
 │   │   └── biology_core.py           # Pure pharmacology functions
 │   ├── epistemic_control.py          # Debt tracking
 │   ├── epistemic_debt.py             # Information gain computation
-│   └── epistemic_penalty.py          # Cost inflation
+│   ├── epistemic_penalty.py          # Cost inflation
+│   └── plate_executor_v2_parallel.py # Calibration plate executor (parallel)
+├── validation_frontend/              # 🆕 Interactive web UI
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── EpistemicDocumentaryPage.tsx  # Main dashboard
+│   │   │   └── CalibrationResultsLoaderPage.tsx  # QC analysis viewer
+│   │   ├── components/
+│   │   │   ├── RunsBrowser.tsx        # Run management UI
+│   │   │   ├── CalibrationQCAnalysis.tsx  # QC metrics
+│   │   │   └── PlateDesignCatalog.tsx  # Design browser
+│   │   └── public/
+│   │       ├── plate_designs/         # JSON plate definitions
+│   │       └── demo_results/
+│   │           └── calibration_plates/
+│   │               └── runs_manifest.json  # Run tracking
 ├── tests/                            # 10K+ lines of epistemic invariant tests
 │   ├── unit/                         # Component tests
 │   ├── integration/                  # Agent + world integration
 │   └── phase6a/                      # Conservation laws, honesty, confluence
 ├── scripts/
-│   └── run_epistemic_agent.py        # Main entry point
+│   ├── run_epistemic_agent.py        # Main agent entry point
+│   └── analysis/                     # Analysis utilities
+├── auto_pull.sh                      # 🆕 Auto-sync results from GitHub
 └── docs/
     ├── PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md
     ├── PHASE1_AGENT_SUMMARY.md
