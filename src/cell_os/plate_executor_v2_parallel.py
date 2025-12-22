@@ -183,9 +183,9 @@ def execute_plate_design_parallel(
                 # Create commit message
                 commit_msg = f"""feat: add calibration plate results - {plate_id} seed{seed}
 
-Executed: {n_wells} wells
-Successful: {n_success}
-Failed: {n_failed}
+Executed: {output['n_wells']} wells
+Successful: {output['n_success']}
+Failed: {output['n_failed']}
 Cell lines: {', '.join(output['metadata']['cell_lines'])}
 Compounds: {', '.join(output['metadata']['compounds'])}
 
