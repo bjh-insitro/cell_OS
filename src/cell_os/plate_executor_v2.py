@@ -348,12 +348,24 @@ def _load_and_validate_design(json_path: Path):
 
 def _extract_design_components(design: Dict) -> Dict:
     """Extract key components from design specification."""
+    # Handle both row-based (v2) and well-based (v3 checkerboard) cell line mappings
+    cell_lines = design["cell_lines"]
+    if "well_to_cell_line" in cell_lines:
+        # v3 checkerboard: well-level mapping
+        cell_lines_map = cell_lines["well_to_cell_line"]
+        cell_lines_strategy = "checkerboard"
+    else:
+        # v2 interleaved or v1 blocked: row-level mapping
+        cell_lines_map = cell_lines["row_to_cell_line"]
+        cell_lines_strategy = "row_based"
+
     return {
         'plate': design["plate"],
         'rows': design["plate"]["rows"],
         'cols': design["plate"]["cols"],
         'global_defaults': design["global_defaults"],
-        'cell_lines_map': design["cell_lines"]["row_to_cell_line"],
+        'cell_lines_map': cell_lines_map,
+        'cell_lines_strategy': cell_lines_strategy,
         'non_bio': design["non_biological_provocations"],
         'anchors_data': {a['anchor_id']: a for a in design['biological_anchors']['anchors']}
     }
@@ -372,13 +384,19 @@ def _build_well_assignment(
     """Build complete assignment for a single well by applying precedence rules."""
     global_defaults = design_components['global_defaults']
     cell_lines_map = design_components['cell_lines_map']
+    cell_lines_strategy = design_components['cell_lines_strategy']
     non_bio = design_components['non_bio']
     anchors_data = design_components['anchors_data']
 
     # Initialize with defaults
     assignment = global_defaults["default_assignment"].copy()
     assignment["timepoint_hours"] = global_defaults["timepoint_hours"]
-    assignment["cell_line"] = cell_lines_map[row]
+
+    # Get cell line based on strategy (row-based or well-based)
+    if cell_lines_strategy == "checkerboard":
+        assignment["cell_line"] = cell_lines_map[well_id]
+    else:
+        assignment["cell_line"] = cell_lines_map[row]
 
     # Apply modifications in precedence order (lowest to highest)
     _apply_density_gradient(assignment, col, non_bio)
