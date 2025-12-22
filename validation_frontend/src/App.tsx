@@ -11,6 +11,7 @@ import EpistemicDocumentaryPage from './pages/EpistemicDocumentaryPage';
 import CalibrationPlatePage from './pages/CalibrationPlatePage';
 import CalibrationResultsPage from './pages/CalibrationResultsPage';
 import CalibrationResultsLoaderPage from './pages/CalibrationResultsLoaderPage';
+import PlateDesignComparisonPage from './pages/PlateDesignComparisonPage';
 
 function App() {
     return (
@@ -27,6 +28,7 @@ function App() {
                 <Route path="/calibration-plate" element={<CalibrationPlatePage />} />
                 <Route path="/calibration-results/:plateId" element={<CalibrationResultsPage />} />
                 <Route path="/calibration-results-loader/:plateId" element={<CalibrationResultsLoaderPage />} />
+                <Route path="/plate-design-comparison" element={<PlateDesignComparisonPage />} />
                 <Route path="/under-development" element={<UnderDevelopmentPage />} />
             </Routes>
         </Router>
