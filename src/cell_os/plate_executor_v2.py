@@ -284,7 +284,12 @@ def _convert_v1_to_v2_format(v1_design: Dict) -> Dict:
         contrastive_tiles['tiles'].append({
             'tile_id': 'TILE_V1',
             'wells': v1_design['tiles']['wells'],
-            'description': v1_design['tiles'].get('description', 'Tile wells from v1')
+            'description': v1_design['tiles'].get('description', 'Tile wells from v1'),
+            'assignment': {
+                'treatment': 'VEHICLE_TILE',
+                'reagent': 'DMSO',
+                'dose_uM': 0
+            }
         })
 
     # Build v2 design
