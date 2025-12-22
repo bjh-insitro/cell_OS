@@ -457,6 +457,71 @@
         "8 plates total (vs 24)",
         "4× tighter EC50 confidence intervals"
       ]
+    },
+    {
+      "design_id": "CAL_TIME_CONFOUND_v1",
+      "version": "v1",
+      "filename": "calibration_time_confound_v1.json",
+      "created_at": "2025-12-21",
+      "status": "active",
+      "design_type": "calibration_plate",
+      "description": "Time-as-a-confound calibration: quantify temporal drift and timing jitter so incubation differences do not become fake mechanism",
+      "metadata": {
+        "n_plates": 1,
+        "format": "384-well",
+        "n_time_blocks": 4,
+        "timepoints_h": [24.0, 36.0, 48.0, 60.0],
+        "anchor_compound": "Nocodazole",
+        "anchor_dose_uM": 0.3,
+        "jitter_test": true,
+        "jitter_offset_min": 15
+      },
+      "features": [
+        "4 time blocks (24h, 36h, 48h, 60h) with 6 columns each",
+        "Anchor compound (Nocodazole 0.3µM) provides stable morphology signature",
+        "Timing jitter tiles: ±15 min fixation offset to test sensitivity",
+        "Interleaved HepG2/A549 by row",
+        "Vehicle controls in all time blocks"
+      ],
+      "analysis_questions": [
+        "Does baseline morphology drift with fix_time_hours even under VEHICLE?",
+        "Do anchor phenotypes warp across time blocks?",
+        "Does ±15 min fixation jitter create a detectable axis?",
+        "Is LDH stable across time or does handling dominate?"
+      ],
+      "complements": "docs/simulation_time_semantics.md",
+      "validates": "Agent 1 dt sensitivity characterization"
+    },
+    {
+      "design_id": "CAL_SOURCE_PLATE_INTEGRITY_v1",
+      "version": "v1",
+      "filename": "calibration_source_plate_integrity_v1.json",
+      "created_at": "2025-12-21",
+      "status": "active",
+      "design_type": "calibration_plate",
+      "description": "Source-plate integrity and transfer mapping: detect source evaporation gradients, addressing mistakes, and source-to-destination carryover",
+      "metadata": {
+        "n_plates": 1,
+        "format": "384-well",
+        "source_plate_format": "96-well",
+        "test_compound": "Nocodazole",
+        "n_source_locations": 4,
+        "carryover_test": true
+      },
+      "features": [
+        "Same dose (0.3µM) from 4 different source locations (corners)",
+        "Adjacent source wells: low/high/blank to detect carryover",
+        "Vehicle baseline region for reference",
+        "Transfer plan maps source wells to destination columns",
+        "Interleaved HepG2/A549 by row"
+      ],
+      "analysis_questions": [
+        "Do identical-dose transfers differ by source location?",
+        "Do source blanks behave as true blanks?",
+        "Does low-dose source behave consistently across destination columns?",
+        "Are differences better explained by source geometry than by plate position?"
+      ],
+      "validates": "Source plate variance attribution (evaporation, addressing errors, contamination)"
     }
   ],
   "design_principles": {
