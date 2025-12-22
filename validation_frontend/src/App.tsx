@@ -10,6 +10,7 @@ import EpistemicProvenancePage from './pages/EpistemicProvenancePageNew';
 import EpistemicDocumentaryPage from './pages/EpistemicDocumentaryPage';
 import CalibrationPlatePage from './pages/CalibrationPlatePage';
 import CalibrationResultsPage from './pages/CalibrationResultsPage';
+import CalibrationResultsLoaderPage from './pages/CalibrationResultsLoaderPage';
 
 function App() {
     return (
@@ -25,6 +26,7 @@ function App() {
                 <Route path="/documentary" element={<EpistemicDocumentaryPage />} />
                 <Route path="/calibration-plate" element={<CalibrationPlatePage />} />
                 <Route path="/calibration-results/:plateId" element={<CalibrationResultsPage />} />
+                <Route path="/calibration-results-loader/:plateId" element={<CalibrationResultsLoaderPage />} />
                 <Route path="/under-development" element={<UnderDevelopmentPage />} />
             </Routes>
         </Router>
