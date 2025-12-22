@@ -142,7 +142,7 @@ class Observation:
     # Execution integrity state from QC checks (plate map errors, dose inversions, etc.)
     # Produced at aggregation boundary, consumed by BeliefState
     # This is QC infrastructure output, not agent-facing data
-    execution_integrity: Optional[Any] = None  # ExecutionIntegrityState, but avoid circular import
+    execution_integrity: Optional['ExecutionIntegrityState'] = None  # Forward reference to avoid circular import
 
     # Optional: if agent requests raw data (costs extra)
     raw_wells: Optional[List[Dict[str, Any]]] = None

@@ -19,8 +19,9 @@ Key checks:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any, Iterable
+from typing import Dict, List, Optional, Tuple, Any, Iterable, Callable, Sequence
 import math
+import statistics
 
 from ..core.observation import RawWellResult
 from .exceptions import IntegrityViolation, ExecutionIntegrityState
@@ -315,13 +316,278 @@ def check_anchor_positions(
 
 
 # =============================================================================
+# Dose Monotonicity Checker
+# =============================================================================
+
+# Conservative defaults for detecting dilution reversed / dose swapped
+DEFAULT_MIN_DOSES = 4
+DEFAULT_MIN_WELLS_PER_DOSE = 1
+DEFAULT_MIN_EFFECT_SNR = 1.5      # Effect vs within-dose noise
+DEFAULT_INVERSION_FRAC_THRESHOLD = 0.25  # Tolerate some noise
+
+
+def _safe_float(x: Any) -> Optional[float]:
+    """Safely convert to float, handling None/NaN/Inf."""
+    try:
+        if x is None:
+            return None
+        v = float(x)
+        if math.isnan(v) or math.isinf(v):
+            return None
+        return v
+    except Exception:
+        return None
+
+
+def _spearman_rank_corr(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
+    """
+    Minimal Spearman rank correlation (no scipy dependency).
+
+    Ranks both sequences and computes Pearson correlation on ranks.
+
+    Args:
+        xs: First sequence
+        ys: Second sequence (same length as xs)
+
+    Returns:
+        Spearman correlation coefficient, or None if n < 3
+    """
+    n = len(xs)
+    if n < 3:
+        return None
+
+    def ranks(vals: Sequence[float]) -> List[float]:
+        """Compute average ranks (handles ties)."""
+        sorted_idx = sorted(range(len(vals)), key=lambda i: vals[i])
+        r = [0.0] * len(vals)
+        i = 0
+        rank = 1.0
+        while i < len(vals):
+            j = i
+            # Find tied values
+            while j + 1 < len(vals) and vals[sorted_idx[j+1]] == vals[sorted_idx[i]]:
+                j += 1
+            # Assign average rank to all tied values
+            avg_rank = (rank + rank + (j - i)) / 2.0
+            for k in range(i, j+1):
+                r[sorted_idx[k]] = avg_rank
+            rank += (j - i + 1)
+            i = j + 1
+        return r
+
+    rx = ranks(list(xs))
+    ry = ranks(list(ys))
+
+    # Pearson correlation on ranks
+    mx = sum(rx) / n
+    my = sum(ry) / n
+    num = sum((rx[i]-mx) * (ry[i]-my) for i in range(n))
+    denx = math.sqrt(sum((rx[i]-mx) ** 2 for i in range(n)))
+    deny = math.sqrt(sum((ry[i]-my) ** 2 for i in range(n)))
+
+    if denx == 0 or deny == 0:
+        return None
+
+    return num / (denx * deny)
+
+
+def _default_projection(raw_well: RawWellResult) -> Optional[float]:
+    """
+    Conservative default projection for dose monotonicity.
+
+    Prefers viability-like scalars (LDH) over morphology channels.
+    Falls back to stress magnitude (mean absolute morphology) to avoid cancellation.
+
+    RawWellResult structure:
+    - readouts: Mapping[str, Any] with keys like 'ldh', 'morphology'
+    - readouts['morphology']: Dict[str, float] with channel names
+
+    Args:
+        raw_well: RawWellResult with readouts dict
+
+    Returns:
+        Scalar projection value, or None if no suitable readout
+    """
+    readouts = raw_well.readouts
+
+    # Try viability-like scalars first (most reliable for monotonicity)
+    viability_keys = ['ldh', 'atp', 'viability', 'stress_score']
+    for key in viability_keys:
+        v = _safe_float(readouts.get(key))
+        if v is not None:
+            return v
+
+    # Fall back to morphology channels
+    morph = readouts.get('morphology')
+    if isinstance(morph, dict) and morph:
+        vals = [_safe_float(v) for v in morph.values()]
+        vals = [v for v in vals if v is not None]
+        if vals:
+            # Stress magnitude proxy: mean absolute value
+            # This avoids "channels cancel to ~0" issues
+            return sum(abs(v) for v in vals) / len(vals)
+
+    return None
+
+
+def check_dose_monotonicity(
+    raw_wells: Sequence[RawWellResult],
+    *,
+    projection_fn: Optional[Callable[[RawWellResult], Optional[float]]] = None,
+    expected_direction_by_compound: Optional[Dict[str, str]] = None,
+    min_doses: int = DEFAULT_MIN_DOSES,
+    min_wells_per_dose: int = DEFAULT_MIN_WELLS_PER_DOSE,
+    min_effect_snr: float = DEFAULT_MIN_EFFECT_SNR,
+) -> List[IntegrityViolation]:
+    """
+    Detect gross dose ladder inversions (e.g., dilution reversed, dose labels swapped).
+
+    Conservative: emits violations only when monotone trend is strong and opposite expected.
+    Runs on RAW wells to catch ladder inversions before aggregation smooths them.
+
+    This is NOT a "biology is monotone" check. It's a "did we dispense the ladder backwards?"
+    check. Only use on anchors or known-monotone controls.
+
+    Args:
+        raw_wells: Raw well results from execution
+        projection_fn: Function to extract scalar from RawWellResult (default: _default_projection)
+        expected_direction_by_compound: Dict mapping compound -> "increasing" | "decreasing"
+            - Only provide for compounds you KNOW should be monotone (sentinels, toxins)
+            - If None or missing, we only flag extreme anti-correlation
+        min_doses: Minimum doses in ladder to check (default: 4)
+        min_wells_per_dose: Minimum replicates per dose (default: 1)
+        min_effect_snr: Minimum signal-to-noise ratio for end-to-end effect (default: 1.5)
+
+    Returns:
+        List of IntegrityViolation objects (empty if ladders look sensible)
+
+    Example:
+        # Only check known monotone controls
+        expected_direction = {
+            "tBHQ": "decreasing",  # tBHQ reduces viability
+            "CCCP": "decreasing",  # CCCP reduces viability
+        }
+        violations = check_dose_monotonicity(
+            raw_wells,
+            expected_direction_by_compound=expected_direction
+        )
+    """
+    if projection_fn is None:
+        projection_fn = _default_projection
+
+    expected_direction_by_compound = expected_direction_by_compound or {}
+
+    # Group wells by (compound, cell_line, time_h) -> dose -> values
+    grouped: Dict[Tuple[str, str, float], Dict[float, List[float]]] = {}
+    well_keys: Dict[Tuple[str, str, float], Dict[float, List[str]]] = {}
+
+    for w in raw_wells:
+        dose = w.treatment.dose_uM
+        compound = w.treatment.compound
+        cell_line = w.cell_line
+        time_h = w.observation_time_h
+
+        y = projection_fn(w)
+        if y is None:
+            continue
+
+        group_key = (compound, cell_line, time_h)
+        grouped.setdefault(group_key, {}).setdefault(dose, []).append(float(y))
+        well_keys.setdefault(group_key, {}).setdefault(dose, []).append(w.location.well_id)
+
+    violations: List[IntegrityViolation] = []
+
+    for group_key, dose_map in grouped.items():
+        compound, cell_line, time_h = group_key
+
+        doses = sorted(dose_map.keys())
+        if len(doses) < min_doses:
+            continue
+
+        # Require enough observations per dose
+        if any(len(dose_map[d]) < min_wells_per_dose for d in doses):
+            continue
+
+        # Collapse each dose to central tendency
+        dose_means = [statistics.mean(dose_map[d]) for d in doses]
+
+        # Compute Spearman correlation: dose vs effect
+        rho = _spearman_rank_corr(doses, dose_means)
+        if rho is None:
+            continue
+
+        # Check expected direction
+        expected = expected_direction_by_compound.get(compound)
+
+        # Effect size sanity: end-to-end change vs within-dose noise
+        within_stds = []
+        for d in doses:
+            ys = dose_map[d]
+            if len(ys) >= 2:
+                within_stds.append(statistics.pstdev(ys))
+
+        within_noise = statistics.mean(within_stds) if within_stds else 0.0
+        end_to_end = abs(dose_means[-1] - dose_means[0])
+        snr = end_to_end / (within_noise + 1e-9)
+
+        # Check local inversions (step-wise)
+        diffs = [dose_means[i+1] - dose_means[i] for i in range(len(dose_means)-1)]
+
+        if expected == "increasing":
+            # Expect effect to increase with dose
+            inversion_frac = sum(1 for d in diffs if d < 0) / len(diffs) if diffs else 0.0
+            wrong_dir = (rho < -0.7)  # Strong negative correlation when expecting positive
+        elif expected == "decreasing":
+            # Expect effect to decrease with dose
+            inversion_frac = sum(1 for d in diffs if d > 0) / len(diffs) if diffs else 0.0
+            wrong_dir = (rho > 0.7)  # Strong positive correlation when expecting negative
+        else:
+            # No declared expectation: only flag very strong anti-correlation
+            # Compute both directions and take the minimum (most consistent direction)
+            neg_inv = sum(1 for d in diffs if d < 0) / len(diffs) if diffs else 0.0
+            pos_inv = sum(1 for d in diffs if d > 0) / len(diffs) if diffs else 0.0
+            inversion_frac = min(neg_inv, pos_inv)
+            wrong_dir = (abs(rho) > 0.85)  # Very strong correlation (either direction)
+
+        # Trigger violation only when it screams "labels reversed"
+        # Key signature: strong correlation (rho), good consistency (low inversions), real signal (snr)
+        if snr >= min_effect_snr and wrong_dir and inversion_frac <= DEFAULT_INVERSION_FRAC_THRESHOLD:
+            violations.append(IntegrityViolation(
+                code="dose_response_inverted",
+                severity="halt",
+                summary=f"Dose ladder inverted for {compound} (rho={rho:.2f}, snr={snr:.2f})",
+                evidence={
+                    "group": {
+                        "compound": compound,
+                        "cell_line": cell_line,
+                        "time_h": time_h
+                    },
+                    "doses_uM": doses,
+                    "dose_means": dose_means,
+                    "spearman_rho": rho,
+                    "snr_end_to_end_vs_within": snr,
+                    "inversion_fraction": inversion_frac,
+                    "expected_direction": expected or "unspecified",
+                    "well_ids_by_dose": {str(d): well_keys.get(group_key, {}).get(d, []) for d in doses},
+                },
+                supporting_conditions=[]  # Well-level check
+            ))
+
+    return violations
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
 def check_execution_integrity(
     raw_wells: List[RawWellResult],
     expected_anchors: Dict[str, AnchorSpec],
-    cycle: int
+    cycle: int,
+    *,
+    expected_dose_direction: Optional[Dict[str, str]] = None,
+    template_name: Optional[str] = None,
+    design_id: Optional[str] = None
 ) -> ExecutionIntegrityState:
     """
     Run all execution integrity checks and return aggregate state.
@@ -334,6 +600,11 @@ def check_execution_integrity(
         raw_wells: Raw well results from execution
         expected_anchors: Anchor specifications for this design
         cycle: Current cycle number (for hysteresis tracking)
+        expected_dose_direction: Optional dict mapping compound -> "increasing" | "decreasing"
+            - Only provide for compounds KNOWN to be monotone (sentinels, toxins)
+            - Used by dose monotonicity checker to detect ladder inversions
+        template_name: Template identifier (for forensics)
+        design_id: Full design identifier (for forensics)
 
     Returns:
         ExecutionIntegrityState with violations, severity, and recommended action
@@ -343,11 +614,30 @@ def check_execution_integrity(
     # Run anchor position checks
     violations.extend(check_anchor_positions(raw_wells, expected_anchors))
 
-    # TODO: Add more checks
+    # Run dose monotonicity checks (if expected directions provided)
+    if expected_dose_direction:
+        violations.extend(check_dose_monotonicity(
+            raw_wells,
+            expected_direction_by_compound=expected_dose_direction
+        ))
+
+    # TODO: Add replicate clustering check
     # violations.extend(check_replicate_clustering(raw_wells))
-    # violations.extend(check_dose_monotonicity(raw_wells))
+
+    # Attach forensic context to all violations
+    # Note: IntegrityViolation.evidence is a dict, not frozen, so we can update it
+    for violation in violations:
+        # Add context without mutating the original dict reference
+        if violation.evidence is None:
+            violation.evidence = {}
+        violation.evidence.update({
+            "template_name": template_name,
+            "design_id": design_id,
+            "cycle": cycle,
+        })
 
     # Compute aggregate severity
+    # Special case: anchor position mismatches with rigid shifts get immediate halt
     severity, recommended_action = _compute_integrity_severity(violations)
 
     return ExecutionIntegrityState(
@@ -367,7 +657,11 @@ def _compute_integrity_severity(
     """
     Compute aggregate severity and recommended action from violations.
 
-    This is a simple version - BeliefState will apply hysteresis.
+    Special rules:
+    - Anchor position mismatches with rigid shifts (frac >= 0.8) → immediate halt (no hysteresis)
+    - Fatal violations → hard halt
+    - Multiple violations → halt
+    - Single violation → warning (hysteresis applied in BeliefState)
 
     Args:
         violations: List of detected violations
@@ -382,6 +676,18 @@ def _compute_integrity_severity(
     fatal_violations = [v for v in violations if v.severity == "fatal"]
     if fatal_violations:
         return ("fatal", "hard_halt")
+
+    # Special case: anchor position mismatches with high-confidence rigid shifts
+    # These are NOT noisy signals - they're systematic execution errors
+    # Skip hysteresis and halt immediately
+    for violation in violations:
+        if violation.code == "anchor_position_mismatch":
+            shift_hyp = violation.evidence.get("shift_hypothesis")
+            if shift_hyp and isinstance(shift_hyp, dict):
+                frac = shift_hyp.get("frac", 0.0)
+                if frac >= 0.8:
+                    # High-confidence rigid shift → immediate halt
+                    return ("halt", "diagnose")
 
     # Multiple violations = halt
     if len(violations) >= 2:

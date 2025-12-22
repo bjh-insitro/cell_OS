@@ -863,6 +863,10 @@ class BeliefState:
         self._assay_gate_updater.update(conditions, "cell_paint")
         self._assay_gate_updater.update(conditions, "scrna")
 
+        # Execution integrity: consume from observation (computed at aggregation boundary)
+        if hasattr(observation, 'execution_integrity') and observation.execution_integrity is not None:
+            self._update_execution_integrity_from_observation(observation.execution_integrity, cycle)
+
         return (self._events, diagnostics_out)
 
     # Legacy update methods removed - now delegated to updater classes
@@ -1009,6 +1013,76 @@ class BeliefState:
         else:
             # First occurrence
             return ("warning", "cautious")
+
+    def _update_execution_integrity_from_observation(
+        self,
+        integrity_state_from_obs: ExecutionIntegrityState,
+        cycle: int
+    ) -> None:
+        """
+        Update execution integrity from pre-computed state (from observation).
+
+        This applies hysteresis to the state computed at the aggregation boundary
+        and records it with full provenance via _set().
+
+        Args:
+            integrity_state_from_obs: Pre-computed state from observation_aggregator
+            cycle: Current cycle number
+        """
+        prev_state = self.execution_integrity
+
+        # Apply hysteresis: track consecutive good/bad checks
+        if len(integrity_state_from_obs.violations) > 0:
+            consecutive_bad = prev_state.consecutive_bad_checks + 1
+            consecutive_good = 0
+        else:
+            consecutive_bad = 0
+            consecutive_good = prev_state.consecutive_good_checks + 1
+
+        # Re-compute severity with hysteresis
+        # If we have consecutive bad checks, escalate severity
+        violations = integrity_state_from_obs.violations
+        if consecutive_bad >= 2 and len(violations) > 0:
+            # Sustained violation → escalate to halt
+            severity = "halt"
+            recommended_action = "diagnose"
+        elif consecutive_good >= 2 and not violations:
+            # Sustained clean state → clear
+            severity = "none"
+            recommended_action = "continue"
+        else:
+            # Use the severity from observation (first occurrence or recovery)
+            severity = integrity_state_from_obs.severity
+            recommended_action = integrity_state_from_obs.recommended_action
+
+        # Build final state with hysteresis applied
+        final_state = ExecutionIntegrityState(
+            suspect=(len(violations) > 0),
+            severity=severity,
+            recommended_action=recommended_action,
+            violations=violations,
+            last_check_cycle=cycle,
+            consecutive_bad_checks=consecutive_bad,
+            consecutive_good_checks=consecutive_good,
+            diagnosis_in_progress=prev_state.diagnosis_in_progress,
+            last_diagnostic_template=prev_state.last_diagnostic_template,
+            last_diagnostic_result=prev_state.last_diagnostic_result,
+        )
+
+        # Record with provenance
+        self._set(
+            "execution_integrity",
+            final_state,
+            evidence={
+                "violations": [v.code for v in final_state.violations],
+                "severity": final_state.severity,
+                "recommended_action": final_state.recommended_action,
+                "consecutive_bad_checks": consecutive_bad,
+                "consecutive_good_checks": consecutive_good,
+            },
+            supporting_conditions=[],  # Well-level QC, no condition keys
+            note=f"Integrity: {final_state.severity} ({len(final_state.violations)} violations: {[v.code for v in final_state.violations]})"
+        )
 
     @property
     def calibration_entropy_bits(self) -> float:

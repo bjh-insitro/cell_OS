@@ -213,16 +213,35 @@ def aggregate_observation(
     # This operates on raw wells to detect plate map errors before they're smoothed away
     from .integrity_checker import check_execution_integrity
 
-    # TODO: Load from config once anchor_configs.py exists
-    # For now, use empty dicts (benign - no checks run, returns clean state)
-    expected_anchors = {}
-    expected_dose_direction = {}
+    # Extract template name from design_id (convention: first part before underscore)
+    # e.g., "baseline_replicates_cycle_5" → "baseline"
+    template_name = None
+    if proposal.design_id:
+        parts = proposal.design_id.split('_')
+        if parts:
+            template_name = parts[0]
+
+    # Safety check: warn if template name missing (QC will be skipped)
+    if not template_name:
+        logger.warning(
+            f"No template name extracted from design_id='{proposal.design_id}'. "
+            "Execution integrity checks will be skipped. "
+            "This is expected for ad-hoc designs, but not for templated experiments."
+        )
+
+    # Load anchor configs for this template
+    from .anchor_configs import get_anchor_config, get_dose_direction_config
+
+    expected_anchors = get_anchor_config(template_name) if template_name else {}
+    expected_dose_direction = get_dose_direction_config(template_name) if template_name else {}
 
     integrity_state = check_execution_integrity(
         raw_wells=list(raw_results),
         expected_anchors=expected_anchors,
         expected_dose_direction=expected_dose_direction,
         cycle=cycle,
+        template_name=template_name,
+        design_id=proposal.design_id,
     )
 
     if strategy == "default_per_channel":
