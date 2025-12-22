@@ -18,6 +18,23 @@ from dataclasses import dataclass
 from src.cell_os.epistemic_agent.schemas import WellSpec, Proposal
 from src.cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from src.cell_os.core.assay import AssayType
+from src.cell_os.hardware.run_context import RunContext
+
+# Compound library for calibration anchors
+CALIBRATION_COMPOUND_LIBRARY = {
+    "Nocodazole": {
+        "IC50_A549": 0.5,    # µM
+        "IC50_HepG2": 0.6,   # µM
+        "mechanism": "MICROTUBULE",
+        "hill_slope": 2.0,
+    },
+    "Thapsigargin": {
+        "IC50_A549": 0.08,   # µM
+        "IC50_HepG2": 0.10,  # µM
+        "mechanism": "ER_STRESS",
+        "hill_slope": 2.5,
+    },
+}
 
 
 @dataclass
@@ -199,76 +216,71 @@ def parsed_wells_to_wellspecs(parsed_wells: List[ParsedWell]) -> List[WellSpec]:
 def execute_plate_design(
     json_path: Path,
     seed: int = 42,
-    output_dir: Optional[Path] = None
+    output_dir: Optional[Path] = None,
+    verbose: bool = True
 ) -> Dict[str, Any]:
     """
-    Execute full plate simulation.
+    Execute full 384-well plate simulation with batch processing.
 
     Args:
         json_path: Path to JSON plate design
         seed: Random seed for reproducibility
         output_dir: Optional directory to save results
+        verbose: Print progress messages
 
     Returns:
         Dictionary with:
-        - parsed_wells: List[ParsedWell]
-        - wellspecs: List[WellSpec]
-        - raw_results: List of simulation outputs
-        - metadata: plate_id, seed, timestamp
+        - plate_id: Plate identifier
+        - seed: Random seed used
+        - n_wells: Number of wells executed
+        - parsed_wells: List[dict] - metadata for each well
+        - raw_results: List[dict] - simulation results per well
+        - metadata: Summary statistics
     """
-    print(f"Loading plate design: {json_path.name}")
+    if verbose:
+        print(f"{'='*70}")
+        print(f"CAL_384 Plate Executor - Full Simulation")
+        print(f"{'='*70}")
+        print(f"\nLoading plate design: {json_path.name}")
 
     # Parse plate design
     parsed_wells = parse_plate_design_v2(json_path)
-    print(f"Parsed {len(parsed_wells)} wells")
+    if verbose:
+        print(f"✓ Parsed {len(parsed_wells)} wells")
 
     # Convert to WellSpecs
     wellspecs = parsed_wells_to_wellspecs(parsed_wells)
-    print(f"Created {len(wellspecs)} WellSpec objects")
 
     # Summary statistics
-    cell_lines = set(pw.cell_line for pw in parsed_wells)
+    cell_lines = set(pw.cell_line for pw in parsed_wells if pw.cell_line != "NONE")
     treatments = set(pw.treatment for pw in parsed_wells)
-    compounds = set(pw.reagent for pw in parsed_wells)
+    compounds = set(pw.reagent for pw in parsed_wells if pw.reagent != "DMSO")
 
-    print(f"\nPlate summary:")
-    print(f"  Cell lines: {', '.join(sorted(cell_lines))}")
-    print(f"  Treatments: {len(treatments)} unique")
-    print(f"  Compounds: {', '.join(sorted(compounds))}")
+    if verbose:
+        print(f"\nPlate summary:")
+        print(f"  Cell lines: {', '.join(sorted(cell_lines))}")
+        print(f"  Compounds: {', '.join(sorted(compounds))}")
+        print(f"  Treatments: {len(treatments)} unique")
 
-    # Count by treatment type
-    treatment_counts = {}
-    for pw in parsed_wells:
-        treatment_counts[pw.treatment] = treatment_counts.get(pw.treatment, 0) + 1
+    # Initialize RunContext and BiologicalVirtualMachine
+    if verbose:
+        print(f"\nInitializing BiologicalVirtualMachine (seed={seed})...")
 
-    print(f"\nWell distribution:")
-    for treatment, count in sorted(treatment_counts.items(), key=lambda x: -x[1]):
-        print(f"  {treatment}: {count} wells")
+    run_context = RunContext.sample(seed=seed)
+    vm = BiologicalVirtualMachine(seed=seed, run_context=run_context)
 
-    # Initialize BiologicalVirtualMachine
-    print(f"\nInitializing BiologicalVirtualMachine (seed={seed})...")
-    vm = BiologicalVirtualMachine(seed=seed)
-
-    # Seed vessels for each cell line
-    # For NO_CELLS wells, we'll handle specially
-    for cell_line in cell_lines:
-        if cell_line != "NONE":
-            vessel_id = f"plate_384_{cell_line}"
-            vm.seed_vessel(vessel_id, cell_line, initial_count=1e6)
-            print(f"  Seeded vessel: {vessel_id} with {cell_line}")
-
-    # Execute each well
-    print(f"\nExecuting plate simulation...")
+    # Execute batch simulation
     raw_results = []
 
-    for i, (pw, ws) in enumerate(zip(parsed_wells, wellspecs)):
-        if (i + 1) % 96 == 0:
-            print(f"  Progress: {i + 1}/{len(parsed_wells)} wells")
+    if verbose:
+        print(f"\nExecuting {len(parsed_wells)} wells...")
 
-        # For NO_CELLS wells, we need to handle differently
-        # For now, skip or return mock data
+    for i, (pw, ws) in enumerate(zip(parsed_wells, wellspecs)):
+        if verbose and (i + 1) % 96 == 0:
+            print(f"  Progress: {i + 1}/{len(parsed_wells)} wells ({100*(i+1)//len(parsed_wells)}%)")
+
+        # Handle NO_CELLS wells (background controls)
         if pw.treatment == "NO_CELLS":
-            # Background control - no cells, just measure background
             result = {
                 "well_id": pw.well_id,
                 "cell_line": "NONE",
@@ -277,68 +289,124 @@ def execute_plate_design(
                 "time_h": pw.timepoint_hours,
                 "position_tag": ws.position_tag,
                 "assay": "cell_painting",
-                "channels": {
-                    "ER": 0.0,  # Background signal
-                    "Mito": 0.0,
-                    "Nucleus": 0.0,
-                    "Actin": 0.0,
-                    "RNA": 0.0
+                "morphology": {
+                    "er": 0.0,      # Background fluorescence
+                    "mito": 0.0,
+                    "nucleus": 0.0,
+                    "actin": 0.0,
+                    "rna": 0.0
                 },
-                "ldh": 0.0,  # No cells = no LDH release
+                "morphology_struct": {
+                    "er": 0.0,
+                    "mito": 0.0,
+                    "nucleus": 0.0,
+                    "actin": 0.0,
+                    "rna": 0.0
+                },
                 "viability": 0.0,
-                "n_cells": 0
+                "n_cells": 0,
+                # Provenance
+                "treatment": pw.treatment,
+                "cell_density": pw.cell_density,
+                "stain_scale": pw.stain_scale,
+                "fixation_offset_min": pw.fixation_timing_offset_min,
+                "focus_offset_um": pw.imaging_focus_offset_um
             }
             raw_results.append(result)
             continue
 
-        # Normal wells with cells
-        vessel_id = f"plate_384_{pw.cell_line}"
+        # Normal wells with cells: create independent vessel per well
+        vessel_id = f"well_{pw.well_id}_{pw.cell_line}"
 
-        # Apply treatment (compound + dose)
-        if pw.compound != "DMSO" and pw.dose_uM > 0:
-            vm.add_treatment(vessel_id, pw.reagent, pw.dose_uM)
+        # Parse density scale from cell_density annotation
+        density_scale = 1.0
+        if pw.cell_density == "LOW":
+            density_scale = 0.7
+        elif pw.cell_density == "HIGH":
+            density_scale = 1.3
 
-        # Advance time to timepoint
+        # Seed vessel with scaled cell count
+        initial_cells = int(1e6 * density_scale)
+        vm.seed_vessel(vessel_id, pw.cell_line, initial_count=initial_cells)
+
+        # Apply treatment if not DMSO
+        if pw.reagent != "DMSO" and pw.dose_uM > 0:
+            vm.treat_with_compound(vessel_id, pw.reagent.lower(), pw.dose_uM)
+
+        # Advance time to measurement timepoint
         vm.advance_time(pw.timepoint_hours)
 
         # Execute Cell Painting assay
-        cp_result = vm.cell_painting_assay(vessel_id)
+        try:
+            cp_result = vm.cell_painting_assay(vessel_id)
 
-        # Package result
-        result = {
-            "well_id": pw.well_id,
-            "cell_line": pw.cell_line,
-            "compound": pw.reagent,
-            "dose_uM": pw.dose_uM,
-            "time_h": pw.timepoint_hours,
-            "position_tag": ws.position_tag,
-            "assay": "cell_painting",
-            "channels": cp_result.get("channels", {}),
-            "ldh": cp_result.get("ldh", 0.0),
-            "viability": cp_result.get("viability", 1.0),
-            "n_cells": cp_result.get("n_cells", 0),
-            # Store provenance from plate design
-            "treatment": pw.treatment,
-            "cell_density": pw.cell_density,
-            "stain_scale": pw.stain_scale,
-            "fixation_offset_min": pw.fixation_timing_offset_min,
-            "focus_offset_um": pw.imaging_focus_offset_um
-        }
+            # Get vessel state for cell count
+            vessel = vm.vessel_states.get(vessel_id, None)
+            n_cells = int(vessel.cell_count) if vessel else 0
+
+            # Package result
+            result = {
+                "well_id": pw.well_id,
+                "cell_line": pw.cell_line,
+                "compound": pw.reagent,
+                "dose_uM": pw.dose_uM,
+                "time_h": pw.timepoint_hours,
+                "position_tag": ws.position_tag,
+                "assay": "cell_painting",
+                "morphology": cp_result.get("morphology", {}),  # Cell Painting channels
+                "morphology_struct": cp_result.get("morphology_struct", {}),  # True structural state
+                "viability": cp_result.get("viability", 1.0),
+                "n_cells": n_cells,
+                # Provenance from plate design
+                "treatment": pw.treatment,
+                "cell_density": pw.cell_density,
+                "stain_scale": pw.stain_scale,
+                "fixation_offset_min": pw.fixation_timing_offset_min,
+                "focus_offset_um": pw.imaging_focus_offset_um,
+                # Additional metadata
+                "initial_cell_count": initial_cells,
+                "density_scale": density_scale,
+                "run_context_id": cp_result.get("run_context_id", ""),
+                "batch_id": cp_result.get("batch_id", "")
+            }
+
+        except Exception as e:
+            # If well fails, log error but continue
+            if verbose:
+                print(f"    ⚠️  Well {pw.well_id} failed: {e}")
+
+            result = {
+                "well_id": pw.well_id,
+                "error": str(e),
+                "cell_line": pw.cell_line,
+                "compound": pw.reagent,
+                "dose_uM": pw.dose_uM,
+                "treatment": pw.treatment
+            }
 
         raw_results.append(result)
 
-        # Reset vessel for next well (each well is independent)
-        # In reality, each well is a separate physical well
-        # For simulation, we re-seed
-        vm.seed_vessel(vessel_id, pw.cell_line, initial_count=1e6)
+    if verbose:
+        print(f"\n✓ Simulation complete: {len(raw_results)} wells")
 
-    print(f"\n✓ Simulation complete: {len(raw_results)} wells")
+    # Count successes vs failures
+    n_success = sum(1 for r in raw_results if "error" not in r)
+    n_failed = len(raw_results) - n_success
+
+    if verbose and n_failed > 0:
+        print(f"  ⚠️  {n_failed} wells failed")
 
     # Package output
+    treatment_counts = {}
+    for pw in parsed_wells:
+        treatment_counts[pw.treatment] = treatment_counts.get(pw.treatment, 0) + 1
+
     output = {
         "plate_id": json_path.stem,
         "seed": seed,
         "n_wells": len(raw_results),
+        "n_success": n_success,
+        "n_failed": n_failed,
         "parsed_wells": [vars(pw) for pw in parsed_wells],
         "raw_results": raw_results,
         "metadata": {
@@ -358,28 +426,39 @@ def execute_plate_design(
         with open(output_file, 'w') as f:
             json.dump(output, f, indent=2)
 
-        print(f"\n✓ Results saved: {output_file}")
+        if verbose:
+            print(f"\n✓ Results saved: {output_file}")
 
     return output
 
 
 if __name__ == "__main__":
     # Test execution
+    import sys
+
     json_path = Path("validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v2.json")
 
     if not json_path.exists():
         print(f"✗ Plate design not found: {json_path}")
-        exit(1)
+        sys.exit(1)
 
+    # Run full simulation
     results = execute_plate_design(
         json_path=json_path,
         seed=42,
-        output_dir=Path("results/calibration_plates")
+        output_dir=Path("results/calibration_plates"),
+        verbose=True
     )
 
     print(f"\n{'='*70}")
     print(f"EXECUTION COMPLETE")
     print(f"{'='*70}")
     print(f"  Wells executed: {results['n_wells']}")
+    print(f"  Successful: {results['n_success']}")
+    if results['n_failed'] > 0:
+        print(f"  Failed: {results['n_failed']}")
     print(f"  Cell lines: {', '.join(results['metadata']['cell_lines'])}")
     print(f"  Treatments: {len(results['metadata']['treatments'])}")
+    print(f"\nResults saved to: results/calibration_plates/")
+    print(f"\nTo analyze results:")
+    print(f"  python -c \"import json; print(json.load(open('results/calibration_plates/CAL_384_RULES_WORLD_v2_results_seed42.json')))\"\")")
