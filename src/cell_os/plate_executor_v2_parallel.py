@@ -228,6 +228,13 @@ def execute_plate_design_parallel(
             print(f"  Run ID: {run_id}")
 
         # Update runs manifest
+        # Handle relative paths correctly
+        try:
+            file_path_str = str(output_file.relative_to(Path.cwd()))
+        except ValueError:
+            # If output_file is already relative or can't compute relative path, use as-is
+            file_path_str = str(output_file)
+
         run_info = {
             "run_id": run_id,
             "timestamp": output["timestamp"],
@@ -238,7 +245,7 @@ def execute_plate_design_parallel(
             "n_failed": output["n_failed"],
             "cell_lines": output["metadata"]["cell_lines"],
             "compounds": output["metadata"]["compounds"],
-            "file_path": str(output_file.relative_to(Path.cwd()))
+            "file_path": file_path_str
         }
         manifest_path = update_runs_manifest(output_dir, run_info)
 
