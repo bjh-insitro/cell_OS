@@ -447,10 +447,41 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Split RNG streams for observer independence
         # Each subsystem gets its own RNG so observation doesn't perturb physics
-        self.rng_growth = np.random.default_rng(seed + 1)      # Growth and cell count
-        self.rng_treatment = np.random.default_rng(seed + 2)   # Treatment variability
-        self.rng_assay = np.random.default_rng(seed + 3)       # Assay measurements
-        self.rng_operations = np.random.default_rng(seed + 4)  # Operations (feed, washout contamination)
+        # Agent 1: Wrap with ValidatedRNG to enforce stream partitioning
+        from .rng_guard import ValidatedRNG
+
+        # Growth RNG: Currently unused (growth is deterministic)
+        # Reserved for future stochastic growth models (division timing, lag variability)
+        self.rng_growth = ValidatedRNG(
+            np.random.default_rng(seed + 1),
+            stream_name="growth",
+            allowed_patterns={"_update_vessel_growth", "_divide", "_seed"},
+            enforce=True
+        )
+
+        # Treatment RNG: Biological variability in compound effects
+        self.rng_treatment = ValidatedRNG(
+            np.random.default_rng(seed + 2),
+            stream_name="treatment",
+            allowed_patterns={"_apply_compound", "_attrition", "_treatment", "_compute_viability"},
+            enforce=True
+        )
+
+        # Assay RNG: Measurement noise only (must not affect biology)
+        self.rng_assay = ValidatedRNG(
+            np.random.default_rng(seed + 3),
+            stream_name="assay",
+            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts"},
+            enforce=True
+        )
+
+        # Operations RNG: Operational randomness (contamination, errors)
+        self.rng_operations = ValidatedRNG(
+            np.random.default_rng(seed + 4),
+            stream_name="operations",
+            allowed_patterns={"feed", "washout", "_contamination", "_add_media"},
+            enforce=True
+        )
 
         # Injection A: Initialize InjectionManager (authoritative concentration spine)
         self.injection_mgr = InjectionManager(is_edge_well_fn=self._is_edge_well)
@@ -2275,7 +2306,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         """Get current state of a vessel."""
         if vessel_id not in self.vessel_states:
             return None
-            
+
         vessel = self.vessel_states[vessel_id]
         return {
             "vessel_id": vessel.vessel_id,
@@ -2286,7 +2317,40 @@ class BiologicalVirtualMachine(VirtualMachine):
             "passage_number": vessel.passage_number,
             "compounds": vessel.compounds
         }
-    
+
+    def get_rng_audit(self, reset: bool = True) -> Dict[str, int]:
+        """Get RNG stream call counts for audit (Agent 1: Task 1.2).
+
+        Returns call counts for each RNG stream since last audit.
+        This enables detection of stream contamination (e.g., growth RNG
+        called during measurement).
+
+        Args:
+            reset: If True, resets call counts to zero after reading
+
+        Returns:
+            Dict with keys: growth_calls, treatment_calls, assay_calls, operations_calls
+
+        Usage in loop:
+            # After each cycle
+            audit = world.hardware.get_rng_audit(reset=True)
+            append_diagnostics({"event": "rng_stream_audit", **audit})
+        """
+        audit = {
+            "growth_calls": self.rng_growth.call_count,
+            "treatment_calls": self.rng_treatment.call_count,
+            "assay_calls": self.rng_assay.call_count,
+            "operations_calls": self.rng_operations.call_count,
+        }
+
+        if reset:
+            self.rng_growth.reset_call_count()
+            self.rng_treatment.reset_call_count()
+            self.rng_assay.reset_call_count()
+            self.rng_operations.reset_call_count()
+
+        return audit
+
     def simulate_cellrox_signal(self, vessel_id: str, compound: str, dose_uM: float) -> float:
         """
         Simulate CellROX oxidative stress signal.
