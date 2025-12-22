@@ -1,0 +1,102 @@
+{
+  "schema_version": "calibration_plate_v1",
+  "plate": {
+    "plate_id": "CAL_TIME_CONFOUND_v1",
+    "format": "384",
+    "rows": ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
+    "cols": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    "well_naming": "A1..P24"
+  },
+  "intent": "Time-as-a-confound plate: quantify temporal drift and timing jitter so incubation differences do not become fake mechanism",
+  "global_defaults": {
+    "base_timepoint_hours": 48,
+    "readouts": ["cell_painting", "ldh"],
+    "vehicle": {
+      "name": "DMSO",
+      "final_concentration_vv": 0.001,
+      "units": "v/v"
+    },
+    "default_assignment": {
+      "treatment": "VEHICLE",
+      "reagent": "DMSO",
+      "dose_uM": 0,
+      "fix_time_hours": 48,
+      "notes": "Vehicle baseline"
+    }
+  },
+  "cell_lines": {
+    "strategy": "interleaved_rows",
+    "row_to_cell_line": {
+      "A": "HepG2", "B": "A549",
+      "C": "HepG2", "D": "A549",
+      "E": "HepG2", "F": "A549",
+      "G": "HepG2", "H": "A549",
+      "I": "HepG2", "J": "A549",
+      "K": "HepG2", "L": "A549",
+      "M": "HepG2", "N": "A549",
+      "O": "HepG2", "P": "A549"
+    }
+  },
+  "design": {
+    "time_blocks": [
+      { "fix_time_hours": 24, "cols": [1,2,3,4,5,6] },
+      { "fix_time_hours": 36, "cols": [7,8,9,10,11,12] },
+      { "fix_time_hours": 48, "cols": [13,14,15,16,17,18] },
+      { "fix_time_hours": 60, "cols": [19,20,21,22,23,24] }
+    ],
+    "anchor": {
+      "name": "Nocodazole",
+      "dose_uM": 0.3,
+      "purpose": "Provides a stable morphology signature across time so drift can be detected as curve warping"
+    },
+    "anchor_rule": {
+      "description": "Within each time block, half the columns receive anchor to detect time × treatment interactions",
+      "anchor_columns_within_each_block": [2,4,6],
+      "assignment": {
+        "treatment": "ANCHOR_MORPH",
+        "reagent": "Nocodazole",
+        "dose_uM": 0.3
+      }
+    },
+    "timing_jitter_tiles": [
+      {
+        "tile_id": "EARLY_FIX_TILE",
+        "wells": ["E12","E13","F12","F13"],
+        "assignment": {
+          "treatment": "VEHICLE_JITTER",
+          "reagent": "DMSO",
+          "dose_uM": 0,
+          "fix_time_hours_offset_min": -15
+        }
+      },
+      {
+        "tile_id": "LATE_FIX_TILE",
+        "wells": ["G12","G13","H12","H13"],
+        "assignment": {
+          "treatment": "VEHICLE_JITTER",
+          "reagent": "DMSO",
+          "dose_uM": 0,
+          "fix_time_hours_offset_min": 15
+        }
+      }
+    ]
+  },
+  "resolution_rules": {
+    "order_of_precedence": [
+      "design.timing_jitter_tiles[].assignment",
+      "design.anchor_rule",
+      "design.time_blocks",
+      "global_defaults.default_assignment"
+    ],
+    "derived_fields": {
+      "cell_line": "from cell_lines.row_to_cell_line",
+      "fix_time_hours": "from time_blocks by column, adjusted by fix_time_hours_offset_min if present"
+    }
+  },
+  "analysis_questions": [
+    "Does baseline morphology drift with fix_time_hours even under VEHICLE?",
+    "Do anchor phenotypes warp across time blocks?",
+    "Does ±15 min fixation jitter create a detectable axis?",
+    "Is LDH stable across time or does handling dominate?"
+  ]
+}
