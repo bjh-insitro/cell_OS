@@ -2,14 +2,15 @@
 
 __version__ = "0.1.0"
 
-from cell_os.lab_world_model import LabWorldModel, Campaign
-from cell_os.posteriors import DoseResponsePosterior, SliceKey
-from cell_os.modeling import DoseResponseGP
+# Commented out for now - these require the package to be installed
+# from cell_os.lab_world_model import LabWorldModel, Campaign
+# from cell_os.posteriors import DoseResponsePosterior, SliceKey
+# from cell_os.modeling import DoseResponseGP
 
 __all__ = [
-    "LabWorldModel",
-    "Campaign",
-    "DoseResponsePosterior",
-    "SliceKey",
-    "DoseResponseGP",
+    # "LabWorldModel",
+    # "Campaign",
+    # "DoseResponsePosterior",
+    # "SliceKey",
+    # "DoseResponseGP",
 ]
