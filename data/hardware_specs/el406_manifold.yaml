@@ -20,7 +20,7 @@ timing:
 # These operations call the EL406 hardware and are affected by serpentine pattern
 parametric_unit_ops:
   - op_name: "op_dispense"
-    usage: "Dispense fixative, permeabilization buffer, stain cocktails"
+    usage: "Dispense fixative, permeabilization buffer, stain cocktails, media"
     hardware: "EL406 8-channel manifold"
     temporal_gradient: true
 
@@ -34,9 +34,36 @@ parametric_unit_ops:
     hardware: "EL406 8-channel manifold"
     temporal_gradient: true
 
+  - op_name: "op_feed"
+    usage: "Feed cells in 96-well or 384-well plates (media change)"
+    hardware: "EL406 8-channel manifold"
+    temporal_gradient: true
+    notes: "Uses op_aspirate (remove old media) + op_dispense (add fresh media). Serpentine pattern affects nutrient delivery timing."
+
+# Cell culture operations using EL406
+cell_culture_operations:
+  - name: "plate_feeding"
+    parametric_unit_ops: ["op_feed"]
+    sub_operations: ["op_aspirate", "op_dispense"]
+    plate_formats: [96, 384]
+    temporal_gradient_effect: "nutrient_delivery_timing"
+    notes: |
+      Feeding 96/384-well plates creates temporal gradient:
+      - A1 gets fresh media first (t=0), sits longest before incubation
+      - P1/H12 gets fresh media last (t=60s for 96-well, t=240s for 384-well)
+      - Early wells: Media cools slightly during dispensing (~1-2°C for 384-well)
+      - Late wells: Get warmer media, less time for temperature equilibration
+
+      Effects on biology:
+      - Temperature shock differential (early wells experience more shock)
+      - Nutrient availability timing (late wells get fresher state)
+      - Growth phase synchronization disrupted by staggered feed
+
+      Impact: ~2-3% CV contribution for routine culture, compounds with feeding gradients in Cell Painting
+
 # Cell Painting protocol steps mapped to parametric unit ops
 # Each step uses EL406 and creates temporal gradient
-protocol_steps:
+cell_painting_protocol_steps:
   - name: "fix"
     parametric_unit_ops: ["op_dispense"]
     operation: "dispense_and_incubate"
@@ -118,8 +145,17 @@ expected_artifacts:
   gradient_magnitude:
     min_delta_time: 0         # A1 processed first
     max_delta_time: 240       # P1 processed last (~4 min spread for 384-well)
-    typical_signal_gradient: "10-15% intensity variation corner-to-corner"
-    cv_contribution: "3-5% CV added to vehicle islands"
+    typical_signal_gradient: "10-15% intensity variation corner-to-corner (Cell Painting)"
+    cv_contribution: "3-5% CV added to vehicle islands (Cell Painting)"
+    feeding_gradient: "2-3% CV contribution (routine culture)"
+    cumulative_effect: |
+      Gradients compound throughout experiment lifecycle:
+      1. Plating: Initial cell seeding uses EL406 → density gradient
+      2. Feeding: 2-3 feeds before assay → temperature/nutrient gradients
+      3. Cell Painting: Fix, permeabilize, stain all use EL406 → signal gradient
+
+      Total cumulative CV contribution: ~5-8% on top of per-well baseline
+      Wells maintain consistent bias: A1 always "hot", P1 always "cold"
 
 # Plate format support
 supported_formats:
