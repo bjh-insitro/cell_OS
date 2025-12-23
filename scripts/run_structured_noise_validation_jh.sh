@@ -1,10 +1,12 @@
 #!/bin/bash
 # Run structured noise validation on JupyterHub
-# This script should be run ON JH directly
+# This script should be run ON JH directly from cell_OS repo root
 
 set -e
 
-cd /home/ubuntu/cell_OS
+# Get the directory where the script lives and go to repo root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR/.."
 
 echo "=== Pulling latest changes ==="
 git pull origin main
@@ -19,11 +21,12 @@ echo "Seeds: 2000, 2100, 2200 (fresh seeds, post-refactor)"
 echo ""
 
 # Run Phase 1 with 3 seeds
+REPO_ROOT=$(pwd)
 for seed in 2000 2100 2200; do
     echo "=========================================================================="
     echo "Running seed $seed..."
     echo "=========================================================================="
-    PYTHONPATH=/home/ubuntu/cell_OS:$PYTHONPATH timeout 600 python3 scripts/run_v4_phase1.py --seeds $seed
+    PYTHONPATH=$REPO_ROOT:$PYTHONPATH timeout 600 python3 scripts/run_v4_phase1.py --seeds $seed
 
     if [ $? -eq 0 ]; then
         echo "✅ Seed $seed complete"
@@ -40,7 +43,7 @@ echo "Running Validation Analysis"
 echo "=========================================================================="
 echo ""
 
-PYTHONPATH=/home/ubuntu/cell_OS:$PYTHONPATH python3 scripts/validate_structured_noise.py 2000 2100 2200
+PYTHONPATH=$REPO_ROOT:$PYTHONPATH python3 scripts/validate_structured_noise.py 2000 2100 2200
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════════╗"
