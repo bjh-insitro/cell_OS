@@ -52,17 +52,21 @@ class NutrientDepletionMechanism(StressMechanism):
         media_buffer = max(1.0, float(vessel.vessel_capacity) / 1e7)
 
         # Interval-average viable cells using trapezoid rule
-        viable_cells_t0 = float(vessel.cell_count * vessel.viability)
+        # CRITICAL FIX: Nutrient depletion runs AFTER growth, so vessel.cell_count
+        # is the END-OF-INTERVAL population (t1), not start (t0).
+        # Back-calculate t0 from t1 to get the correct interval average.
+        viable_cells_t1 = float(vessel.cell_count * vessel.viability)
 
-        # Predict end-of-interval viable cells (exponential growth)
+        # Get growth rate to back-calculate start-of-interval population
         cell_line_params = self.vm.cell_line_params.get(vessel.cell_line, self.vm.defaults)
         baseline_doubling_h = cell_line_params.get("doubling_time_h", 24.0)
         growth_rate = np.log(2.0) / baseline_doubling_h
 
-        viable_cells_t1_pred = viable_cells_t0 * np.exp(growth_rate * hours)
+        # Back-calculate start-of-interval from end-of-interval
+        viable_cells_t0 = viable_cells_t1 / np.exp(growth_rate * hours)
 
         # Interval-average (trapezoid rule)
-        viable_cells_mean = 0.5 * (viable_cells_t0 + viable_cells_t1_pred)
+        viable_cells_mean = 0.5 * (viable_cells_t0 + viable_cells_t1)
         viable_cells_mean = float(max(0.0, viable_cells_mean))
 
         # Consumption rates (mM per hour)
