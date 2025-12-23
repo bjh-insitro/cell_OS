@@ -46,7 +46,8 @@ def test_beam_search_must_call_governance_contract():
     )
 
     # Monkeypatch the contract to raise if called
-    with patch('src.cell_os.hardware.beam_search.decide_governance') as mock_decide:
+    # Patch where it's used (in search.py), not where it's defined
+    with patch('src.cell_os.hardware.beam_search.search.decide_governance') as mock_decide:
         mock_decide.side_effect = RuntimeError("CONTRACT_CALLED")
 
         # Run beam search - should raise RuntimeError if contract is called

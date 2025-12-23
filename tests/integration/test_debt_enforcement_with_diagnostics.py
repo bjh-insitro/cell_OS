@@ -49,9 +49,9 @@ def test_debt_enforcement_full_cycle_with_diagnostics():
     with tempfile.TemporaryDirectory() as tmpdir:
         log_dir = Path(tmpdir)
 
-        # Initialize loop with small budget
+        # Initialize loop with enough budget for multiple cycles
         loop = EpistemicLoop(
-            budget=96,  # Small budget to trigger constraints
+            budget=300,  # Enough for multiple cycles to accumulate debt
             max_cycles=10,
             log_dir=log_dir,
             seed=42,
@@ -60,12 +60,12 @@ def test_debt_enforcement_full_cycle_with_diagnostics():
         )
 
         # Mock agent to force overclaiming
-        # We'll inject high claimed gain to accumulate debt quickly
+        # We'll inject high claimed gain that exceeds what's realized
         original_estimate = loop.agent.beliefs.estimate_expected_gain
 
         def mock_estimate_high_gain(*args, **kwargs):
-            """Always claim 1.5 bits of gain (will be overclaim)."""
-            return 1.5
+            """Always claim 5.0 bits of gain (will be overclaim)."""
+            return 5.0
 
         loop.agent.beliefs.estimate_expected_gain = mock_estimate_high_gain
 

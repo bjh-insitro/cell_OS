@@ -130,8 +130,10 @@ class LDHViabilityAssay(AssaySimulator):
     def _add_biological_noise(self, vessel: "VesselState", signal: float) -> float:
         """Add dose-dependent biological noise."""
         stress_level = 1.0 - vessel.viability
-        stress_multiplier = self.vm.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
-        effective_bio_cv = self.vm.thalamus_params['biological_noise']['cell_line_cv'] * (
+        bio_cfg = self.vm.thalamus_params.get("biological_noise", {})
+        stress_multiplier = bio_cfg.get('stress_cv_multiplier', 1.0)
+        base_cell_line_cv = bio_cfg.get('cell_line_cv', 0.04)
+        effective_bio_cv = base_cell_line_cv * (
             1.0 + stress_level * (stress_multiplier - 1.0)
         )
 

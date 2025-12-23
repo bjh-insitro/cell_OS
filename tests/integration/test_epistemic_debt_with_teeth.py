@@ -44,7 +44,7 @@ def test_epistemic_debt_full_cycle(tmp_path):
     log_dir.mkdir()
 
     loop = EpistemicLoop(
-        budget=200,  # Small budget to force quick decisions
+        budget=400,  # Enough budget for multiple cycles including calibration attempts
         max_cycles=15,
         log_dir=log_dir,
         seed=42,

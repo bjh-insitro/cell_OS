@@ -115,8 +115,8 @@ def test_evaporation_vs_depletion_separation():
     # Vessel 1: With cells (depletion + evaporation)
     vm.seed_vessel("Plate1_A01", "A549", initial_count=5e6, initial_viability=0.98)  # Edge well
 
-    # Vessel 2: Without cells (evaporation only)
-    vm.seed_vessel("Plate1_A02", "A549", initial_count=0, initial_viability=1.0)  # Edge well (adjacent)
+    # Vessel 2: Without cells (evaporation only, use minimal cells)
+    vm.seed_vessel("Plate1_A02", "A549", initial_count=1, initial_viability=1.0)  # Edge well (adjacent, minimal cells)
 
     # Record initial glucose
     glc_A01_t0 = vm.injection_mgr.get_nutrient_conc_mM("Plate1_A01", "glucose")

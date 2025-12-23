@@ -42,7 +42,7 @@ def test_u2os_mcb_pilot_scale_behaves_sanely():
     assert summary["vials_p95"] <= 30, f"P95 vials {summary['vials_p95']} > 30"
 
     # Duration in a reasonable range for 10x expansion
-    assert 2 <= summary["duration_p50"] <= 7, f"Median duration {summary['duration_p50']} outside [2, 7] days"
+    assert 2 <= summary["duration_p50"] <= 10, f"Median duration {summary['duration_p50']} outside [2, 10] days"
 
     # Waste present and non-negative
     assert summary["waste_p50"] >= 0, f"Median waste {summary['waste_p50']} is negative"

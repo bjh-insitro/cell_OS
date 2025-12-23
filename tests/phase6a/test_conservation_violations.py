@@ -10,6 +10,7 @@ Invariant: Any conservation violation either:
 
 import sys
 import numpy as np
+import pytest
 from src.cell_os.hardware.biological_virtual import (
     BiologicalVirtualMachine,
     VesselState,
@@ -105,26 +106,14 @@ def test_renormalization_creates_audit_record():
     vessel._step_viability_start = 0.80
     vessel._step_cell_count_start = vessel.cell_count
 
-    # Manually inflate death to force renormalization
+    # Manually inflate death to force conservation violation
     # Simulate a bug where ledgers drift
     vessel.death_compound = 0.20  # Already had some death
 
     # Commit step death (this will add more death from proposals)
-    vm._commit_step_death(vessel, hours=1.0)
-
-    # If renormalization happened, _step_ledger_scale != 1.0
-    # This should be treated as a RED FLAG, not silently accepted
-    if vessel._step_ledger_scale != 1.0:
-        # In production, this should either:
-        # (a) raise ConservationViolationError, OR
-        # (b) return a Decision with refused=True and a violation audit record
-
-        # For now, assert that at least we're tracking it
-        assert vessel._step_ledger_scale < 1.0, "Renormalization should scale down"
-
-        # TODO: Once we implement proper violation handling, this should raise:
-        # with pytest.raises(ConservationViolationError):
-        #     vm._update_death_mode(vessel)
+    # This should now raise ConservationViolationError instead of renormalizing
+    with pytest.raises(ConservationViolationError, match="Ledger overflow"):
+        vm._commit_step_death(vessel, hours=1.0)
 
 
 def test_unknown_death_is_only_for_seeding_stress_not_violations():

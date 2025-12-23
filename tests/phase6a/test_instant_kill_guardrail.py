@@ -32,15 +32,15 @@ def test_instant_kill_blocked_during_step():
     # Add compound to trigger non-trivial step
     vm.treat_with_compound("P1_A01", "tunicamycin", 1.0)
 
-    # Monkeypatch _update_nutrient_depletion to try instant_kill during step
+    # Monkeypatch _update_vessel_growth to try instant_kill during step
     # (called early in _step_vessel, guaranteed to be during proposal phase)
     vessel = vm.vessel_states["P1_A01"]
-    original_update_nutrient = vm._update_nutrient_depletion
+    original_update_growth = vm._update_vessel_growth
 
     violation_caught = False
     error_message = None
 
-    def patched_update_nutrient(vessel, hours):
+    def patched_update_growth(vessel, hours):
         nonlocal violation_caught, error_message
         # This should fail because we're inside _step_vessel
         # (_step_hazard_proposals is not None during step)
@@ -53,9 +53,9 @@ def test_instant_kill_blocked_during_step():
                 error_message = str(e)
                 # Don't re-raise, let test check the flag
         # Call original
-        original_update_nutrient(vessel, hours)
+        original_update_growth(vessel, hours)
 
-    vm._update_nutrient_depletion = patched_update_nutrient
+    vm._update_vessel_growth = patched_update_growth
 
     # Advance time, which will trigger patched function during step
     vm.advance_time(1.0)

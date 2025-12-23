@@ -102,7 +102,7 @@ class BeamSearch:
         Returns:
             BeamSearchResult with best policy and diagnostics
         """
-        from .masked_compound_phase5 import PHASE5_LIBRARY
+        from ..masked_compound_phase5 import PHASE5_LIBRARY
 
         if phase5_compound is None:
             phase5_compound = PHASE5_LIBRARY[compound_id]

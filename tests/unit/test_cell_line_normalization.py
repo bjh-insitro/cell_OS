@@ -122,11 +122,18 @@ def test_aggregate_observation_with_normalization():
     """Test end-to-end: aggregate observation with normalization applied."""
 
     # Create mock proposal
+    from cell_os.epistemic_agent.schemas import WellSpec
+
     proposal = Proposal(
         design_id="test_design",
-        conditions_requested=[],
-        wells_needed=4,
-        experiment_intent="test normalization"
+        hypothesis="test normalization",
+        wells=[
+            WellSpec(cell_line="A549", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="HepG2", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="A549", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="HepG2", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+        ],
+        budget_limit=4
     )
 
     # Create mock raw results: 2 wells A549, 2 wells HepG2, same compound/dose/time
@@ -228,11 +235,20 @@ def test_aggregate_observation_with_normalization():
 def test_normalization_reduces_variance():
     """Test that fold-change normalization reduces cell line variance."""
 
+    from cell_os.epistemic_agent.schemas import WellSpec
+
     proposal = Proposal(
         design_id="variance_test",
-        conditions_requested=[],
-        wells_needed=6,
-        experiment_intent="test variance reduction"
+        hypothesis="test variance reduction",
+        wells=[
+            WellSpec(cell_line="A549", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="HepG2", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="A549", compound="tunicamycin", dose_uM=10.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="HepG2", compound="tunicamycin", dose_uM=10.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="A549", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+            WellSpec(cell_line="HepG2", compound="DMSO", dose_uM=0.0, time_h=24.0, assay="cell_painting", position_tag="center"),
+        ],
+        budget_limit=6
     )
 
     # Create 3 cell lines (A549, HepG2, U2OS) with DMSO (no treatment effect)

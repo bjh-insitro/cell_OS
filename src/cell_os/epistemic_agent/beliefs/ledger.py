@@ -5,12 +5,20 @@ Every belief change gets a receipt with:
 - What changed (prev → new)
 - Why it changed (evidence)
 - What data supported it (condition keys)
+
+Agent C Phase 1: Schema versioning and event type envelope.
+- All events now have event_type and schema_version fields
+- Increment SCHEMA_VERSION when adding required fields or changing semantics
 """
 
 import json
 import math
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional
+
+# Schema versioning for JSONL events
+# Version 1: Added event_type and schema_version envelope (Agent C Phase 1)
+SCHEMA_VERSION = 1
 
 
 def _json_dumps_safe(obj: Any, **kwargs) -> str:
@@ -46,6 +54,10 @@ class EvidenceEvent:
 
     Temporal admissibility rule: evidence_time_h >= claim_time_h
     (You may only update beliefs about a timepoint using evidence from that timepoint or later)
+
+    Schema envelope (Agent C Phase 1):
+    - event_type: "evidence" for routing
+    - schema_version: integer version for compatibility
     """
     cycle: int
     belief: str
@@ -58,8 +70,12 @@ class EvidenceEvent:
     claim_time_h: Optional[float] = None  # What timepoint belief is about (None = atemporal)
 
     def to_dict(self) -> dict:
-        """Convert to JSON-serializable dict."""
-        return asdict(self)
+        """Convert to JSON-serializable dict with schema envelope."""
+        d = asdict(self)
+        # Inject envelope fields for downstream parsing
+        d["event_type"] = "evidence"
+        d["schema_version"] = SCHEMA_VERSION
+        return d
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
@@ -134,7 +150,12 @@ def append_events_jsonl(path, events: List[EvidenceEvent]):
 
 @dataclass(frozen=True)
 class DecisionEvent:
-    """A single decision with all candidate scores."""
+    """A single decision with all candidate scores.
+
+    LEGACY/DEAD CODE: This event type is defined but NOT USED.
+    loop.py uses core/decision.py::Decision instead.
+    Kept for backward compatibility but not maintained.
+    """
     cycle: int
     candidates: List[Dict[str, Any]]  # List of {template, base_ev, cost, score, multiplier, ...}
     selected: str  # template name
@@ -168,6 +189,10 @@ class RefusalEvent:
 
     Refusals are asymmetric: they only trigger when overclaiming has accumulated.
     Underclaiming never causes refusal.
+
+    Schema envelope (Agent C Phase 1):
+    - event_type: "refusal" for routing
+    - schema_version: integer version for compatibility
     """
     cycle: int
     timestamp: str
@@ -192,9 +217,19 @@ class RefusalEvent:
     # Optional design ID (if proposal existed)
     design_id: Optional[str] = None
 
+    # Agent 3: Deadlock prevention diagnostics
+    budget_after_action: Optional[int] = None  # Budget remaining after action would execute
+    required_reserve: Optional[int] = None  # Minimum wells required for recovery
+    blocked_by_reserve: Optional[bool] = None  # True if budget reserve violation
+    is_calibration: Optional[bool] = None  # True if action is calibration
+    is_deadlocked: Optional[bool] = None  # True if epistemic deadlock detected
+
     def to_dict(self) -> dict:
-        """Convert to JSON-serializable dict."""
-        return asdict(self)
+        """Convert to JSON-serializable dict with schema envelope."""
+        d = asdict(self)
+        d["event_type"] = "refusal"
+        d["schema_version"] = SCHEMA_VERSION
+        return d
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""
@@ -210,7 +245,12 @@ def append_refusals_jsonl(path, refusals: List[RefusalEvent]):
 
 @dataclass(frozen=True)
 class NoiseDiagnosticEvent:
-    """Per-cycle instrument noise diagnostics (always emitted)."""
+    """Per-cycle instrument noise diagnostics (always emitted).
+
+    Schema envelope (Agent C Phase 1):
+    - event_type: "noise_diagnostic" for routing
+    - schema_version: integer version for compatibility
+    """
     cycle: int
     condition_key: str
     n_wells: int
@@ -229,8 +269,11 @@ class NoiseDiagnosticEvent:
     drift_threshold: float
 
     def to_dict(self) -> dict:
-        """Convert to JSON-serializable dict."""
-        return asdict(self)
+        """Convert to JSON-serializable dict with schema envelope."""
+        d = asdict(self)
+        d["event_type"] = "noise_diagnostic"
+        d["schema_version"] = SCHEMA_VERSION
+        return d
 
     def to_json_line(self) -> str:
         """Serialize as single JSON line for JSONL."""

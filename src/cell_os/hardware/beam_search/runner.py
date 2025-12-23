@@ -237,7 +237,7 @@ class Phase5EpisodeRunner(EpisodeRunner):
         viability = vessel.viability
 
         # Run Phase5 classifier for confidence margin
-        from .masked_compound_phase5 import infer_stress_axis_with_confidence
+        from ..masked_compound_phase5 import infer_stress_axis_with_confidence
 
         er_fold = morph_struct['er'] / baseline_er
         mito_fold = morph_struct['mito'] / baseline_mito
@@ -255,8 +255,8 @@ class Phase5EpisodeRunner(EpisodeRunner):
         )
 
         # NEW: Compute Bayesian posterior + calibrated confidence
-        from .mechanism_posterior_v2 import compute_mechanism_posterior_v2, NuisanceModel
-        from .confidence_calibrator import ConfidenceCalibrator, BeliefState
+        from ..mechanism_posterior_v2 import compute_mechanism_posterior_v2, NuisanceModel
+        from ..confidence_calibrator import ConfidenceCalibrator, BeliefState
 
         # Build nuisance model
         current_time_h = n_steps_prefix * self.step_h
