@@ -18,6 +18,7 @@ from src.cell_os.plate_executor_v2 import (
     flatten_result,
     ParsedWell
 )
+from src.cell_os.plate_executor import parse_plate_design_v3
 from src.cell_os.hardware.run_context import RunContext
 
 
@@ -123,10 +124,21 @@ def execute_plate_design_parallel(
         print(f"{'='*70}")
         print(f"\nLoading plate design: {json_path.name}")
 
-    # Parse with validation
-    parsed_wells, parse_metadata = parse_plate_design_v2(json_path)
-    if verbose:
-        print(f"✓ Parsed {len(parsed_wells)} wells")
+    # Auto-detect parser version based on plate format
+    with open(json_path) as f:
+        design = json.load(f)
+
+    if "well_to_cell_line" in design["cell_lines"]:
+        # V3/V4/V5 format with well-based cell line assignment
+        parsed_wells = parse_plate_design_v3(json_path)
+        parse_metadata = {"background_wells": []}  # V3 doesn't return metadata
+        if verbose:
+            print(f"✓ Parsed {len(parsed_wells)} wells (V3/V5 format)")
+    else:
+        # V2 format with row-based cell line assignment
+        parsed_wells, parse_metadata = parse_plate_design_v2(json_path)
+        if verbose:
+            print(f"✓ Parsed {len(parsed_wells)} wells (V2 format)")
 
     # Validate compounds
     validate_compounds(parsed_wells)

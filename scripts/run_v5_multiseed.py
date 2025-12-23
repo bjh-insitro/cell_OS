@@ -3,6 +3,7 @@
 Run V5.2 calibration plate across multiple seeds for validation.
 
 This generates the same format results as V3/V4 for comparison.
+Uses parallel execution with up to 32 workers.
 """
 
 import sys
@@ -14,7 +15,7 @@ from datetime import datetime
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.cell_os.plate_executor import execute_plate_design
+from src.cell_os.plate_executor_v2_parallel import execute_plate_design_parallel
 
 
 def run_calibration_plate(plate_path: Path, seed: int, output_dir: Path):
@@ -22,12 +23,13 @@ def run_calibration_plate(plate_path: Path, seed: int, output_dir: Path):
 
     print(f"Running {plate_path.stem} with seed {seed}...")
 
-    # Execute plate design (this handles parsing, simulation, and formatting)
-    results = execute_plate_design(
+    # Execute plate design with parallel processing (up to 32 workers)
+    results = execute_plate_design_parallel(
         json_path=plate_path,
         seed=seed,
         output_dir=output_dir,
-        verbose=True
+        verbose=True,
+        workers=None  # Auto-detect (up to 32)
     )
 
     print(f"  ✓ Completed simulation")
