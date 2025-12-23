@@ -17,12 +17,16 @@ echo "║              STRUCTURED NOISE VALIDATION - V4 PHASE 1                 
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Testing persistent per-well biology with coupled stain/focus factors"
-echo "Seeds: 2000, 2100, 2200 (fresh seeds, post-refactor)"
+echo "Seeds: 3000, 3100, 3200 (post-fix seeds)"
+echo ""
+echo "Fixes applied:"
+echo "  1. Removed run_context.seed from well_biology key (wells have identity)"
+echo "  2. Made well_factor per-channel (breaks global multiplier)"
 echo ""
 
 # Run Phase 1 with 3 seeds
 REPO_ROOT=$(pwd)
-for seed in 2000 2100 2200; do
+for seed in 3000 3100 3200; do
     echo "=========================================================================="
     echo "Running seed $seed..."
     echo "=========================================================================="
@@ -43,7 +47,7 @@ echo "Running Validation Analysis"
 echo "=========================================================================="
 echo ""
 
-PYTHONPATH=$REPO_ROOT:$PYTHONPATH python3 scripts/validate_structured_noise.py 2000 2100 2200
+PYTHONPATH=$REPO_ROOT:$PYTHONPATH python3 scripts/validate_structured_noise.py 3000 3100 3200
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════════╗"
