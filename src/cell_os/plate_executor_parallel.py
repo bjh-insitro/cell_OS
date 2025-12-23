@@ -18,17 +18,17 @@ from src.cell_os.hardware.run_context import RunContext
 from src.cell_os.plate_executor import parse_plate_design_v2, parsed_wells_to_wellspecs, ParsedWell
 
 
-def execute_single_well(args: Tuple[ParsedWell, WellSpec, int]) -> Dict[str, Any]:
+def execute_single_well(args: Tuple[ParsedWell, WellSpec, int, str]) -> Dict[str, Any]:
     """
     Worker function to execute a single well (for multiprocessing).
 
     Args:
-        args: Tuple of (ParsedWell, WellSpec, seed)
+        args: Tuple of (ParsedWell, WellSpec, seed, vessel_type)
 
     Returns:
         Result dictionary
     """
-    pw, ws, seed = args
+    pw, ws, seed, vessel_type = args
 
     try:
         # Create independent VM per well with unique seed
@@ -60,10 +60,14 @@ def execute_single_well(args: Tuple[ParsedWell, WellSpec, int]) -> Dict[str, Any
 
         # Normal wells with cells
         vessel_id = f"well_{pw.well_id}_{pw.cell_line}"
-        density_scale = 0.7 if pw.cell_density == "LOW" else 1.3 if pw.cell_density == "HIGH" else 1.0
-        initial_cells = int(1e6 * density_scale)
 
-        vm.seed_vessel(vessel_id, pw.cell_line, initial_count=initial_cells)
+        # Seed vessel using database-backed density lookup
+        vm.seed_vessel(
+            vessel_id,
+            pw.cell_line,
+            vessel_type=vessel_type,
+            density_level=pw.cell_density
+        )
 
         if pw.reagent != "DMSO" and pw.dose_uM > 0:
             vm.treat_with_compound(vessel_id, pw.reagent.lower(), pw.dose_uM)
@@ -137,10 +141,16 @@ def execute_plate_design_parallel(
         print(f"{'='*70}")
         print(f"\nLoading plate design: {json_path.name}")
 
+    # Extract plate format for vessel type
+    with open(json_path) as f:
+        design = json.load(f)
+    plate_format = design.get("plate", {}).get("format", "384")
+    vessel_type = f"{plate_format}-well"
+
     # Parse plate design
     parsed_wells = parse_plate_design_v2(json_path)
     if verbose:
-        print(f"✓ Parsed {len(parsed_wells)} wells")
+        print(f"✓ Parsed {len(parsed_wells)} wells (format: {vessel_type})")
 
     # Convert to WellSpecs
     wellspecs = parsed_wells_to_wellspecs(parsed_wells)
@@ -159,8 +169,8 @@ def execute_plate_design_parallel(
         print(f"Seed: {seed}")
         print(f"\nExecuting {len(parsed_wells)} wells...")
 
-    # Prepare arguments for workers
-    worker_args = [(pw, ws, seed) for pw, ws in zip(parsed_wells, wellspecs)]
+    # Prepare arguments for workers (include vessel_type for database lookup)
+    worker_args = [(pw, ws, seed, vessel_type) for pw, ws in zip(parsed_wells, wellspecs)]
 
     # Execute in parallel
     with Pool(processes=workers) as pool:

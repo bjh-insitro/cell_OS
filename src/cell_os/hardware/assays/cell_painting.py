@@ -497,8 +497,30 @@ class CellPaintingAssay(AssaySimulator):
         # Translate focus_factor into a "focus badness" scalar.
         focus_badness = abs(float(np.log(focus_factor))) if focus_factor > 0 else 0.0
 
-        # Shared factors (plate/day/operator/edge/illumination) - NOT per-channel well_factor
-        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * illumination_bias
+        # Hardware artifacts from Cell Painting (EL406 Cell Painting)
+        # Affects measurement quality (stain intensity, background)
+        hardware_factor = 1.0
+        try:
+            from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
+
+            hardware_bias = get_hardware_bias(
+                plate_id=plate_id,
+                batch_id=batch_id,
+                well_position=well_position,
+                instrument='el406_cellpainting',
+                operation='cell_painting',
+                seed=self.vm.run_context.seed,
+                tech_noise=tech_noise
+            )
+
+            hardware_factor = hardware_bias['combined_factor']
+
+        except (ImportError, Exception) as e:
+            # Fallback: no hardware artifacts if import fails
+            pass
+
+        # Shared factors (plate/day/operator/edge/illumination/hardware) - NOT per-channel well_factor
+        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * illumination_bias * hardware_factor
 
         # Apply shared factors + per-channel well factor + biases + coupled stain/focus
         for channel in morph:

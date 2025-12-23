@@ -23,7 +23,7 @@ def get_hardware_bias(
     operation: Literal['plating', 'feeding', 'cell_painting'],
     seed: int,
     tech_noise: Dict
-) -> float:
+) -> Dict[str, float]:
     """
     Calculate deterministic hardware bias for a specific well.
 
@@ -41,10 +41,23 @@ def get_hardware_bias(
         tech_noise: Technical noise parameters
 
     Returns:
-        Multiplicative bias factor (typically 0.90 - 1.10)
+        Dict with bias factors:
+        - 'volume_factor': Volume/cell count multiplier (0.95-1.05)
+        - 'roughness_factor': Viability impact from mechanical stress (0.92-1.00, plating only)
+        - 'temperature_factor': Temperature shock viability loss (0.98-1.00, feeding only)
+        - 'combined_factor': Total multiplier for measurements (cell_painting)
     """
     # Parse well position
-    row, col = _parse_well_position(well_position)
+    try:
+        row, col = _parse_well_position(well_position)
+    except ValueError:
+        # Fallback for non-plate contexts
+        return {
+            'volume_factor': 1.0,
+            'roughness_factor': 1.0,
+            'temperature_factor': 1.0,
+            'combined_factor': 1.0
+        }
 
     # Get pin/valve number (1-8) from row
     pin_number = _get_pin_from_row(row)
@@ -69,10 +82,68 @@ def get_hardware_bias(
         tech_noise=tech_noise
     )
 
-    # Multiply biases (they compound, not add)
-    total_bias = pin_bias * temporal_bias
+    # Operation-specific effects
+    if operation == 'plating':
+        # Volume variation affects cell count
+        volume_factor = pin_bias * temporal_bias
 
-    return total_bias
+        # Roughness affects viability (only negative, from mechanical stress)
+        # Serpentine timing affects attachment success
+        roughness_cv = tech_noise.get('roughness_cv', 0.05)  # 5% CV
+        roughness_seed = stable_u32(f"roughness_{instrument}_{pin_number}_{batch_id}")
+        roughness_rng = np.random.default_rng(roughness_seed)
+
+        # Lognormal but cap at 1.0 (roughness only hurts, never helps)
+        roughness_factor = min(1.0, lognormal_multiplier(roughness_rng, roughness_cv))
+
+        # Early wells get less roughness (more time for gentle settling)
+        normalized_index = processing_index / 383.0
+        temporal_roughness = 1.0 - 0.03 * normalized_index  # 0-3% viability penalty
+        roughness_factor *= temporal_roughness
+
+        return {
+            'volume_factor': volume_factor,
+            'roughness_factor': roughness_factor,
+            'temperature_factor': 1.0,
+            'combined_factor': volume_factor
+        }
+
+    elif operation == 'feeding':
+        # Volume variation affects nutrient availability
+        volume_factor = pin_bias * temporal_bias
+
+        # Temperature shock from cooling during dispense
+        # Early wells cool more (processed first, sit longest during full-plate dispense)
+        normalized_index = processing_index / 383.0
+        temperature_shock = 0.01 * (1.0 - normalized_index)  # 0-1% viability loss
+        temperature_factor = 1.0 - temperature_shock
+
+        return {
+            'volume_factor': volume_factor,
+            'roughness_factor': 1.0,
+            'temperature_factor': temperature_factor,
+            'combined_factor': volume_factor
+        }
+
+    elif operation == 'cell_painting':
+        # Measurement artifact (affects readout, not biology)
+        combined_factor = pin_bias * temporal_bias
+
+        return {
+            'volume_factor': 1.0,
+            'roughness_factor': 1.0,
+            'temperature_factor': 1.0,
+            'combined_factor': combined_factor
+        }
+
+    else:
+        # Unknown operation, return neutral
+        return {
+            'volume_factor': 1.0,
+            'roughness_factor': 1.0,
+            'temperature_factor': 1.0,
+            'combined_factor': 1.0
+        }
 
 
 def _parse_well_position(well_position: str) -> tuple[str, int]:

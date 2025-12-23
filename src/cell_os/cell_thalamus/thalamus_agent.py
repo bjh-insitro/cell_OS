@@ -115,10 +115,14 @@ class CellThalamusAgent:
         """Execute a single well: seed, treat, incubate, measure. Returns result dict."""
         vessel_id = f"{well.plate_id}_{well.well_id}"
 
-        # 1. Seed vessel
-        initial_count = 5e5  # 500K cells per well
-        capacity = 2e6       # 2M max capacity
-        self.hardware.seed_vessel(vessel_id, well.cell_line, initial_count, capacity)
+        # 1. Seed vessel using database-backed density lookup
+        # Cell Thalamus uses 96-well plates (see design_generator.py)
+        self.hardware.seed_vessel(
+            vessel_id,
+            well.cell_line,
+            vessel_type="96-well",
+            density_level="NOMINAL"
+        )
 
         # 2. Incubate for attachment (4 hours)
         self.hardware.advance_time(4.0)

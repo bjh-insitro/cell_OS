@@ -378,6 +378,9 @@ def execute_plate_design(
     with open(json_path) as f:
         design = json.load(f)
 
+    # Extract plate format for seeding density calculation
+    plate_format = design.get("plate", {}).get("format", "384")
+
     if "well_to_cell_line" in design["cell_lines"]:
         # V3/V4/V5 format with well-based cell line assignment
         parsed_wells = parse_plate_design_v3(json_path)
@@ -458,16 +461,21 @@ def execute_plate_design(
         # Normal wells with cells: create independent vessel per well
         vessel_id = f"well_{pw.well_id}_{pw.cell_line}"
 
-        # Parse density scale from cell_density annotation
-        density_scale = 1.0
-        if pw.cell_density == "LOW":
-            density_scale = 0.7
-        elif pw.cell_density == "HIGH":
-            density_scale = 1.3
+        # Seed vessel using database-backed density lookup
+        vm.seed_vessel(
+            vessel_id,
+            pw.cell_line,
+            vessel_type=f"{plate_format}-well",
+            density_level=pw.cell_density
+        )
 
-        # Seed vessel with scaled cell count
-        initial_cells = int(1e6 * density_scale)
-        vm.seed_vessel(vessel_id, pw.cell_line, initial_count=initial_cells)
+        # Calculate density scale for metadata (relative to NOMINAL)
+        density_scale_map = {"LOW": 0.7, "NOMINAL": 1.0, "HIGH": 1.3}
+        density_scale = density_scale_map.get(pw.cell_density, 1.0)
+
+        # Get actual cell count for metadata
+        from src.cell_os.database.repositories.seeding_density import get_cells_to_seed
+        initial_cells = get_cells_to_seed(pw.cell_line, f"{plate_format}-well", pw.cell_density)
 
         # Apply treatment if not DMSO
         if pw.reagent != "DMSO" and pw.dose_uM > 0:

@@ -39,10 +39,14 @@ def execute_well_worker(args) -> Optional[Dict[str, Any]]:
     vessel_id = f"{well.plate_id}_{well.well_id}"
 
     try:
-        # 1. Seed vessel
-        initial_count = 5e5
-        capacity = 2e6
-        hardware.seed_vessel(vessel_id, well.cell_line, initial_count, capacity)
+        # 1. Seed vessel using database-backed density lookup
+        # Cell Thalamus uses 96-well plates (see design_generator.py)
+        hardware.seed_vessel(
+            vessel_id,
+            well.cell_line,
+            vessel_type="96-well",
+            density_level="NOMINAL"
+        )
 
         # 2. Incubate for attachment
         hardware.advance_time(4.0)

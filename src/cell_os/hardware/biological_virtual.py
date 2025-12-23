@@ -1363,19 +1363,90 @@ class BiologicalVirtualMachine(VirtualMachine):
         else:
             vessel.death_mode = None  # Still healthy
             
-    def seed_vessel(self, vessel_id: str, cell_line: str, initial_count: float, capacity: float = 1e7, initial_viability: float = None):
+    def seed_vessel(
+        self,
+        vessel_id: str,
+        cell_line: str,
+        initial_count: float = None,
+        capacity: float = 1e7,
+        initial_viability: float = None,
+        vessel_type: str = None,
+        density_level: str = "NOMINAL"
+    ):
         """Initialize a vessel with cells.
 
         Args:
             vessel_id: Vessel identifier
             cell_line: Cell line name
-            initial_count: Initial cell count
+            initial_count: Initial cell count (if None, looked up from database using vessel_type)
             capacity: Vessel capacity
             initial_viability: Override initial viability (default: 0.98 for realistic seeding stress)
+            vessel_type: Vessel type (e.g., "384-well", "T75"). Required if initial_count is None.
+            density_level: Density level ("LOW", "NOMINAL", "HIGH"). Only used if initial_count is None.
+
+        Example (NEW way - recommended):
+            >>> vm.seed_vessel("well_A1", "A549", vessel_type="384-well", density_level="NOMINAL")
+            # Automatically uses 3,000 cells from database
+
+        Example (OLD way - still works for backward compatibility):
+            >>> vm.seed_vessel("well_A1", "A549", initial_count=3000)
+            # Explicitly provide cell count
         """
+        # Look up initial_count from database if not provided
+        if initial_count is None:
+            if vessel_type is None:
+                raise ValueError(
+                    "Must provide either initial_count OR vessel_type. "
+                    "Recommended: use vessel_type to auto-lookup from database."
+                )
+            from src.cell_os.database.repositories.seeding_density import get_cells_to_seed
+            initial_count = float(get_cells_to_seed(cell_line, vessel_type, density_level))
+
+        if initial_count <= 0:
+            raise ValueError(f"initial_count must be positive, got {initial_count}")
         state = VesselState(vessel_id, cell_line, initial_count)
         if initial_viability is not None:
             state.viability = initial_viability
+
+        # Parse well position early for hardware artifacts
+        if vessel_id.startswith("well_"):
+            parts = vessel_id.split("_")
+            if len(parts) >= 3:
+                well_position = parts[1]  # e.g., "A1", "B7"
+            else:
+                well_position = vessel_id  # fallback
+        else:
+            well_position = vessel_id  # fallback for non-plate contexts
+
+        # Hardware artifacts from plating (Certus or EL406 Culture)
+        # Affects cell count (volume variation) and viability (mechanical stress)
+        try:
+            from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
+
+            # Determine instrument (simple heuristic: check if vessel_type suggests complex map)
+            # For now, default to el406_culture for all plating
+            # TODO: Add plate_map_type to vessel metadata to properly select certus vs el406
+            instrument = 'el406_culture'
+
+            hardware_bias = get_hardware_bias(
+                plate_id=vessel_id.split('_')[0] if '_' in vessel_id else 'unknown_plate',
+                batch_id='batch_default',
+                well_position=well_position,
+                instrument=instrument,
+                operation='plating',
+                seed=self.run_context.seed,
+                tech_noise=self.thalamus_params.get('technical_noise', {})
+            )
+
+            # Apply volume variation to cell count
+            state.cell_count = float(state.cell_count * hardware_bias['volume_factor'])
+
+            # Apply roughness/mechanical stress to viability
+            state.viability = float(state.viability * hardware_bias['roughness_factor'])
+
+        except (ImportError, Exception) as e:
+            # Fallback: no hardware artifacts if import fails
+            pass
 
         # Credit seeding stress to death_unknown (known operational artifact)
         seeding_stress_death = 1.0 - state.viability
@@ -1395,17 +1466,6 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Initialize per-well RNG for persistent latent biology
         # Key to physical coordinates (well position + cell line), NOT run/vessel IDs
         # This gives wells persistent identity across runs
-        # Parse well position from vessel_id (format: "well_{position}_{cell_line}")
-        if vessel_id.startswith("well_"):
-            parts = vessel_id.split("_")
-            if len(parts) >= 3:
-                well_position = parts[1]  # e.g., "A1", "B7"
-                # cell_line is already in the vessel_id and passed separately
-            else:
-                well_position = vessel_id  # fallback
-        else:
-            well_position = vessel_id  # fallback for non-plate contexts
-
         well_seed = stable_u32(f"well_biology_{well_position}_{cell_line}")
         state.rng_well = np.random.default_rng(well_seed)
 
@@ -1454,6 +1514,39 @@ class BiologicalVirtualMachine(VirtualMachine):
             return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
 
         vessel = self.vessel_states[vessel_id]
+
+        # Parse well position for hardware artifacts
+        if vessel_id.startswith("well_"):
+            parts = vessel_id.split("_")
+            well_position = parts[1] if len(parts) >= 3 else vessel_id
+        else:
+            well_position = vessel_id
+
+        # Hardware artifacts from feeding (EL406 Culture)
+        # Affects nutrient volume and temperature shock
+        try:
+            from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
+
+            hardware_bias = get_hardware_bias(
+                plate_id=vessel_id.split('_')[0] if '_' in vessel_id else 'unknown_plate',
+                batch_id='batch_default',
+                well_position=well_position,
+                instrument='el406_culture',
+                operation='feeding',
+                seed=self.run_context.seed,
+                tech_noise=self.thalamus_params.get('technical_noise', {})
+            )
+
+            # Apply volume variation to nutrients
+            glucose_mM = float(glucose_mM * hardware_bias['volume_factor'])
+            glutamine_mM = float(glutamine_mM * hardware_bias['volume_factor'])
+
+            # Apply temperature shock to viability
+            vessel.viability = float(vessel.viability * hardware_bias['temperature_factor'])
+
+        except (ImportError, Exception) as e:
+            # Fallback: no hardware artifacts if import fails
+            pass
 
         # Injection A+B: feed event updates nutrient concentrations in spine
         self.scheduler.submit_intent(

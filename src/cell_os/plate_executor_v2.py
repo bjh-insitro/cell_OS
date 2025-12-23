@@ -506,15 +506,29 @@ def _build_metadata(
 # Well Execution with Isolated Simulation
 # ============================================================================
 
-def compute_initial_cells(cell_density: str, base_count: int = 1_000_000) -> int:
-    """Compute initial cell count based on density annotation."""
-    density_multipliers = {
-        "LOW": 0.7,
-        "NOMINAL": 1.0,
-        "HIGH": 1.3,
-        "NONE": 0
-    }
-    return int(base_count * density_multipliers.get(cell_density, 1.0))
+def compute_initial_cells(
+    cell_line: str,
+    vessel_type: str,
+    cell_density: str
+) -> int:
+    """
+    Compute initial cell count from database based on cell line, vessel type, and density level.
+
+    Args:
+        cell_line: Cell line identifier (e.g., "A549", "HepG2")
+        vessel_type: Vessel type (e.g., "384-well", "96-well")
+        cell_density: Density level ("LOW", "NOMINAL", "HIGH", "NONE")
+
+    Returns:
+        Number of cells to seed
+
+    Note: This replaces the old hardcoded base_count approach with database lookup.
+    """
+    if cell_density == "NONE":
+        return 0
+
+    from src.cell_os.database.repositories.seeding_density import get_cells_to_seed
+    return get_cells_to_seed(cell_line, vessel_type, cell_density)
 
 
 def generate_background_morphology(
@@ -567,7 +581,8 @@ def execute_well(
     pw: ParsedWell,
     base_seed: int,
     run_context: RunContext,
-    plate_id: str = "CAL_384"
+    plate_id: str = "CAL_384",
+    vessel_type: str = "384-well"
 ) -> Dict[str, Any]:
     """
     Execute a single well with isolated simulation.
@@ -623,7 +638,7 @@ def execute_well(
 
         # Normal wells with cells
         vessel_id = f"well_{pw.well_id}_{pw.cell_line}"
-        initial_cells = compute_initial_cells(pw.cell_density)
+        initial_cells = compute_initial_cells(pw.cell_line, vessel_type, pw.cell_density)
 
         vm.seed_vessel(vessel_id, pw.cell_line, initial_count=initial_cells)
 
@@ -737,10 +752,16 @@ def execute_plate_design(
         print(f"{'='*70}")
         print(f"\nLoading plate design: {json_path.name}")
 
+    # Load design to extract plate format
+    with open(json_path) as f:
+        design = json.load(f)
+    plate_format = design.get("plate", {}).get("format", "384")
+    vessel_type = f"{plate_format}-well"
+
     # Parse with validation
     parsed_wells, parse_metadata = parse_plate_design_v2(json_path)
     if verbose:
-        print(f"✓ Parsed {len(parsed_wells)} wells")
+        print(f"✓ Parsed {len(parsed_wells)} wells (format: {vessel_type})")
 
     # Validate compounds
     validate_compounds(parsed_wells)
@@ -774,7 +795,7 @@ def execute_plate_design(
         if verbose and (i + 1) % 96 == 0:
             print(f"  Progress: {i + 1}/{len(parsed_wells)} wells ({100*(i+1)//len(parsed_wells)}%)")
 
-        result = execute_well(pw, seed, run_context, plate_id)
+        result = execute_well(pw, seed, run_context, plate_id, vessel_type)
         raw_results.append(result)
 
     if verbose:
