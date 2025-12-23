@@ -17,16 +17,18 @@ echo "║              STRUCTURED NOISE VALIDATION - V4 PHASE 1                 
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Testing persistent per-well biology with coupled stain/focus factors"
-echo "Seeds: 4000, 4100, 4200 (post-keying-fix seeds)"
+echo "Seeds: 5000, 5100, 5200 (DIAGNOSTIC: shared factors disabled)"
 echo ""
-echo "Fixes applied:"
-echo "  1. Key well_biology to well_position+cell_line (not vessel_id)"
-echo "  2. Per-channel deterministic seeding for well_factor (not sequential RNG)"
+echo "DIAGNOSTIC MODE: All shared multipliers disabled to isolate coupling"
+echo "  Disabled: plate/day/operator/edge/illumination/channel_biases/pipeline_transform"
+echo "  Active: per-well biology, per-channel well_factor, stain/focus coupling"
+echo ""
+echo "Test: If correlations drop from 0.97 → 0.3-0.5, shared factors were the bully"
 echo ""
 
 # Run Phase 1 with 3 seeds
 REPO_ROOT=$(pwd)
-for seed in 4000 4100 4200; do
+for seed in 5000 5100 5200; do
     echo "=========================================================================="
     echo "Running seed $seed..."
     echo "=========================================================================="
@@ -47,7 +49,7 @@ echo "Running Validation Analysis"
 echo "=========================================================================="
 echo ""
 
-PYTHONPATH=$REPO_ROOT:$PYTHONPATH python3 scripts/validate_structured_noise.py 4000 4100 4200
+PYTHONPATH=$REPO_ROOT:$PYTHONPATH python3 scripts/validate_structured_noise.py 5000 5100 5200
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════════╗"
