@@ -95,6 +95,11 @@ class CellPaintingAssay(AssaySimulator):
             'rna': baseline['rna']
         }
 
+        # Apply persistent per-well latent biology (BEFORE compound effects)
+        # This creates stable well-to-well differences independent of treatment
+        self._ensure_well_biology(vessel)
+        morph = self._apply_well_biology_baseline(vessel, morph)
+
         # Apply compound effects via stress axes
         morph, has_microtubule_compound = self._apply_compound_effects(vessel, morph, baseline)
 
@@ -162,6 +167,44 @@ class CellPaintingAssay(AssaySimulator):
             result.update(segmentation_result)
 
         return result
+
+    def _ensure_well_biology(self, vessel: "VesselState") -> None:
+        """
+        Create persistent per-well latent biology once (at 'plating').
+        Uses a deterministic RNG stream if available, otherwise falls back to rng_assay.
+        """
+        if getattr(vessel, "well_biology", None) is not None:
+            return
+
+        # Prefer a deterministic per-well RNG if you have one.
+        # If you don't, this still works, but reproducibility depends on call order.
+        rng = getattr(vessel, "rng_well", None) or self.vm.rng_assay
+
+        # These are fractional shifts (not multipliers yet).
+        vessel.well_biology = {
+            # Baseline morphology offsets (vehicle replicates should show this)
+            "er_baseline_shift": float(rng.normal(0.0, 0.08)),       # ~8% sd
+            "mito_baseline_shift": float(rng.normal(0.0, 0.10)),     # ~10% sd
+            "rna_baseline_shift": float(rng.normal(0.0, 0.06)),      # ~6% sd
+
+            # Nucleus sits in both stain and focus worlds but weaker
+            "nucleus_baseline_shift": float(rng.normal(0.0, 0.04)),  # ~4% sd
+
+            # Actin is more "structure" than "stain"
+            "actin_baseline_shift": float(rng.normal(0.0, 0.05)),    # ~5% sd
+
+            # Treatment response gain variation (lognormal so it's always positive)
+            "stress_susceptibility": float(rng.lognormal(mean=0.0, sigma=0.15)),  # ~15% log-sd
+        }
+
+    def _apply_well_biology_baseline(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+        """Apply persistent per-well baseline shifts to morphology."""
+        morph["er"] *= (1.0 + vessel.well_biology["er_baseline_shift"])
+        morph["mito"] *= (1.0 + vessel.well_biology["mito_baseline_shift"])
+        morph["rna"] *= (1.0 + vessel.well_biology["rna_baseline_shift"])
+        morph["nucleus"] *= (1.0 + vessel.well_biology["nucleus_baseline_shift"])
+        morph["actin"] *= (1.0 + vessel.well_biology["actin_baseline_shift"])
+        return morph
 
     def _apply_compound_effects(
         self, vessel: "VesselState", morph: Dict[str, float], baseline: Dict[str, float]
@@ -319,16 +362,32 @@ class CellPaintingAssay(AssaySimulator):
         return washout_multiplier
 
     def _add_biological_noise(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
-        """Add dose-dependent biological noise."""
-        stress_level = 1.0 - vessel.viability
-        stress_multiplier = self.vm.thalamus_params['biological_noise'].get('stress_cv_multiplier', 1.0)
-        effective_bio_cv = self.vm.thalamus_params['biological_noise']['cell_line_cv'] * (
-            1.0 + stress_level * (stress_multiplier - 1.0)
-        )
+        """
+        Structured biology:
+        - Per-well baseline shifts already applied (in _apply_well_biology_baseline)
+        - Stress susceptibility as gain on stress-induced morphology
+        - Small residual biological noise (do NOT crank this into amplitude mush)
+        """
+        bio_cfg = self.vm.thalamus_params.get("biological_noise", {})
+        base_residual_cv = float(bio_cfg.get("cell_line_cv", 0.04))  # keep modest
+        stress_multiplier = float(bio_cfg.get("stress_cv_multiplier", 1.0))
 
-        if effective_bio_cv > 0:
-            for channel in morph:
-                morph[channel] *= lognormal_multiplier(self.vm.rng_assay, effective_bio_cv)
+        stress_level = max(0.0, min(1.0, 1.0 - vessel.viability))
+        sus = vessel.well_biology["stress_susceptibility"]
+
+        # Stress susceptibility as gain on stress-driven deviation
+        # Apply an extra multiplier that ramps with stress_level.
+        # This makes perturbations show higher CV than vehicle, which is realistic.
+        if stress_level > 0:
+            gain = 1.0 + (sus - 1.0) * stress_level
+            for ch in morph:
+                morph[ch] *= gain
+
+        # Residual biological noise, still dose/stress-dependent but small
+        effective_cv = base_residual_cv * (1.0 + stress_level * (stress_multiplier - 1.0))
+        if effective_cv > 0:
+            for ch in morph:
+                morph[ch] *= lognormal_multiplier(self.vm.rng_assay, effective_cv)
 
         return morph
 
@@ -350,6 +409,24 @@ class CellPaintingAssay(AssaySimulator):
                     morph[channel] *= lognormal_multiplier(self.vm.rng_assay, artifact_cv)
 
         return morph
+
+    def _get_plate_stain_factor(self, plate_id: str, batch_id: str, cv: float) -> float:
+        """Deterministic plate-level stain factor (like other batch factors)."""
+        return self._get_batch_factor("stain", plate_id, batch_id, cv)
+
+    def _get_tile_focus_factor(self, plate_id: str, batch_id: str, well_position: str, cv: float) -> float:
+        """
+        Deterministic per-tile focus factor.
+        Tile here means e.g. 4x4 blocks to mimic focus surface.
+        """
+        # parse well -> (row_idx, col_idx)
+        row = ord(well_position[0].upper()) - ord("A")
+        col = int(well_position[1:]) - 1
+
+        tile_r = row // 4
+        tile_c = col // 4
+        tile_id = f"{plate_id}_focusTile_{tile_r}_{tile_c}"
+        return self._get_batch_factor("focus", tile_id, batch_id, cv)
 
     def _add_technical_noise(self, vessel: "VesselState", morph: Dict[str, float], **kwargs) -> Dict[str, float]:
         """Add technical noise from plate/day/operator/well/edge effects."""
@@ -380,12 +457,48 @@ class CellPaintingAssay(AssaySimulator):
         illumination_bias = meas_mods['illumination_bias']
         channel_biases = meas_mods['channel_biases']
 
+        # Add coupled nuisance factors
+        stain_cv = float(tech_noise.get("stain_cv", 0.05))   # new param
+        focus_cv = float(tech_noise.get("focus_cv", 0.04))   # new param
+
+        stain_factor = self._get_plate_stain_factor(plate_id, batch_id, stain_cv) if stain_cv > 0 else 1.0
+        focus_factor = self._get_tile_focus_factor(plate_id, batch_id, well_position, focus_cv) if focus_cv > 0 else 1.0
+
+        # Focus should also inflate variance on structure channels (nucleus/actin).
+        # Translate focus_factor into a "focus badness" scalar.
+        focus_badness = abs(float(np.log(focus_factor))) if focus_factor > 0 else 0.0
+
         total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * illumination_bias
 
-        # Apply total factor + per-channel biases
+        # Apply total factor + per-channel biases + coupled stain/focus factors
         for channel in morph:
             channel_bias = channel_biases.get(channel, 1.0)
-            morph[channel] *= total_tech_factor * channel_bias
+
+            # Stain coupling: strong on ER/Mito/RNA, moderate on Nucleus, weak on Actin
+            if channel in ("er", "mito"):
+                coupled = stain_factor
+            elif channel == "rna":
+                coupled = stain_factor ** 0.9
+            elif channel == "nucleus":
+                coupled = stain_factor ** 0.5
+            elif channel == "actin":
+                coupled = stain_factor ** 0.2
+            else:
+                coupled = 1.0
+
+            # Focus coupling: strong on Nucleus/Actin, weak on ER/Mito/RNA
+            if channel in ("nucleus", "actin"):
+                coupled *= focus_factor
+            else:
+                coupled *= focus_factor ** 0.2
+
+            morph[channel] *= total_tech_factor * channel_bias * coupled
+
+            # Focus-induced variance inflation for structure channels (fingerprint)
+            if channel in ("nucleus", "actin") and focus_badness > 0:
+                extra_cv = min(0.25, 0.05 + 0.4 * focus_badness)  # cap it
+                morph[channel] *= lognormal_multiplier(self.vm.rng_assay, extra_cv)
+
             morph[channel] = max(0.0, morph[channel])
 
         return morph

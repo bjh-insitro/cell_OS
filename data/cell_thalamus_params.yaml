@@ -246,6 +246,8 @@ technical_noise:
   well_cv: 0.015      # 1.5% well-to-well (measurement noise)
   edge_effect: 0.12   # 12% signal reduction for edge wells (evaporation, temperature)
   well_failure_rate: 0.02  # 2% of wells randomly fail (bubbles, contamination, pipetting errors)
+  stain_cv: 0.05      # 5% stain lot variation (plate-level, affects ER/Mito/RNA strongly)
+  focus_cv: 0.04      # 4% focus variation (tile-level, affects Nucleus/Actin strongly, inflates variance)
 
 # Well failure modes (when well_failure_rate triggers)
 well_failure_modes:
@@ -267,9 +269,10 @@ well_failure_modes:
 
 # Biological variance
 biological_noise:
-  cell_line_cv: 0.020  # 2% biological variation (intrinsic cell-to-cell differences)
+  cell_line_cv: 0.04  # 4% residual biological noise (modest, per-well biology does heavy lifting)
   dose_response_cv: 0.10  # 10% dose-response variability (unused for now)
   stress_cv_multiplier: 2.0  # Stressed cells show 2× higher CV (heterogeneous death timing)
+  # Note: Per-well latent biology (8-10% baseline shifts) is now applied separately in cell_painting.py
 
 # Sentinel definitions (fixed control wells on every plate)
 sentinels:

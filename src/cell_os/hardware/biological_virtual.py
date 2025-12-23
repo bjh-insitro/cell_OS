@@ -244,6 +244,11 @@ class VesselState:
         # Cross-talk tracking (Phase 4 Option 3: transport → mito coupling)
         self.transport_high_since = None  # Time when transport dysfunction first exceeded threshold (or None)
 
+        # Per-well latent biology (persistent heterogeneity)
+        # Initialized lazily in seed_vessel with deterministic RNG
+        self.well_biology = None
+        self.rng_well = None
+
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
         # Initialize to None to signal "no step in progress" (set to {} during _step_vessel)
@@ -1386,6 +1391,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Seed deterministically from run context + vessel_id (NOT simulated_time, which creates discontinuities)
         plating_seed = stable_u32(f"plating_{self.run_context.seed}_{vessel_id}")
         state.plating_context = sample_plating_context(plating_seed)
+
+        # Initialize per-well RNG for persistent latent biology
+        # Deterministic per well (stable across assays within the same run)
+        well_seed = stable_u32(f"well_biology_{self.run_context.seed}_{vessel_id}")
+        state.rng_well = np.random.default_rng(well_seed)
 
         # Injection A+B: seed event establishes initial exposure state
         self.scheduler.submit_intent(
