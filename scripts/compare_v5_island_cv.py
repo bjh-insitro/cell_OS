@@ -82,9 +82,10 @@ def analyze_island_cv(plate_id, island_wells_dict):
             if len(island_data) == 0:
                 continue
 
-            # Use first channel as representative
-            channel_name = [k for k in island_data[0].keys() if k.startswith('channel_')][0]
-            values = [r[channel_name] for r in island_data]
+            # Use morph_er as representative channel
+            values = [r['morph_er'] for r in island_data if 'morph_er' in r]
+            if len(values) == 0:
+                continue
 
             cv = calculate_cv(values)
             all_cvs.append(cv)

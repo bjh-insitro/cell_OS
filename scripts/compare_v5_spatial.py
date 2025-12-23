@@ -92,9 +92,10 @@ def analyze_boring_wells_variance(plate_id, exclude_wells=None):
         if len(boring_data) == 0:
             continue
 
-        # Use first channel
-        channel_name = [k for k in boring_data[0].keys() if k.startswith('channel_')][0]
-        values = [r[channel_name] for r in boring_data]
+        # Use morph_er as representative channel
+        values = [r['morph_er'] for r in boring_data if 'morph_er' in r]
+        if len(values) == 0:
+            continue
 
         variance = np.var(values, ddof=1)
         all_variances.append(variance)
