@@ -11,6 +11,7 @@ notes: |
 
 manifold_type: "el406_8channel"
 num_channels: 8
+num_pins: 8
 
 # Processing pattern: serpentine (odd rows L→R, even rows R→L)
 processing_pattern:
@@ -23,6 +24,68 @@ timing:
   aspiration_rate: 0.8       # ~0.8 seconds per well aspiration
   row_transition: 2.0        # 2 seconds to move to next row (odd→odd or even→even)
   pass_transition: 5.0       # 5 seconds between pass 1→pass 2 (odd rows→even rows)
+
+# Pin-specific hardware variation (8-channel manifold)
+pin_characteristics:
+  num_pins: 8
+  pin_to_row_mapping:
+    pin_1: ["A", "I"]  # 384-well: rows A and I
+    pin_2: ["B", "J"]
+    pin_3: ["C", "K"]
+    pin_4: ["D", "L"]
+    pin_5: ["E", "M"]
+    pin_6: ["F", "N"]
+    pin_7: ["G", "O"]
+    pin_8: ["H", "P"]
+
+  per_pin_variation:
+    volume_cv: 0.02-0.05      # 2-5% CV per pin (pin-to-pin differences)
+    roughness_cv: 0.03-0.08   # 3-8% CV in cell viability from mechanical stress (when plating)
+    systematic_bias: "Each pin has persistent offset from nominal volume and roughness"
+
+  effects:
+    row_specific_bias: |
+      Each row gets consistent treatment from same pin:
+      - Row A always uses Pin 1 (systematic volume offset, roughness characteristic)
+      - Row B always uses Pin 2 (different volume offset, different roughness)
+      - etc.
+
+      Result: ROW-WISE systematic biases in:
+      1. Media volume (feeding operations)
+      2. Cell density (plating operations - volume variation)
+      3. Cell viability (plating operations - roughness/mechanical stress)
+
+      These biases are DETERMINISTIC and LEARNABLE:
+      - Row A wells consistently get Pin 1 volume offset (+/- 2-5%)
+      - Row C wells consistently get Pin 3 roughness characteristic
+      - Agent can learn "Row A always runs high, Row E always runs low"
+
+    interaction_with_serpentine_gradient: |
+      Pin-specific effects MULTIPLY with serpentine temporal gradients:
+      - A1: Early timing (column 1, processed first) × Pin 1 bias (row A)
+      - P24: Late timing (column 24, processed last) × Pin 8 bias (row P)
+
+      Total effect = serpentine_temporal_gradient × pin_bias
+
+      Example: Plating operation
+      - Pin 1 dispenses 3% high volume (more cells)
+      - A1 is early in serpentine (+2% from timing gradient)
+      - A1 gets 5.06% more cells than expected (1.03 × 1.02 = 1.0506)
+
+      Example: Feeding operation
+      - Pin 5 dispenses 2% low volume (less nutrients)
+      - E1 is early in serpentine (odd row, left to right)
+      - E1 gets 98% of expected media volume but with early timing advantage
+      - Net effect depends on interaction of volume deficit and timing advantage
+
+    cumulative_across_operations: |
+      Pin biases persist and compound:
+      1. Plating (EL406 Culture): Row A gets Pin 1 characteristics
+      2. Feeding 1 (EL406 Culture): Row A gets Pin 1 characteristics AGAIN
+      3. Feeding 2 (EL406 Culture): Row A gets Pin 1 characteristics AGAIN
+      4. Cell Painting (different EL406): Row A gets different instrument's Pin 1
+
+      By assay time, Row A has received Pin 1 treatment 3-4 times, compounding bias
 
 # Parametric Unit Ops that use this EL406
 parametric_unit_ops:

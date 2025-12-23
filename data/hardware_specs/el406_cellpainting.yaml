@@ -8,6 +8,7 @@ usage: "Cell Painting protocol: fixation, permeabilization, staining, washing"
 
 manifold_type: "el406_8channel"
 num_channels: 8
+num_pins: 8
 
 # Processing pattern: serpentine (odd rows L→R, even rows R→L)
 processing_pattern:
@@ -20,6 +21,74 @@ timing:
   aspiration_rate: 0.8       # ~0.8 seconds per well aspiration
   row_transition: 2.0        # 2 seconds to move to next row (odd→odd or even→even)
   pass_transition: 5.0       # 5 seconds between pass 1→pass 2 (odd rows→even rows)
+
+# Pin-specific hardware variation (8-channel manifold)
+pin_characteristics:
+  num_pins: 8
+  pin_to_row_mapping:
+    pin_1: ["A", "I"]  # 384-well: rows A and I
+    pin_2: ["B", "J"]
+    pin_3: ["C", "K"]
+    pin_4: ["D", "L"]
+    pin_5: ["E", "M"]
+    pin_6: ["F", "N"]
+    pin_7: ["G", "O"]
+    pin_8: ["H", "P"]
+
+  per_pin_variation:
+    volume_cv: 0.02-0.05      # 2-5% CV per pin (pin-to-pin differences)
+    reagent_mixing: "Each pin has slightly different mixing characteristics affecting stain uniformity"
+    systematic_bias: "Each pin has persistent offset from nominal dispense volume and mixing quality"
+
+  effects:
+    row_specific_bias: |
+      Each row gets consistent treatment from same pin throughout Cell Painting protocol:
+      - Row A always uses Pin 1 (systematic volume, mixing characteristics)
+      - Row B always uses Pin 2 (different volume, different mixing)
+      - etc.
+
+      Result: ROW-WISE systematic biases in:
+      1. Fixative concentration (volume variation affects fixation strength)
+      2. Stain intensity (volume + mixing affects antibody binding)
+      3. Background signal (wash efficiency varies by pin)
+
+      These biases are DETERMINISTIC and LEARNABLE:
+      - Row A wells consistently get Pin 1 characteristics across ALL protocol steps
+      - Row C wells consistently get Pin 3 characteristics
+      - Agent can learn "Row A always runs bright, Row E always runs dim"
+
+    interaction_with_serpentine_gradient: |
+      Pin-specific effects MULTIPLY with serpentine temporal gradients:
+      - A1: Early timing (processed first) × Pin 1 bias (row A) × column position
+      - P24: Late timing (processed last) × Pin 8 bias (row P) × column position
+
+      Total effect = serpentine_temporal_gradient × pin_bias
+
+      Example: Primary stain dispense
+      - Pin 1 dispenses 3% high volume (more antibody)
+      - A1 is early in serpentine (longer incubation before wash)
+      - A1 gets 3% more stain + 10% longer incubation = 13.3% intensity boost
+
+      Example: Wash step
+      - Pin 5 has slightly better mixing (cleaner wash)
+      - Row E gets lower background despite temporal position
+
+    cumulative_across_protocol_steps: |
+      Pin biases compound throughout multi-step protocol:
+
+      Fix step: Row A gets Pin 1 volume offset
+      Wash 1: Row A gets Pin 1 mixing characteristic
+      Permeabilize: Row A gets Pin 1 volume offset AGAIN
+      Wash 2: Row A gets Pin 1 mixing characteristic AGAIN
+      Primary stain: Row A gets Pin 1 volume offset AGAIN (CRITICAL STEP)
+      Wash 3-4: Row A gets Pin 1 mixing characteristic 4× MORE
+
+      By imaging, Row A has Pin 1 signature from 8+ protocol steps
+
+      This creates STRONG row-wise structure that's independent of:
+      - Column position (temporal gradient)
+      - Cell line (biological baseline)
+      - Culture instrument (different EL406 with different pin calibrations)
 
 # Parametric Unit Ops that use this EL406
 parametric_unit_ops:

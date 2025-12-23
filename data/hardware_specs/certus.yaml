@@ -8,10 +8,16 @@ usage: "Complex plate maps with multiple cell lines, spatial patterns, gradients
 
 manifold_type: "certus_flex"
 dispensing_mode: "flexible_tip_positioning"
+num_valves: 8
 notes: |
   Used for COMPLEX plate maps where different wells contain different cell lines.
   Unlike EL406 (serpentine pattern for homogeneous plates), Certus can address
   arbitrary well patterns to create complex spatial designs.
+
+  Hardware characteristics:
+  - 8 independent valves, each with unique dispensing characteristics
+  - Each valve has its own volume CV and "roughness" (mechanical stress on cells)
+  - Valve-to-valve variation creates ROW-SPECIFIC systematic biases
 
 # Processing pattern: User-defined (programmable)
 processing_pattern:
@@ -29,6 +35,49 @@ timing:
   dispense_rate: 1.2           # ~1.2 seconds per well (slightly slower than EL406)
   tip_movement: 0.5            # ~0.5 seconds per move between wells
   cell_line_changeover: 60.0   # 60 seconds to switch cell line (wash tips, load new suspension)
+
+# Valve-specific hardware variation
+valve_characteristics:
+  num_valves: 8
+  valve_to_row_mapping:
+    valve_1: ["A", "I"]  # 384-well: rows A and I
+    valve_2: ["B", "J"]
+    valve_3: ["C", "K"]
+    valve_4: ["D", "L"]
+    valve_5: ["E", "M"]
+    valve_6: ["F", "N"]
+    valve_7: ["G", "O"]
+    valve_8: ["H", "P"]
+
+  per_valve_variation:
+    volume_cv: 0.02-0.05      # 2-5% CV per valve (valve-to-valve differences)
+    roughness_cv: 0.03-0.08   # 3-8% CV in cell viability from mechanical stress
+    systematic_bias: "Each valve has persistent offset from nominal volume"
+
+  effects:
+    row_specific_bias: |
+      Each row gets consistent treatment from same valve:
+      - Row A always uses Valve 1 (systematic volume offset, roughness characteristic)
+      - Row B always uses Valve 2 (different volume offset, different roughness)
+      - etc.
+
+      Result: ROW-WISE systematic biases in:
+      1. Cell density (volume variation → cell number variation)
+      2. Cell viability (roughness variation → mechanical stress variation)
+
+      These biases are DETERMINISTIC and LEARNABLE:
+      - Row A wells consistently higher/lower density (Valve 1 characteristic)
+      - Row C wells consistently higher/lower viability (Valve 3 characteristic)
+
+    interaction_with_temporal_gradient: |
+      Valve-specific effects MULTIPLY with temporal gradients:
+      - A1: Early timing (temporal) × Valve 1 bias (spatial)
+      - H24: Late timing (temporal) × Valve 8 bias (spatial)
+
+      Total effect = temporal_gradient × valve_bias
+
+      Example: If Valve 1 dispenses 3% high and A1 is early (+2% from timing):
+      A1 gets 5.06% elevation (1.03 × 1.02 = 1.0506)
 
 # Parametric Unit Ops that use Certus
 parametric_unit_ops:
