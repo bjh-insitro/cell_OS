@@ -444,12 +444,15 @@ class CellPaintingAssay(AssaySimulator):
         operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
 
         # Per-channel well factor (breaks global multiplier dominance)
-        # Sample per-channel to avoid perfect correlation across all channels
+        # Use per-channel deterministic seeding for transparency and persistence
         well_cv = tech_noise['well_cv']
         well_factors_per_channel = {}
         if well_cv > 0:
             for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
-                well_factors_per_channel[channel] = lognormal_multiplier(self.vm.rng_assay, well_cv)
+                # Deterministic per-channel: key to plate + well + channel
+                channel_seed = stable_u32(f"well_factor_{plate_id}_{well_position}_{channel}")
+                channel_rng = np.random.default_rng(channel_seed)
+                well_factors_per_channel[channel] = lognormal_multiplier(channel_rng, well_cv)
         else:
             well_factors_per_channel = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
 
