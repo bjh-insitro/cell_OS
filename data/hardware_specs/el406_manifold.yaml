@@ -16,50 +16,85 @@ timing:
   row_transition: 2.0        # 2 seconds to move to next row (odd→odd or even→even)
   pass_transition: 5.0       # 5 seconds between pass 1→pass 2 (odd rows→even rows)
 
-# Protocol steps that use EL406 (each creates temporal gradient)
+# Parametric Unit Ops that use EL406
+# These operations call the EL406 hardware and are affected by serpentine pattern
+parametric_unit_ops:
+  - op_name: "op_dispense"
+    usage: "Dispense fixative, permeabilization buffer, stain cocktails"
+    hardware: "EL406 8-channel manifold"
+    temporal_gradient: true
+
+  - op_name: "op_aspirate"
+    usage: "Remove media, fixative, wash buffers"
+    hardware: "EL406 8-channel manifold"
+    temporal_gradient: true
+
+  - op_name: "op_wash"
+    usage: "Multi-cycle aspirate + dispense for washing"
+    hardware: "EL406 8-channel manifold"
+    temporal_gradient: true
+
+# Cell Painting protocol steps mapped to parametric unit ops
+# Each step uses EL406 and creates temporal gradient
 protocol_steps:
   - name: "fix"
+    parametric_unit_ops: ["op_dispense"]
     operation: "dispense_and_incubate"
     reagent: "4% PFA"
     nominal_incubation: 1200  # 20 min nominal, but varies by well position
     temporal_gradient_effect: "fixation_quality"
+    notes: "Dispense PFA using EL406 serpentine pattern. A1 gets fixed first, sits longest before wash."
 
   - name: "wash_post_fix"
+    parametric_unit_ops: ["op_aspirate", "op_dispense"]
     operation: "aspirate_and_dispense"
     cycles: 3
     temporal_gradient_effect: "residual_fixative"
+    notes: "3× aspirate/dispense wash cycles. A1 washed first (shortest fix time), P1 washed last (longest fix time)."
 
   - name: "permeabilize"
+    parametric_unit_ops: ["op_dispense"]
     operation: "dispense_and_incubate"
     reagent: "0.1% Triton X-100"
     nominal_incubation: 900   # 15 min nominal
     temporal_gradient_effect: "permeabilization_depth"
+    notes: "Dispense Triton X-100 using EL406. Creates permeabilization gradient."
 
   - name: "wash_post_permeabilize"
+    parametric_unit_ops: ["op_aspirate", "op_dispense"]
     operation: "aspirate_and_dispense"
     cycles: 3
+    notes: "Remove permeabilization buffer with 3× wash."
 
   - name: "primary_stain"
+    parametric_unit_ops: ["op_dispense"]
     operation: "dispense_and_incubate"
     reagent: "Cell Painting cocktail (primary)"
     nominal_incubation: 1800  # 30 min nominal
     temporal_gradient_effect: "staining_intensity"
+    notes: "CRITICAL: Main source of staining gradient. A1 stains longest, P1 stains shortest."
 
   - name: "wash_post_primary"
+    parametric_unit_ops: ["op_aspirate", "op_dispense"]
     operation: "aspirate_and_dispense"
     cycles: 4
     temporal_gradient_effect: "background_signal"
+    notes: "4× wash to remove unbound stain. Washing order affects background."
 
   - name: "secondary_stain"
+    parametric_unit_ops: ["op_dispense"]
     operation: "dispense_and_incubate"
     reagent: "Secondary antibodies"
     nominal_incubation: 1800  # 30 min nominal
     temporal_gradient_effect: "signal_amplification"
+    notes: "Secondary antibody amplification. Adds to gradient if protocol uses secondaries."
 
   - name: "final_wash"
+    parametric_unit_ops: ["op_aspirate", "op_dispense"]
     operation: "aspirate_and_dispense"
     cycles: 5
     temporal_gradient_effect: "background_noise"
+    notes: "5× final wash before imaging. Last chance to equalize background."
 
 # Expected artifacts from serpentine pattern
 expected_artifacts:
