@@ -503,6 +503,9 @@ class CellPaintingAssay(AssaySimulator):
         try:
             from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
 
+            # Get hardware sensitivity params
+            hardware_sensitivity = self.vm.thalamus_params.get('hardware_sensitivity', {}) if hasattr(self.vm, 'thalamus_params') and self.vm.thalamus_params else {}
+
             hardware_bias = get_hardware_bias(
                 plate_id=plate_id,
                 batch_id=batch_id,
@@ -510,7 +513,9 @@ class CellPaintingAssay(AssaySimulator):
                 instrument='el406_cellpainting',
                 operation='cell_painting',
                 seed=self.vm.run_context.seed,
-                tech_noise=tech_noise
+                tech_noise=tech_noise,
+                cell_line=vessel.cell_line,
+                cell_line_params=hardware_sensitivity
             )
 
             hardware_factor = hardware_bias['combined_factor']

@@ -157,10 +157,18 @@ class VesselState:
         self.seed_time = 0.0
         self.last_update_time = 0.0
 
+        # Volume tracking (media in the vessel)
+        self.current_volume_ml = None  # Current media volume (mL) - set during seeding
+        self.working_volume_ml = None  # Standard working volume for this vessel type
+        self.max_volume_ml = None      # Maximum safe volume for this vessel type
+        self.vessel_type = None         # Vessel type identifier (e.g., "384-well", "T75")
+        self.total_evaporated_ml = 0.0  # Cumulative evaporation (for tracking)
+
         # Compound exposure tracking
         self.compounds = {}  # compound -> dose_uM
         self.compound_start_time = {}  # compound -> simulated_time when applied
         self.compound_meta = {}  # compound -> {ic50, hill_slope, stress_axis}
+        self.compound_volumes_added_ul = {}  # compound -> total volume added (µL)
 
         # Death accounting (cumulative fractions)
         self.death_compound = 0.0  # Fraction killed by compound attrition
@@ -957,7 +965,10 @@ class BiologicalVirtualMachine(VirtualMachine):
         # 1) Growth (viable cells only - dead cells don't grow)
         self._update_vessel_growth(vessel, hours)
 
-        # 1b) Update contact pressure (lagged state, responds to confluence)
+        # 1b) Update volume (evaporation)
+        self._update_vessel_volume(vessel, hours)
+
+        # 1c) Update contact pressure (lagged state, responds to confluence)
         self._update_contact_pressure(vessel, hours)
 
         # Begin death proposal phase: initialize per-step hazard proposals AFTER growth
@@ -1408,10 +1419,28 @@ class BiologicalVirtualMachine(VirtualMachine):
         if initial_viability is not None:
             state.viability = initial_viability
 
+        # Initialize volume tracking from database (if vessel_type provided)
+        if vessel_type is not None:
+            try:
+                from src.cell_os.database.repositories.seeding_density import SeedingDensityRepository
+                repo = SeedingDensityRepository()
+                vessel_info = repo.get_vessel_type(vessel_type)
+
+                if vessel_info:
+                    state.vessel_type = vessel_type
+                    state.working_volume_ml = vessel_info.working_volume_ml
+                    state.max_volume_ml = vessel_info.max_volume_ml
+                    # Start with working volume (standard media volume for this vessel type)
+                    state.current_volume_ml = vessel_info.working_volume_ml
+                else:
+                    logger.warning(f"Vessel type '{vessel_type}' not found in database. Volume tracking disabled.")
+            except Exception as e:
+                logger.warning(f"Could not initialize volume tracking: {e}")
+
         # Parse well position early for hardware artifacts
         if vessel_id.startswith("well_"):
             parts = vessel_id.split("_")
-            if len(parts) >= 3:
+            if len(parts) >= 2:
                 well_position = parts[1]  # e.g., "A1", "B7"
             else:
                 well_position = vessel_id  # fallback
@@ -1423,10 +1452,17 @@ class BiologicalVirtualMachine(VirtualMachine):
         try:
             from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
 
+            # Ensure thalamus_params are loaded
+            if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+                self._load_cell_thalamus_params()
+
             # Determine instrument (simple heuristic: check if vessel_type suggests complex map)
             # For now, default to el406_culture for all plating
             # TODO: Add plate_map_type to vessel metadata to properly select certus vs el406
             instrument = 'el406_culture'
+
+            tech_noise = self.thalamus_params.get('technical_noise', {}) if self.thalamus_params else {}
+            hardware_sensitivity = self.thalamus_params.get('hardware_sensitivity', {}) if self.thalamus_params else {}
 
             hardware_bias = get_hardware_bias(
                 plate_id=vessel_id.split('_')[0] if '_' in vessel_id else 'unknown_plate',
@@ -1435,7 +1471,9 @@ class BiologicalVirtualMachine(VirtualMachine):
                 instrument=instrument,
                 operation='plating',
                 seed=self.run_context.seed,
-                tech_noise=self.thalamus_params.get('technical_noise', {})
+                tech_noise=tech_noise,
+                cell_line=cell_line,
+                cell_line_params=hardware_sensitivity
             )
 
             # Apply volume variation to cell count
@@ -1518,7 +1556,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Parse well position for hardware artifacts
         if vessel_id.startswith("well_"):
             parts = vessel_id.split("_")
-            well_position = parts[1] if len(parts) >= 3 else vessel_id
+            well_position = parts[1] if len(parts) >= 2 else vessel_id
         else:
             well_position = vessel_id
 
@@ -1527,6 +1565,13 @@ class BiologicalVirtualMachine(VirtualMachine):
         try:
             from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
 
+            # Ensure thalamus_params are loaded
+            if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+                self._load_cell_thalamus_params()
+
+            tech_noise = self.thalamus_params.get('technical_noise', {}) if self.thalamus_params else {}
+            hardware_sensitivity = self.thalamus_params.get('hardware_sensitivity', {}) if self.thalamus_params else {}
+
             hardware_bias = get_hardware_bias(
                 plate_id=vessel_id.split('_')[0] if '_' in vessel_id else 'unknown_plate',
                 batch_id='batch_default',
@@ -1534,7 +1579,9 @@ class BiologicalVirtualMachine(VirtualMachine):
                 instrument='el406_culture',
                 operation='feeding',
                 seed=self.run_context.seed,
-                tech_noise=self.thalamus_params.get('technical_noise', {})
+                tech_noise=tech_noise,
+                cell_line=vessel.cell_line,
+                cell_line_params=hardware_sensitivity
             )
 
             # Apply volume variation to nutrients
@@ -1951,6 +1998,34 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Track compound start time for time_since_treatment calculations
         vessel.compound_start_time[compound] = self.simulated_time
+
+        # Track compound addition volume (optional parameter, defaults based on vessel type)
+        compound_volume_ul = kwargs.get('compound_volume_ul', None)
+        if compound_volume_ul is None:
+            # Auto-estimate typical compound addition volumes by vessel type
+            if vessel.vessel_type == "384-well":
+                compound_volume_ul = 0.5  # Acoustic dispenser or 384-head (0.5 µL)
+            elif vessel.vessel_type == "96-well":
+                compound_volume_ul = 1.0  # Standard pipette (1 µL)
+            elif vessel.vessel_type in ["24-well", "12-well", "6-well"]:
+                compound_volume_ul = 2.0  # Larger volume for larger wells
+            else:
+                compound_volume_ul = 1.0  # Default
+
+        # Update volume tracking if enabled
+        if vessel.current_volume_ml is not None:
+            vessel.compound_volumes_added_ul[compound] = (
+                vessel.compound_volumes_added_ul.get(compound, 0.0) + compound_volume_ul
+            )
+            # Add compound volume to current volume (convert µL to mL)
+            vessel.current_volume_ml += compound_volume_ul / 1000.0
+
+            # Warn if volume exceeds max
+            if vessel.max_volume_ml is not None and vessel.current_volume_ml > vessel.max_volume_ml:
+                logger.warning(
+                    f"Vessel {vessel_id} volume ({vessel.current_volume_ml*1000:.1f}µL) "
+                    f"exceeds max volume ({vessel.max_volume_ml*1000:.1f}µL) after adding {compound}"
+                )
 
         # Apply instant effect using conserved helper (maintains death accounting + subpop sync)
         # NOW compound exists in authoritative spine, so instant kill is causally consistent
@@ -2417,6 +2492,81 @@ class BiologicalVirtualMachine(VirtualMachine):
             batch_id=batch_id,
             params_path=params_path
         )
+
+    def _update_vessel_volume(self, vessel: VesselState, hours: float):
+        """
+        Update vessel volume due to evaporation.
+
+        Evaporation is physically real - it concentrates compounds and affects cell stress.
+
+        Evaporation rate depends on:
+        - Vessel type (384-well > 96-well > flasks due to surface/volume ratio)
+        - Edge vs interior position (edge wells evaporate faster)
+        - Time (linear accumulation)
+
+        Evaporation rates (µL/h):
+        - 384-well: 0.5-1.0 µL/h (interior-edge)
+        - 96-well: 0.3-0.6 µL/h
+        - 6-well: 0.1-0.2 µL/h
+        - Flasks: <0.1 µL/h (negligible)
+
+        Note: This models VOLUME loss. Compound concentration changes are handled
+        by the InjectionManager (if enabled) or can be approximated by tracking
+        current_volume vs working_volume.
+
+        Args:
+            vessel: Vessel state
+            hours: Time interval (hours)
+        """
+        if hours <= 0:
+            return
+
+        # Only track evaporation if volume tracking is enabled
+        if vessel.current_volume_ml is None or vessel.vessel_type is None:
+            return
+
+        # Base evaporation rates by vessel type (µL/h)
+        base_evap_rates = {
+            "384-well": 0.75,  # High surface/volume ratio
+            "96-well": 0.45,
+            "24-well": 0.25,
+            "12-well": 0.20,
+            "6-well": 0.15,
+            "T25": 0.05,       # Low surface/volume ratio
+            "T75": 0.08,
+            "T175": 0.10,
+            "T225": 0.12
+        }
+
+        base_rate_ul_per_h = base_evap_rates.get(vessel.vessel_type, 0.5)
+
+        # Edge wells evaporate ~50% faster (temperature gradients, airflow)
+        edge_multiplier = 1.0
+        import re
+        well_match = re.search(r'([A-P]\d{1,2})$', vessel.vessel_id)
+        if well_match:
+            well_position = well_match.group(1)
+            if self._is_edge_well(well_position):
+                edge_multiplier = 1.5
+
+        # Calculate evaporation (convert µL/h to mL)
+        evap_rate_ml_per_h = (base_rate_ul_per_h * edge_multiplier) / 1000.0
+        evap_ml = evap_rate_ml_per_h * hours
+
+        # Apply evaporation (but don't go below 10% of working volume)
+        min_volume = vessel.working_volume_ml * 0.10
+        vessel.current_volume_ml = max(min_volume, vessel.current_volume_ml - evap_ml)
+        vessel.total_evaporated_ml += evap_ml
+
+        # Warn if significant evaporation (>20% loss)
+        if vessel.working_volume_ml is not None:
+            volume_loss_fraction = 1.0 - (vessel.current_volume_ml / vessel.working_volume_ml)
+            if volume_loss_fraction > 0.20:
+                logger.warning(
+                    f"Vessel {vessel.vessel_id} has lost {volume_loss_fraction*100:.1f}% volume to evaporation. "
+                    f"Current: {vessel.current_volume_ml*1000:.1f}µL, "
+                    f"Working: {vessel.working_volume_ml*1000:.1f}µL"
+                )
 
     def _update_contact_pressure(self, vessel: VesselState, dt_h: float):
         """

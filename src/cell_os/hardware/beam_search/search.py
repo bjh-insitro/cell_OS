@@ -8,7 +8,7 @@ under hard constraints with governance integration.
 from typing import List, Optional, Tuple, Dict, Any
 import numpy as np
 
-from ..episode import Action, Policy, EpisodeReceipt
+from ..episode import Action, Policy, EpisodeReceipt, EpisodeRunner
 from ..biological_virtual import BiologicalVirtualMachine
 from ...epistemic_agent.governance import (
     Blocker,

@@ -58,7 +58,7 @@ def seed_plate_and_extract(seed=5000):
             cell_counts[row_idx, col_idx] = state.cell_count
             viabilities[row_idx, col_idx] = state.viability
 
-    print(f"✓ Seeded {len(ROWS) × len(COLS)} wells")
+    print(f"✓ Seeded {len(ROWS) * len(COLS)} wells")
     return cell_counts, viabilities
 
 

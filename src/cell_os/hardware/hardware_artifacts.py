@@ -22,14 +22,19 @@ def get_hardware_bias(
     instrument: Literal['el406_culture', 'el406_cellpainting', 'certus'],
     operation: Literal['plating', 'feeding', 'cell_painting'],
     seed: int,
-    tech_noise: Dict
+    tech_noise: Dict,
+    cell_line: str = None,
+    cell_line_params: Dict = None
 ) -> Dict[str, float]:
     """
     Calculate deterministic hardware bias for a specific well.
 
     Combines:
     1. Pin/valve-specific systematic offset (row-dependent)
-    2. Serpentine temporal gradient (column-dependent)
+    2. Serpentine temporal gradient (column-dependent, within-row)
+    3. Plate-level temporal drift (row A→P, reagent depletion + thermal)
+    4. Uncoupled noise (roughness doesn't perfectly track volume)
+    5. Cell line-specific modifiers (attachment, shear sensitivity, robustness)
 
     Args:
         plate_id: Plate identifier
@@ -39,6 +44,8 @@ def get_hardware_bias(
         operation: Which operation is being performed
         seed: Random seed for this run
         tech_noise: Technical noise parameters
+        cell_line: Cell line name (optional, for cell-specific modifiers)
+        cell_line_params: Cell line hardware sensitivity params (optional)
 
     Returns:
         Dict with bias factors:
@@ -62,9 +69,6 @@ def get_hardware_bias(
     # Get pin/valve number (1-8) from row
     pin_number = _get_pin_from_row(row)
 
-    # Get serpentine processing order (temporal gradient)
-    processing_index = _get_serpentine_index(row, col, plate_format=384)
-
     # Calculate pin/valve-specific systematic offset
     pin_bias = _get_pin_bias(
         instrument=instrument,
@@ -75,30 +79,105 @@ def get_hardware_bias(
         tech_noise=tech_noise
     )
 
-    # Calculate serpentine temporal gradient
+    # Calculate serpentine temporal gradient (within each row)
     temporal_bias = _get_temporal_bias(
-        processing_index=processing_index,
+        row=row,
+        col=col,
+        operation=operation,
+        tech_noise=tech_noise,
+        plate_format=384
+    )
+
+    # Calculate plate-level drift (row A→P reagent depletion + thermal)
+    plate_drift = _get_plate_level_drift(
+        row=row,
         operation=operation,
         tech_noise=tech_noise
     )
 
+    # Get cell line-specific hardware sensitivity modifiers
+    if cell_line and cell_line_params:
+        sensitivity = cell_line_params.get(cell_line, cell_line_params.get('DEFAULT', {}))
+        attachment_efficiency = sensitivity.get('attachment_efficiency', 0.90)
+        shear_sensitivity = sensitivity.get('shear_sensitivity', 1.0)
+        mechanical_robustness = sensitivity.get('mechanical_robustness', 1.0)
+        coating_required = sensitivity.get('coating_required', False)
+    else:
+        # Default values if no cell line specified
+        attachment_efficiency = 0.90
+        shear_sensitivity = 1.0
+        mechanical_robustness = 1.0
+        coating_required = False
+
     # Operation-specific effects
     if operation == 'plating':
-        # Volume variation affects cell count
-        volume_factor = pin_bias * temporal_bias
+        # Calculate coating quality (only for cell lines that require coating)
+        coating_quality = _get_coating_quality(
+            row=row,
+            col=col,
+            plate_id=plate_id,
+            batch_id=batch_id,
+            coating_required=coating_required,
+            tech_noise=tech_noise
+        )
+
+        # Calculate cell suspension settling (amplifies plate-level drift)
+        settling_factor = _get_cell_suspension_settling(
+            row=row,
+            tech_noise=tech_noise
+        )
+
+        # Volume variation affects cell count (pin × temporal × drift × settling × attachment × coating)
+        # Attachment efficiency: fraction of cells that successfully attach
+        # Coating quality: spatial variation in coating (only for coated cell lines)
+        volume_factor = pin_bias * temporal_bias * plate_drift * settling_factor * attachment_efficiency * coating_quality
 
         # Roughness affects viability (only negative, from mechanical stress)
-        # Serpentine timing affects attachment success
+        # CRITICAL: Add uncoupled noise so roughness doesn't perfectly track volume
         roughness_cv = tech_noise.get('roughness_cv', 0.05)  # 5% CV
-        roughness_seed = stable_u32(f"roughness_{instrument}_{pin_number}_{batch_id}")
-        roughness_rng = np.random.default_rng(roughness_seed)
 
-        # Lognormal but cap at 1.0 (roughness only hurts, never helps)
-        roughness_factor = min(1.0, lognormal_multiplier(roughness_rng, roughness_cv))
+        # Pin-specific roughness (coupled with pin volume bias)
+        roughness_seed_pin = stable_u32(f"roughness_{instrument}_{pin_number}_{batch_id}")
+        roughness_rng_pin = np.random.default_rng(roughness_seed_pin)
+        roughness_pin = min(1.0, lognormal_multiplier(roughness_rng_pin, roughness_cv))
 
-        # Early wells get less roughness (more time for gentle settling)
-        normalized_index = processing_index / 383.0
-        temporal_roughness = 1.0 - 0.03 * normalized_index  # 0-3% viability penalty
+        # Well-specific uncoupled roughness (breaks perfect correlation)
+        # Uses plate_id + well_position so it's deterministic but independent of volume
+        roughness_seed_well = stable_u32(f"roughness_well_{instrument}_{plate_id}_{well_position}")
+        roughness_rng_well = np.random.default_rng(roughness_seed_well)
+        roughness_uncoupled = min(1.0, lognormal_multiplier(roughness_rng_well, roughness_cv * 0.25))  # 25% of CV for uncoupled
+
+        # Combine: pin roughness (coupled) × uncoupled well roughness × shear sensitivity
+        # Shear sensitivity amplifies roughness effects (fragile cells lose more viability)
+        roughness_factor = roughness_pin * roughness_uncoupled
+
+        # Apply shear sensitivity (transforms viability loss)
+        # High shear_sensitivity (e.g., 2.0 for neurons) → more viability loss
+        # Low shear_sensitivity (e.g., 0.7 for U2OS) → less viability loss
+        # Convert to viability loss, scale, convert back
+        viability_loss = 1.0 - roughness_factor
+        viability_loss *= shear_sensitivity
+        roughness_factor = 1.0 - viability_loss
+        roughness_factor = max(0.5, min(1.0, roughness_factor))  # Clamp to [0.5, 1.0]
+
+        # Early wells in row get less roughness (more time for gentle settling)
+        # Use same serpentine logic as temporal_bias
+        max_col = 24  # 384-well
+        row_index = ord(row) - ord('A')
+        is_odd_row = (row_index % 2) == 0
+
+        if is_odd_row:
+            # Odd rows: L→R (col 1 is early, col 24 is late)
+            normalized_col = (col - 1) / (max_col - 1)
+        else:
+            # Even rows: R→L (col 24 is early, col 1 is late)
+            normalized_col = (max_col - col) / (max_col - 1)
+
+        # Mechanical robustness reduces temporal stress effects
+        # Robust cells (mechanical_robustness > 1.0) experience less stress
+        # Fragile cells (mechanical_robustness < 1.0) experience more stress
+        temporal_stress_penalty = 0.03 * normalized_col / mechanical_robustness  # Scale by robustness
+        temporal_roughness = 1.0 - temporal_stress_penalty
         roughness_factor *= temporal_roughness
 
         return {
@@ -109,13 +188,24 @@ def get_hardware_bias(
         }
 
     elif operation == 'feeding':
-        # Volume variation affects nutrient availability
-        volume_factor = pin_bias * temporal_bias
+        # Volume variation affects nutrient availability (pin × temporal × drift)
+        volume_factor = pin_bias * temporal_bias * plate_drift
 
         # Temperature shock from cooling during dispense
-        # Early wells cool more (processed first, sit longest during full-plate dispense)
-        normalized_index = processing_index / 383.0
-        temperature_shock = 0.01 * (1.0 - normalized_index)  # 0-1% viability loss
+        # Early wells in row cool more (processed first, sit longest during row dispense)
+        # Use same serpentine logic as temporal_bias
+        max_col = 24  # 384-well
+        row_index = ord(row) - ord('A')
+        is_odd_row = (row_index % 2) == 0
+
+        if is_odd_row:
+            # Odd rows: L→R (col 1 is early, col 24 is late)
+            normalized_col = (col - 1) / (max_col - 1)
+        else:
+            # Even rows: R→L (col 24 is early, col 1 is late)
+            normalized_col = (max_col - col) / (max_col - 1)
+
+        temperature_shock = 0.01 * (1.0 - normalized_col)  # 0-1% viability loss
         temperature_factor = 1.0 - temperature_shock
 
         return {
@@ -127,7 +217,8 @@ def get_hardware_bias(
 
     elif operation == 'cell_painting':
         # Measurement artifact (affects readout, not biology)
-        combined_factor = pin_bias * temporal_bias
+        # Includes reagent depletion and thermal drift across plate
+        combined_factor = pin_bias * temporal_bias * plate_drift
 
         return {
             'volume_factor': 1.0,
@@ -270,49 +361,210 @@ def _get_pin_bias(
 
 
 def _get_temporal_bias(
-    processing_index: int,
+    row: str,
+    col: int,
     operation: str,
-    tech_noise: Dict
+    tech_noise: Dict,
+    plate_format: int = 384
 ) -> float:
     """
-    Calculate serpentine temporal gradient bias.
+    Calculate serpentine temporal gradient bias WITHIN each row.
 
-    Early wells get processed first, sit longer before next step.
-    Late wells get processed last, sit shorter before next step.
+    The serpentine pattern creates gradients within rows because wells in the same
+    row are processed sequentially with minimal time between them (~5s per well).
+
+    Odd rows (A,C,E,G,I,K,M,O): Process L→R (col 1 early, col 24 late)
+    Even rows (B,D,F,H,J,L,N,P): Process R→L (col 24 early, col 1 late)
 
     For Cell Painting:
-    - Early wells (A1): Stain longer → higher signal
-    - Late wells (P24): Stain shorter → lower signal
+    - Early wells in row: Stain longer → higher signal
+    - Late wells in row: Stain shorter → lower signal
 
     For Culture (feeding, plating):
-    - Early wells (A1): Media/cells sit longer → temperature drop, attachment advantage
-    - Late wells (P24): Fresher media/cells → less temperature equilibration
+    - Early wells in row: Media/cells sit longer → temperature drop, attachment advantage
+    - Late wells in row: Fresher media/cells → less temperature equilibration
 
     Args:
-        processing_index: Position in processing order (0 = first)
+        row: Row letter (A-P)
+        col: Column number (1-24 for 384-well)
         operation: Which operation (plating, feeding, cell_painting)
         tech_noise: Technical noise parameters
+        plate_format: 384 or 96
 
     Returns:
         Multiplicative bias factor
     """
     # Get temporal gradient magnitude from tech_noise
-    temporal_cv = tech_noise.get('temporal_gradient_cv', 0.04)  # Default 4% CV across plate
+    temporal_cv = tech_noise.get('temporal_gradient_cv', 0.04)  # Default 4% CV within row
 
-    # Normalize processing_index to [0, 1]
-    # For 384-well: processing_index ranges 0-383
-    max_index = 383  # 16 rows × 24 columns - 1
-    normalized_index = processing_index / max_index  # 0.0 (first) to 1.0 (last)
+    max_col = 24 if plate_format == 384 else 12
+    row_index = ord(row) - ord('A')  # 0-15 for A-P
+    is_odd_row = (row_index % 2) == 0  # A=0 (even index, odd row)
+
+    # Normalize column position within row to [0, 1]
+    if is_odd_row:
+        # Odd rows: L→R (col 1 is early, col 24 is late)
+        normalized_col = (col - 1) / (max_col - 1)  # 0.0 at col 1, 1.0 at col 24
+    else:
+        # Even rows: R→L (col 24 is early, col 1 is late)
+        normalized_col = (max_col - col) / (max_col - 1)  # 1.0 at col 1, 0.0 at col 24
 
     # Map to temporal bias
-    # Early wells (index=0): positive bias (e.g., 1.04)
-    # Late wells (index=1): negative bias (e.g., 0.96)
+    # Early in row (normalized_col=0): positive bias (e.g., 1.04)
+    # Late in row (normalized_col=1): negative bias (e.g., 0.96)
     # Linear gradient from +CV to -CV
-    bias_offset = temporal_cv * (1.0 - 2.0 * normalized_index)  # +temporal_cv to -temporal_cv
+    bias_offset = temporal_cv * (1.0 - 2.0 * normalized_col)  # +temporal_cv to -temporal_cv
 
     temporal_bias = 1.0 + bias_offset
 
     return temporal_bias
+
+
+def _get_plate_level_drift(
+    row: str,
+    operation: str,
+    tech_noise: Dict
+) -> float:
+    """
+    Calculate plate-level temporal drift (row A→P).
+
+    As rows are processed sequentially (A, B, C, ... P), later rows experience:
+    1. Reagent depletion: Cell suspension becomes less uniform, stain quality degrades
+    2. Thermal drift: Plate cools as incubator door is open longer
+    3. Operator fatigue: Subtle variations in handling technique
+
+    This creates a gradual ~1-2% decline from first row (A) to last row (P).
+
+    Args:
+        row: Row letter (A-P)
+        operation: Which operation (plating, feeding, cell_painting)
+        tech_noise: Technical noise parameters
+
+    Returns:
+        Multiplicative drift factor (typically 0.99-1.00)
+    """
+    # Get plate-level drift magnitude (default ~0.5% total across 16 rows)
+    drift_cv = tech_noise.get('plate_level_drift_cv', 0.005)  # 0.5% total drift
+
+    # Row index: A=0, P=15
+    row_index = ord(row) - ord('A')
+
+    # Normalize to [0, 1]
+    normalized_row = row_index / 15.0  # 0.0 at row A, 1.0 at row P
+
+    # Linear decline from row A to row P
+    # Row A (normalized=0): drift_factor = 1.0 + drift_cv (slightly high)
+    # Row P (normalized=1): drift_factor = 1.0 - drift_cv (slightly low)
+    drift_offset = drift_cv * (1.0 - 2.0 * normalized_row)  # +drift_cv to -drift_cv
+
+    drift_factor = 1.0 + drift_offset
+
+    return drift_factor
+
+
+def _get_coating_quality(
+    row: str,
+    col: int,
+    plate_id: str,
+    batch_id: str,
+    coating_required: bool,
+    tech_noise: Dict
+) -> float:
+    """
+    Calculate plate coating quality variation (2D spatial gradient).
+
+    For cell lines that require coating (neurons, primary cells), the coating quality
+    isn't uniform across the plate. This creates a plate-specific spatial pattern:
+    - Robot arm path creates gradients (spray coating)
+    - Incubation time varies (edges dry differently)
+    - Coating lot variation affects entire plate
+
+    This is INDEPENDENT of hardware artifacts (pin biases, serpentine).
+    It's a third spatial structure for agent to learn.
+
+    Args:
+        row: Row letter (A-P)
+        col: Column number (1-24)
+        plate_id: Plate identifier (for plate-specific coating pattern)
+        batch_id: Batch identifier
+        coating_required: Does this cell line need coating?
+        tech_noise: Technical noise parameters
+
+    Returns:
+        Multiplicative coating quality factor (typically 0.92-1.08 for coated)
+    """
+    # If coating not required, no coating effect
+    if not coating_required:
+        return 1.0
+
+    # Get coating quality CV from tech_noise
+    coating_cv = tech_noise.get('coating_quality_cv', 0.08)  # Default 8% CV
+
+    # Create plate-specific deterministic 2D gradient
+    # Use plate_id + batch_id for deterministic seeding (same plate = same coating pattern)
+    coating_seed = stable_u32(f"coating_{plate_id}_{batch_id}")
+    coating_rng = np.random.default_rng(coating_seed)
+
+    # Sample plate-specific gradient parameters
+    # These define the direction and magnitude of the coating gradient
+    gradient_x = coating_rng.normal(0.0, coating_cv)  # Left-right gradient strength
+    gradient_y = coating_rng.normal(0.0, coating_cv)  # Top-bottom gradient strength
+    center_offset = coating_rng.normal(0.0, coating_cv * 0.5)  # Baseline offset
+
+    # Normalize well position to [-0.5, 0.5] (center = 0)
+    row_index = ord(row) - ord('A')  # 0-15
+    normalized_row = (row_index / 15.0) - 0.5  # -0.5 to +0.5
+
+    normalized_col = ((col - 1) / 23.0) - 0.5  # -0.5 to +0.5
+
+    # 2D linear gradient
+    coating_offset = center_offset + (gradient_x * normalized_col) + (gradient_y * normalized_row)
+
+    coating_quality = 1.0 + coating_offset
+
+    # Clamp to reasonable range [0.85, 1.15]
+    coating_quality = float(np.clip(coating_quality, 0.85, 1.15))
+
+    return coating_quality
+
+
+def _get_cell_suspension_settling(
+    row: str,
+    tech_noise: Dict
+) -> float:
+    """
+    Calculate cell suspension settling effect during plating.
+
+    During plating (~20 min for 384 wells), cells settle in the reservoir:
+    - Early rows: well-mixed suspension → slightly higher concentration
+    - Late rows: cells have settled → slightly lower concentration
+
+    This amplifies the existing plate-level drift (reagent depletion + thermal).
+
+    Args:
+        row: Row letter (A-P)
+        tech_noise: Technical noise parameters
+
+    Returns:
+        Multiplicative settling factor (typically 0.96-1.04)
+    """
+    # Get settling CV from tech_noise
+    settling_cv = tech_noise.get('cell_suspension_settling_cv', 0.04)  # Default 4% CV
+
+    # Row index: A=0, P=15
+    row_index = ord(row) - ord('A')
+
+    # Normalize to [0, 1]
+    normalized_row = row_index / 15.0  # 0.0 at row A, 1.0 at row P
+
+    # Linear decline from row A to row P (cells settle out)
+    # Row A (early): settling_factor = 1.0 + settling_cv (more cells)
+    # Row P (late): settling_factor = 1.0 - settling_cv (fewer cells)
+    settling_offset = settling_cv * (1.0 - 2.0 * normalized_row)  # +settling_cv to -settling_cv
+
+    settling_factor = 1.0 + settling_offset
+
+    return settling_factor
 
 
 # Example usage in cell_painting.py:

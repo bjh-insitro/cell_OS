@@ -237,6 +237,47 @@ baseline_atp:
   iPSC_NGN2: 70000.0  # Very high ATP (neurons have extremely high metabolic rate)
   iPSC_Microglia: 65000.0  # High ATP (active immune cells)
 
+# Cell line-specific hardware sensitivity
+# Different cell lines respond differently to mechanical stress from liquid handlers
+hardware_sensitivity:
+  A549:
+    attachment_efficiency: 0.95    # Good attachment (adherent cancer line)
+    shear_sensitivity: 0.8         # Robust to pipetting (cancer cells)
+    mechanical_robustness: 1.2     # Hardy cells
+    coating_required: false        # Cancer cells don't need coating
+
+  HepG2:
+    attachment_efficiency: 0.90    # Moderate attachment (hepatocytes)
+    shear_sensitivity: 1.0         # Normal shear sensitivity
+    mechanical_robustness: 1.0     # Baseline robustness
+    coating_required: false        # Cancer cells don't need coating
+
+  U2OS:
+    attachment_efficiency: 0.95    # Good attachment (osteosarcoma)
+    shear_sensitivity: 0.7         # Very robust (bone cancer)
+    mechanical_robustness: 1.3     # Very hardy
+    coating_required: false        # Cancer cells don't need coating
+
+  iPSC_NGN2:
+    attachment_efficiency: 0.70    # Poor attachment (neurons don't stick well)
+    shear_sensitivity: 2.0         # Very fragile (neurites shear off)
+    mechanical_robustness: 0.5     # Delicate cells
+    coating_required: true         # Neurons REQUIRE coating (poly-L-lysine/laminin)
+    coating_type: "poly-L-lysine"  # Coating type for reference
+
+  iPSC_Microglia:
+    attachment_efficiency: 0.85    # Moderate attachment (semi-adherent immune cells)
+    shear_sensitivity: 1.3         # Somewhat fragile (suspension-like)
+    mechanical_robustness: 0.8     # Less robust than cancer lines
+    coating_required: false        # Immune cells don't need coating
+
+  # Default for unknown cell lines
+  DEFAULT:
+    attachment_efficiency: 0.90
+    shear_sensitivity: 1.0
+    mechanical_robustness: 1.0
+    coating_required: false
+
 # Technical variance parameters (coefficient of variation)
 # Tuned so DMSO controls have ~2-3% total CV (realistic for high-content screening)
 technical_noise:
@@ -248,6 +289,8 @@ technical_noise:
   well_failure_rate: 0.00013  # 0.013% per well → ~5% plate failure rate (384 wells)
   stain_cv: 0.05      # 5% stain lot variation (plate-level, affects ER/Mito/RNA strongly)
   focus_cv: 0.04      # 4% focus variation (tile-level, affects Nucleus/Actin strongly, inflates variance)
+  coating_quality_cv: 0.08  # 8% coating quality variation (plate-specific spatial gradient for coated plates)
+  cell_suspension_settling_cv: 0.04  # 4% settling drift (amplifies plate-level drift during seeding)
 
 # Well failure modes (when well_failure_rate triggers)
 well_failure_modes:
