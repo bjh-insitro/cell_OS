@@ -331,8 +331,8 @@ class CellPaintingAssay(AssaySimulator):
         # 6. Pipeline drift (batch-dependent feature extraction)
         plate_id = kwargs.get('plate_id', 'P1')
         batch_id = kwargs.get('batch_id', 'batch_default')
-        # DIAGNOSTIC: Bypass pipeline_transform to isolate per-channel coupling
-        DIAGNOSTIC_DISABLE_SHARED_FACTORS = True  # Same flag as in _add_technical_noise
+        # Shared factors re-enabled after fixing nutrient depletion bug (commit b241033)
+        DIAGNOSTIC_DISABLE_SHARED_FACTORS = False
         if not DIAGNOSTIC_DISABLE_SHARED_FACTORS:
             morph = pipeline_transform(
                 morphology=morph,
@@ -443,8 +443,8 @@ class CellPaintingAssay(AssaySimulator):
         well_position = kwargs.get('well_position', 'A1')
 
         # Deterministic batch effects (seeded by context + batch ID)
-        # DIAGNOSTIC: Temporarily disable to isolate per-channel coupling
-        DIAGNOSTIC_DISABLE_SHARED_FACTORS = True
+        # Shared factors re-enabled after fixing nutrient depletion bug (commit b241033)
+        DIAGNOSTIC_DISABLE_SHARED_FACTORS = False
         if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
             plate_factor = 1.0
             day_factor = 1.0
