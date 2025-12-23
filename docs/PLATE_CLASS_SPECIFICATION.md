@@ -639,6 +639,118 @@ It's a **choice of which question to ask**.
 
 ---
 
+## Plate Class 3: HYBRID (Tested and Rejected)
+
+### Purpose
+
+**Attempt to combine calibration and screening objectives in a single plate.**
+
+Hybrid plates (V5) tested whether single-well alternating checkerboard + homogeneous islands could achieve:
+- ✅ Island CV ≤ 20% (calibration aspect)
+- ✅ Spatial variance ≤ 1.2× V3 baseline (screening aspect)
+
+### Test Results (2025-12-22)
+
+**V5.2 Validation (5 seeds: 42, 123, 456, 789, 1000):**
+
+| Test | Baseline | V5 Result | Change | Verdict |
+|------|----------|-----------|--------|---------|
+| **Calibration** (Island CV) | V4: 11.7% | 13.9% | +19% | ✅ **PASS** |
+| **Screening** (Spatial variance) | V3: 16,956 | 29,036 | **+71%** | ❌ **FAIL** |
+
+### Why Hybrid Approach Failed
+
+**Root cause:** Islands create local discontinuities that disrupt spatial mixing
+
+**Technical explanation:**
+1. V3 achieves decorrelation through **continuous single-well alternation**
+2. Islands introduce **homogeneous zones** that break the alternation pattern
+3. Even with 12-well moat buffers, islands create **boundary effects**
+4. These boundaries introduce **low-frequency structure** → inflated spatial variance
+
+**Key finding:**
+- Moat buffers protect islands FROM mixing (✅ Island CV acceptable)
+- Buffers DON'T protect mixing FROM islands (❌ Spatial variance inflated)
+
+### Attempted Mitigations (All Failed)
+
+1. **V5.0:** Quadrant clustering → Spatial artifacts detected
+2. **V5.1:** Cardinal ring moat buffers → Collisions fixed, variance still high
+3. **V5.2:** Maximized spatial separation (min 6 wells) → Still +71% variance
+
+**Conclusion:** The trade-off is fundamental, not a design flaw.
+
+### Design Features (V5.2)
+
+**Implemented:**
+- Base: Single-well alternating checkerboard (V3-style)
+- Islands: 8× 3×3 core islands with 12-well cardinal ring buffers
+- Spatial distribution: Maximized separation (≥6 wells between islands)
+- Probe allocation: Collision-free (islands excluded from all probes)
+
+**Test results:**
+- ✅ Island purity maintained (13.9% CV, within 50% of V4)
+- ❌ Spatial decorrelation broken (+71% variance vs V3)
+
+### Production Status
+
+**❌ NOT PRODUCTION READY**
+
+**Recommendation:**
+- Use V3 for screening work (spatial confound detection)
+- Use V4 for calibration work (CV measurement)
+- Do NOT use V5 (fails screening aspect test)
+
+### Valid Metrics (Exploratory Only)
+
+**Can measure:**
+- Island CV (for comparison to V4)
+- Spatial variance (for comparison to V3)
+
+**Invalid conclusions:**
+- ❌ "V5 suitable for production" (fails screening test)
+- ❌ "Hybrid approach viable" (71% variance inflation)
+- ❌ "Trade-off is acceptable" (exceeds 20% tolerance)
+
+### Lessons Learned
+
+**1. Boundary effects are unavoidable:**
+- Islands must have sharp boundaries (for homogeneity)
+- Sharp boundaries create discontinuities (hurt spatial mixing)
+- Cannot isolate islands without affecting global statistics
+
+**2. Optimization objectives conflict fundamentally:**
+- Spatial decorrelation requires continuous alternation
+- Island purity requires homogeneous zones
+- These requirements are mutually exclusive
+
+**3. Specialized plates outperform hybrid approaches:**
+- V3 + V4 combination provides optimal performance for both objectives
+- V5 hybrid provides suboptimal performance for screening objective
+- Cost of running 2 plates < cost of compromised data quality
+
+### Future Recommendations
+
+**Do NOT attempt:**
+- ❌ V6 with larger buffers (doesn't address fundamental discontinuity)
+- ❌ V6 with fewer islands (still breaks alternation pattern)
+- ❌ V6 with gradual transitions (defeats island homogeneity purpose)
+
+**Alternative approaches (if needed):**
+- **Separate regions:** V3 pattern in left half, V4 islands in right half (50% well loss per objective)
+- **Sequential plates:** Run V3 and V4 separately (2× plate cost, but maximizes both objectives) ← **Recommended**
+
+**Verdict:** V3/V4 split remains the optimal strategy.
+
+### References
+
+- [V5_VALIDATION_RESULTS.md](V5_VALIDATION_RESULTS.md) - Complete test results and analysis
+- `scripts/compare_v5_island_cv.py` - Calibration aspect test
+- `scripts/compare_v5_spatial.py` - Screening aspect test
+- `validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v5.json` - V5.2 design
+
+---
+
 ## Conclusion
 
 **The V3 vs V4 investigation revealed a hidden degree of freedom in plate design space.**
@@ -664,18 +776,20 @@ Key insights:
 ### Key Documents
 - [V3_V4_FINAL_COMPARISON.md](V3_V4_FINAL_COMPARISON.md) - Investigation findings
 - [V4_MECHANISM_REPORT.md](V4_MECHANISM_REPORT.md) - Why 2×2 blocks inflate variance
-- [V5_DESIGN_SUMMARY.md](V5_DESIGN_SUMMARY.md) - Hybrid design (superseded by plate classes)
+- [V5_VALIDATION_RESULTS.md](V5_VALIDATION_RESULTS.md) - Hybrid test results (validated rejection)
 - [PLATE_DESIGN_INVESTIGATION_SUMMARY.md](PLATE_DESIGN_INVESTIGATION_SUMMARY.md) - Complete investigation arc
 
 ### Plate Designs
-- `CAL_384_RULES_WORLD_v3.json` - Screening plate (production)
-- `CAL_384_RULES_WORLD_v4.json` - Calibration plate (production)
-- `CAL_384_RULES_WORLD_v5.json` - Hybrid (exploratory, optional)
+- `CAL_384_RULES_WORLD_v3.json` - Screening plate ✅ **Production**
+- `CAL_384_RULES_WORLD_v4.json` - Calibration plate ✅ **Production**
+- `CAL_384_RULES_WORLD_v5.json` - Hybrid ❌ **Rejected** (fails screening test)
 
 ### Analysis Scripts
 - `scripts/validate_plate_class.py` - Validate design matches declared class
 - `scripts/plate_class_contracts.py` - Metric contracts per class
 - `scripts/compare_v3_v4_qc.py` - Full comparison (class-aware)
+- `scripts/compare_v5_island_cv.py` - V5 calibration aspect test
+- `scripts/compare_v5_spatial.py` - V5 screening aspect test
 
 ---
 
