@@ -4,7 +4,10 @@
 
 instrument_id: "el406_culture"
 instrument_purpose: "cell_culture"
-usage: "Plate feeding, media changes, routine liquid handling for cell culture"
+usage: "Plate feeding, media changes, simple plating (1 cell line per plate)"
+notes: |
+  Used for homogeneous plates (single cell line across entire plate).
+  For complex plate maps (multiple cell lines, spatial patterns), use Certus instead.
 
 manifold_type: "el406_8channel"
 num_channels: 8
@@ -43,6 +46,28 @@ parametric_unit_ops:
 
 # Cell culture operations
 cell_culture_operations:
+  - name: "simple_plating"
+    parametric_unit_ops: ["op_seed_plate"]
+    sub_operations: ["op_dispense"]
+    plate_formats: [96, 384]
+    temporal_gradient_effect: "cell_density_gradient"
+    constraint: "homogeneous_plate_only"
+    notes: |
+      Used ONLY for homogeneous plating (1 cell line across entire plate).
+      For complex plate maps (multiple cell lines, patterns), use Certus instead.
+
+      Cell density gradient created by serpentine pattern:
+      - A1 seeded first (t=0), begins attaching/spreading immediately
+      - P1 seeded last (t=240s for 384-well), 4 min delay before attaching
+      - Early wells have 4-minute head start on attachment/spreading
+
+      Effects on biology:
+      - Cell density appears higher in early wells (more spreading time)
+      - Growth synchronization disrupted (early wells further along)
+      - Confluence timing differs (early wells reach confluence first)
+
+      Impact: ~2-3% CV contribution from plating timing gradient
+      This gradient PERSISTS throughout experiment and MULTIPLIES with feeding/painting gradients
   - name: "plate_feeding"
     parametric_unit_ops: ["op_feed"]
     sub_operations: ["op_aspirate", "op_dispense"]

@@ -1,0 +1,168 @@
+# Certus Flex Dispenser - Complex Plate Map Instrument
+# Used for complex plating with multiple cell lines per plate
+# Flexible tip positioning for arbitrary well patterns
+
+instrument_id: "certus_flex"
+instrument_purpose: "complex_plating"
+usage: "Complex plate maps with multiple cell lines, spatial patterns, gradients"
+
+manifold_type: "certus_flex"
+dispensing_mode: "flexible_tip_positioning"
+notes: |
+  Used for COMPLEX plate maps where different wells contain different cell lines.
+  Unlike EL406 (serpentine pattern for homogeneous plates), Certus can address
+  arbitrary well patterns to create complex spatial designs.
+
+# Processing pattern: User-defined (programmable)
+processing_pattern:
+  type: "programmable"
+  description: |
+    Certus allows arbitrary well addressing, not constrained to serpentine.
+    Processing order depends on plate map design and optimization for:
+    - Minimizing tip moves (efficiency)
+    - Grouping by cell line (reduce cross-contamination)
+    - Balancing timing gradients (if needed)
+
+# Timing parameters (seconds)
+# Note: More variable than EL406 due to complex tip movements
+timing:
+  dispense_rate: 1.2           # ~1.2 seconds per well (slightly slower than EL406)
+  tip_movement: 0.5            # ~0.5 seconds per move between wells
+  cell_line_changeover: 60.0   # 60 seconds to switch cell line (wash tips, load new suspension)
+
+# Parametric Unit Ops that use Certus
+parametric_unit_ops:
+  - op_name: "op_seed_plate"
+    usage: "Seed complex plate maps with multiple cell lines"
+    hardware: "Certus Flex"
+    temporal_gradient: true
+    constraint: "complex_plate_map_only"
+    notes: |
+      Used when plate requires multiple cell lines in specific patterns.
+      Examples:
+      - Checkerboard patterns (HepG2 alternating with A549)
+      - Spatial gradients (cell line A in top half, B in bottom half)
+      - Island designs (clusters of different cell lines)
+
+  - op_name: "op_dispense"
+    usage: "Dispense cell suspensions in complex patterns"
+    hardware: "Certus Flex"
+    temporal_gradient: true
+    context: "complex_plating"
+
+# Complex plating operations
+complex_plating_operations:
+  - name: "multi_cell_line_plating"
+    parametric_unit_ops: ["op_seed_plate"]
+    sub_operations: ["op_dispense"]
+    plate_formats: [96, 384]
+    temporal_gradient_effect: "cell_line_dependent_timing"
+    notes: |
+      Plating complex maps creates CELL-LINE-SPECIFIC temporal gradients:
+
+      1. Cell line grouping strategy:
+         - Certus typically dispenses all wells for one cell line first
+         - Then switches to next cell line (60s changeover for tip wash/reload)
+         - Processing order: CellLine1 wells → switch → CellLine2 wells → switch → ...
+
+      2. Within-cell-line gradient:
+         - Wells for same cell line processed in order (not necessarily serpentine)
+         - Optimization minimizes tip travel time
+         - First well of each cell line gets longest wait before next operation
+
+      3. Between-cell-line gradient:
+         - CellLine1 wells plated first, sit longest before downstream steps
+         - CellLine2 wells plated after 60s+ changeover
+         - Creates systematic offset between cell line groups
+
+      Example: HepG2 (wells A1-D12) vs A549 (wells E1-H12)
+      - HepG2 wells plated at t=0-60s
+      - 60s changeover (wash/reload)
+      - A549 wells plated at t=120-180s
+      - HepG2 has 2-minute head start on attachment/growth
+
+      Impact:
+      - Within cell line: 2-3% CV from timing gradient
+      - Between cell lines: Systematic offset (controlled by design)
+      - Agent must learn cell-line-specific baselines PLUS timing artifacts
+
+# Expected artifacts from complex plating
+expected_artifacts:
+  gradient_type: "cell_line_clustered"
+
+  cell_line_grouping:
+    description: |
+      Wells are processed by cell line groups, not serpentine pattern.
+      This creates different gradient structure than EL406:
+
+      EL406 (serpentine): Smooth gradient A1→P24
+      Certus (grouped): Step gradient between cell line regions
+
+  timing_offsets:
+    within_cell_line: "2-3% CV from dispense order within each cell line"
+    between_cell_lines: "Systematic offset (60s+ per cell line changeover)"
+    total_plate_time: "5-10 minutes for 384-well with 3-4 cell lines"
+
+  cross_contamination_risk:
+    description: |
+      Certus switches between cell lines during single plate.
+      Despite tip washing, small risk of carryover:
+      - First wells after changeover slightly higher risk
+      - Quality control critical for cell line identity
+      - Agent should flag unexpected morphology in border wells
+
+# Plate format support
+supported_formats:
+  - plate_format: 384
+    rows: ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"]
+    columns: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+    total_dispense_time: 300-600  # 5-10 minutes depending on complexity
+
+  - plate_format: 96
+    rows: ["A","B","C","D","E","F","G","H"]
+    columns: [1,2,3,4,5,6,7,8,9,10,11,12]
+    total_dispense_time: 120-240  # 2-4 minutes depending on complexity
+
+# Implementation notes
+implementation_notes: |
+  Certus creates CELL-LINE-CLUSTERED gradients for complex plate maps.
+
+  Key differences from EL406 Culture:
+  - Used ONLY for complex plate maps (multiple cell lines)
+  - EL406 used for homogeneous plates (single cell line)
+  - Processing pattern is OPTIMIZED, not serpentine
+  - Cell line changeovers create systematic timing offsets
+
+  Integration:
+  - Plate map specifies which wells get which cell lines
+  - Certus groups wells by cell line for efficiency
+  - Processing order: CellLine1 → switch → CellLine2 → switch → ...
+  - Calculate timing offset for each well based on:
+    * Cell line group (which batch)
+    * Position within group (dispense order)
+    * Changeover delays (60s per switch)
+
+  Example: Plate with 3 cell lines (HepG2, A549, MCF7)
+  - HepG2 wells (128 wells): t=0-130s
+  - 60s changeover
+  - A549 wells (128 wells): t=190-320s
+  - 60s changeover
+  - MCF7 wells (128 wells): t=380-510s
+
+  Timing gradient structure:
+  - Within HepG2: 2-3% CV from 130s spread
+  - HepG2 vs A549: 190s systematic offset (not gradient, just shift)
+  - HepG2 vs MCF7: 380s systematic offset
+
+  Agent learning:
+  - Must learn cell-line-specific baselines (expected for HepG2 vs A549)
+  - Must learn within-cell-line timing gradient (like EL406 but compressed)
+  - Must learn between-cell-line systematic offsets
+  - Can flag cross-contamination if HepG2 well shows A549 morphology
+
+  Interaction with downstream steps:
+  - EL406 Culture (feeding): Applies to all wells equally (serpentine)
+  - EL406 Cell Painting (assay): Applies to all wells equally (serpentine)
+  - Certus gradient (plating): Cell-line-specific offset MULTIPLIES with others
+
+  Total systematic bias = baseline × certus_offset × el406_culture_gradient × el406_painting_gradient
