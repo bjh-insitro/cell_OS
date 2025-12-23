@@ -280,6 +280,32 @@ hardware_sensitivity:
 
 # Technical variance parameters (coefficient of variation)
 # Tuned so DMSO controls have ~2-3% total CV (realistic for high-content screening)
+#
+# SEEDING PROCESS PRESETS (row A→P drift calibration):
+# These parameters model different liquid handling processes and produce different
+# spatial gradients. The default preset is "median_manual_8ch" which produces ~8% A→P drift.
+#
+#   preset: median_manual_8ch (DEFAULT)
+#     - Expected A→P drift: 5-10%
+#     - Process: EL406 8-channel pipette, sequential row processing, no remix between rows
+#     - Settings: cell_suspension_settling_cv = 0.04, plate_level_drift_cv = 0.005
+#     - Story: Realistic "median day" performance, cells settle during ~60-180s dispense time
+#     - Use when: Modeling semi-automated processes where spatial QC and deconfounding matter
+#
+#   preset: bestday_bulk_agitated
+#     - Expected A→P drift: 1-3%
+#     - Process: Automated bulk dispenser with continuous agitation (Multidrop, Certus)
+#     - Settings: cell_suspension_settling_cv = 0.015, plate_level_drift_cv = 0.005
+#     - Story: Fast dispense, aggressive mixing, uniform concentration
+#     - Use when: Modeling best-case automated liquid handling
+#
+#   preset: neurons_gentle_coated
+#     - Expected A→P drift: 8-12%
+#     - Process: iPSC neurons, coated plates, gentle handling to minimize shear
+#     - Settings: cell_suspension_settling_cv = 0.05-0.06, coating_quality_cv = 0.08
+#     - Story: Attachment amplifies gradient, coating heterogeneity adds spatial structure
+#     - Use when: Modeling fragile primary cells or neurons with coating requirements
+#
 technical_noise:
   plate_cv: 0.010     # 1% plate-to-plate variation
   day_cv: 0.015       # 1.5% day-to-day variation
@@ -291,6 +317,8 @@ technical_noise:
   focus_cv: 0.04      # 4% focus variation (tile-level, affects Nucleus/Actin strongly, inflates variance)
   coating_quality_cv: 0.08  # 8% coating quality variation (plate-specific spatial gradient for coated plates)
   cell_suspension_settling_cv: 0.04  # 4% settling drift (amplifies plate-level drift during seeding)
+                                     # DEFAULT preset: median_manual_8ch (5-10% A→P drift)
+                                     # See presets above for alternative calibrations
 
 # Well failure modes (when well_failure_rate triggers)
 well_failure_modes:

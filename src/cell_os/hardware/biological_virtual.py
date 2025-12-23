@@ -90,7 +90,7 @@ logger = logging.getLogger(__name__)
 # Import database for parameter loading
 # Direct import to avoid pulling in ExperimentalRepository which requires pandas
 try:
-    from ..database.repositories.simulation_params import SimulationParamsRepository
+    from ..database.repositories.simulation_params_repository import SimulationParamsRepository
     DB_AVAILABLE = True
 except ImportError:
     DB_AVAILABLE = False
@@ -1410,7 +1410,7 @@ class BiologicalVirtualMachine(VirtualMachine):
                     "Must provide either initial_count OR vessel_type. "
                     "Recommended: use vessel_type to auto-lookup from database."
                 )
-            from src.cell_os.database.repositories.seeding_density import get_cells_to_seed
+            from ..database.repositories.seeding_density import get_cells_to_seed
             initial_count = float(get_cells_to_seed(cell_line, vessel_type, density_level))
 
         if initial_count <= 0:
@@ -1422,7 +1422,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Initialize volume tracking from database (if vessel_type provided)
         if vessel_type is not None:
             try:
-                from src.cell_os.database.repositories.seeding_density import SeedingDensityRepository
+                from ..database.repositories.seeding_density import SeedingDensityRepository
                 repo = SeedingDensityRepository()
                 vessel_info = repo.get_vessel_type(vessel_type)
 
@@ -1450,7 +1450,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Hardware artifacts from plating (Certus or EL406 Culture)
         # Affects cell count (volume variation) and viability (mechanical stress)
         try:
-            from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
+            from .hardware_artifacts import get_hardware_bias
 
             # Ensure thalamus_params are loaded
             if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
@@ -1563,7 +1563,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Hardware artifacts from feeding (EL406 Culture)
         # Affects nutrient volume and temperature shock
         try:
-            from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
+            from .hardware_artifacts import get_hardware_bias
 
             # Ensure thalamus_params are loaded
             if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
