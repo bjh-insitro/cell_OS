@@ -7,11 +7,105 @@ v0.4.2: Pay-for-calibration regime with gate lock invariant.
 - Hard constraint: no biology until noise gate earned
 """
 
-import uuid
-from typing import Optional
+import hashlib
+import json
+from dataclasses import asdict, is_dataclass
+from typing import Optional, Any, Mapping
 from ..schemas import WellSpec, Proposal
 from ..beliefs import BeliefState
 from ..acquisition import TemplateChooser
+
+
+def _normalize_for_hash(x: Any) -> Any:
+    """Make x JSON-stable: deterministic ordering, JSON-safe primitives, repr fallback."""
+    if x is None or isinstance(x, (bool, int, str)):
+        return x
+    if isinstance(x, float):
+        # Stable float representation. Keep it simple.
+        return float(f"{x:.12g}")
+    if is_dataclass(x):
+        return _normalize_for_hash(asdict(x))
+    if isinstance(x, Mapping):
+        # Sort keys to remove dict order drift
+        return {str(k): _normalize_for_hash(v) for k, v in sorted(x.items(), key=lambda kv: str(kv[0]))}
+    if isinstance(x, (list, tuple, set)):
+        seq = list(x)
+        # Sets are unordered; sort their normalized repr for stability
+        if isinstance(x, set):
+            seq = sorted((_normalize_for_hash(v) for v in seq), key=lambda v: json.dumps(v, sort_keys=True))
+            return seq
+        return [_normalize_for_hash(v) for v in seq]
+    # Path, numpy scalars, enums, custom objects, etc.
+    return repr(x)
+
+
+def design_hash(template: str, spec: Mapping[str, Any], *, template_version: int = 1, length: int = 12) -> str:
+    """
+    Content hash of the well-defining spec (does NOT include cycle).
+
+    Args:
+        template: Template name (e.g., "baseline", "dose_ladder")
+        spec: Dict of parameters that define which wells get generated
+        template_version: Version number for template logic changes
+        length: Hash length in hex characters
+
+    Returns:
+        Hex string content hash (e.g., "a1b2c3d4e5f6")
+
+    Hash schema versioning:
+        hash_schema="v1" is baked into the hash to prevent confusion if normalization
+        semantics change later. If you ever need to change float formatting, dict
+        ordering, or _normalize_for_hash behavior, bump hash_schema to "v2" to force
+        all hashes to change (prevents "same spec, different hash" debugging hell).
+    """
+    payload = {
+        "hash_schema": "v1",  # Bump this if normalization semantics change
+        "template": template,
+        "template_version": template_version,
+        "spec": _normalize_for_hash(dict(spec)),
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha1(blob).hexdigest()[:length]
+
+
+def deterministic_design_id(
+    template: str,
+    cycle: int,
+    spec: Mapping[str, Any],
+    *,
+    template_version: int = 1,
+    hash_len: int = 12,
+) -> str:
+    """
+    Run-context identifier: unique per cycle, idempotent for same spec within the same cycle.
+
+    Args:
+        template: Template name (e.g., "baseline", "dose_ladder")
+        cycle: Cycle number (ensures uniqueness across cycles)
+        spec: Dict of parameters that define which wells get generated
+        template_version: Version number for template logic changes
+        hash_len: Hash length in hex characters (min 8 for collision resistance)
+
+    Returns:
+        Design ID like "baseline_c0001_a1b2c3d4e5f6" (deterministic)
+
+    Examples:
+        >>> deterministic_design_id("baseline", 1, {"n_reps": 12})
+        'baseline_c0001_...'
+        >>> deterministic_design_id("dose_ladder", 5, {"compound": "tBHQ", "doses_uM": [0.01, 0.1, 1.0, 10.0]})
+        'dose_ladder_c0005_...'
+
+    Spec policy (per template):
+    - Baseline-style (minimal): Only values that vary across calls + template_version for constants
+    - Dose-ladder-style (explicit): All values that define wells (even if constant)
+    Both are valid; pick one per template and stick to it.
+    """
+    # Cheap insurance: catch accidental misuse
+    assert isinstance(cycle, int), f"cycle must be int, got {type(cycle)}"
+    assert hash_len >= 8, f"hash_len must be >= 8 for collision resistance, got {hash_len}"
+
+    h = design_hash(template, spec, template_version=template_version, length=hash_len)
+    return f"{template}_c{cycle:04d}_{h}"
 
 
 class RuleBasedPolicy:
@@ -95,7 +189,8 @@ class RuleBasedPolicy:
         **extra_kwargs  # Ignore other Documentary-only params
     ) -> Proposal:
         """Template: DMSO replicates at center position."""
-        design_id = f"baseline_{uuid.uuid4().hex[:8]}"
+        spec = {"n_reps": n_reps}
+        design_id = deterministic_design_id("baseline", self.cycle, spec, template_version=1)
 
         wells = []
         for i in range(n_reps):
@@ -121,7 +216,17 @@ class RuleBasedPolicy:
         reason: str = "Test edge effects"
     ) -> Proposal:
         """Template: Compare edge vs center wells."""
-        design_id = f"edge_test_{uuid.uuid4().hex[:8]}"
+        # Hash what defines the wells
+        spec = {
+            "compounds": ["DMSO", "tBHQ"],
+            "doses_uM": [0.0, 10.0],
+            "reps_per_position": 6,
+            "positions": ["edge", "center"],
+            "cell_line": "A549",
+            "assay": "cell_painting",
+            "time_h": 12.0,
+        }
+        design_id = deterministic_design_id("edge_test", self.cycle, spec, template_version=1)
 
         wells = []
 
@@ -178,8 +283,6 @@ class RuleBasedPolicy:
         reason: str = "Explore dose-response"
     ) -> Proposal:
         """Template: Coarse dose ladder for compound."""
-        design_id = f"dose_ladder_{uuid.uuid4().hex[:8]}"
-
         # Pick untested compound
         tested = self.beliefs.tested_compounds - {'DMSO'}
         available = set(cap.get('compounds', [])) - {'DMSO'} - tested
@@ -189,9 +292,21 @@ class RuleBasedPolicy:
         else:
             compound = 'tBHQ'  # fallback
 
-        wells = []
         doses = [0.01, 0.1, 1.0, 10.0]
 
+        # Define wells based on chosen compound and doses
+        spec = {
+            "compound": compound,
+            "doses_uM": doses,
+            "reps": 3,
+            "cell_line": "A549",
+            "assay": "cell_painting",
+            "time_h": 12.0,
+            "position_tag": "center",
+        }
+        design_id = deterministic_design_id("dose_ladder", self.cycle, spec, template_version=1)
+
+        wells = []
         for dose in doses:
             for rep in range(3):
                 wells.append(WellSpec(
@@ -221,7 +336,8 @@ class RuleBasedPolicy:
 
         v0.5.0: LDH proxy using noisy_morphology until real LDH assay added.
         """
-        design_id = f"ldh_calib_{uuid.uuid4().hex[:8]}"
+        spec = {"n_reps": n_reps, "assay": assay}
+        design_id = deterministic_design_id("ldh_calib", self.cycle, spec, template_version=1)
 
         wells = []
         for i in range(n_reps):
@@ -252,7 +368,8 @@ class RuleBasedPolicy:
 
         v0.5.0: Cell Painting uses noisy_morphology (existing signal).
         """
-        design_id = f"cp_calib_{uuid.uuid4().hex[:8]}"
+        spec = {"n_reps": n_reps, "assay": assay}
+        design_id = deterministic_design_id("cp_calib", self.cycle, spec, template_version=1)
 
         wells = []
         for i in range(n_reps):
@@ -283,7 +400,8 @@ class RuleBasedPolicy:
 
         v0.5.0: scRNA placeholder using noisy_morphology proxy. Small n_reps (expensive).
         """
-        design_id = f"scrna_calib_{uuid.uuid4().hex[:8]}"
+        spec = {"n_reps": n_reps, "assay": assay}
+        design_id = deterministic_design_id("scrna_calib", self.cycle, spec, template_version=1)
 
         wells = []
         for i in range(n_reps):
@@ -309,12 +427,22 @@ class RuleBasedPolicy:
         reason: str = "Screen compounds with Cell Painting"
     ) -> Proposal:
         """Template: Small Cell Painting screen across diverse compounds."""
-        design_id = f"cp_screen_{uuid.uuid4().hex[:8]}"
-
         # Diverse compound panel
         compounds = ['Staurosporine', 'Paclitaxel', 'Doxorubicin', 'DMSO']
-        wells = []
 
+        # Hash what defines the wells
+        spec = {
+            "compounds": compounds,
+            "dose_uM": 1.0,
+            "reps": 3,
+            "cell_line": "A549",
+            "assay": "cell_painting",
+            "time_h": 12.0,
+            "position_tag": "center",
+        }
+        design_id = deterministic_design_id("cp_screen", self.cycle, spec, template_version=1)
+
+        wells = []
         for compound in compounds:
             dose = 1.0 if compound != 'DMSO' else 0.0
             for rep in range(3):
@@ -345,13 +473,26 @@ class RuleBasedPolicy:
 
         v0.5.0: Placeholder implementation. Real version would select conditions
         based on CP novelty clusters.
-        """
-        design_id = f"scrna_probe_{uuid.uuid4().hex[:8]}"
 
+        NOTE: novelty_score and ldh_viable are NOT included in design_id yet
+        because they don't affect which wells get generated (TODO for later).
+        """
         # Placeholder: run scRNA on most interesting compound (proxy: use last non-DMSO)
         compound = 'Staurosporine'
-        wells = []
 
+        # Hash only what defines wells TODAY (not unused kwargs)
+        spec = {
+            "compound": compound,
+            "dose_uM": 1.0,
+            "reps": 3,
+            "cell_line": "A549",
+            "assay": "scrna",
+            "time_h": 12.0,
+            "position_tag": "center",
+        }
+        design_id = deterministic_design_id("scrna_probe", self.cycle, spec, template_version=1)
+
+        wells = []
         for rep in range(3):  # Small n for expensive assay
             wells.append(WellSpec(
                 cell_line='A549',
