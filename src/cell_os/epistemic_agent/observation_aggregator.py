@@ -388,6 +388,9 @@ def _aggregate_per_channel(
     # Agent 4: Build normalization metadata
     normalization_metadata = build_normalization_metadata(cell_lines_used, normalization_mode)
 
+    # Agent 2: Track near-duplicate condition merges (empty for now - future diagnostic feature)
+    near_duplicate_merges: list = []
+
     # Agent 3: Record aggregation strategy for transparency
     observation = Observation(
         design_id=proposal.design_id,

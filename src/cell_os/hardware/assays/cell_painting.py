@@ -443,9 +443,15 @@ class CellPaintingAssay(AssaySimulator):
         day_factor = self._get_batch_factor('day', day, batch_id, tech_noise['day_cv'])
         operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
 
-        # Non-deterministic well factor (uses assay RNG)
+        # Per-channel well factor (breaks global multiplier dominance)
+        # Sample per-channel to avoid perfect correlation across all channels
         well_cv = tech_noise['well_cv']
-        well_factor = lognormal_multiplier(self.vm.rng_assay, well_cv) if well_cv > 0 else 1.0
+        well_factors_per_channel = {}
+        if well_cv > 0:
+            for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
+                well_factors_per_channel[channel] = lognormal_multiplier(self.vm.rng_assay, well_cv)
+        else:
+            well_factors_per_channel = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
 
         # Edge effect
         edge_effect = tech_noise.get('edge_effect', 0.0)
@@ -468,11 +474,13 @@ class CellPaintingAssay(AssaySimulator):
         # Translate focus_factor into a "focus badness" scalar.
         focus_badness = abs(float(np.log(focus_factor))) if focus_factor > 0 else 0.0
 
-        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * illumination_bias
+        # Shared factors (plate/day/operator/edge/illumination) - NOT per-channel well_factor
+        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * illumination_bias
 
-        # Apply total factor + per-channel biases + coupled stain/focus factors
+        # Apply shared factors + per-channel well factor + biases + coupled stain/focus
         for channel in morph:
             channel_bias = channel_biases.get(channel, 1.0)
+            well_factor = well_factors_per_channel.get(channel, 1.0)
 
             # Stain coupling: strong on ER/Mito/RNA, moderate on Nucleus, weak on Actin
             if channel in ("er", "mito"):
@@ -492,7 +500,8 @@ class CellPaintingAssay(AssaySimulator):
             else:
                 coupled *= focus_factor ** 0.2
 
-            morph[channel] *= total_tech_factor * channel_bias * coupled
+            # Apply: shared factors × per-channel well factor × channel bias × coupled factors
+            morph[channel] *= shared_tech_factor * well_factor * channel_bias * coupled
 
             # Focus-induced variance inflation for structure channels (fingerprint)
             if channel in ("nucleus", "actin") and focus_badness > 0:

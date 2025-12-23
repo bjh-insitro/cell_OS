@@ -136,6 +136,11 @@ class BeliefState:
     scrna_sigma_stable: bool = False
     scrna_metric_source: Optional[str] = None  # Set explicitly during updates: "proxy:noisy_morphology" or "scrna:transcriptome"
 
+    # Cycle 0: Instrument shape learning (from calibration plate)
+    instrument_shape: Optional[Any] = None  # InstrumentShapeSummary (use Any to avoid circular import)
+    instrument_shape_learned: bool = False  # True after Cycle 0 calibration plate
+    calibration_plate_run: bool = False     # True if canonical calibration plate executed
+
     baseline_cv_scalar: Optional[float] = None
     baseline_cv_by_channel: Dict[str, float] = field(default_factory=dict)
     calibration_reps: int = 0
@@ -868,6 +873,89 @@ class BeliefState:
             self._update_execution_integrity_from_observation(observation.execution_integrity, cycle)
 
         return (self._events, diagnostics_out)
+
+    def update_from_instrument_shape(self, shape_summary, cycle: int = 0):
+        """Update trust model from calibration plate instrument shape summary.
+
+        This is the ONLY way noise gate can be earned from Cycle 0 calibration.
+
+        Args:
+            shape_summary: InstrumentShapeSummary from compute_instrument_shape_summary()
+            cycle: Current cycle number
+
+        Emits three events:
+            1. calibration_plate_selected (from chooser, before execution)
+            2. instrument_shape_summary (this method, after execution)
+            3. noise_gate_updated (this method, based on pass/fail)
+        """
+        # Store instrument shape
+        self.instrument_shape = shape_summary
+        self.instrument_shape_learned = True
+        self.calibration_plate_run = True
+
+        # Event 2: instrument_shape_summary (trust audit breadcrumb)
+        evidence_dict = {
+            "plate_id": shape_summary.plate_id,
+            "noise_sigma": shape_summary.noise_sigma,
+            "edge_effect_strength": shape_summary.edge_effect_strength,
+            "spatial_residual_metric": shape_summary.spatial_residual_metric,
+            "replicate_precision_score": shape_summary.replicate_precision_score,
+            "channel_coupling_score": shape_summary.channel_coupling_score,
+            "pass": shape_summary.noise_gate_pass,
+            "failed_checks": shape_summary.failed_checks,
+        }
+
+        # Include spatial diagnostic for heatmap rendering (if available)
+        if shape_summary.spatial_diagnostic:
+            evidence_dict["spatial_diagnostic"] = shape_summary.spatial_diagnostic
+
+        self._set(
+            "instrument_shape",
+            shape_summary,
+            evidence=evidence_dict,
+            supporting_conditions=[],
+            note=f"Instrument shape learned from {shape_summary.plate_id}"
+        )
+
+        # Event 3: noise_gate_updated
+        previous_status = "earned" if self.noise_sigma_stable else "lost"
+        new_status = "earned" if shape_summary.noise_gate_pass else "lost"
+
+        # Update gate status
+        if shape_summary.noise_gate_pass:
+            self._set(
+                "noise_sigma_stable",
+                True,
+                evidence={
+                    "gate_event": "noise_sigma_stable",
+                    "previous_status": previous_status,
+                    "new_status": new_status,
+                    "shape_metrics": {
+                        "noise_sigma": shape_summary.noise_sigma,
+                        "edge_effect": shape_summary.edge_effect_strength,
+                        "spatial_residual": shape_summary.spatial_residual_metric,
+                        "replicate_precision": shape_summary.replicate_precision_score,
+                    },
+                    # Provide expected fields for _emit_gate_event formatting
+                    "rel_width": shape_summary.noise_sigma_ci_width,
+                    "pooled_df": shape_summary.noise_sigma_df,
+                },
+                supporting_conditions=[],
+                note=f"Noise gate earned via instrument shape learning (Cycle 0)"
+            )
+        else:
+            self._set(
+                "noise_sigma_stable",
+                False,
+                evidence={
+                    "gate_loss": "noise_sigma_stable",
+                    "previous_status": previous_status,
+                    "new_status": new_status,
+                    "failed_checks": shape_summary.failed_checks,
+                },
+                supporting_conditions=[],
+                note=f"Noise gate NOT earned: {', '.join(shape_summary.failed_checks)}"
+            )
 
     # Legacy update methods removed - now delegated to updater classes
     # See beliefs/updates/ for implementation

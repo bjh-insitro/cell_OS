@@ -153,3 +153,59 @@ class Observation:
         mean_cv = sum(c.cv for c in self.conditions) / max(n_conditions, 1)
         return (f"{n_conditions} conditions, {self.wells_spent} wells spent, "
                 f"{self.budget_remaining} remaining, mean CV={mean_cv:.1%}")
+
+
+@dataclass
+class InstrumentShapeSummary:
+    """Summary of instrument characteristics learned from calibration plate.
+
+    This is the ONLY interface between raw calibration data and trust model updates.
+    Agent never sees raw wells from calibration - only this summary.
+
+    Cycle 0 Integration:
+    - Computed by compute_instrument_shape_summary() after calibration plate execution
+    - Consumed by gate update rule to decide if noise gate is earned
+    - All metrics have explicit pass/fail thresholds (no vibes)
+    """
+    # Core noise metric (primary gate criterion)
+    noise_sigma: float              # Estimated instrument noise (CV of DMSO replicates)
+    noise_sigma_ci_width: float     # Width of confidence interval (relative to estimate)
+    noise_sigma_df: int             # Degrees of freedom used (n_reps - 1)
+
+    # Spatial bias metrics
+    edge_effect_strength: float     # Magnitude of edge vs center bias (relative difference)
+    edge_effect_confident: bool     # True if bias estimate is statistically significant
+
+    # Spatial structure in residuals (detects gradients, stripes, local confounding)
+    spatial_residual_metric: float  # Moran's I or similar spatial autocorrelation metric
+    spatial_structure_detected: bool # True if residuals show non-random spatial pattern
+
+    # Replicate precision (from CV islands or designed replicates)
+    replicate_precision_score: float # Correlation or agreement metric across replicates
+    replicate_n_pairs: int          # Number of replicate pairs assessed
+
+    # Channel coupling (spurious correlation between morphology channels)
+    channel_coupling_score: float   # Max pairwise correlation in vehicle wells
+    channel_independence_ok: bool   # True if channels are sufficiently independent
+
+    # Pass/fail for each metric (explicit thresholds from calibration_constants)
+    noise_gate_pass: bool           # All criteria met for earning noise gate
+    failed_checks: List[str]        # List of check names that failed (e.g., ["edge_effect", "spatial_residual"])
+
+    # Metadata
+    plate_id: str                   # Which calibration plate was run (e.g., CAL_384_RULES_WORLD_v4)
+    n_wells_analyzed: int           # Total wells used in shape learning
+    calibration_timestamp: str      # When this was computed
+
+    # Trust audit breadcrumb (for heatmap rendering, optional)
+    spatial_diagnostic: Optional[Dict[str, Any]] = None  # Moran's I p-value, null dist, pattern hint
+
+    def __str__(self) -> str:
+        """Human-readable summary."""
+        status = "✓ PASS" if self.noise_gate_pass else "✗ FAIL"
+        failed = f" (failed: {', '.join(self.failed_checks)})" if self.failed_checks else ""
+        return (f"InstrumentShape: noise={self.noise_sigma:.3f}, "
+                f"edge={self.edge_effect_strength:.3f}, "
+                f"spatial={self.spatial_residual_metric:.3f}, "
+                f"precision={self.replicate_precision_score:.3f} | "
+                f"{status}{failed}")

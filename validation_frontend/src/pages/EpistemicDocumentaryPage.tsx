@@ -46,6 +46,24 @@ function smartSummarizeEvidence(row: AnyJson): string {
   const belief = row.belief ?? "";
   const note = row.note ?? "";
 
+  // CYCLE 0: Instrument shape learning
+  if (belief === "instrument_shape") {
+    const ev = row.evidence ?? {};
+    if (ev.spatial_diagnostic && ev.spatial_diagnostic.morans_i !== undefined) {
+      const spatial = ev.spatial_diagnostic;
+      if (ev.failed_checks && ev.failed_checks.includes("spatial_residual")) {
+        return `⚠️ Spatial confounding detected (Moran's I=${Math.abs(spatial.morans_i).toFixed(3)}, pattern: ${spatial.pattern_hint})`;
+      }
+    }
+    return ev.pass
+      ? "✓ Instrument shape learned (all checks passed)"
+      : `✗ Calibration failed: ${(ev.failed_checks || []).join(", ")}`;
+  }
+
+  if (belief === "calibration_plate_run") {
+    return "🧪 Calibration plate executed";
+  }
+
   // Gate events - make them pop
   if (belief.includes("gate_event:")) {
     const gate = belief.replace("gate_event:", "");
@@ -87,6 +105,13 @@ function smartSummarizeDecision(row: AnyJson): string {
   const candidate = row.selected_candidate ?? rationale;
   const gateState = candidate.gate_state ?? {};
   const regime = candidate.regime ?? "";
+  const trigger = candidate.trigger ?? "";
+
+  // CYCLE 0: Forced calibration plate for instrument shape learning
+  if (trigger === "cycle0_required") {
+    const plateId = candidate.calibration_plate_id ?? "calibration plate";
+    return `🔬 CYCLE 0: Learn instrument shape (${plateId})`;
+  }
 
   // Forced calibration - highlight urgency
   if (candidate.forced) {
@@ -161,6 +186,17 @@ function detectKeyMoments(events: EpisodeEvent[]): KeyMoment[] {
     const summary = e.summary.toLowerCase();
     const belief = e.payload.belief ?? "";
     const selected = e.payload.selected ?? "";
+    const trigger = e.payload.selected_candidate?.trigger ?? "";
+
+    // Cycle 0 detection
+    if (belief === "instrument_shape" || trigger === "cycle0_required") {
+      moments.push({
+        index: i,
+        cycle: e.cycle,
+        kind: "gate",
+        summary: "Cycle 0: Instrument shape learning"
+      });
+    }
 
     // Refusal detection
     if (summary.includes("refuse") || summary.includes("refusal") || summary.includes("blocked")) {
@@ -531,10 +567,12 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
             {evidenceEvents.map((e, i) => {
               const belief = e.payload.belief ?? "";
               const note = e.payload.note ?? "";
+              const evidence = e.payload.evidence ?? {};
 
               // Highlight important events
               const isGate = belief.includes("gate_event") || belief.includes("gate_loss");
               const isCalibration = belief.includes("noise_") || belief.includes("_sigma_");
+              const isInstrumentShape = belief === "instrument_shape";
 
               return (
                 <div
@@ -542,9 +580,13 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
                   className={`p-2 rounded ${
                     isGate
                       ? isDarkMode ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'
-                      : isCalibration
-                        ? isDarkMode ? 'bg-blue-900/30 border border-blue-700' : 'bg-blue-50 border border-blue-200'
-                        : isDarkMode ? 'bg-slate-900/30' : 'bg-zinc-50'
+                      : isInstrumentShape
+                        ? evidence.pass
+                          ? isDarkMode ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'
+                          : isDarkMode ? 'bg-red-900/30 border border-red-700' : 'bg-red-50 border border-red-200'
+                        : isCalibration
+                          ? isDarkMode ? 'bg-blue-900/30 border border-blue-700' : 'bg-blue-50 border border-blue-200'
+                          : isDarkMode ? 'bg-slate-900/30' : 'bg-zinc-50'
                   }`}
                 >
                   <div className={`font-mono ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
@@ -553,6 +595,28 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
                   <div className={isDarkMode ? 'text-slate-300' : 'text-zinc-700'}>
                     {note || e.summary}
                   </div>
+
+                  {/* CYCLE 0: Show spatial diagnostic details */}
+                  {isInstrumentShape && evidence.spatial_diagnostic && (
+                    <div className={`mt-2 pl-2 text-xs space-y-0.5 border-l-2 ${
+                      evidence.pass
+                        ? isDarkMode ? 'border-green-600' : 'border-green-400'
+                        : isDarkMode ? 'border-red-600' : 'border-red-400'
+                    } ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+                      <div className="font-bold">Spatial Diagnostic:</div>
+                      <div>Moran's I: {evidence.spatial_diagnostic.morans_i?.toFixed(4)}</div>
+                      <div>p-value: {evidence.spatial_diagnostic.p_value?.toFixed(6)}</div>
+                      <div>Pattern: {evidence.spatial_diagnostic.pattern_hint}</div>
+                      <div>Wells analyzed: {evidence.spatial_diagnostic.wells_analyzed}</div>
+                      {evidence.spatial_diagnostic.null && (
+                        <div className="mt-1 text-xs opacity-75">
+                          Null: μ={evidence.spatial_diagnostic.null.i_mean?.toFixed(3)},
+                          σ={evidence.spatial_diagnostic.null.i_sd?.toFixed(3)},
+                          p95={evidence.spatial_diagnostic.null.i_p95?.toFixed(3)}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

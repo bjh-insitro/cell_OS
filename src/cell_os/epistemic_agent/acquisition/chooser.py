@@ -689,6 +689,79 @@ class TemplateChooser:
             kwargs={"n_reps": 12}
         )
 
+    def _enforce_cycle0_calibration(
+        self,
+        beliefs: BeliefState,
+        remaining_wells: int,
+        cycle: int
+    ) -> Optional[Decision]:
+        """Enforce Cycle 0 requirement: must run calibration plate before any biology.
+
+        This is the "learn the shape of the instrument" gate.
+        Agent cannot do biology until it has characterized instrument properties.
+
+        Returns Decision to force calibration plate, or None if already run.
+        """
+        from ..calibration_constants import CYCLE0_PLATE_ID
+
+        # Check if calibration plate already run
+        if beliefs.calibration_plate_run:
+            return None  # Cycle 0 complete, proceed
+
+        # Force calibration plate execution
+        # Use expanded baseline template to characterize instrument shape
+        # This provides enough replicates and spatial coverage for shape learning
+        n_reps = 96  # Large replicate count for robust instrument characterization
+
+        # Affordability check
+        if remaining_wells < n_reps:
+            reason = f"ABORT: Cannot afford Cycle 0 calibration (need {n_reps} wells, have {remaining_wells})"
+            return self._set_last_decision(
+                cycle=cycle,
+                selected="abort_insufficient_cycle0_budget",
+                selected_score=0.0,
+                reason=reason,
+                selected_candidate={
+                    "template": "abort_insufficient_cycle0_budget",
+                    "forced": True,
+                    "trigger": "cycle0_required",
+                    "regime": "pre_calibration",
+                    "enforcement_layer": "global_pre_biology",
+                    "gate_state": self._get_gate_state(beliefs),
+                    "calibration_plate_id": CYCLE0_PLATE_ID,
+                    "wells_needed": n_reps
+                },
+                beliefs=beliefs,
+                kwargs={"reason": reason, "plate_id": CYCLE0_PLATE_ID}
+            )
+
+        # Force calibration plate
+        # Event 1: calibration_plate_selected
+        reason = f"Cycle 0: Learn instrument shape using {CYCLE0_PLATE_ID}"
+        return self._set_last_decision(
+            cycle=cycle,
+            selected="baseline_replicates",
+            selected_score=1.0,
+            reason=reason,
+            selected_candidate={
+                "template": "baseline_replicates",
+                "forced": True,
+                "trigger": "cycle0_required",
+                "regime": "pre_calibration",
+                "enforcement_layer": "global_pre_biology",
+                "gate_state": self._get_gate_state(beliefs),
+                "calibration_plate_id": CYCLE0_PLATE_ID,
+                "n_reps": n_reps,
+                "purpose": "instrument_shape_learning"
+            },
+            beliefs=beliefs,
+            kwargs={
+                "reason": reason,
+                "n_reps": n_reps,
+                "coverage_strategy": "full_spatial"  # Use edge + center for shape learning
+            }
+        )
+
     def _check_noise_gate_lock(
         self,
         beliefs: BeliefState,
@@ -1038,6 +1111,12 @@ class TemplateChooser:
         gate_lock_decision = self._check_noise_gate_lock(beliefs, cycle)
         if gate_lock_decision:
             return gate_lock_decision
+
+        # 2.5. CYCLE 0 ENFORCEMENT: Must run calibration plate before any biology
+        # This is the "learn the shape of the instrument" requirement
+        cycle0_decision = self._enforce_cycle0_calibration(beliefs, remaining_wells, cycle)
+        if cycle0_decision:
+            return cycle0_decision
 
         # 3. Noise gate entry enforcement
         noise_gate_decision = self._enforce_noise_gate_entry(beliefs, remaining_wells, cycle)

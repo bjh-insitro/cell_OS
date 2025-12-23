@@ -174,6 +174,28 @@ class EpistemicLoop:
                 calibration_templates={"baseline", "calibration", "dmso"}
             )
 
+            # Write per-cycle debt diagnostic (always, even if not refused)
+            debt_diagnostic = {
+                "event_type": "epistemic_debt_status",
+                "timestamp": datetime.now().isoformat(),
+                "cycle": cycle,
+                "debt_bits": refusal_context.get('debt_bits', 0.0),
+                "threshold": refusal_context.get('debt_threshold', 2.0),
+                "action_proposed": template_name,
+                "action_allowed": not should_refuse,
+                "action_is_calibration": refusal_context.get('is_calibration', False),
+                "base_cost_wells": refusal_context.get('base_cost_wells', 0),
+                "inflated_cost_wells": refusal_context.get('inflated_cost_wells', 0),
+                "inflation_factor": (refusal_context.get('inflated_cost_wells', 0) / max(1, refusal_context.get('base_cost_wells', 1))),
+                "budget_remaining": self.world.budget_remaining,
+                "refusal_reason": refusal_reason if should_refuse else None,
+                "epistemic_insolvent": self.agent.beliefs.epistemic_insolvent,
+                "consecutive_refusals": self.agent.beliefs.consecutive_refusals,
+            }
+            # Write directly to diagnostics file (plain dict, not EvidenceEvent)
+            with open(self.diagnostics_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(debt_diagnostic) + '\n')
+
             if should_refuse:
                 self._log("\n" + "="*60)
                 self._log(f"EPISTEMIC DEBT REFUSAL: {refusal_reason}")
@@ -303,7 +325,61 @@ class EpistemicLoop:
 
                 self._log_observation(observation, elapsed)
 
-                # Agent updates beliefs
+                # CYCLE 0 INTEGRATION: Instrument shape learning from calibration plate
+                # Check if this was a Cycle 0 calibration run
+                if self.agent.last_decision is not None:
+                    last_rationale = self.agent.last_decision.rationale
+                    last_kwargs = self.agent.last_decision.chosen_kwargs
+
+                    # Check if this was instrument shape learning
+                    is_cycle0 = (last_kwargs and last_kwargs.get("purpose") == "instrument_shape_learning")
+
+                    # Alternative check: look at selected_candidate in decision event
+                    if not is_cycle0 and hasattr(self.agent.chooser, 'last_decision_event'):
+                        dec_ev = self.agent.chooser.last_decision_event
+                        if dec_ev and isinstance(dec_ev.selected_candidate, dict):
+                            is_cycle0 = dec_ev.selected_candidate.get("purpose") == "instrument_shape_learning"
+
+                    if is_cycle0:
+                        self._log("\n" + "="*60)
+                        self._log("CYCLE 0: INSTRUMENT SHAPE LEARNING")
+                        self._log("="*60)
+
+                        # Compute instrument shape summary from observation
+                        from .instrument_shape import compute_instrument_shape_summary
+                        from .calibration_constants import CYCLE0_PLATE_ID
+
+                        try:
+                            shape_summary = compute_instrument_shape_summary(
+                                observation=observation,
+                                plate_id=CYCLE0_PLATE_ID
+                            )
+
+                            self._log(f"\nInstrument Shape Summary:")
+                            self._log(f"  Noise sigma: {shape_summary.noise_sigma:.4f}")
+                            self._log(f"  Edge effect: {shape_summary.edge_effect_strength:.4f}")
+                            self._log(f"  Spatial residual: {shape_summary.spatial_residual_metric:.4f}")
+                            self._log(f"  Replicate precision: {shape_summary.replicate_precision_score:.4f}")
+                            self._log(f"  Channel coupling: {shape_summary.channel_coupling_score:.4f}")
+                            self._log(f"\n  Gate Status: {'✓ PASS' if shape_summary.noise_gate_pass else '✗ FAIL'}")
+
+                            if shape_summary.failed_checks:
+                                self._log(f"  Failed checks: {', '.join(shape_summary.failed_checks)}")
+
+                            # Update beliefs with instrument shape (emits events 2 & 3)
+                            self.agent.beliefs.update_from_instrument_shape(shape_summary, cycle=cycle)
+
+                            if shape_summary.noise_gate_pass:
+                                self._log(f"\n  🎯 NOISE GATE EARNED via instrument shape learning")
+                            else:
+                                self._log(f"\n  ⚠️  Noise gate NOT earned - must recalibrate")
+
+                        except Exception as e:
+                            self._log(f"\n  ⚠️  Error computing instrument shape: {e}")
+                            import traceback
+                            self._log(traceback.format_exc())
+
+                # Agent updates beliefs (normal pathway)
                 self.agent.update_from_observation(observation)
 
                 # v0.4.2: Extract evidence and diagnostics from beliefs

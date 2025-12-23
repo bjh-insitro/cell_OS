@@ -1393,8 +1393,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         state.plating_context = sample_plating_context(plating_seed)
 
         # Initialize per-well RNG for persistent latent biology
-        # Deterministic per well (stable across assays within the same run)
-        well_seed = stable_u32(f"well_biology_{self.run_context.seed}_{vessel_id}")
+        # Deterministic per well (stable across runs for same vessel_id)
+        # DO NOT include run_context.seed - wells must have persistent identity!
+        well_seed = stable_u32(f"well_biology_{vessel_id}")
         state.rng_well = np.random.default_rng(well_seed)
 
         # Injection A+B: seed event establishes initial exposure state
