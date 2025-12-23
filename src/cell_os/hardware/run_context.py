@@ -82,7 +82,7 @@ class RunContext:
         instrument_shift = (
             correlation * cursed_latent +
             np.sqrt(1 - correlation**2) * rng.normal(0, 1.0)
-        ) * 0.2 * context_strength
+        ) * 0.05 * context_strength  # Reduced from 0.2 → ±5% illumination (was ±22%)
 
         # Reagent lot shift: channel-specific biases (imaging)
         # Some correlation with cursed_latent, but also independent per-channel
@@ -93,7 +93,7 @@ class RunContext:
             channel_shift = (
                 0.5 * correlation * cursed_latent +  # Some shared
                 0.5 * rng.normal(0, 1.0)  # Some independent
-            ) * 0.15 * context_strength
+            ) * 0.05 * context_strength  # Reduced from 0.15 → ±5% channel bias (was ±16%)
             reagent_lot_shift[channel] = float(channel_shift)
 
         # Scalar assay reagent lot shift: per-assay biases (biochemical readouts)
@@ -105,7 +105,7 @@ class RunContext:
             assay_shift = (
                 0.5 * correlation * cursed_latent +  # Some shared (bad day = bad reagents)
                 0.5 * rng.normal(0, 1.0)  # Some independent (each kit is different lot)
-            ) * 0.15 * context_strength
+            ) * 0.05 * context_strength  # Reduced from 0.15 → ±5% assay bias (was ±16%)
             scalar_reagent_lot_shift[assay] = float(assay_shift)
 
         # Generate context ID for tracking
@@ -163,22 +163,22 @@ class RunContext:
         """
         # Imaging reagent lot affects channel intensities
         channel_biases = {
-            ch: float(np.exp(shift))  # ±0.15 → 0.86× to 1.16× intensity
+            ch: float(np.exp(shift))  # ±0.05 → 0.95× to 1.05× intensity
             for ch, shift in self.reagent_lot_shift.items()
         }
 
         # Biochemical reagent lot affects scalar assay intensities
         scalar_assay_biases = {
-            assay: float(np.exp(shift))  # ±0.15 → 0.86× to 1.16× intensity
+            assay: float(np.exp(shift))  # ±0.05 → 0.95× to 1.05× intensity
             for assay, shift in self.scalar_reagent_lot_shift.items()
         }
 
         # Instrument shift affects noise and ALL intensity measurements
         # CRITICAL: illumination_bias (imaging) and reader_gain (plate reader) are CORRELATED
         # via shared instrument_shift latent, so cross-modality disagreement teaches caution
-        noise_inflation = float(1.0 + 0.5 * abs(self.instrument_shift))  # Up to 1.1× more noise
-        illumination_bias = float(np.exp(self.instrument_shift))  # ±0.2 → 0.82× to 1.22× intensity (imaging)
-        reader_gain = float(np.exp(self.instrument_shift))  # ±0.2 → 0.82× to 1.22× intensity (plate reader)
+        noise_inflation = float(1.0 + 0.5 * abs(self.instrument_shift))  # Up to 1.025× more noise
+        illumination_bias = float(np.exp(self.instrument_shift))  # ±0.05 → 0.95× to 1.05× intensity (imaging)
+        reader_gain = float(np.exp(self.instrument_shift))  # ±0.05 → 0.95× to 1.05× intensity (plate reader)
 
         return {
             'channel_biases': channel_biases,
