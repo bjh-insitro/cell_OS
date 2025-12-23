@@ -331,12 +331,16 @@ class CellPaintingAssay(AssaySimulator):
         # 6. Pipeline drift (batch-dependent feature extraction)
         plate_id = kwargs.get('plate_id', 'P1')
         batch_id = kwargs.get('batch_id', 'batch_default')
-        morph = pipeline_transform(
-            morphology=morph,
-            context=self.vm.run_context,
-            batch_id=batch_id,
-            plate_id=plate_id
-        )
+        # DIAGNOSTIC: Bypass pipeline_transform to isolate per-channel coupling
+        DIAGNOSTIC_DISABLE_SHARED_FACTORS = True  # Same flag as in _add_technical_noise
+        if not DIAGNOSTIC_DISABLE_SHARED_FACTORS:
+            morph = pipeline_transform(
+                morphology=morph,
+                context=self.vm.run_context,
+                batch_id=batch_id,
+                plate_id=plate_id
+            )
+        # else: skip pipeline_transform (no-op)
 
         return morph
 
@@ -439,9 +443,16 @@ class CellPaintingAssay(AssaySimulator):
         well_position = kwargs.get('well_position', 'A1')
 
         # Deterministic batch effects (seeded by context + batch ID)
-        plate_factor = self._get_batch_factor('plate', plate_id, batch_id, tech_noise['plate_cv'])
-        day_factor = self._get_batch_factor('day', day, batch_id, tech_noise['day_cv'])
-        operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
+        # DIAGNOSTIC: Temporarily disable to isolate per-channel coupling
+        DIAGNOSTIC_DISABLE_SHARED_FACTORS = True
+        if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
+            plate_factor = 1.0
+            day_factor = 1.0
+            operator_factor = 1.0
+        else:
+            plate_factor = self._get_batch_factor('plate', plate_id, batch_id, tech_noise['plate_cv'])
+            day_factor = self._get_batch_factor('day', day, batch_id, tech_noise['day_cv'])
+            operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
 
         # Per-channel well factor (breaks global multiplier dominance)
         # Use per-channel deterministic seeding for transparency and persistence
@@ -457,14 +468,23 @@ class CellPaintingAssay(AssaySimulator):
             well_factors_per_channel = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
 
         # Edge effect
-        edge_effect = tech_noise.get('edge_effect', 0.0)
-        is_edge = self._is_edge_well(well_position)
-        edge_factor = (1.0 - edge_effect) if is_edge else 1.0
+        # DIAGNOSTIC: Disable edge effect to isolate per-channel coupling
+        if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
+            edge_factor = 1.0
+        else:
+            edge_effect = tech_noise.get('edge_effect', 0.0)
+            is_edge = self._is_edge_well(well_position)
+            edge_factor = (1.0 - edge_effect) if is_edge else 1.0
 
         # Run context modifiers (lot/instrument effects)
         meas_mods = self.vm.run_context.get_measurement_modifiers()
-        illumination_bias = meas_mods['illumination_bias']
-        channel_biases = meas_mods['channel_biases']
+        # DIAGNOSTIC: Disable illumination_bias to isolate per-channel coupling
+        if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
+            illumination_bias = 1.0
+            channel_biases = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
+        else:
+            illumination_bias = meas_mods['illumination_bias']
+            channel_biases = meas_mods['channel_biases']
 
         # Add coupled nuisance factors
         stain_cv = float(tech_noise.get("stain_cv", 0.05))   # new param
