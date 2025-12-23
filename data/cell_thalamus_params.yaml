@@ -245,7 +245,7 @@ technical_noise:
   operator_cv: 0.008  # 0.8% operator-to-operator variation
   well_cv: 0.015      # 1.5% well-to-well (measurement noise)
   edge_effect: 0.12   # 12% signal reduction for edge wells (evaporation, temperature)
-  well_failure_rate: 0.02  # 2% of wells randomly fail (bubbles, contamination, pipetting errors)
+  well_failure_rate: 0.00013  # 0.013% per well → ~5% plate failure rate (384 wells)
   stain_cv: 0.05      # 5% stain lot variation (plate-level, affects ER/Mito/RNA strongly)
   focus_cv: 0.04      # 4% focus variation (tile-level, affects Nucleus/Actin strongly, inflates variance)
 
