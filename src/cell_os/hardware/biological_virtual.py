@@ -12,7 +12,7 @@ Core VM (this file):
     • Vessel operations (seed, feed, passage, treat, washout)
     • Growth dynamics & confluence management
     • Death accounting with conservation law enforcement
-    • Parameter loading from database or YAML
+    • Parameter loading from database (YAML removed 2025-12-23)
     • RNG stream management (biology, assay, operations)
 
 Delegated Subsystems:
@@ -62,7 +62,7 @@ Last major semantic fixes: 2025-12-20 10:09:11 PST
 
 import logging
 import numpy as np
-import yaml
+import yaml  # Still needed for nested CellROX/segmentation params (TODO: migrate to database)
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -390,8 +390,8 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         Args:
             simulation_speed: Speed multiplier for simulation
-            params_file: Path to YAML parameter file
-            use_database: Whether to use database for parameters
+            params_file: Path to YAML (deprecated, only used for nested CellROX params)
+            use_database: Deprecated (database is now always used)
             seed: RNG seed for reproducibility (default: 0).
             run_context: Optional RunContext for Phase 5B realism layer.
                          If None, samples a new context from seed.
@@ -484,120 +484,91 @@ class BiologicalVirtualMachine(VirtualMachine):
         self._mitotic_catastrophe = MitoticCatastropheMechanism(self)
     
     def _load_parameters(self, params_file: Optional[str] = None):
-        """Load simulation parameters from database or YAML file."""
-        
-        # Try database first if enabled
-        if self.use_database:
-            try:
-                db = SimulationParamsRepository()
-                logger.info("Loading parameters from database")
-                
-                # Load cell line parameters
-                self.cell_line_params = {}
-                for cell_line_id in db.get_all_cell_lines():
-                    params = db.get_cell_line_params(cell_line_id)
-                    if params:
-                        self.cell_line_params[cell_line_id] = {
-                            'doubling_time_h': params.doubling_time_h,
-                            'max_confluence': params.max_confluence,
-                            'max_passage': params.max_passage,
-                            'senescence_rate': params.senescence_rate,
-                            'seeding_efficiency': params.seeding_efficiency,
-                            'passage_stress': params.passage_stress,
-                            'cell_count_cv': params.cell_count_cv,
-                            'viability_cv': params.viability_cv,
-                            'biological_cv': params.biological_cv,
-                            'coating_required': params.coating_required
-                        }
-                
-                # Load compound sensitivity
-                self.compound_sensitivity = {}
-                for compound in db.get_all_compounds():
-                    self.compound_sensitivity[compound] = {}
-                    for cell_line_id in db.get_all_cell_lines():
-                        sensitivity = db.get_compound_sensitivity(compound, cell_line_id)
-                        if sensitivity:
-                            self.compound_sensitivity[compound][cell_line_id] = sensitivity.ic50_um
-                            if 'hill_slope' not in self.compound_sensitivity[compound]:
-                                self.compound_sensitivity[compound]['hill_slope'] = sensitivity.hill_slope
+        """Load simulation parameters from database."""
 
-                # Drop compounds that never returned any sensitivity rows so we can
-                # detect incomplete databases and fall back to YAML fixtures.
-                self.compound_sensitivity = {
-                    compound: data
-                    for compound, data in self.compound_sensitivity.items()
-                    if any(key != 'hill_slope' for key in data.keys())
-                }
-                
-                # Load defaults
-                self.defaults = {}
-                for param_name in ['doubling_time_h', 'max_confluence', 'max_passage', 
-                                  'senescence_rate', 'seeding_efficiency', 'passage_stress',
-                                  'cell_count_cv', 'viability_cv', 'biological_cv',
-                                  'default_ic50', 'default_hill_slope']:
-                    value = db.get_default_param(param_name)
-                    if value is not None:
-                        self.defaults[param_name] = value
-                
-                has_defaults = bool(self.defaults)
-                if self.cell_line_params and self.compound_sensitivity and has_defaults:
-                    logger.info("Loaded parameters from database")
-                    logger.info(f"  Cell lines: {len(self.cell_line_params)}")
-                    logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
-                    return
+        # Database is now the only source (YAML removed 2025-12-23)
+        if not self.use_database:
+            logger.warning(
+                "use_database=False is deprecated. "
+                "Database is now the only source for simulation parameters. "
+                "Setting use_database=True."
+            )
+            self.use_database = True
 
-                logger.warning(
-                    "Simulation parameter database is missing data "
-                    "(cell_lines=%s, compounds=%s, defaults=%s); "
-                    "falling back to YAML",
-                    len(self.cell_line_params),
-                    len(self.compound_sensitivity),
-                    len(self.defaults),
-                )
-                
-            except Exception as e:
-                logger.warning(f"Failed to load from database: {e}, falling back to YAML")
-        
-        # Fallback to YAML
-        if params_file is None:
-            # Default to data/simulation_parameters.yaml
-            params_file = Path(__file__).parent.parent.parent.parent / "data" / "simulation_parameters.yaml"
-        
         try:
-            with open(params_file, 'r') as f:
-                params = yaml.safe_load(f)
-                
-            self.cell_line_params = params.get('cell_lines', {})
-            self.compound_sensitivity = params.get('compound_sensitivity', {})
-            self.defaults = params.get('defaults', {})
-            
-            logger.info(f"Loaded simulation parameters from {params_file}")
+            db = SimulationParamsRepository()
+            logger.info("Loading parameters from database")
+
+            # Load cell line parameters
+            self.cell_line_params = {}
+            for cell_line_id in db.get_all_cell_lines():
+                params = db.get_cell_line_params(cell_line_id)
+                if params:
+                    self.cell_line_params[cell_line_id] = {
+                        'doubling_time_h': params.doubling_time_h,
+                        'max_confluence': params.max_confluence,
+                        'max_passage': params.max_passage,
+                        'senescence_rate': params.senescence_rate,
+                        'seeding_efficiency': params.seeding_efficiency,
+                        'passage_stress': params.passage_stress,
+                        'cell_count_cv': params.cell_count_cv,
+                        'viability_cv': params.viability_cv,
+                        'biological_cv': params.biological_cv,
+                        'coating_required': params.coating_required
+                    }
+
+            # Load compound sensitivity
+            self.compound_sensitivity = {}
+            for compound in db.get_all_compounds():
+                self.compound_sensitivity[compound] = {}
+                for cell_line_id in db.get_all_cell_lines():
+                    sensitivity = db.get_compound_sensitivity(compound, cell_line_id)
+                    if sensitivity:
+                        self.compound_sensitivity[compound][cell_line_id] = sensitivity.ic50_um
+                        if 'hill_slope' not in self.compound_sensitivity[compound]:
+                            self.compound_sensitivity[compound]['hill_slope'] = sensitivity.hill_slope
+
+            # Drop compounds that never returned any sensitivity rows
+            self.compound_sensitivity = {
+                compound: data
+                for compound, data in self.compound_sensitivity.items()
+                if any(key != 'hill_slope' for key in data.keys())
+            }
+
+            # Load defaults
+            self.defaults = {}
+            for param_name in ['doubling_time_h', 'max_confluence', 'max_passage',
+                              'senescence_rate', 'seeding_efficiency', 'passage_stress',
+                              'cell_count_cv', 'viability_cv', 'biological_cv',
+                              'default_ic50', 'default_hill_slope', 'lag_duration_h', 'edge_penalty']:
+                value = db.get_default_param(param_name)
+                if value is not None:
+                    self.defaults[param_name] = value
+
+            # Verify database is complete
+            if not self.cell_line_params:
+                raise ValueError("Database contains no cell lines. Run database migrations.")
+            if not self.compound_sensitivity:
+                raise ValueError("Database contains no compounds. Run database migrations.")
+            if not self.defaults:
+                raise ValueError("Database contains no defaults. Check SimulationParamsRepository.")
+
+            logger.info("✅ Loaded parameters from database")
             logger.info(f"  Cell lines: {len(self.cell_line_params)}")
             logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
-            
-        except FileNotFoundError:
-            logger.warning(f"Parameters file not found: {params_file}, using defaults")
-            self._use_default_parameters()
-            
-    def _use_default_parameters(self):
-        """Fallback to hardcoded parameters if YAML not found."""
-        self.cell_line_params = {
-            "HEK293T": {"doubling_time_h": 24.0, "max_confluence": 0.9},
-            "HeLa": {"doubling_time_h": 20.0, "max_confluence": 0.85},
-            "Jurkat": {"doubling_time_h": 18.0, "max_confluence": 1.0},
-        }
-        self.compound_sensitivity = {
-            "staurosporine": {"HEK293T": 0.05, "HeLa": 0.08, "hill_slope": 1.2},
-            "tunicamycin": {"HEK293T": 0.80, "HeLa": 0.60, "hill_slope": 1.0},
-        }
-        self.defaults = {
-            "doubling_time_h": 24.0,
-            "max_confluence": 0.9,
-            "default_ic50": 1.0,
-            "default_hill_slope": 1.0,
-            "lag_duration_h": 12.0,
-            "edge_penalty": 0.15
-        }
+
+        except Exception as e:
+            logger.error(f"Failed to load parameters from database: {e}")
+            logger.error("Database is now the only source for simulation parameters.")
+            logger.error("Ensure:")
+            logger.error("  1. Database exists: data/cell_lines.db")
+            logger.error("  2. Migrations have been run")
+            logger.error("  3. SimulationParamsRepository is importable")
+            raise RuntimeError(
+                f"Failed to load simulation parameters from database: {e}. "
+                "YAML fallback has been removed (2025-12-23). "
+                "Ensure database migrations have been run."
+            ) from e
         
     def flush_operations_now(self):
         """
@@ -1561,7 +1532,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             well_position = vessel_id
 
         # Hardware artifacts from feeding (EL406 Culture)
-        # Affects nutrient volume and temperature shock
+        # Affects media volume (dispense variation) and handling shock (temperature/mechanical stress)
         try:
             from .hardware_artifacts import get_hardware_bias
 
@@ -1584,16 +1555,65 @@ class BiologicalVirtualMachine(VirtualMachine):
                 cell_line_params=hardware_sensitivity
             )
 
-            # Apply volume variation to nutrients
-            glucose_mM = float(glucose_mM * hardware_bias['volume_factor'])
-            glutamine_mM = float(glutamine_mM * hardware_bias['volume_factor'])
+            # Physical volume model: feeding = remove old media + add fresh media
+            # volume_factor scales the ADDED volume (dispense variation)
+            # More volume added → stronger dilution toward fresh media concentrations
 
-            # Apply temperature shock to viability
+            if vessel.current_volume_ml is not None and vessel.working_volume_ml is not None:
+                # Get current state before feeding
+                V_old = vessel.current_volume_ml
+                C_old_glucose = vessel.media_glucose_mM
+                C_old_glutamine = vessel.media_glutamine_mM
+                C_fresh_glucose = glucose_mM  # Fresh media concentrations (typically 25 mM, 4 mM)
+                C_fresh_glutamine = glutamine_mM
+
+                # Calculate volume changes with hardware variation
+                # Remove old media (assume complete aspiration to working volume)
+                V_remove = vessel.working_volume_ml
+                V_after_remove = max(0.0, V_old - V_remove)
+
+                # Add fresh media with dispense variation
+                V_add_nominal = vessel.working_volume_ml
+                V_add = V_add_nominal * hardware_bias['volume_factor']
+
+                # Check for overflow
+                V_new = V_after_remove + V_add
+                if vessel.max_volume_ml is not None and V_new > vessel.max_volume_ml:
+                    # Clamp to max volume and log warning
+                    V_add = vessel.max_volume_ml - V_after_remove
+                    V_new = vessel.max_volume_ml
+                    logger.warning(
+                        f"Feed would overflow {vessel_id}: "
+                        f"clamped V_add from {V_add_nominal * hardware_bias['volume_factor']*1000:.1f}µL "
+                        f"to {V_add*1000:.1f}µL (max={vessel.max_volume_ml*1000:.1f}µL)"
+                    )
+
+                # Dilution calculation: C_new = (C_old × V_residual + C_fresh × V_added) / V_total
+                if V_new > 0:
+                    glucose_mM = (C_old_glucose * V_after_remove + C_fresh_glucose * V_add) / V_new
+                    glutamine_mM = (C_old_glutamine * V_after_remove + C_fresh_glutamine * V_add) / V_new
+                else:
+                    # Edge case: complete removal (shouldn't happen with working volumes)
+                    glucose_mM = C_fresh_glucose
+                    glutamine_mM = C_fresh_glutamine
+
+                # Update volume tracking
+                vessel.current_volume_ml = V_new
+
+            else:
+                # Fallback: no volume tracking available (older experiments)
+                # Apply volume_factor as concentration multiplier (old incorrect behavior for backward compat)
+                logger.debug(f"Volume tracking not available for {vessel_id}, using concentration fallback")
+                glucose_mM = float(glucose_mM * hardware_bias['volume_factor'])
+                glutamine_mM = float(glutamine_mM * hardware_bias['volume_factor'])
+
+            # Apply handling shock to viability (temperature + mechanical stress)
+            # Renamed from "temperature_factor" to be honest about what it represents
             vessel.viability = float(vessel.viability * hardware_bias['temperature_factor'])
 
         except (ImportError, Exception) as e:
             # Fallback: no hardware artifacts if import fails
-            pass
+            logger.debug(f"Hardware artifacts disabled for feeding on {vessel_id}: {e}")
 
         # Injection A+B: feed event updates nutrient concentrations in spine
         self.scheduler.submit_intent(
@@ -2261,18 +2281,29 @@ class BiologicalVirtualMachine(VirtualMachine):
         return np.clip(quality, 0.0, 1.0)
     
     def _load_raw_yaml_for_nested_params(self, params_file: Optional[str] = None):
-        """Load raw YAML data to access nested parameters."""
+        """
+        Load YAML for nested CellROX/segmentation parameters not yet in database.
+
+        NOTE: This is a TEMPORARY method. CellROX and segmentation parameters
+        are still in YAML and should be migrated to database.
+
+        Main simulation parameters (cell lines, compounds) now load from database only.
+        """
         if params_file is None:
-            # Use same default path resolution as _load_parameters()
             params_file = Path(__file__).parent.parent.parent.parent / "data" / "simulation_parameters.yaml"
 
         yaml_path = Path(params_file)
         if not yaml_path.exists():
-            logger.warning(f"YAML file not found: {params_file}")
+            logger.warning(f"YAML file not found for nested params: {params_file}")
             return
 
-        with open(yaml_path, 'r') as f:
-            self.raw_yaml_data = yaml.safe_load(f)
+        try:
+            with open(yaml_path, 'r') as f:
+                self.raw_yaml_data = yaml.safe_load(f)
+            logger.debug("Loaded YAML for nested CellROX/segmentation parameters")
+        except Exception as e:
+            logger.warning(f"Failed to load nested params from YAML: {e}")
+            self.raw_yaml_data = {}
 
     def _apply_well_failure(self, morph: Dict[str, float], well_position: str, plate_id: str = "P1", batch_id: str = "batch_default") -> Optional[Dict]:
         """

@@ -1,14 +1,29 @@
 # Simulation Parameters for BiologicalVirtualMachine
 #
-# ⚠️  DEPRECATED: Cell line growth parameters (doubling_time_h, etc.)
-# ⚠️  The database (data/cell_lines.db) is now the AUTHORITATIVE SOURCE
-# ⚠️  Query: SELECT * FROM cell_line_growth_parameters WHERE cell_line_id = 'A549'
+# ⚠️  ⚠️  ⚠️  DEPRECATED FOR MAIN PARAMETERS ⚠️  ⚠️  ⚠️
 #
-# This file is kept for backward compatibility with legacy code.
-# All values here should match the database. If there's a conflict,
-# the database value is correct and this file should be updated.
+# AS OF 2025-12-23:
+# - Cell line parameters (doubling_time_h, max_confluence, etc.) → LOAD FROM DATABASE ONLY
+# - Compound IC50 values → LOAD FROM DATABASE ONLY
+# - YAML fallback has been REMOVED from BiologicalVirtualMachine._load_parameters()
 #
-# Last synchronized with database: 2025-12-22
+# THIS FILE IS NOW ONLY USED FOR:
+# - CellROX parameters (nested under compounds) - TODO: migrate to database
+# - Segmentation parameters (nested under compounds) - TODO: migrate to database
+# - Cell Thalamus reads this for stress mapping
+#
+# THE DATABASE IS THE SINGLE SOURCE OF TRUTH:
+#   data/cell_lines.db
+#   - 10 cell lines with verified doubling times
+#   - 16 compounds with 84 IC50 values
+#   - Parameter verification tracking
+#
+# DO NOT EDIT CELL LINE OR IC50 VALUES IN THIS FILE!
+# They are no longer loaded by production code.
+# Update the database instead:
+#   sqlite3 data/cell_lines.db
+#
+# Last synchronized with database: 2025-12-23 (YAML NO LONGER USED FOR MAIN PARAMS)
 
 cell_lines:
   HEK293T:
