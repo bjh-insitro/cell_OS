@@ -1,0 +1,54 @@
+Add closed-loop QC mitigation cycles with epistemic rewards and strict integer cycle invariants
+
+Implements minimal closed-loop agent capability that responds to spatial QC flags
+with mitigation actions (REPLATE/REPLICATE/NONE) and computes epistemic rewards
+based on QC resolution.
+
+Key Features:
+- Agent detects spatial autocorrelation (Moran's I) and chooses mitigation action
+- REPLATE: Same conditions, new spatial layout (via layout_seed)
+- REPLICATE: 2× replicates for increased power
+- Reward tied to QC resolution (not accuracy)
+- Deterministic with seed (layout variance via layout_epoch)
+
+Cycle Semantics (CRITICAL):
+- Mitigation consumes a full integer cycle (not subcycle)
+- If cycle k is flagged, mitigation executes at cycle k+1
+- Science resumes at cycle k+2
+- No floats, no cycle reuse, strict monotonic progression
+- Maintains temporal provenance for beliefs system
+
+Implementation:
+- New module: src/cell_os/epistemic_agent/mitigation.py
+- Loop orchestration with pending mitigation state
+- Agent decision methods (choose_mitigation_action, create_mitigation_proposal)
+- World spatial layout variance (layout_seed support)
+- Mitigation events logged to {run_id}_mitigation.jsonl
+
+Guardrails:
+- TypeError in BeliefState.begin_cycle() (survives -O flag)
+- Assertion in loop (dev-time fast fail)
+- Temporal ordering assertion (flagged_cycle < mitigation_cycle)
+- Regression tests enforce integer cycle invariants
+
+Tests:
+- Unit tests: REPLICATE doubles wells, REPLATE changes layout
+- Integration tests: Cycle invariants, monotonicity, sequence
+- All tests pass
+
+Files Modified:
+- src/cell_os/epistemic_agent/loop.py
+- src/cell_os/epistemic_agent/beliefs/state.py
+- src/cell_os/epistemic_agent/agent/policy_rules.py
+- src/cell_os/epistemic_agent/schemas.py
+- src/cell_os/epistemic_agent/accountability.py
+- src/cell_os/epistemic_agent/world.py
+
+Files Created:
+- src/cell_os/epistemic_agent/mitigation.py
+- tests/integration/test_mitigation_cycle_invariants.py
+- scripts/demo_mitigation_closed_loop.py
+
+Breaking Changes: None
+
+Co-authored-by: Claude <noreply@anthropic.com>

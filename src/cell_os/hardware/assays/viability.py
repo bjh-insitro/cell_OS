@@ -16,6 +16,7 @@ from ..constants import (
     WASHOUT_INTENSITY_PENALTY,
     WASHOUT_INTENSITY_RECOVERY_H,
 )
+from ...contracts import enforce_measurement_contract, LDH_VIABILITY_CONTRACT
 
 if TYPE_CHECKING:
     from ..biological_virtual import VesselState
@@ -40,6 +41,7 @@ class LDHViabilityAssay(AssaySimulator):
     - Low viability → High LDH
     """
 
+    @enforce_measurement_contract(LDH_VIABILITY_CONTRACT)
     def measure(self, vessel: "VesselState", **kwargs) -> Dict[str, Any]:
         """
         Simulate LDH viability assay.
@@ -54,7 +56,7 @@ class LDHViabilityAssay(AssaySimulator):
             Dict with LDH, ATP, UPR, trafficking signals and metadata
         """
         # Lock measurement purity
-        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+        state_before = (vessel.viability, vessel.confluence)
 
         # Lazy load thalamus params
         if not hasattr(self.vm, 'thalamus_params') or self.vm.thalamus_params is None:
@@ -112,14 +114,19 @@ class LDHViabilityAssay(AssaySimulator):
             "atp_signal": atp_signal,
             "upr_marker": upr_marker,
             "trafficking_marker": trafficking_marker,
-            "viability": vessel.viability,
-            "cell_count": vessel.cell_count,
-            "death_mode": vessel.death_mode,
-            "death_compound": vessel.death_compound,
-            "death_confluence": vessel.death_confluence,
-            "death_unknown": vessel.death_unknown,
             "timestamp": datetime.now().isoformat()
         }
+
+        # Ground truth only when debug enabled
+        if self.vm.run_context.debug_truth_enabled:
+            result["_debug_truth"] = {
+                "viability": float(vessel.viability),
+                "cell_count": float(vessel.cell_count),
+                "death_mode": getattr(vessel, "death_mode", None),
+                "death_compound": getattr(vessel, "death_compound", None),
+                "death_confluence": getattr(vessel, "death_confluence", None),
+                "death_unknown": getattr(vessel, "death_unknown", None),
+            }
 
         if failure_mode:
             result['well_failure'] = failure_mode

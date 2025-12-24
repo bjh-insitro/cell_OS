@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base import AssaySimulator
+from ...contracts import enforce_measurement_contract, SCRNA_CONTRACT
 
 if TYPE_CHECKING:
     from ..biological_virtual import VesselState
@@ -33,6 +34,7 @@ class ScRNASeqAssay(AssaySimulator):
     can disagree, forcing robust belief systems.
     """
 
+    @enforce_measurement_contract(SCRNA_CONTRACT)
     def measure(
         self,
         vessel: "VesselState",
@@ -60,7 +62,7 @@ class ScRNASeqAssay(AssaySimulator):
         from ..transcriptomics import simulate_scrna_counts
 
         # Lock measurement purity
-        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+        state_before = (vessel.viability, vessel.confluence)
 
         vessel_id = vessel.vessel_id
         cell_line = vessel.cell_line

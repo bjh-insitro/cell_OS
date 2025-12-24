@@ -114,8 +114,24 @@ class EpistemicLoop:
 
             # v0.4.2: Begin cycle for evidence tracking
             # Covenant 7: Snapshot beliefs before cycle for mutation tracking
+            # GUARDRAIL: Ensure cycle is integer (prevent temporal provenance violations)
+            # NOTE: Do not rely on asserts in optimized mode (-O flag disables them).
+            # Primary enforcement is in BeliefState.begin_cycle() which raises TypeError.
+            assert isinstance(cycle, int), f"Cycle must be int, got {type(cycle)}: {cycle}"
+
             beliefs_before = self.agent.beliefs.snapshot()
             self.agent.beliefs.begin_cycle(cycle)
+
+            # MITIGATION: If pending from previous cycle, execute mitigation instead of science
+            # SEMANTIC CONTRACT:
+            # - Mitigation consumes a full integer cycle (not a subcycle)
+            # - If cycle k is flagged, mitigation executes at cycle k+1
+            # - Science resumes at cycle k+2
+            # - No floats, no cycle reuse, strict monotonic progression
+            if self._pending_mitigation is not None:
+                self._execute_mitigation_cycle(cycle, self._pending_mitigation, capabilities)
+                self._pending_mitigation = None
+                continue  # Mitigation consumed this integer cycle
 
             # Agent proposes experiment
             try:
@@ -670,3 +686,138 @@ class EpistemicLoop:
 
         with open(self.json_file, 'w') as f:
             json.dump(output, f, indent=2)
+
+    def _execute_mitigation_cycle(self, cycle: int, context, capabilities: dict):
+        """Execute mitigation using THIS integer cycle number.
+        
+        CRITICAL: Beliefs already called begin_cycle(cycle) in main loop.
+        This method ingests observation at the same cycle.
+        
+        Args:
+            cycle: Integer cycle number (mitigation consumes this cycle)
+            context: MitigationContext with action, morans_i_before, etc.
+            capabilities: World capabilities
+        """
+        # Assert temporal ordering
+        assert context.cycle_flagged < cycle, (
+            f"Mitigation cycle {cycle} must be after flagged cycle {context.cycle_flagged}"
+        )
+        
+        self._log(f"\n{'='*60}")
+        self._log(f"MITIGATION CYCLE {cycle}")
+        self._log(f"{'='*60}")
+        self._log(f"  Triggered by: Cycle {context.cycle_flagged} QC flag")
+        self._log(f"  Moran's I before: {context.morans_i_before:.3f}")
+        self._log(f"  Action: {context.action.value}")
+        self._log(f"  Rationale: {context.rationale}")
+        
+        # Create mitigation proposal
+        proposal = self.agent.create_mitigation_proposal(
+            action=context.action,
+            previous_proposal=context.previous_proposal,
+            capabilities=capabilities
+        )
+        
+        self._log(f"  Wells: {len(proposal.wells)}")
+        if proposal.layout_seed:
+            self._log(f"  Layout seed: {proposal.layout_seed}")
+        
+        # Execute
+        start_time = time.time()
+        raw_results = self.world.run_experiment(proposal)
+        observation = aggregate_observation(
+            proposal=proposal,
+            raw_results=raw_results,
+            budget_remaining=self.world.budget_remaining,
+            strategy="default_per_channel"
+        )
+        elapsed = time.time() - start_time
+        
+        self._log(f"  Execution time: {elapsed:.2f}s")
+        self._log(f"  Budget remaining: {self.world.budget_remaining} wells")
+        
+        # Extract QC after mitigation
+        from .mitigation import get_spatial_qc_summary, compute_mitigation_reward
+        flagged_after, morans_i_after, details_after = get_spatial_qc_summary(observation)
+        
+        self._log(f"  Moran's I after: {morans_i_after:.3f}")
+        self._log(f"  QC flagged: {flagged_after}")
+        
+        # Compute reward
+        cost = len(proposal.wells) / 96.0
+        reward = compute_mitigation_reward(
+            action=context.action,
+            morans_i_before=context.morans_i_before,
+            morans_i_after=morans_i_after,
+            flagged_before=True,
+            flagged_after=flagged_after,
+            cost=cost
+        )
+        
+        self._log(f"  Action cost: {cost:.2f} plates")
+        self._log(f"  REWARD: {reward:+.1f} points")
+        
+        # Update beliefs (cycle already begun in main loop)
+        self.agent.update_from_observation(observation)
+        
+        # End cycle and get events
+        events = self.agent.beliefs.end_cycle()
+        diagnostics = self.agent.last_diagnostics or []
+        
+        # Write ledgers
+        if events:
+            append_events_jsonl(self.evidence_file, events)
+        if diagnostics:
+            append_noise_diagnostics_jsonl(self.diagnostics_file, diagnostics)
+        
+        # Log mitigation event
+        self._write_mitigation_event({
+            "cycle": cycle,
+            "cycle_type": "mitigation",
+            "flagged_cycle": context.cycle_flagged,
+            "seed": self.seed,
+            "action": context.action.value,
+            "action_cost": cost,
+            "budget_plates_remaining": self.world.budget_remaining / 96.0,
+            "reward": reward,
+            "metrics": {
+                "morans_i_before": context.morans_i_before,
+                "morans_i_after": morans_i_after,
+                "delta_morans_i": context.morans_i_before - morans_i_after,
+                "qc_flagged_before": True,
+                "qc_flagged_after": flagged_after,
+            },
+            "rationale": context.rationale,
+            "decision_context": {
+                "before": context.qc_details_before,
+                "after": details_after
+            }
+        })
+        
+        # Add to history
+        self.history.append({
+            'cycle': cycle,
+            'proposal': {
+                'design_id': proposal.design_id,
+                'hypothesis': proposal.hypothesis,
+                'n_wells': len(proposal.wells),
+            },
+            'observation': {
+                'design_id': observation.design_id,
+                'n_conditions': len(observation.conditions),
+                'wells_spent': observation.wells_spent,
+                'budget_remaining': observation.budget_remaining,
+                'qc_flags': observation.qc_flags,
+            },
+            'elapsed_seconds': elapsed,
+            'is_mitigation': True,
+            'reward': reward,
+        })
+        
+        self._save_json()
+
+    def _write_mitigation_event(self, event: dict):
+        """Write mitigation event to JSONL."""
+        import json
+        with open(self.mitigation_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(event) + '\n')

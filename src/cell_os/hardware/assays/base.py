@@ -61,10 +61,10 @@ class AssaySimulator(ABC):
         Raises:
             AssertionError if state changed
         """
-        state_after = (vessel.cell_count, vessel.viability, vessel.confluence)
+        state_after = (vessel.viability, vessel.confluence)
         assert state_before == state_after, (
             f"MEASUREMENT PURITY VIOLATION: {self.__class__.__name__} mutated vessel state!\n"
-            f"  Before: count={state_before[0]:.2f}, via={state_before[1]:.6f}, conf={state_before[2]:.4f}\n"
-            f"  After:  count={state_after[0]:.2f}, via={state_after[1]:.6f}, conf={state_after[2]:.4f}\n"
+            f"  Before: via={state_before[0]:.6f}, conf={state_before[1]:.4f}\n"
+            f"  After:  via={state_after[0]:.6f}, conf={state_after[1]:.4f}\n"
             f"Measurement functions must be read-only. Observer independence violated."
         )

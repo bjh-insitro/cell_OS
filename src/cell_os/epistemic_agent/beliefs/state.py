@@ -199,7 +199,21 @@ class BeliefState:
         self._assay_gate_updater = AssayGateUpdater(self)
 
     def begin_cycle(self, cycle: int):
-        """Start a new cycle (clear event buffer)."""
+        """Start a new cycle (clear event buffer).
+
+        GUARDRAIL: Enforces strict integer cycle type (temporal provenance).
+        This is a TypeError (not assert) because temporal ordering is mission-critical
+        and must not be disabled by -O flag.
+
+        SEMANTIC CONTRACT:
+        - Cycles are integers (no floats, no subcycles)
+        - Cycles must be monotonically increasing
+        - Mitigation consumes a whole integer cycle
+        - Beliefs requires strict temporal ordering for causal attribution
+        """
+        if not isinstance(cycle, int):
+            raise TypeError(f"Cycle must be int, got {type(cycle)}: {cycle}")
+
         self._cycle = cycle
         self._events = []
     

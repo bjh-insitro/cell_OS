@@ -366,6 +366,47 @@ class VesselState:
 
         return base_width
 
+    @property
+    def capturable_cells(self) -> float:
+        """
+        Observable cells for scRNA (not ground truth count).
+
+        scRNA capture depends on handling losses and debris, not true count.
+        This prevents cross-modal coupling (counting vs sequencing).
+
+        Returns:
+            cell_count - cells_lost_to_handling - debris_cells, floored at 0
+        """
+        lost = float(getattr(self, "cells_lost_to_handling", 0.0) or 0.0)
+        lost += float(getattr(self, "debris_cells", 0.0) or 0.0)
+        return max(0.0, float(self.cell_count) - lost)
+
+    @property
+    def time_since_last_perturbation_h(self) -> float:
+        """
+        Duration since last compound perturbation (NOT compound identity).
+
+        This is observable temporal information without treatment identity.
+        Measurements can use this for timing-dependent effects.
+
+        Returns:
+            Hours since last compound was added, or inf if no compounds
+        """
+        if not self.compound_start_time:
+            return float("inf")
+        start_t = max(self.compound_start_time.values())
+        return max(0.0, float(self.last_update_time) - float(start_t))
+
+    @property
+    def time_since_last_feed_h(self) -> float:
+        """
+        Duration since last feed (observable temporal information).
+
+        Returns:
+            Hours since last feed, or time since seed if never fed
+        """
+        return max(0.0, float(self.last_update_time) - float(self.last_feed_time))
+
 
 class BiologicalVirtualMachine(VirtualMachine):
     """

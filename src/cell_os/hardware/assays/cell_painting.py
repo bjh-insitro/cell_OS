@@ -28,11 +28,23 @@ from ..constants import (
 )
 from ..injections.segmentation_failure import SegmentationFailureInjection
 from ..injections.base import InjectionContext
+from ...contracts import enforce_measurement_contract, CELL_PAINTING_CONTRACT
 
 if TYPE_CHECKING:
     from ..biological_virtual import VesselState
 
 logger = logging.getLogger(__name__)
+
+
+def _cell_count_proxy_from_confluence(confluence: float, nominal_full_well: float = 10000.0) -> float:
+    """
+    Confluence-based proxy for cell count (cross-modal independence).
+
+    Cell Painting cannot read true cell_count (that's a separate modality).
+    Use confluence as observable proxy for scaling/normalization.
+    """
+    c = 0.0 if confluence is None else float(confluence)
+    return max(0.0, min(1.0, c)) * nominal_full_well
 
 
 class CellPaintingAssay(AssaySimulator):
@@ -97,7 +109,8 @@ class CellPaintingAssay(AssaySimulator):
 
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
         initial_cells = float(getattr(vessel, 'initial_cells', 1.0))
-        adherent_cells = float(max(1.0, vessel.cell_count))
+        # Use confluence-based proxy (cross-modal independence)
+        adherent_cells = _cell_count_proxy_from_confluence(vessel.confluence)
         confluence = float(vessel.confluence)
 
         # Determine if edge well
@@ -161,6 +174,7 @@ class CellPaintingAssay(AssaySimulator):
             'adherent_cells': adherent_cells,
         }
 
+    @enforce_measurement_contract(CELL_PAINTING_CONTRACT)
     def measure(self, vessel: "VesselState", **kwargs) -> Dict[str, Any]:
         """
         Simulate Cell Painting morphology assay.
@@ -179,7 +193,7 @@ class CellPaintingAssay(AssaySimulator):
             Dict with channel values and metadata
         """
         # Lock measurement purity - capture state before measurement
-        state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+        state_before = (vessel.viability, vessel.confluence)
 
         # Layer C: Feature flag (off by default for backward compatibility)
         enable_structured = kwargs.get('enable_structured_artifacts', False)
@@ -223,11 +237,13 @@ class CellPaintingAssay(AssaySimulator):
         self._ensure_well_biology(vessel)
         morph = self._apply_well_biology_baseline(vessel, morph)
 
-        # Apply compound effects via stress axes
-        morph, has_microtubule_compound = self._apply_compound_effects(vessel, morph, baseline)
-
         # Apply latent stress state effects (morphology-first mechanisms)
+        # Treatment blinding: use only latent states, NOT compound identity
         morph = self._apply_latent_stress_effects(vessel, morph)
+
+        # Infer microtubule compound presence from transport dysfunction
+        # (Observable from morphology, not from treatment identity)
+        has_microtubule_compound = float(getattr(vessel, "transport_dysfunction", 0.0) or 0.0) > 0.3
 
         # Apply contact pressure bias (measurement confounder)
         morph = self._apply_contact_pressure_bias(vessel, morph)
@@ -264,8 +280,6 @@ class CellPaintingAssay(AssaySimulator):
             "morphology": morph,  # Backward compatibility
             "signal_intensity": 0.3 + 0.7 * vessel.viability,  # Viability factor
             "transport_dysfunction_score": transport_dysfunction_score,
-            "death_mode": vessel.death_mode,
-            "viability": vessel.viability,
             "timestamp": datetime.now().isoformat(),
             # Pipeline drift metadata for epistemic control
             "run_context_id": self.vm.run_context.context_id,
@@ -531,7 +545,8 @@ class CellPaintingAssay(AssaySimulator):
         from ...sim.imaging_artifacts_core import compute_segmentation_failure_probability_bump
 
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
-        adherent_cells = float(vessel.cell_count)
+        # Use confluence-based proxy (cross-modal independence)
+        adherent_cells = _cell_count_proxy_from_confluence(vessel.confluence)
 
         if debris_cells == 0 or adherent_cells <= 0:
             return 0.0  # No debris or no cells → no bump
@@ -901,14 +916,14 @@ class CellPaintingAssay(AssaySimulator):
         focus_offset_um = kwargs.get('focus_offset_um', 0.0)
         stain_scale = kwargs.get('stain_scale', 1.0)
 
-        # True cell count (before segmentation)
-        true_count = int(vessel.cell_count)
+        # Estimated cell count (before segmentation) - use confluence proxy
+        estimated_count = int(_cell_count_proxy_from_confluence(vessel.confluence))
 
         # Apply segmentation distortion
         observed_count, distorted_morphology, qc_metadata = self._segmentation_injection.hook_cell_painting_assay(
             ctx=ctx,
             state=state,
-            true_count=true_count,
+            true_count=estimated_count,
             true_morphology=result['morphology'].copy(),
             confluence=confluence,
             debris_level=debris_level,
@@ -946,7 +961,7 @@ class CellPaintingAssay(AssaySimulator):
 
         # Update result with segmentation distortions (use adjusted quality)
         updates = {
-            'cell_count_true': true_count,
+            'cell_count_estimated': estimated_count,
             'cell_count_observed': observed_count,
             'morphology': distorted_morphology,
             'morphology_measured': distorted_morphology,
@@ -980,28 +995,18 @@ class CellPaintingAssay(AssaySimulator):
         # ACTUAL debris from wash/fixation (preferred if available)
         if hasattr(vessel, 'debris_cells') and vessel.debris_cells > 0:
             # Normalize to [0, 1] range using initial cells as anchor
-            initial_cells = getattr(vessel, 'initial_cells', vessel.cell_count)
+            initial_cells = getattr(vessel, 'initial_cells', 10000.0)
             if initial_cells > 0:
                 return float(min(1.0, vessel.debris_cells / initial_cells))
 
-        # Fallback: estimate from viability (legacy behavior)
+        # Fallback: estimate from viability (observable)
+        # No death_mode branching - use only continuous observables
         debris_from_death = 1.0 - vessel.viability
 
-        # Debris from death mode (apoptotic bodies, necrotic debris)
-        death_mode_multiplier = 1.0
-        if vessel.death_mode == 'apoptosis':
-            death_mode_multiplier = 1.5  # Fragmented cells
-        elif vessel.death_mode == 'necrosis':
-            death_mode_multiplier = 2.0  # Ruptured cells
-        elif vessel.death_mode == 'silent':
-            death_mode_multiplier = 0.5  # Detached (not visible)
-
-        debris = debris_from_death * death_mode_multiplier
-
         # Clamp to [0, 1]
-        debris = np.clip(debris, 0.0, 1.0)
+        debris = float(np.clip(debris_from_death, 0.0, 1.0))
 
-        return float(debris)
+        return debris
 
     def _compute_cp_quality_metrics(self, vessel: "VesselState") -> Dict[str, Any]:
         """
@@ -1023,8 +1028,8 @@ class CellPaintingAssay(AssaySimulator):
         """
         eps = 1e-9
 
-        # Extract state
-        live_cells = float(vessel.cell_count)
+        # Extract state - use confluence proxy
+        live_cells = _cell_count_proxy_from_confluence(vessel.confluence)
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
         cells_lost = float(getattr(vessel, 'cells_lost_to_handling', 0.0))
 
