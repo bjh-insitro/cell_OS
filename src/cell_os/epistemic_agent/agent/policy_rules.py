@@ -709,11 +709,12 @@ class RuleBasedPolicy:
         action,
         previous_proposal,
         previous_observation_dict,
-        capabilities: dict
+        capabilities: dict,
+        remaining_wells: int
     ):
         """Create proposal based on epistemic action.
 
-        REPLICATE: Duplicate previous proposal exactly (double wells)
+        REPLICATE: Duplicate previous proposal exactly (double wells), shrink to fit budget
         EXPAND: Propose next science experiment (normal policy path with real observation)
 
         Args:
@@ -721,18 +722,35 @@ class RuleBasedPolicy:
             previous_proposal: Proposal from previous cycle
             previous_observation_dict: Observation dict from previous cycle (for EXPAND)
             capabilities: World capabilities
+            remaining_wells: Actual remaining well budget
 
         Returns:
-            New proposal for epistemic action
+            New proposal for epistemic action, budget-constrained
+
+        Raises:
+            RuntimeError: If budget insufficient for minimum viable proposal
         """
         from ..epistemic_actions import EpistemicAction
-        from ..accountability import make_replicate_proposal
+        from ..accountability import make_replicate_proposal, shrink_proposal_to_budget
 
         if action == EpistemicAction.REPLICATE:
             # Replicate previous proposal exactly
             # Increment consecutive replication counter
             self.consecutive_epistemic_replications += 1
-            return make_replicate_proposal(previous_proposal)
+
+            # Create replicate proposal (may exceed budget)
+            replicate_proposal = make_replicate_proposal(previous_proposal)
+
+            # Shrink to fit remaining budget
+            shrunk_proposal = shrink_proposal_to_budget(replicate_proposal, remaining_wells)
+
+            if shrunk_proposal is None:
+                raise RuntimeError(
+                    f"ABORT: Cannot create viable replicate proposal with {remaining_wells} wells remaining. "
+                    f"Minimum viable: 3 wells. Requested: {len(replicate_proposal.wells)} wells."
+                )
+
+            return shrunk_proposal
 
         elif action == EpistemicAction.EXPAND:
             # Reset consecutive replication counter
