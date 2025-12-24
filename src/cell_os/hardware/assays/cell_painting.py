@@ -54,6 +54,113 @@ class CellPaintingAssay(AssaySimulator):
     - Contact pressure bias (confluence confound)
     """
 
+    def _compute_structured_imaging_artifacts(
+        self,
+        vessel: "VesselState",
+        well_position: str,
+        experiment_seed: int,
+        enable_channel_weights: bool = True,
+        enable_segmentation_modes: bool = True,
+        enable_spatial_field: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Compute all structured imaging artifacts from vessel state (Layer A adapter).
+
+        This is the ONLY place that calls the three core functions.
+        Does NOT apply artifacts - just reports them.
+        Does NOT touch RNG - pure function.
+
+        Args:
+            vessel: Vessel state with debris tracking
+            well_position: Well ID like "A01" (for spatial field)
+            experiment_seed: Seed for this plate instance (for spatial field)
+            enable_channel_weights: Return per-channel background (default True)
+            enable_segmentation_modes: Return merge/split modes (default True)
+            enable_spatial_field: Return spatial pattern (default True)
+
+        Returns:
+            {
+                'background': {__global__: float} or {er: float, mito: float, ...},
+                'segmentation': {scalar_bump: float, modes: {...}},
+                'spatial': {field_strength: float, spatial_pattern: ndarray, ...} or None,
+                'debris_cells': float,
+                'initial_cells': float,
+                'adherent_cells': float,
+            }
+        """
+        from ...sim.imaging_artifacts_core import (
+            compute_background_multipliers_by_channel,
+            compute_segmentation_failure_modes,
+            compute_segmentation_failure_probability_bump,
+            compute_debris_field_modifiers,
+        )
+
+        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
+        initial_cells = float(getattr(vessel, 'initial_cells', 1.0))
+        adherent_cells = float(max(1.0, vessel.cell_count))
+        confluence = float(vessel.confluence)
+
+        # Determine if edge well
+        is_edge = self.vm._is_edge_well(well_position) if hasattr(self.vm, '_is_edge_well') else False
+
+        # Background multipliers
+        if enable_channel_weights:
+            # Per-channel weights (RNA/Actin more sensitive to background)
+            channel_weights = {
+                'rna': 1.5,
+                'actin': 1.3,
+                'nucleus': 1.0,
+                'er': 0.8,
+                'mito': 0.8
+            }
+            bg_mults = compute_background_multipliers_by_channel(
+                debris_cells=debris_cells,
+                initial_cells=initial_cells,
+                channel_weights=channel_weights
+            )
+        else:
+            # Scalar (backward compatible)
+            bg_mults = compute_background_multipliers_by_channel(
+                debris_cells=debris_cells,
+                initial_cells=initial_cells,
+                channel_weights=None
+            )
+
+        # Segmentation failures (always compute scalar for backward compat)
+        seg_scalar = compute_segmentation_failure_probability_bump(
+            debris_cells=debris_cells,
+            adherent_cell_count=adherent_cells
+        )
+
+        seg_result = {'scalar_bump': seg_scalar}
+        if enable_segmentation_modes:
+            seg_modes = compute_segmentation_failure_modes(
+                debris_cells=debris_cells,
+                adherent_cell_count=adherent_cells,
+                confluence=confluence
+            )
+            seg_result['modes'] = seg_modes
+
+        # Spatial field
+        spatial_result = None
+        if enable_spatial_field:
+            spatial_result = compute_debris_field_modifiers(
+                debris_cells=debris_cells,
+                initial_cells=initial_cells,
+                is_edge=is_edge,
+                well_id=well_position,
+                experiment_seed=experiment_seed
+            )
+
+        return {
+            'background': bg_mults,
+            'segmentation': seg_result,
+            'spatial': spatial_result,
+            'debris_cells': debris_cells,
+            'initial_cells': initial_cells,
+            'adherent_cells': adherent_cells,
+        }
+
     def measure(self, vessel: "VesselState", **kwargs) -> Dict[str, Any]:
         """
         Simulate Cell Painting morphology assay.
@@ -65,6 +172,7 @@ class CellPaintingAssay(AssaySimulator):
 
         Args:
             vessel: Vessel state to measure
+            enable_structured_artifacts: Enable structured artifacts (default False)
             **kwargs: Additional parameters (plate_id, day, operator for technical noise)
 
         Returns:
@@ -72,6 +180,21 @@ class CellPaintingAssay(AssaySimulator):
         """
         # Lock measurement purity - capture state before measurement
         state_before = (vessel.cell_count, vessel.viability, vessel.confluence)
+
+        # Layer C: Feature flag (off by default for backward compatibility)
+        enable_structured = kwargs.get('enable_structured_artifacts', False)
+
+        # Compute structured artifacts if enabled (Layer A adapter)
+        if enable_structured:
+            well_position = kwargs.get('well_position', 'A1')
+            experiment_seed = kwargs.get('experiment_seed', 0)
+            self._structured_artifacts = self._compute_structured_imaging_artifacts(
+                vessel=vessel,
+                well_position=well_position,
+                experiment_seed=experiment_seed
+            )
+        else:
+            self._structured_artifacts = None
 
         # Lazy load thalamus params
         if not hasattr(self.vm, 'thalamus_params') or self.vm.thalamus_params is None:
@@ -165,6 +288,13 @@ class CellPaintingAssay(AssaySimulator):
         segmentation_result = self._apply_segmentation_failure(vessel, result, **kwargs)
         if segmentation_result:
             result.update(segmentation_result)
+
+        # Compute Cell Painting quality degradation from debris/handling
+        cp_quality_metrics = self._compute_cp_quality_metrics(vessel)
+        result.update(cp_quality_metrics)
+
+        # Add imaging artifacts for audit trail (always present, None if flag off)
+        result['imaging_artifacts'] = self._structured_artifacts
 
         return result
 
@@ -306,7 +436,7 @@ class CellPaintingAssay(AssaySimulator):
     def _apply_measurement_layer(
         self, vessel: "VesselState", morph: Dict[str, float], **kwargs
     ) -> Dict[str, float]:
-        """Apply measurement layer: viability scaling, washout artifacts, noise, batch effects."""
+        """Apply measurement layer: viability scaling, washout artifacts, debris artifacts, noise, batch effects."""
         t_measure = self.vm.simulated_time
 
         # 1. Viability factor (biological signal attenuation)
@@ -315,17 +445,35 @@ class CellPaintingAssay(AssaySimulator):
         # 2. Washout multiplier (measurement artifact)
         washout_multiplier = self._compute_washout_multiplier(vessel, t_measure)
 
-        # Apply biology + measurement factors
-        for channel in morph:
-            morph[channel] *= viability_factor * washout_multiplier
+        # 3. Debris background fluorescence multiplier (Layer B: branch on flag)
+        if self._structured_artifacts is not None:
+            # Structured artifacts enabled (per-channel)
+            bg_mults = self._structured_artifacts['background']
+            if '__global__' in bg_mults:
+                # Scalar mode
+                debris_mult = bg_mults['__global__']
+                for channel in morph:
+                    morph[channel] *= viability_factor * washout_multiplier * debris_mult
+            else:
+                # Per-channel mode
+                for channel in morph:
+                    debris_mult = bg_mults.get(channel, 1.0)
+                    morph[channel] *= viability_factor * washout_multiplier * debris_mult
+        else:
+            # Phase 1 scalar artifacts (backward compatible)
+            debris_multiplier = self._compute_debris_background_multiplier(vessel)
+            for channel in morph:
+                morph[channel] *= viability_factor * washout_multiplier * debris_multiplier
 
-        # 3. Biological noise (dose-dependent)
+        # 4. Biological noise (dose-dependent)
         morph = self._add_biological_noise(vessel, morph)
 
-        # 4. Plating artifacts (early timepoint variance inflation)
+        # 5. Plating artifacts (early timepoint variance inflation)
         morph = self._add_plating_artifacts(vessel, morph, t_measure)
 
-        # 5. Technical noise (plate/day/operator/well/edge effects)
+        # 6. Technical noise (plate/day/operator/well/edge effects)
+        # NOTE: Debris also inflates noise variance via bg_noise_multiplier
+        # Applied in _add_technical_noise() by scaling CVs
         morph = self._add_technical_noise(vessel, morph, **kwargs)
 
         # 6. Pipeline drift (batch-dependent feature extraction)
@@ -343,6 +491,60 @@ class CellPaintingAssay(AssaySimulator):
         # else: skip pipeline_transform (no-op)
 
         return morph
+
+    def _compute_debris_background_multiplier(self, vessel: "VesselState") -> float:
+        """
+        Compute debris-driven background fluorescence multiplier.
+
+        Debris scatters light and increases autofluorescence, inflating
+        measurement signal. This is applied globally across all channels.
+
+        Returns multiplier in [1.0, 1.25] (1.0 = no debris, 1.25 = max inflation).
+        """
+        from ...sim.imaging_artifacts_core import compute_background_noise_multiplier
+
+        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
+        initial_cells = float(getattr(vessel, 'initial_cells', 1.0))
+
+        if debris_cells == 0 or initial_cells == 0:
+            return 1.0  # No debris or no baseline → no inflation
+
+        multiplier = compute_background_noise_multiplier(
+            debris_cells=debris_cells,
+            initial_cells=initial_cells,
+            base_multiplier=1.0,
+            debris_coefficient=0.05,  # 5% inflation per 100% debris
+            max_multiplier=1.25  # Cap at 25% inflation
+        )
+
+        return multiplier
+
+    def _compute_debris_segmentation_failure_bump(self, vessel: "VesselState") -> float:
+        """
+        Compute debris-driven segmentation failure probability bump.
+
+        Debris confounds segmentation algorithms, increasing merge/split/drop
+        errors. This is an ADDITIVE probability bump on top of base failure rate.
+
+        Returns probability bump in [0, 0.5] (0 = no debris, 0.5 = max bump).
+        """
+        from ...sim.imaging_artifacts_core import compute_segmentation_failure_probability_bump
+
+        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
+        adherent_cells = float(vessel.cell_count)
+
+        if debris_cells == 0 or adherent_cells <= 0:
+            return 0.0  # No debris or no cells → no bump
+
+        prob_bump = compute_segmentation_failure_probability_bump(
+            debris_cells=debris_cells,
+            adherent_cell_count=adherent_cells,
+            base_probability=0.0,
+            debris_coefficient=0.02,  # 2% failure bump per 100% debris ratio
+            max_probability=0.5  # Cap at 50% bump
+        )
+
+        return prob_bump
 
     def _compute_washout_multiplier(self, vessel: "VesselState", t_measure: float) -> float:
         """Compute washout artifact multiplier."""
@@ -715,13 +917,42 @@ class CellPaintingAssay(AssaySimulator):
             rng=rng
         )
 
-        # Update result with segmentation distortions
+        # ADDITIONAL debris-driven segmentation failure (Layer B: branch on flag)
+        # This is separate from the quality degradation in compute_segmentation_quality()
+        # Debris confounds segmentation algorithms beyond just reducing quality
+        seg_quality_original = qc_metadata['segmentation_quality']
+
+        if self._structured_artifacts is not None:
+            # Structured artifacts enabled (modes-based)
+            seg = self._structured_artifacts['segmentation']
+            if 'modes' in seg:
+                # Use merge/split modes
+                modes = seg['modes']
+                # TODO: Apply merge/split distortions to morphology (not implemented yet)
+                # For now, use combined probability as quality reduction
+                total_failure_prob = modes['p_merge'] + modes['p_split']
+                seg_quality_adjusted = seg_quality_original * (1.0 - total_failure_prob)
+                seg_fail_prob_bump = total_failure_prob
+            else:
+                # Fall back to scalar
+                seg_fail_prob_bump = seg['scalar_bump']
+                seg_quality_adjusted = seg_quality_original * (1.0 - seg_fail_prob_bump)
+        else:
+            # Phase 1 scalar artifacts (backward compatible)
+            seg_fail_prob_bump = self._compute_debris_segmentation_failure_bump(vessel)
+            seg_quality_adjusted = seg_quality_original * (1.0 - seg_fail_prob_bump)
+
+        seg_quality_adjusted = float(np.clip(seg_quality_adjusted, 0.0, 1.0))
+
+        # Update result with segmentation distortions (use adjusted quality)
         updates = {
             'cell_count_true': true_count,
             'cell_count_observed': observed_count,
             'morphology': distorted_morphology,
             'morphology_measured': distorted_morphology,
-            'segmentation_quality': qc_metadata['segmentation_quality'],
+            'segmentation_quality': seg_quality_adjusted,  # Adjusted for debris bump
+            'segmentation_quality_pre_debris': seg_quality_original,  # Original (for debugging)
+            'debris_seg_fail_bump': seg_fail_prob_bump,  # Debris contribution (for debugging)
             'segmentation_qc_passed': qc_metadata['qc_passed'],
             'segmentation_warnings': qc_metadata['qc_warnings'],
             'merge_count': qc_metadata['merge_count'],
@@ -740,12 +971,20 @@ class CellPaintingAssay(AssaySimulator):
         """
         Estimate debris level from vessel state.
 
+        Now uses ACTUAL debris tracking from wash/fixation physics.
         Debris increases with:
+        - Wash/fixation detachment (imperfect aspiration)
         - Low viability (dead cells)
         - High death rates
-        - Time since last washout
         """
-        # Base debris from viability
+        # ACTUAL debris from wash/fixation (preferred if available)
+        if hasattr(vessel, 'debris_cells') and vessel.debris_cells > 0:
+            # Normalize to [0, 1] range using initial cells as anchor
+            initial_cells = getattr(vessel, 'initial_cells', vessel.cell_count)
+            if initial_cells > 0:
+                return float(min(1.0, vessel.debris_cells / initial_cells))
+
+        # Fallback: estimate from viability (legacy behavior)
         debris_from_death = 1.0 - vessel.viability
 
         # Debris from death mode (apoptotic bodies, necrotic debris)
@@ -763,3 +1002,157 @@ class CellPaintingAssay(AssaySimulator):
         debris = np.clip(debris, 0.0, 1.0)
 
         return float(debris)
+
+    def _compute_cp_quality_metrics(self, vessel: "VesselState") -> Dict[str, Any]:
+        """
+        Compute Cell Painting quality degradation from debris and handling loss.
+
+        Stickology doesn't kill cells - it ruins your measurement.
+
+        Quality model:
+        1. debris_load: Fraction of debris relative to live cells
+        2. handling_loss: Fraction of cells lost to handling
+        3. cp_quality: Overall quality scalar (0..1, 1=perfect)
+        4. segmentation_yield: Fraction of cells successfully segmented
+        5. n_segmented: Effective segmented cell count
+        6. noise_mult: Noise inflation multiplier
+        7. artifact_level: Step-like failure indicator (0-3)
+
+        Returns:
+            Dict with quality metrics
+        """
+        eps = 1e-9
+
+        # Extract state
+        live_cells = float(vessel.cell_count)
+        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
+        cells_lost = float(getattr(vessel, 'cells_lost_to_handling', 0.0))
+
+        # Total cell material (live + debris + lost)
+        total_material = live_cells + debris_cells + cells_lost + eps
+
+        # 1. Debris load (debris as fraction of live + debris)
+        debris_load = debris_cells / (live_cells + debris_cells + eps)
+        debris_load = float(np.clip(debris_load, 0.0, 1.0))
+
+        # 2. Handling loss fraction
+        handling_loss = cells_lost / total_material
+        handling_loss = float(np.clip(handling_loss, 0.0, 1.0))
+
+        # 3. CP quality scalar (debris is worse than clean loss)
+        # Recommended: a=1.2 (debris), b=0.4 (handling loss)
+        a = 1.2
+        b = 0.4
+        cp_quality = 1.0 - a * debris_load - b * handling_loss
+        cp_quality = float(np.clip(cp_quality, 0.0, 1.0))
+
+        # 4. Segmentation yield (debris poisons segmentation)
+        # Base: c = 0.8 (segmentation drops 80% at 100% debris)
+        # Heterogeneity amplifies: clumpy debris is worse for segmentation
+        # - Low heterogeneity (0.2): 1.0× multiplier (diffuse debris)
+        # - High heterogeneity (0.5): 1.3× multiplier (clumpy debris, edge junk)
+
+        # Get adhesion heterogeneity (spatial clumpiness of debris)
+        adhesion_heterogeneity = 0.3  # Default
+        if hasattr(self.vm, 'thalamus_params') and self.vm.thalamus_params:
+            hardware_sens = self.vm.thalamus_params.get('hardware_sensitivity', {})
+            cell_params = hardware_sens.get(vessel.cell_line, hardware_sens.get('DEFAULT', {}))
+            adhesion_heterogeneity = cell_params.get('adhesion_heterogeneity', 0.3)
+
+        c_base = 0.8
+        clumpiness_amplifier = 1.0 + 0.6 * adhesion_heterogeneity  # [1.0×, 1.3×]
+        c_effective = c_base * clumpiness_amplifier
+
+        segmentation_yield = 1.0 - c_effective * debris_load
+        segmentation_yield = float(np.clip(segmentation_yield, 0.0, 1.0))
+
+        # 5. Effective segmented cell count
+        n_segmented = int(round(live_cells * segmentation_yield))
+
+        # 6. Noise multiplier (quality degradation inflates noise)
+        # d = 2.0: worst case triples noise (1 + 2*(1-0) = 3)
+        d = 2.0
+        noise_mult = 1.0 + d * (1.0 - cp_quality)
+        noise_mult = float(np.clip(noise_mult, 1.0, 3.0))
+
+        # 7. Artifact level (step-like failure, deterministic)
+        # Thresholds: 0.30, 0.50, 0.65
+        artifact_level = 0
+        if debris_load > 0.30:
+            artifact_level += 1
+        if debris_load > 0.50:
+            artifact_level += 1
+        if debris_load > 0.65:
+            artifact_level += 1
+
+        # Apply artifact penalty to cp_quality
+        artifact_penalty = 0.1 * artifact_level
+        cp_quality_final = float(np.clip(cp_quality - artifact_penalty, 0.0, 1.0))
+
+        # 8. Edge damage from aspiration/dispense (position-dependent artifacts)
+        # Aspiration at fixed position (9 o'clock) creates L-R asymmetry
+        # Shows up as: worse segmentation, more noise, amplified debris effects
+        edge_damage_score = float(getattr(vessel, 'edge_damage_score', 0.0))
+
+        # Initialize edge damage diagnostic variables
+        edge_damage_seg_penalty = 0.0
+        edge_damage_noise_mult = 1.0
+        edge_damage_debris_amp = 1.0
+
+        if edge_damage_score > 0:
+            try:
+                from src.cell_os.hardware.aspiration_effects import get_edge_damage_contribution_to_cp_quality
+
+                edge_effects = get_edge_damage_contribution_to_cp_quality(
+                    edge_damage_score=edge_damage_score,
+                    debris_load=debris_load
+                )
+
+                # Apply edge damage effects
+                # 1. Reduce segmentation yield (damaged cells fail segmentation)
+                seg_penalty = edge_effects['segmentation_yield_penalty']
+                edge_damage_seg_penalty = seg_penalty  # Track for diagnostics
+                segmentation_yield *= (1.0 - seg_penalty)
+                segmentation_yield = float(np.clip(segmentation_yield, 0.0, 1.0))
+                n_segmented = int(round(live_cells * segmentation_yield))
+
+                # 2. Amplify noise (irregular morphology)
+                edge_damage_noise_mult = edge_effects['noise_multiplier']  # Track for diagnostics
+                noise_mult *= edge_damage_noise_mult
+                noise_mult = float(np.clip(noise_mult, 1.0, 5.0))
+
+                # 3. Amplify debris interference (damaged cells + debris = especially bad)
+                debris_amplification = edge_effects['debris_amplification']
+                edge_damage_debris_amp = debris_amplification  # Track for diagnostics
+                effective_debris_load = debris_load * debris_amplification
+
+                # Re-compute cp_quality with amplified debris
+                cp_quality_edge = 1.0 - a * effective_debris_load - b * handling_loss
+                cp_quality_edge = float(np.clip(cp_quality_edge, 0.0, 1.0))
+                cp_quality_final = min(cp_quality_final, cp_quality_edge)  # Take worst
+
+            except (ImportError, Exception):
+                # Edge damage disabled (no aspiration_effects module)
+                pass
+
+        return {
+            'debris_load': debris_load,
+            'debris_numerator': debris_cells,  # For debugging: explicit numerator
+            'debris_denominator': live_cells + debris_cells,  # For debugging: explicit denominator
+            'handling_loss_fraction': handling_loss,
+            'adhesion_heterogeneity': adhesion_heterogeneity,  # Spatial clumpiness
+            'clumpiness_amplifier': clumpiness_amplifier,  # Segmentation penalty multiplier
+            'cp_quality': cp_quality_final,
+            'cp_quality_pre_artifact': cp_quality,  # Before artifact penalty
+            'segmentation_yield': segmentation_yield,
+            'n_segmented': n_segmented,
+            'n_cells_measured': n_segmented,  # Alias for backward compatibility
+            'noise_mult': noise_mult,
+            'artifact_level': artifact_level,
+            'artifact_penalty': artifact_penalty,
+            # Edge damage diagnostics (position-dependent artifacts)
+            'edge_damage_score': edge_damage_score,  # Cumulative damage (0-1, saturates)
+            'edge_damage_seg_penalty': edge_damage_seg_penalty,  # Segmentation penalty (0-0.15)
+            'edge_damage_noise_mult': edge_damage_noise_mult,  # Noise amplification (1.0-1.5×)
+            'edge_damage_debris_amp': edge_damage_debris_amp  # Debris amplification (1.0-1.3×)
+        }
