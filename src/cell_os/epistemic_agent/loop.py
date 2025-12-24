@@ -94,6 +94,9 @@ class EpistemicLoop:
         # Epistemic action state (pending epistemic action consumes next integer cycle)
         self._pending_epistemic_action = None
 
+        # Calibration state (pending calibration consumes next integer cycle)
+        self._pending_calibration = None
+
         # Episode summary (aggregated metrics for system-level closure)
         self.episode_summary: Optional[EpisodeSummary] = None
         self.episode_start_time: Optional[str] = None
@@ -182,6 +185,17 @@ class EpistemicLoop:
                 self._execute_epistemic_cycle(cycle, self._pending_epistemic_action, capabilities)
                 self._pending_epistemic_action = None
                 continue  # Epistemic action consumed this integer cycle
+
+            # CALIBRATION: If pending from previous cycle, execute calibration instead of science
+            # SEMANTIC CONTRACT (identical to mitigation and epistemic):
+            # - Calibration consumes a full integer cycle (not a subcycle)
+            # - If cycle k has high uncertainty or debt, calibration executes at cycle k+1
+            # - Science resumes at cycle k+2
+            # - No floats, no cycle reuse, strict monotonic progression
+            if self._pending_calibration is not None:
+                self._execute_calibration_cycle(cycle, self._pending_calibration, capabilities)
+                self._pending_calibration = None
+                continue  # Calibration consumed this integer cycle
 
             # Agent proposes experiment
             try:
@@ -620,6 +634,23 @@ class EpistemicLoop:
                         self._log(f"  Next cycle will execute {action.value} epistemic action")
                         self._log(f"  Rationale: {rationale}")
 
+                    elif action == EpistemicAction.CALIBRATE:
+                        # Calibration action chosen by EIV decision
+                        from .epistemic_actions import EpistemicContext as CalibrationContext
+
+                        self._pending_calibration = CalibrationContext(
+                            cycle_flagged=cycle,
+                            uncertainty_before=uncertainty_post_update,
+                            action=action,
+                            previous_proposal=proposal,
+                            previous_observation=observation_dict,
+                            rationale=rationale,
+                            consecutive_replications=0  # Not used for calibration
+                        )
+
+                        self._log(f"  Next cycle will execute CALIBRATION")
+                        self._log(f"  Rationale: {rationale}")
+
                 # Save incremental JSON
                 self._save_json()
 
@@ -991,15 +1022,22 @@ class EpistemicLoop:
         self._log(f"  Action: {context.action.value}")
         self._log(f"  Rationale: {context.rationale}")
 
-        # Create epistemic proposal
+        # Create epistemic proposal (budget-aware)
         proposal = self.agent.create_epistemic_proposal(
             action=context.action,
             previous_proposal=context.previous_proposal,
             previous_observation_dict=context.previous_observation,
-            capabilities=capabilities
+            capabilities=capabilities,
+            remaining_wells=self.world.budget_remaining
         )
 
         self._log(f"  Wells: {len(proposal.wells)}")
+
+        # Safety check: proposal must respect remaining budget
+        assert len(proposal.wells) <= self.world.budget_remaining, (
+            f"Proposal budget violation: {len(proposal.wells)} wells requested, "
+            f"{self.world.budget_remaining} remaining. This should never happen."
+        )
 
         # Execute
         start_time = time.time()
@@ -1343,3 +1381,167 @@ class EpistemicLoop:
             json.dump(summary.to_dict(), f, indent=2)
 
         self._log(f"\nEpisode summary written to: {summary_file.name}")
+
+    def _execute_calibration_cycle(self, cycle: int, context, capabilities: dict):
+        """
+        Execute calibration cycle using THIS integer cycle number.
+
+        CRITICAL: Beliefs already called begin_cycle(cycle) in main loop.
+        This method generates calibration proposal, executes it, and applies belief updates.
+
+        SEMANTIC CONTRACT (identical to mitigation and epistemic):
+        - Calibration consumes a full integer cycle (not a subcycle)
+        - If cycle k has high uncertainty/debt, calibration executes at cycle k+1
+        - Science resumes at cycle k+2
+        - No floats, no cycle reuse, strict monotonic progression
+
+        Args:
+            cycle: Integer cycle number (calibration consumes this cycle)
+            context: EpistemicContext with action=CALIBRATE, uncertainty_before, rationale
+            capabilities: World capabilities
+
+        Returns:
+            None (updates beliefs and history in place)
+        """
+        # Assert temporal ordering
+        assert context.cycle_flagged < cycle, (
+            f"Calibration cycle {cycle} must be after flagged cycle {context.cycle_flagged}"
+        )
+
+        self._log(f"\n{'='*60}")
+        self._log(f"CALIBRATION CYCLE {cycle}")
+        self._log(f"{'='*60}")
+        self._log(f"  Triggered by: Cycle {context.cycle_flagged} decision")
+        self._log(f"  Uncertainty before: {context.uncertainty_before:.3f}")
+        self._log(f"  Rationale: {context.rationale}")
+
+        # Snapshot state for logging
+        uncertainty_before = self.agent.beliefs.calibration_uncertainty
+        debt_before = self.agent.beliefs.health_debt
+
+        # Generate calibration proposal (controls only, identity-blind)
+        from .calibration_proposal import make_calibration_proposal, get_calibration_statistics
+        import random
+
+        # Create seeded RNG for deterministic proposal
+        rng = random.Random(self.seed * 1000 + cycle)
+
+        # Extract cell lines from capabilities
+        cell_lines = capabilities.get('cell_lines', ['A549', 'HepG2'])
+
+        try:
+            proposal = make_calibration_proposal(
+                reason=context.rationale,
+                cell_lines=cell_lines,
+                budget_remaining=self.world.budget_remaining,
+                rng=rng
+            )
+        except ValueError as e:
+            # Calibration unaffordable
+            self._log(f"  ⚠️  Calibration failed: {e}")
+            self._log(f"  Skipping calibration, resuming science")
+            return
+
+        # Log proposal statistics
+        stats = get_calibration_statistics(proposal)
+        self._log(f"  Wells: {stats['total_wells']}")
+        self._log(f"  Center fraction: {stats['center_fraction']:.1%}")
+        self._log(f"  Compounds: {stats['compounds']}")
+
+        # Execute proposal through normal experiment runner
+        start_time = time.time()
+        raw_results = self.world.run_experiment(proposal)
+
+        # Aggregate observation
+        observation = aggregate_observation(
+            proposal=proposal,
+            raw_results=raw_results,
+            budget_remaining=self.world.budget_remaining,
+            strategy="default_per_channel"
+        )
+        elapsed = time.time() - start_time
+
+        self._log(f"  Execution time: {elapsed:.2f}s")
+        self._log(f"  Budget remaining: {self.world.budget_remaining} wells")
+
+        # Extract calibration metrics from observation
+        from .calibration_metrics import (
+            extract_calibration_metrics_from_observation,
+            calibration_metrics_to_dict
+        )
+
+        metrics_obj = extract_calibration_metrics_from_observation(observation)
+        metrics_dict = calibration_metrics_to_dict(metrics_obj)
+
+        self._log(f"\n  Calibration metrics:")
+        self._log(f"    Cleanliness score: {metrics_obj.cleanliness_score:.2f}")
+        if metrics_obj.morans_i is not None:
+            self._log(f"    Moran's I: {metrics_obj.morans_i:.3f}")
+        if metrics_obj.nuclei_cv is not None:
+            self._log(f"    Nuclei CV: {metrics_obj.nuclei_cv:.3f}")
+        if metrics_obj.segmentation_quality is not None:
+            self._log(f"    Segmentation quality: {metrics_obj.segmentation_quality:.3f}")
+
+        # Apply calibration result to beliefs
+        self.agent.beliefs.apply_calibration_result(metrics_dict, cycle=cycle)
+
+        # Snapshot state after
+        uncertainty_after = self.agent.beliefs.calibration_uncertainty
+        debt_after = self.agent.beliefs.health_debt
+
+        self._log(f"\n  Belief updates:")
+        self._log(f"    Uncertainty: {uncertainty_before:.3f} → {uncertainty_after:.3f} (Δ={uncertainty_before - uncertainty_after:+.3f})")
+        self._log(f"    Health debt: {debt_before:.2f} → {debt_after:.2f} (Δ={debt_before - debt_after:+.2f})")
+
+        # End cycle and get events
+        events = self.agent.beliefs.end_cycle()
+        diagnostics = self.agent.last_diagnostics or []
+
+        # Write ledgers
+        if events:
+            append_events_jsonl(self.evidence_file, events)
+        if diagnostics:
+            append_noise_diagnostics_jsonl(self.diagnostics_file, diagnostics)
+
+        # Log calibration event (for EpisodeSummary aggregation)
+        calibration_event = {
+            "cycle": cycle,
+            "cycle_type": "calibration",
+            "flagged_cycle": context.cycle_flagged,
+            "seed": self.seed,
+            "reason": context.rationale,
+            "uncertainty_before": uncertainty_before,
+            "uncertainty_after": uncertainty_after,
+            "debt_before": debt_before,
+            "debt_after": debt_after,
+            "metrics": metrics_dict,
+            "budget_plates_remaining": self.world.budget_remaining / 96.0,
+        }
+
+        # Write to calibration log (new file)
+        calibration_file = self.log_dir / f"{self.run_id}_calibration.jsonl"
+        with open(calibration_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(calibration_event) + '\n')
+
+        # Add to history
+        self.history.append({
+            'cycle': cycle,
+            'proposal': {
+                'design_id': proposal.design_id,
+                'hypothesis': proposal.hypothesis,
+                'n_wells': len(proposal.wells),
+            },
+            'observation': {
+                'design_id': observation.design_id,
+                'n_conditions': len(observation.conditions),
+                'wells_spent': observation.wells_spent,
+                'budget_remaining': observation.budget_remaining,
+                'qc_flags': observation.qc_flags,
+            },
+            'elapsed_seconds': elapsed,
+            'is_calibration': True,
+            'calibration_metrics': metrics_dict,
+            'uncertainty_reduction': uncertainty_before - uncertainty_after,
+        })
+
+        self._save_json()
