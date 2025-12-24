@@ -10,9 +10,29 @@ If this test fails, someone broke the temporal provenance invariant.
 import pytest
 import json
 from pathlib import Path
+from unittest.mock import patch
 from cell_os.epistemic_agent.loop import EpistemicLoop
 from cell_os.epistemic_agent.accountability import AccountabilityConfig
-from cell_os.adversarial import AdversarialPlateConfig, AdversarySpec
+from cell_os.epistemic_agent.observation_aggregator import aggregate_observation
+
+
+def force_spatial_qc_flag(observation):
+    """Inject spatial QC flag into observation (deterministic for testing).
+
+    Real spatial QC detection is probabilistic with partial plates.
+    For cycle semantics tests, we need deterministic QC triggering.
+    """
+    if "spatial_autocorrelation" not in observation.qc_struct:
+        observation.qc_struct["spatial_autocorrelation"] = {}
+
+    observation.qc_struct["spatial_autocorrelation"]["morphology.nucleus"] = {
+        "morans_i": 0.6,  # Strong spatial autocorrelation
+        "z_score": 3.5,
+        "p_value": 0.001,
+        "flagged": True,
+        "n_wells": 96
+    }
+    return observation
 
 
 def test_mitigation_uses_integer_cycles():
@@ -24,45 +44,32 @@ def test_mitigation_uses_integer_cycles():
     3. Mitigation consumes cycle k+1 after flag at cycle k
     """
 
-    # Setup: strong spatial gradient to force QC flag
-    adversarial_config = AdversarialPlateConfig(
-        enabled=True,
-        adversaries=[
-            AdversarySpec("SpatialGradient", {
-                "target_channel": "morphology.nucleus",
-                "axis": "both",
-                "strength": 0.7,  # Very strong to ensure flag
-                "direction": 1
-            }),
-        ],
-        strength=1.0
-    )
+    # Patch aggregate_observation to inject QC flags
+    original_aggregate = aggregate_observation
 
-    loop = EpistemicLoop(
-        budget=96 * 3,
-        max_cycles=5,
-        log_dir=Path("results/test_cycle_invariants"),
-        seed=999,
-        strict_quality=False,
-        strict_provenance=False  # Don't let other checks interfere
-    )
+    def patched_aggregate(*args, **kwargs):
+        obs = original_aggregate(*args, **kwargs)
+        return force_spatial_qc_flag(obs)
 
-    from cell_os.epistemic_agent.world import ExperimentalWorld
-    loop.world = ExperimentalWorld(
-        budget_wells=96 * 3,
-        seed=999,
-        adversarial_plate_config=adversarial_config
-    )
+    with patch('cell_os.epistemic_agent.loop.aggregate_observation', patched_aggregate):
+        loop = EpistemicLoop(
+            budget=96 * 3,
+            max_cycles=5,
+            log_dir=Path("results/test_cycle_invariants"),
+            seed=999,
+            strict_quality=False,
+            strict_provenance=False
+        )
 
-    # Enable mitigation
-    loop.agent.accountability = AccountabilityConfig(
-        enabled=True,
-        spatial_key="morphology.nucleus",
-        penalty=8.0
-    )
+        # Enable mitigation
+        loop.agent.accountability = AccountabilityConfig(
+            enabled=True,
+            spatial_key="morphology.nucleus",
+            penalty=8.0
+        )
 
-    # Run loop
-    loop.run()
+        # Run loop
+        loop.run()
 
     # Parse mitigation log
     mitigation_events = []
@@ -103,7 +110,6 @@ def test_mitigation_uses_integer_cycles():
             )
 
     # INVARIANT 4: No float contamination in logs
-    # Check raw JSONL doesn't have "1.5" or similar
     with open(loop.mitigation_file, 'r') as f:
         raw_text = f.read()
         # Check for common float patterns that would indicate subcycles
@@ -123,94 +129,69 @@ def test_beliefs_see_monotonic_integers():
     and that mitigation doesn't violate temporal ordering.
     """
 
-    # Minimal loop with forced QC flag
-    adversarial_config = AdversarialPlateConfig(
-        enabled=True,
-        adversaries=[
-            AdversarySpec("SpatialGradient", {
-                "target_channel": "morphology.nucleus",
-                "axis": "both",
-                "strength": 0.7,
-                "direction": 1
-            }),
-        ],
-        strength=1.0
-    )
+    # Patch aggregate_observation to inject QC flags
+    original_aggregate = aggregate_observation
 
-    loop = EpistemicLoop(
-        budget=96 * 3,
-        max_cycles=3,
-        log_dir=Path("results/test_beliefs_cycles"),
-        seed=888,
-        strict_quality=False,
-        strict_provenance=False
-    )
+    def patched_aggregate(*args, **kwargs):
+        obs = original_aggregate(*args, **kwargs)
+        return force_spatial_qc_flag(obs)
 
-    from cell_os.epistemic_agent.world import ExperimentalWorld
-    loop.world = ExperimentalWorld(
-        budget_wells=96 * 3,
-        seed=888,
-        adversarial_plate_config=adversarial_config
-    )
+    with patch('cell_os.epistemic_agent.loop.aggregate_observation', patched_aggregate):
+        loop = EpistemicLoop(
+            budget=96 * 3,
+            max_cycles=3,
+            log_dir=Path("results/test_beliefs_cycles"),
+            seed=888,
+            strict_quality=False,
+            strict_provenance=False
+        )
 
-    loop.agent.accountability = AccountabilityConfig(
-        enabled=True,
-        spatial_key="morphology.nucleus",
-        penalty=8.0
-    )
+        loop.agent.accountability = AccountabilityConfig(
+            enabled=True,
+            spatial_key="morphology.nucleus",
+            penalty=8.0
+        )
 
-    # Run loop (assertions in begin_cycle() will catch violations)
-    try:
-        loop.run()
-    except AssertionError as e:
-        if "Cycle must be int" in str(e):
-            pytest.fail(f"Float cycle passed to beliefs: {e}")
-        raise
+        # Run loop (TypeError in begin_cycle() will catch violations)
+        try:
+            loop.run()
+        except TypeError as e:
+            if "Cycle must be int" in str(e):
+                pytest.fail(f"Float cycle passed to beliefs: {e}")
+            raise
 
     # If we get here, all cycles were integers
     print("\n✓ All cycles passed to beliefs were integers")
-    print("✓ No assertion errors from begin_cycle() guardrail")
+    print("✓ No TypeError from begin_cycle() guardrail")
 
 
 def test_mitigation_cycle_sequence():
     """Test specific cycle sequence: science(k) → mitigation(k+1) → science(k+2)."""
 
-    adversarial_config = AdversarialPlateConfig(
-        enabled=True,
-        adversaries=[
-            AdversarySpec("SpatialGradient", {
-                "target_channel": "morphology.nucleus",
-                "axis": "both",
-                "strength": 0.7,
-                "direction": 1
-            }),
-        ],
-        strength=1.0
-    )
+    # Patch aggregate_observation to inject QC flags
+    original_aggregate = aggregate_observation
 
-    loop = EpistemicLoop(
-        budget=96 * 3,
-        max_cycles=4,
-        log_dir=Path("results/test_cycle_sequence"),
-        seed=777,
-        strict_quality=False,
-        strict_provenance=False
-    )
+    def patched_aggregate(*args, **kwargs):
+        obs = original_aggregate(*args, **kwargs)
+        return force_spatial_qc_flag(obs)
 
-    from cell_os.epistemic_agent.world import ExperimentalWorld
-    loop.world = ExperimentalWorld(
-        budget_wells=96 * 3,
-        seed=777,
-        adversarial_plate_config=adversarial_config
-    )
+    with patch('cell_os.epistemic_agent.loop.aggregate_observation', patched_aggregate):
+        loop = EpistemicLoop(
+            budget=96 * 3,
+            max_cycles=4,
+            log_dir=Path("results/test_cycle_sequence"),
+            seed=777,
+            strict_quality=False,
+            strict_provenance=False
+        )
 
-    loop.agent.accountability = AccountabilityConfig(
-        enabled=True,
-        spatial_key="morphology.nucleus",
-        penalty=8.0
-    )
+        loop.agent.accountability = AccountabilityConfig(
+            enabled=True,
+            spatial_key="morphology.nucleus",
+            penalty=8.0
+        )
 
-    loop.run()
+        loop.run()
 
     # Check history for cycle sequence
     assert len(loop.history) >= 3, "Need at least 3 cycles for test"
@@ -246,6 +227,8 @@ def test_mitigation_cycle_sequence():
         print(f"  Mitigation: {mitigation_cycle}")
         if next_cycle:
             print(f"  Science: {next_cycle}")
+    else:
+        pytest.fail("No mitigation cycle found despite forcing QC flags")
 
 
 if __name__ == "__main__":

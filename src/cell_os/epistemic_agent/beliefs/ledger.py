@@ -285,3 +285,60 @@ def append_noise_diagnostics_jsonl(path, diagnostics: List[NoiseDiagnosticEvent]
     with open(path, "a", encoding="utf-8") as f:
         for diag in diagnostics:
             f.write(diag.to_json_line() + "\n")
+
+
+@dataclass(frozen=True)
+class ContractReport:
+    """Per-assay contract enforcement report (forensic trail).
+
+    Emitted after each measurement to track:
+    - What the assay read (top N paths)
+    - Whether enforcement is working (violations, decorator presence)
+    - Debug truth status
+    - Timing overhead
+
+    This provides a paper trail: if measurement behavior drifts, you'll
+    see it immediately without rerunning unit tests.
+
+    Schema envelope (Agent C Phase 1):
+    - event_type: "contract_report" for routing
+    - schema_version: integer version for compatibility
+    """
+    cycle: int  # Cycle number
+    assay_name: str  # "CellPaintingAssay", "LDHViabilityAssay", "scRNASeqAssay"
+    mode: str  # "strict", "warn", "record"
+
+    # Read patterns (top N most accessed paths)
+    reads_top: Dict[str, int]  # path -> count
+
+    # Violations (should be empty in production)
+    violations: List[str]
+
+    # Writes detected (should be empty - measurements are read-only)
+    writes_detected: List[str]
+
+    # Contract integrity
+    decorator_present: bool  # Was @enforce_measurement_contract applied?
+    debug_truth_enabled: bool  # Was debug truth mode enabled?
+
+    # Performance overhead
+    timing_ms: Optional[float] = None  # Contract enforcement overhead
+
+    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dict with schema envelope."""
+        d = asdict(self)
+        # Inject envelope fields for downstream parsing
+        d["event_type"] = "contract_report"
+        d["schema_version"] = SCHEMA_VERSION
+        return d
+
+    def to_json_line(self) -> str:
+        """Serialize as single JSON line for JSONL."""
+        return _json_dumps_safe(self.to_dict())
+
+
+def append_contract_reports_jsonl(path, reports: List[ContractReport]):
+    """Append contract reports to JSONL file."""
+    with open(path, "a", encoding="utf-8") as f:
+        for report in reports:
+            f.write(report.to_json_line() + "\n")
