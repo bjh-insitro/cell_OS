@@ -26,6 +26,14 @@ from .exceptions import InvalidDesignError
 from .controller_integration import EpistemicIntegration
 from .design_quality import DesignQualityChecker
 from .observation_aggregator import aggregate_observation
+from .episode_summary import (
+    EpisodeSummary,
+    BudgetSpending,
+    EpistemicLearning,
+    HealthSacrifices,
+    MitigationEvent,
+    InstrumentHealthTimeSeries,
+)
 
 
 class EpistemicLoop:
@@ -63,6 +71,7 @@ class EpistemicLoop:
         self.diagnostics_file = self.log_dir / f"{self.run_id}_diagnostics.jsonl"
         self.refusals_file = self.log_dir / f"{self.run_id}_refusals.jsonl"
         self.mitigation_file = self.log_dir / f"{self.run_id}_mitigation.jsonl"
+        self.epistemic_file = self.log_dir / f"{self.run_id}_epistemic.jsonl"
 
         # Initialize world and agent
         self.world = ExperimentalWorld(budget_wells=budget, seed=seed)
@@ -82,9 +91,30 @@ class EpistemicLoop:
         self._pending_mitigation = None
         self._last_proposal = None
 
+        # Epistemic action state (pending epistemic action consumes next integer cycle)
+        self._pending_epistemic_action = None
+
+        # Episode summary (aggregated metrics for system-level closure)
+        self.episode_summary: Optional[EpisodeSummary] = None
+        self.episode_start_time: Optional[str] = None
+
     def run(self):
         """Run the full experiment loop."""
         self._log_header()
+
+        # Initialize episode summary (system-level closure)
+        self.episode_start_time = datetime.now().isoformat()
+        self.episode_summary = EpisodeSummary(
+            run_id=self.run_id,
+            seed=self.seed,
+            cycles_completed=0,
+            start_time=self.episode_start_time,
+            end_time="",  # Set at episode end
+        )
+
+        # Track initial calibration state for learning metrics
+        initial_calibration_entropy = self.agent.beliefs.calibration_entropy_bits
+        initial_noise_rel_width = self.agent.beliefs.noise_rel_width
 
         # Write contamination warning if enforcement is disabled
         if self.epistemic.controller.is_contaminated:
@@ -127,6 +157,10 @@ class EpistemicLoop:
             beliefs_before = self.agent.beliefs.snapshot()
             self.agent.beliefs.begin_cycle(cycle)
 
+            # EPISTEMIC ACTION: Snapshot uncertainty at START of cycle (before belief update)
+            # This is the "before" measurement for epistemic reward calculation
+            uncertainty_at_cycle_start = self.agent.beliefs.estimate_calibration_uncertainty()
+
             # MITIGATION: If pending from previous cycle, execute mitigation instead of science
             # SEMANTIC CONTRACT:
             # - Mitigation consumes a full integer cycle (not a subcycle)
@@ -137,6 +171,17 @@ class EpistemicLoop:
                 self._execute_mitigation_cycle(cycle, self._pending_mitigation, capabilities)
                 self._pending_mitigation = None
                 continue  # Mitigation consumed this integer cycle
+
+            # EPISTEMIC ACTION: If pending from previous cycle, execute epistemic action instead of science
+            # SEMANTIC CONTRACT (identical to mitigation):
+            # - Epistemic action consumes a full integer cycle (not a subcycle)
+            # - If cycle k has high uncertainty, epistemic action executes at cycle k+1
+            # - Science resumes at cycle k+2
+            # - No floats, no cycle reuse, strict monotonic progression
+            if self._pending_epistemic_action is not None:
+                self._execute_epistemic_cycle(cycle, self._pending_epistemic_action, capabilities)
+                self._pending_epistemic_action = None
+                continue  # Epistemic action consumed this integer cycle
 
             # Agent proposes experiment
             try:
@@ -403,6 +448,10 @@ class EpistemicLoop:
                 # Agent updates beliefs (normal pathway)
                 self.agent.update_from_observation(observation)
 
+                # EPISTEMIC ACTION: Snapshot uncertainty AFTER belief update
+                # This is the post-update uncertainty for epistemic action decision
+                uncertainty_post_update = self.agent.beliefs.estimate_calibration_uncertainty()
+
                 # v0.4.2: Extract evidence and diagnostics from beliefs
                 events = self.agent.beliefs.end_cycle()
                 diagnostics = self.agent.last_diagnostics or []
@@ -533,6 +582,44 @@ class EpistemicLoop:
                                 qc_details_before=details
                             )
 
+                # EPISTEMIC ACTION: Check calibration uncertainty and decide next action
+                # This generalizes mitigation from "QC flag → act" to "uncertainty state → decide"
+                epistemic_enabled = True  # Could be config flag later
+                if epistemic_enabled:
+                    from .epistemic_actions import EpistemicAction, EpistemicContext
+
+                    budget_plates = self.world.budget_remaining / 96.0
+
+                    # Convert observation to dict for EXPAND determinism
+                    from dataclasses import asdict
+                    observation_dict = asdict(observation)
+
+                    action, rationale = self.agent.choose_epistemic_action(
+                        observation=observation,
+                        budget_plates_remaining=budget_plates,
+                        previous_proposal=proposal,
+                        previous_observation_dict=observation_dict
+                    )
+
+                    self._log(f"\n  📊 Epistemic action check:")
+                    self._log(f"     Uncertainty: {uncertainty_post_update:.2f} bits")
+                    self._log(f"     Decision: {action.value}")
+
+                    # Set pending if action requires execution
+                    if action in {EpistemicAction.REPLICATE, EpistemicAction.EXPAND}:
+                        self._pending_epistemic_action = EpistemicContext(
+                            cycle_flagged=cycle,
+                            uncertainty_before=uncertainty_post_update,  # Store post-update uncertainty that triggered decision
+                            action=action,
+                            previous_proposal=proposal,
+                            previous_observation=observation_dict,
+                            rationale=rationale,
+                            consecutive_replications=self.agent.consecutive_epistemic_replications
+                        )
+
+                        self._log(f"  Next cycle will execute {action.value} epistemic action")
+                        self._log(f"  Rationale: {rationale}")
+
                 # Save incremental JSON
                 self._save_json()
 
@@ -540,6 +627,9 @@ class EpistemicLoop:
                 self._log(f"\n❌ ERROR: {e}")
                 self.abort_reason = f"Exception: {e}"
                 break
+
+        # Finalize episode summary (system-level closure)
+        self._finalize_episode_summary(initial_calibration_entropy, initial_noise_rel_width)
 
         self._log_summary()
 
@@ -662,6 +752,10 @@ class EpistemicLoop:
         self._log(f"[{'✓' if beliefs.edge_effect_confident else ' '}] Edge effects: Detected with confidence")
         self._log(f"[{'✓' if len(beliefs.tested_compounds) >= 2 else ' '}] Exploration: Tested ≥2 compounds")
         self._log(f"[{'✓' if self.world.budget_remaining > 0 else ' '}] Efficiency: Budget remaining")
+
+        # Episode summary (system-level closure)
+        if self.episode_summary is not None:
+            self._log("\n" + self.episode_summary.summary_text())
 
         self._log(f"\nFull log: {self.log_file}")
         self._log(f"JSON data: {self.json_file}")
@@ -866,3 +960,386 @@ class EpistemicLoop:
         import json
         with open(self.mitigation_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(event) + '\n')
+
+    def _execute_epistemic_cycle(self, cycle: int, context, capabilities: dict):
+        """Execute epistemic action using THIS integer cycle number.
+
+        CRITICAL: Beliefs already called begin_cycle(cycle) in main loop.
+        This method ingests observation at the same cycle.
+
+        Semantic contract identical to mitigation:
+        - Epistemic action consumes a full integer cycle (not a subcycle)
+        - If cycle k has high uncertainty, action executes at cycle k+1
+        - Science resumes at cycle k+2
+        - No floats, no cycle reuse, strict monotonic progression
+
+        Args:
+            cycle: Integer cycle number (epistemic action consumes this cycle)
+            context: EpistemicContext with action, uncertainty_before, etc.
+            capabilities: World capabilities
+        """
+        # Assert temporal ordering
+        assert context.cycle_flagged < cycle, (
+            f"Epistemic action cycle {cycle} must be after flagged cycle {context.cycle_flagged}"
+        )
+
+        self._log(f"\n{'='*60}")
+        self._log(f"EPISTEMIC ACTION CYCLE {cycle}")
+        self._log(f"{'='*60}")
+        self._log(f"  Triggered by: Cycle {context.cycle_flagged} uncertainty check")
+        self._log(f"  Uncertainty before: {context.uncertainty_before:.2f} bits")
+        self._log(f"  Action: {context.action.value}")
+        self._log(f"  Rationale: {context.rationale}")
+
+        # Create epistemic proposal
+        proposal = self.agent.create_epistemic_proposal(
+            action=context.action,
+            previous_proposal=context.previous_proposal,
+            previous_observation_dict=context.previous_observation,
+            capabilities=capabilities
+        )
+
+        self._log(f"  Wells: {len(proposal.wells)}")
+
+        # Execute
+        start_time = time.time()
+        raw_results = self.world.run_experiment(proposal)
+        observation = aggregate_observation(
+            proposal=proposal,
+            raw_results=raw_results,
+            budget_remaining=self.world.budget_remaining,
+            strategy="default_per_channel"
+        )
+        elapsed = time.time() - start_time
+
+        self._log(f"  Execution time: {elapsed:.2f}s")
+        self._log(f"  Budget remaining: {self.world.budget_remaining} wells")
+
+        # Update beliefs from epistemic observation (cycle already begun in main loop)
+        self.agent.update_from_observation(observation)
+
+        # Measure uncertainty AFTER epistemic action (post-belief-update)
+        # This is u_after for reward calculation
+        uncertainty_after = self.agent.beliefs.estimate_calibration_uncertainty()
+
+        self._log(f"  Uncertainty after: {uncertainty_after:.2f} bits")
+        self._log(f"  Delta: {context.uncertainty_before - uncertainty_after:+.2f} bits")
+
+        # Compute epistemic reward
+        from .epistemic_actions import compute_epistemic_reward
+        cost_wells = len(proposal.wells)
+        reward = compute_epistemic_reward(
+            action=context.action,
+            uncertainty_before=context.uncertainty_before,
+            uncertainty_after=uncertainty_after,
+            cost_wells=cost_wells
+        )
+
+        cost_plates = cost_wells / 96.0
+        self._log(f"  Action cost: {cost_plates:.2f} plates")
+        self._log(f"  EPISTEMIC REWARD: {reward:+.2f} bits/plate")
+
+        # End cycle and get events
+        events = self.agent.beliefs.end_cycle()
+        diagnostics = self.agent.last_diagnostics or []
+
+        # Write ledgers
+        if events:
+            append_events_jsonl(self.evidence_file, events)
+        if diagnostics:
+            append_noise_diagnostics_jsonl(self.diagnostics_file, diagnostics)
+
+        # Detect if cap forced this action
+        cap_forced = (
+            context.action.value == 'expand' and
+            "Max consecutive replications" in context.rationale
+        )
+
+        # Log epistemic event (structured for eye-debugging)
+        self._write_epistemic_event({
+            "cycle": cycle,
+            "cycle_type": "epistemic_action",
+            "flagged_cycle": context.cycle_flagged,
+            "seed": self.seed,
+            "action": context.action.value,
+            "cost_wells": cost_wells,
+            "cost_plates": cost_plates,
+            "budget_plates_remaining": self.world.budget_remaining / 96.0,
+            "u_before": context.uncertainty_before,
+            "u_after": uncertainty_after,
+            "delta": context.uncertainty_before - uncertainty_after,
+            "reward": reward,
+            "cap_forced": cap_forced,
+            "consecutive_replications": context.consecutive_replications,
+            "rationale": context.rationale,
+            # Full metrics for backward compatibility
+            "metrics": {
+                "uncertainty_before": context.uncertainty_before,
+                "uncertainty_after": uncertainty_after,
+                "delta_uncertainty": context.uncertainty_before - uncertainty_after,
+                "consecutive_replications": context.consecutive_replications,
+            },
+        })
+
+        # Add to history
+        self.history.append({
+            'cycle': cycle,
+            'proposal': {
+                'design_id': proposal.design_id,
+                'hypothesis': proposal.hypothesis,
+                'n_wells': len(proposal.wells),
+            },
+            'observation': {
+                'design_id': observation.design_id,
+                'n_conditions': len(observation.conditions),
+                'wells_spent': observation.wells_spent,
+                'budget_remaining': observation.budget_remaining,
+                'qc_flags': observation.qc_flags,
+            },
+            'elapsed_seconds': elapsed,
+            'is_epistemic_action': True,
+            'epistemic_action': context.action.value,
+            'reward': reward,
+        })
+
+        self._save_json()
+
+    def _write_epistemic_event(self, event: dict):
+        """Write epistemic action event to JSONL."""
+        import json
+        with open(self.epistemic_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(event) + '\n')
+
+    def _finalize_episode_summary(
+        self,
+        initial_calibration_entropy: float,
+        initial_noise_rel_width: Optional[float]
+    ):
+        """
+        Finalize episode summary at end of run.
+
+        Aggregates spending, learning, and sacrifices from episode history.
+
+        Args:
+            initial_calibration_entropy: Starting calibration entropy
+            initial_noise_rel_width: Starting noise CI width (None if not yet estimated)
+        """
+        if self.episode_summary is None:
+            return  # Safety check
+
+        summary = self.episode_summary
+        beliefs = self.agent.beliefs
+
+        # Set end time
+        summary.end_time = datetime.now().isoformat()
+        summary.cycles_completed = len(self.history)
+        summary.abort_reason = self.abort_reason
+
+        # ============ SPENDING ============
+        total_wells = self.budget - self.world.budget_remaining
+        summary.spending.total_wells = total_wells
+        summary.spending.total_plates = total_wells / 96.0
+
+        # Count wells by action type
+        calibration_wells = 0
+        exploration_wells = 0
+        edge_wells = 0
+        wells_by_type = {"science": 0, "mitigation": 0, "epistemic": 0}
+
+        for h in self.history:
+            n_wells = h['proposal']['n_wells']
+            design_id = h['proposal']['design_id']
+
+            # Classify action type
+            if h.get('is_mitigation'):
+                wells_by_type['mitigation'] += n_wells
+            elif h.get('is_epistemic_action'):
+                wells_by_type['epistemic'] += n_wells
+            else:
+                wells_by_type['science'] += n_wells
+
+            # Count calibration vs exploration
+            template_name = design_id.split('_')[0].lower()
+            if any(cal in template_name for cal in ['baseline', 'calibrate', 'dmso']):
+                calibration_wells += n_wells
+            else:
+                exploration_wells += n_wells
+
+            # Count edge wells (estimate: ~20% of wells are edge wells in typical layout)
+            # TODO: More precise tracking from plate layout
+            edge_wells += int(n_wells * 0.2)
+
+        summary.spending.wells_by_action_type = wells_by_type
+        summary.spending.calibration_wells = calibration_wells
+        summary.spending.exploration_wells = exploration_wells
+        summary.spending.edge_wells_used = edge_wells
+
+        # ============ LEARNING ============
+        # Total epistemic gain (cumulative from controller claims)
+        # TODO: Track per-cycle gain and sum (for now, use final - initial entropy as proxy)
+        final_entropy = beliefs.calibration_entropy_bits
+        summary.learning.total_gain_bits = max(0.0, initial_calibration_entropy - final_entropy)
+
+        # Variance reduction (noise CI width improvement)
+        if initial_noise_rel_width is not None and beliefs.noise_rel_width is not None:
+            summary.learning.variance_reduction = initial_noise_rel_width - beliefs.noise_rel_width
+
+        # Gates earned/lost
+        # Extract from evidence events (look for gate_event:* and gate_loss:*)
+        gates_earned = []
+        gates_lost = []
+        # Read evidence file to extract gate events
+        if self.evidence_file.exists():
+            try:
+                with open(self.evidence_file, 'r') as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            event = json.loads(line)
+                            belief = event.get('belief', '')
+                            if belief.startswith('gate_event:'):
+                                gate_name = belief.split(':', 1)[1]
+                                if gate_name not in gates_earned:
+                                    gates_earned.append(gate_name)
+                            elif belief.startswith('gate_loss:'):
+                                gate_name = belief.split(':', 1)[1]
+                                if gate_name not in gates_lost:
+                                    gates_lost.append(gate_name)
+                        except json.JSONDecodeError:
+                            continue
+            except Exception:
+                pass  # Best effort
+
+        summary.learning.gates_earned = gates_earned
+        summary.learning.gates_lost = gates_lost
+        summary.learning.final_calibration_entropy = final_entropy
+        summary.learning.compounds_tested = len(beliefs.tested_compounds)
+
+        # ============ SACRIFICES ============
+        # Health debt (accumulated from QC violations)
+        # Extract from health_debt_history
+        if beliefs.health_debt_history:
+            # Debt accumulated = max debt seen
+            summary.sacrifices.health_debt_accumulated = max(beliefs.health_debt_history)
+            # Debt repaid = (max - final)
+            summary.sacrifices.health_debt_repaid = max(beliefs.health_debt_history) - beliefs.health_debt
+        else:
+            summary.sacrifices.health_debt_accumulated = 0.0
+            summary.sacrifices.health_debt_repaid = 0.0
+
+        # Mitigation timeline (read from mitigation file)
+        mitigation_events = []
+        if self.mitigation_file.exists():
+            try:
+                with open(self.mitigation_file, 'r') as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            event_data = json.loads(line)
+                            mitigation_events.append(MitigationEvent(
+                                cycle=event_data['cycle'],
+                                trigger_cycle=event_data['flagged_cycle'],
+                                action=event_data['action'],
+                                trigger_reason="spatial_qc_flag",  # Default
+                                morans_i_before=event_data.get('metrics', {}).get('morans_i_before'),
+                                morans_i_after=event_data.get('metrics', {}).get('morans_i_after'),
+                                cost_wells=int(event_data['action_cost'] * 96),
+                                reward=event_data.get('reward'),
+                                rationale=event_data.get('rationale', ''),
+                            ))
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+            except Exception:
+                pass
+
+        # Epistemic action events (read from epistemic file)
+        if self.epistemic_file.exists():
+            try:
+                with open(self.epistemic_file, 'r') as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            event_data = json.loads(line)
+                            mitigation_events.append(MitigationEvent(
+                                cycle=event_data['cycle'],
+                                trigger_cycle=event_data['flagged_cycle'],
+                                action=event_data['action'],
+                                trigger_reason="high_uncertainty",
+                                uncertainty_before=event_data.get('metrics', {}).get('uncertainty_before'),
+                                uncertainty_after=event_data.get('metrics', {}).get('uncertainty_after'),
+                                cost_wells=event_data.get('action_cost_wells', 0),
+                                reward=event_data.get('reward'),
+                                rationale=event_data.get('rationale', ''),
+                            ))
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+            except Exception:
+                pass
+
+        summary.mitigation_timeline = sorted(mitigation_events, key=lambda e: e.cycle)
+        summary.sacrifices.mitigation_actions = [
+            {
+                "cycle": e.cycle,
+                "action": e.action,
+                "trigger": e.trigger_reason,
+                "cost_wells": e.cost_wells,
+            }
+            for e in mitigation_events
+        ]
+
+        # Contract violations (should always be 0)
+        summary.sacrifices.contract_violations = 0  # TODO: Track from contract reports
+
+        # Epistemic debt tracking
+        # Max debt and refusals
+        summary.sacrifices.epistemic_debt_max = beliefs.epistemic_debt_bits
+        # Count refusals from refusals file
+        if self.refusals_file.exists():
+            try:
+                with open(self.refusals_file, 'r') as f:
+                    summary.sacrifices.epistemic_refusals = sum(1 for line in f if line.strip())
+            except Exception:
+                summary.sacrifices.epistemic_refusals = 0
+
+        # ============ INSTRUMENT HEALTH TIME SERIES ============
+        # Extract QC metrics from observation history
+        for h in self.history:
+            cycle = h['cycle']
+            qc_flags = h['observation'].get('qc_flags', [])
+
+            summary.instrument_health.cycles.append(cycle)
+
+            # Extract metrics from QC flags (best effort parsing)
+            # TODO: Store structured QC metrics in observation for better tracking
+            morans_i = None
+            nuclei_cv = None
+            for flag in qc_flags:
+                if "Moran's I" in flag:
+                    try:
+                        # Parse "Moran's I=0.234"
+                        morans_i = float(flag.split('=')[1].split()[0].rstrip(',)'))
+                    except (IndexError, ValueError):
+                        pass
+                if "nuclei_cv" in flag.lower():
+                    try:
+                        nuclei_cv = float(flag.split('=')[1].split()[0].rstrip(',)'))
+                    except (IndexError, ValueError):
+                        pass
+
+            summary.instrument_health.morans_i_max.append(morans_i if morans_i else 0.0)
+            summary.instrument_health.nuclei_cv_max.append(nuclei_cv if nuclei_cv else 0.0)
+            summary.instrument_health.segmentation_quality_min.append(1.0)  # Placeholder
+            summary.instrument_health.noise_rel_width.append(beliefs.noise_rel_width)
+
+        # ============ COMPUTE AGGREGATE METRICS ============
+        summary.compute_aggregate_metrics()
+
+        # ============ WRITE SUMMARY ============
+        summary_file = self.log_dir / f"{self.run_id}_episode_summary.json"
+        with open(summary_file, 'w') as f:
+            json.dump(summary.to_dict(), f, indent=2)
+
+        self._log(f"\nEpisode summary written to: {summary_file.name}")

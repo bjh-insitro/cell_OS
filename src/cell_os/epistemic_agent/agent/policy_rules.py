@@ -129,6 +129,7 @@ class RuleBasedPolicy:
         self.accountability = accountability or AccountabilityConfig()
         self._last_proposal: Optional[Proposal] = None
         self.layout_epoch = 0  # Track layout variations for REPLATE mitigation
+        self.consecutive_epistemic_replications = 0  # Track consecutive REPLICATE actions
 
     def propose_next_experiment(
         self,
@@ -616,5 +617,129 @@ class RuleBasedPolicy:
             return proposal
         elif action == MitigationAction.REPLICATE:
             return make_replicate_proposal(previous_proposal)
+        else:
+            raise ValueError(f"Cannot create proposal for action {action}")
+
+    def choose_epistemic_action(
+        self,
+        observation,
+        budget_plates_remaining: float,
+        previous_proposal,
+        previous_observation_dict
+    ):
+        """Choose epistemic action based on calibration uncertainty and budget.
+
+        Decision logic:
+        1. Query current calibration uncertainty from beliefs
+        2. If consecutive replications ≥ cap: force EXPAND (prevent infinite loops)
+        3. If uncertainty > threshold and budget allows replication: REPLICATE
+        4. Else if budget allows expansion: EXPAND
+        5. Else: NONE
+
+        Threshold: 4.0 bits (mid-range calibration uncertainty)
+        - Above 4.0: measurement quality uncertain, replicate to tighten ruler
+        - Below 4.0: ruler confident enough, safe to explore
+
+        GUARDRAIL: Max consecutive replications = 2
+        - Prevents budget death spiral if uncertainty proxy doesn't drop reliably
+        - Forces expansion after 2 consecutive REPLICATE actions
+        - Logs when cap triggers forced EXPAND
+
+        Args:
+            observation: Latest observation with belief updates
+            budget_plates_remaining: Budget remaining in plate equivalents
+            previous_proposal: Proposal from previous cycle
+            previous_observation_dict: Observation dict from previous cycle (for EXPAND)
+
+        Returns:
+            (action, rationale) tuple
+        """
+        from ..epistemic_actions import EpistemicAction
+
+        # Query current calibration uncertainty
+        uncertainty = self.beliefs.estimate_calibration_uncertainty()
+
+        # Decision thresholds
+        uncertainty_threshold = 4.0  # bits
+        max_consecutive_replications = 2
+
+        # Budget for replication
+        replication_cost_wells = len(previous_proposal.wells)
+        replication_cost_plates = replication_cost_wells / 96.0
+
+        # GUARDRAIL: Cap consecutive replications to prevent infinite loops
+        if self.consecutive_epistemic_replications >= max_consecutive_replications:
+            self.consecutive_epistemic_replications = 0  # Reset counter
+            return (
+                EpistemicAction.EXPAND,
+                f"Max consecutive replications ({max_consecutive_replications}) reached, "
+                f"forcing expansion despite high uncertainty ({uncertainty:.2f} bits)"
+            )
+
+        # Decision logic
+        if uncertainty > uncertainty_threshold:
+            if budget_plates_remaining >= replication_cost_plates:
+                return (
+                    EpistemicAction.REPLICATE,
+                    f"High calibration uncertainty ({uncertainty:.2f} bits > {uncertainty_threshold:.1f} threshold), "
+                    f"replicate to tighten ruler confidence (consecutive: {self.consecutive_epistemic_replications + 1}/{max_consecutive_replications})"
+                )
+            else:
+                return (
+                    EpistemicAction.NONE,
+                    f"High uncertainty ({uncertainty:.2f} bits) but insufficient budget "
+                    f"({budget_plates_remaining:.2f} plates < {replication_cost_plates:.2f} needed)"
+                )
+        else:
+            # Low uncertainty: safe to expand
+            if budget_plates_remaining >= 0.25:  # Minimum budget for expansion
+                return (
+                    EpistemicAction.EXPAND,
+                    f"Low calibration uncertainty ({uncertainty:.2f} bits ≤ {uncertainty_threshold:.1f} threshold), "
+                    f"expand exploration"
+                )
+            else:
+                return (
+                    EpistemicAction.NONE,
+                    f"Low uncertainty but insufficient budget ({budget_plates_remaining:.2f} plates)"
+                )
+
+    def create_epistemic_proposal(
+        self,
+        action,
+        previous_proposal,
+        previous_observation_dict,
+        capabilities: dict
+    ):
+        """Create proposal based on epistemic action.
+
+        REPLICATE: Duplicate previous proposal exactly (double wells)
+        EXPAND: Propose next science experiment (normal policy path with real observation)
+
+        Args:
+            action: Epistemic action to execute
+            previous_proposal: Proposal from previous cycle
+            previous_observation_dict: Observation dict from previous cycle (for EXPAND)
+            capabilities: World capabilities
+
+        Returns:
+            New proposal for epistemic action
+        """
+        from ..epistemic_actions import EpistemicAction
+        from ..accountability import make_replicate_proposal
+
+        if action == EpistemicAction.REPLICATE:
+            # Replicate previous proposal exactly
+            # Increment consecutive replication counter
+            self.consecutive_epistemic_replications += 1
+            return make_replicate_proposal(previous_proposal)
+
+        elif action == EpistemicAction.EXPAND:
+            # Reset consecutive replication counter
+            self.consecutive_epistemic_replications = 0
+            # Propose next science experiment (normal policy path)
+            # CRITICAL: Pass real previous_observation to maintain determinism
+            return self.propose_next_experiment(capabilities, previous_observation=previous_observation_dict)
+
         else:
             raise ValueError(f"Cannot create proposal for action {action}")
