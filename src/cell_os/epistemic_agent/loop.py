@@ -62,10 +62,11 @@ class EpistemicLoop:
         self.decisions_file = self.log_dir / f"{self.run_id}_decisions.jsonl"
         self.diagnostics_file = self.log_dir / f"{self.run_id}_diagnostics.jsonl"
         self.refusals_file = self.log_dir / f"{self.run_id}_refusals.jsonl"
+        self.mitigation_file = self.log_dir / f"{self.run_id}_mitigation.jsonl"
 
         # Initialize world and agent
         self.world = ExperimentalWorld(budget_wells=budget, seed=seed)
-        self.agent = RuleBasedPolicy(budget=budget)
+        self.agent = RuleBasedPolicy(budget=budget, seed=seed)
 
         # v0.5.1: Epistemic integration (Task 3 - real epistemic claims)
         self.epistemic = EpistemicIntegration(enable=True)
@@ -76,6 +77,10 @@ class EpistemicLoop:
         # Run history
         self.history = []
         self.abort_reason = None
+
+        # Mitigation state (pending mitigation consumes next integer cycle)
+        self._pending_mitigation = None
+        self._last_proposal = None
 
     def run(self):
         """Run the full experiment loop."""
@@ -487,6 +492,46 @@ class EpistemicLoop:
                     },
                     'elapsed_seconds': elapsed,
                 })
+
+                # Store last proposal for potential mitigation
+                self._last_proposal = proposal
+
+                # MITIGATION: Check for QC flags and set pending mitigation
+                # Check if agent has mitigation enabled
+                mitigation_enabled = (
+                    hasattr(self.agent, 'accountability') and
+                    self.agent.accountability is not None and
+                    self.agent.accountability.enabled
+                )
+
+                if mitigation_enabled:
+                    from .mitigation import get_spatial_qc_summary, MitigationContext
+                    from .accountability import MitigationAction
+
+                    flagged, morans_i_max, details = get_spatial_qc_summary(observation)
+
+                    if flagged:
+                        # Agent chooses mitigation action
+                        budget_plates = self.world.budget_remaining / 96.0
+                        action, rationale = self.agent.choose_mitigation_action(
+                            observation=observation,
+                            budget_plates_remaining=budget_plates,
+                            previous_proposal=proposal
+                        )
+
+                        self._log(f"\n  ⚠️  QC flag detected (Moran's I={morans_i_max:.3f})")
+                        self._log(f"  Next cycle will execute {action.value} mitigation")
+
+                        # Set pending if action requires execution
+                        if action in {MitigationAction.REPLATE, MitigationAction.REPLICATE}:
+                            self._pending_mitigation = MitigationContext(
+                                cycle_flagged=cycle,
+                                morans_i_before=morans_i_max,
+                                action=action,
+                                previous_proposal=proposal,
+                                rationale=rationale,
+                                qc_details_before=details
+                            )
 
                 # Save incremental JSON
                 self._save_json()
