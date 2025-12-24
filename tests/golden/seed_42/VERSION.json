@@ -1,0 +1,14 @@
+{
+  "schema_version": "v1.0",
+  "generated_date": "2025-12-23T22:45:34.935304",
+  "generator_script": "scripts/update_golden_seed42.py (manual execution)",
+  "cell_os_commit": "216a4598",
+  "reason": "Increased budget to 480 wells to accommodate epistemic actions (replication)",
+  "approved_by": "bjh",
+  "changes_summary": {
+    "budget": "240 \u2192 480 wells",
+    "evidence": "148 \u2192 202 records",
+    "decisions": "10 \u2192 15 records",
+    "diagnostics": "16 \u2192 21 records"
+  }
+}

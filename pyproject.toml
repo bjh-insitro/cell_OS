@@ -39,4 +39,6 @@ where = ["src"]
 testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselected by default, use -m slow to run)",
+    "manual: marks tests for manual execution only (skipped in CI, use -m manual to run)",
 ]
+addopts = "-m 'not manual'"

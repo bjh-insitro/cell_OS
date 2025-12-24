@@ -1,0 +1,39 @@
+{
+  "schema_version": "v1.0",
+  "seed": 42,
+  "cycles": 10,
+  "budget": 480,
+  "coarse_summaries": {
+    "cycles_completed": 10,
+    "num_decisions": 5,
+    "num_evidence_events": 148,
+    "num_unique_templates_min": 2,
+    "num_compounds_tested_min": 0,
+    "num_mitigation_cycles": 0,
+    "final_debt_bucket": "<1"
+  },
+  "schema_requirements": {
+    "decision_required_fields": [
+      "cycle",
+      "chosen_template",
+      "kind"
+    ],
+    "evidence_required_fields": [
+      "cycle",
+      "event_type"
+    ],
+    "diagnostics_required_fields": [
+      "cycle"
+    ],
+    "summary_required_fields": [
+      "cycles_completed"
+    ]
+  },
+  "invariants": {
+    "cycles_monotonic": true,
+    "no_negative_cycles": true,
+    "budget_conservation": true,
+    "causal_contract_respected": true
+  },
+  "notes": "Contract-level golden baseline. Only enforces schema, invariants, and coarse summaries. Allows policy evolution. Budget: 480 wells to accommodate epistemic actions."
+}
