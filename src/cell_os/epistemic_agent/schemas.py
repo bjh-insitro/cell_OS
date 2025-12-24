@@ -29,6 +29,7 @@ class Proposal:
     hypothesis: str                 # What is this testing? (for narration)
     wells: List[WellSpec]          # Batch of wells to run
     budget_limit: int               # Max wells agent thinks it has
+    layout_seed: Optional[int] = None  # Optional seed for spatial layout variance (REPLATE)
 
     def __post_init__(self):
         """Validation."""

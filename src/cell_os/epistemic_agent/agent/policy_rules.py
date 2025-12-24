@@ -14,6 +14,7 @@ from typing import Optional, Any, Mapping
 from ..schemas import WellSpec, Proposal
 from ..beliefs import BeliefState
 from ..acquisition import TemplateChooser
+from ..accountability import AccountabilityConfig, requires_spatial_mitigation, make_replate_proposal
 
 
 def _normalize_for_hash(x: Any) -> Any:
@@ -111,14 +112,23 @@ def deterministic_design_id(
 class RuleBasedPolicy:
     """Evidence-driven policy with accountability."""
 
-    def __init__(self, budget: int = 384):
+    def __init__(
+        self,
+        budget: int = 384,
+        accountability: Optional[AccountabilityConfig] = None,
+        seed: int = 0
+    ):
         self.budget = budget
         self.budget_remaining = budget
+        self.seed = seed
         self.beliefs = BeliefState()
         self.chooser = TemplateChooser()
         self.last_diagnostics = None
         self.last_decision = None  # v0.5.0: Canonical Decision object (kills side-channel)
         self.cycle = 0
+        self.accountability = accountability or AccountabilityConfig()
+        self._last_proposal: Optional[Proposal] = None
+        self.layout_epoch = 0  # Track layout variations for REPLATE mitigation
 
     def propose_next_experiment(
         self,
@@ -129,7 +139,27 @@ class RuleBasedPolicy:
 
         v0.4.2: Enforces pay-for-calibration constraints.
         v0.5.0: Returns Decision object with full provenance (kills side-channel pattern).
+        v0.6.0: Accountability override - replate if spatial QC flagged.
         """
+        # Accountability override: check spatial QC before normal proposal logic
+        if self.accountability.enabled and previous_observation:
+            qc_struct = previous_observation.get("qc_struct", {})
+            if requires_spatial_mitigation(qc_struct, self.accountability.spatial_key):
+                # Spatial autocorrelation flagged: must replate
+                if self._last_proposal is None:
+                    # Fallback: no previous proposal to replate (first cycle or reset)
+                    # Proceed with normal baseline generation but log the constraint
+                    pass  # Fall through to normal logic
+                else:
+                    # Replate with explicit audit trail
+                    replate_seed = self.seed + self.cycle
+                    reason = f"spatial_autocorrelation[{self.accountability.spatial_key}]"
+                    return make_replate_proposal(
+                        self._last_proposal,
+                        layout_seed=replate_seed,
+                        reason=reason
+                    )
+
         self.cycle += 1
 
         # Choose template based on current beliefs
@@ -153,23 +183,24 @@ class RuleBasedPolicy:
             raise RuntimeError(f"ABORT EXPERIMENT: {reason}")
 
         # Map template to proposal
+        proposal = None
         if template_name == "baseline_replicates":
-            return self._template_baseline_replicates(capabilities, **template_kwargs)
+            proposal = self._template_baseline_replicates(capabilities, **template_kwargs)
         elif template_name == "edge_center_test":
-            return self._template_edge_center_test(capabilities, **template_kwargs)
+            proposal = self._template_edge_center_test(capabilities, **template_kwargs)
         elif template_name == "dose_ladder_coarse":
-            return self._template_dose_ladder_coarse(capabilities, **template_kwargs)
+            proposal = self._template_dose_ladder_coarse(capabilities, **template_kwargs)
         # v0.5.0: Assay ladder templates
         elif template_name == "calibrate_ldh_baseline":
-            return self._template_calibrate_ldh_baseline(capabilities, **template_kwargs)
+            proposal = self._template_calibrate_ldh_baseline(capabilities, **template_kwargs)
         elif template_name == "calibrate_cell_paint_baseline":
-            return self._template_calibrate_cell_paint_baseline(capabilities, **template_kwargs)
+            proposal = self._template_calibrate_cell_paint_baseline(capabilities, **template_kwargs)
         elif template_name == "calibrate_scrna_baseline":
-            return self._template_calibrate_scrna_baseline(capabilities, **template_kwargs)
+            proposal = self._template_calibrate_scrna_baseline(capabilities, **template_kwargs)
         elif template_name == "cell_paint_screen":
-            return self._template_cell_paint_screen(capabilities, **template_kwargs)
+            proposal = self._template_cell_paint_screen(capabilities, **template_kwargs)
         elif template_name == "scrna_upgrade_probe":
-            return self._template_scrna_upgrade_probe(capabilities, **template_kwargs)
+            proposal = self._template_scrna_upgrade_probe(capabilities, **template_kwargs)
         elif template_name == "abort_insufficient_assay_gate_budget":
             assay = template_kwargs.get("assay", "unknown")
             block_reason = template_kwargs.get("block_reason", "Unknown")
@@ -178,7 +209,11 @@ class RuleBasedPolicy:
             raise RuntimeError(f"ABORT EXPERIMENT: {reason}. Calibration plan: {calib_plan}")
         else:
             # Fallback
-            return self._template_baseline_replicates(capabilities, n_reps=12, reason="Fallback")
+            proposal = self._template_baseline_replicates(capabilities, n_reps=12, reason="Fallback")
+
+        # Cache proposal for potential replate
+        self._last_proposal = proposal
+        return proposal
 
     def _template_baseline_replicates(
         self,
@@ -522,3 +557,64 @@ class RuleBasedPolicy:
 
         # Store diagnostics for logging
         self.last_diagnostics = diagnostics
+
+    def choose_mitigation_action(
+        self,
+        observation,
+        budget_plates_remaining: float,
+        previous_proposal
+    ):
+        """Choose mitigation action based on QC flags and budget.
+
+        Args:
+            observation: Observation with QC flags
+            budget_plates_remaining: Budget remaining in plate equivalents
+            previous_proposal: The proposal that triggered QC flag
+
+        Returns:
+            (action, rationale) tuple
+        """
+        from ..mitigation import get_spatial_qc_summary
+        from ..accountability import MitigationAction
+
+        flagged, morans_i_max, details = get_spatial_qc_summary(observation)
+
+        if not flagged:
+            return (MitigationAction.NONE, "No QC flags detected")
+
+        if budget_plates_remaining < 0.5:
+            return (
+                MitigationAction.NONE,
+                f"Insufficient budget ({budget_plates_remaining:.2f} plates)"
+            )
+
+        # Severity threshold: I > 0.5 is severe
+        if morans_i_max > 0.5:
+            return (
+                MitigationAction.REPLATE,
+                f"Severe spatial correlation (I={morans_i_max:.3f})"
+            )
+        else:
+            return (
+                MitigationAction.REPLICATE,
+                f"Moderate spatial correlation (I={morans_i_max:.3f})"
+            )
+
+    def create_mitigation_proposal(
+        self,
+        action,
+        previous_proposal,
+        capabilities: dict
+    ):
+        """Create mitigation proposal based on action."""
+        from ..accountability import MitigationAction, make_replicate_proposal
+
+        if action == MitigationAction.REPLATE:
+            self.layout_epoch += 1
+            new_layout_seed = self.seed + 10_000 * self.layout_epoch
+            proposal = make_replate_proposal(previous_proposal, layout_seed=new_layout_seed)
+            return proposal
+        elif action == MitigationAction.REPLICATE:
+            return make_replicate_proposal(previous_proposal)
+        else:
+            raise ValueError(f"Cannot create proposal for action {action}")
