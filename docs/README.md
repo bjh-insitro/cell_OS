@@ -107,6 +107,14 @@ System design, implementation plans, and technical details (20 documents):
 - `ARCHITECTURE.md`, `DATA_MODEL.md`, `ONTOLOGY.md`, `PROJECT_STRUCTURE.md`, `SYSTEM_GLUE.md`
 - Plus other architecture documents
 
+#### Measurement Realism
+
+Imaging artifacts and measurement corruption modeling:
+- `IMAGING_ARTIFACTS_COMPLETE.md` ⭐ - Phase 1: Scalar artifacts (background noise, segmentation failure)
+- `IMAGING_ARTIFACTS_STRUCTURED_EXTENSION.md` - Phase 2: Structured artifacts (per-channel, merge/split modes, spatial field)
+- `IMAGING_ARTIFACTS_WIRING_DESIGN.md` - Architecture: Three-layer wiring design, safety harness, policy checks
+- **Note**: Structured artifacts are opt-in via `enable_structured_artifacts=True` and add `imaging_artifacts` metadata to measurement output.
+
 #### **Guides (`guides/`)**
 User guides and operational documentation (18 documents):
 - `STANDALONE_USAGE.md` - Running standalone simulations

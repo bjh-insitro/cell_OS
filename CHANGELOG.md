@@ -5,6 +5,16 @@ All notable changes to the cell_OS project will be documented in this file.
 ## [Unreleased] - 2025-11-23
 
 ### Added
+* **Phase 2 Structured Imaging Artifacts (Opt-in)**:
+
+  * Added structured imaging artifacts (background per-channel multipliers, merge/split segmentation modes, deterministic 3×3 spatial debris field) behind `enable_structured_artifacts` flag (default **False**).
+  * Added audit metadata: `imaging_artifacts` is `None` when flag off, populated dict when flag on (schema frozen).
+  * Guaranteed backward compatibility: flag off is byte-identical to Phase 1.
+  * Guaranteed measurement purity: artifacts never mutate biology state.
+  * Fixed wash debris generation pre-fixation in `wash_fix_core.py` to preserve conservation semantics.
+  * Added safety and policy tests (determinism, exploit prevention, conservation).
+  * Documentation: `IMAGING_ARTIFACTS_COMPLETE.md` (Phase 1), `IMAGING_ARTIFACTS_STRUCTURED_EXTENSION.md` (Phase 2), `IMAGING_ARTIFACTS_WIRING_DESIGN.md` (architecture).
+
 - **Cost-Aware Decision Support System**:
     - `RecipeOptimizer`: Automatically selects optimal methods (dissociation, freezing, etc.) based on cell type, budget tier, and automation requirements.
     - `WorkflowOptimizer`: Analyzes workflows to identify cost-saving opportunities and calculates ROI for method changes.
