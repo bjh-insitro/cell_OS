@@ -30,20 +30,30 @@ from ..core.assay import AssayType
 # Import legacy schemas for backward compatibility (temporarily)
 from .schemas import WellSpec, Proposal
 
+# Import adversarial plate system
+from ..adversarial import AdversarialPlateConfig, apply_adversaries
+
 
 class ExperimentalWorld:
     """Interface for agent to query the biological world."""
 
-    def __init__(self, budget_wells: int = 384, seed: int = 0):
+    def __init__(
+        self,
+        budget_wells: int = 384,
+        seed: int = 0,
+        adversarial_plate_config: Optional['AdversarialPlateConfig'] = None
+    ):
         """Initialize experimental system.
 
         Args:
             budget_wells: Total well budget for the campaign
             seed: Random seed for deterministic runs
+            adversarial_plate_config: Optional config for injecting technical artifacts
         """
         self.budget_total = budget_wells
         self.budget_remaining = budget_wells
         self.seed = seed
+        self.adversarial_plate_config = adversarial_plate_config
         self.history: List[Tuple[RawWellResult, ...]] = []  # Track raw results
 
         # Plate geometry (96-well)
@@ -119,6 +129,15 @@ class ExperimentalWorld:
         # Convert and execute
         well_assignments, positions = self._convert_proposal_to_assignments_with_positions(proposal)
         raw_results = self._simulate_wells(well_assignments, positions, proposal.design_id)
+
+        # Apply adversarial artifacts if configured
+        if self.adversarial_plate_config and self.adversarial_plate_config.enabled:
+            raw_results = apply_adversaries(
+                raw_results,
+                self.adversarial_plate_config,
+                base_seed=self.seed,
+                plate_id=raw_results[0].location.plate_id if raw_results else None
+            )
 
         # Update budget
         self.budget_remaining -= wells_requested

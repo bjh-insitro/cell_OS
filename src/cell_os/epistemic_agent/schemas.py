@@ -123,6 +123,9 @@ class Observation:
     # Coarse QC flags (agent must infer structure)
     qc_flags: List[str] = field(default_factory=list)
 
+    # Structured QC data for machine consumption (spatial autocorrelation, etc.)
+    qc_struct: Dict[str, Any] = field(default_factory=dict)
+
     # Agent 3: Strategy transparency (same data + different strategy = different Observation)
     aggregation_strategy: str = "default_per_channel"
 

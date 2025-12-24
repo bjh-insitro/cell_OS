@@ -19,7 +19,7 @@ Usage:
     )
 """
 
-from typing import Sequence, Dict, List, Any, Literal, Tuple, Set
+from typing import Sequence, Dict, List, Any, Literal, Tuple, Set, Optional
 from collections import defaultdict
 from dataclasses import dataclass
 import numpy as np
@@ -55,7 +55,7 @@ NormalizationMode = Literal[
 
 def get_cell_line_baseline(cell_line: str) -> Dict[str, float]:
     """
-    Load cell line baseline morphology from thalamus params.
+    Load cell line baseline morphology from database.
 
     Args:
         cell_line: Cell line identifier (A549, HepG2, U2OS, etc.)
@@ -64,33 +64,30 @@ def get_cell_line_baseline(cell_line: str) -> Dict[str, float]:
         Dict with channel baselines: {er: float, mito: float, ...}
 
     Note:
-        Baselines come from data/cell_thalamus_params.yaml.
+        Baselines come from database (baseline_morphology table).
         If cell line not found, falls back to A549 baseline.
     """
     # Import here to avoid circular dependency
-    import yaml
-    from pathlib import Path
+    from ..database.repositories.cell_thalamus_repository import CellThalamusRepository
 
-    # Load thalamus params (go up from src/cell_os/epistemic_agent/ to project root)
-    params_path = Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_params.yaml"
-    if not params_path.exists():
-        # Fallback: default baseline if params not found
-        logger.warning(f"Thalamus params not found at {params_path}, using default A549 baseline")
+    try:
+        repo = CellThalamusRepository()
+        baseline = repo.get_baseline_morphology(cell_line)
+
+        if baseline is None:
+            logger.warning(f"No baseline for cell line '{cell_line}', falling back to A549")
+            baseline = repo.get_baseline_morphology('A549')
+
+            if baseline is None:
+                # Ultimate fallback if database query fails
+                logger.warning("Database query failed, using hardcoded A549 baseline")
+                return {'er': 100.0, 'mito': 150.0, 'nucleus': 200.0, 'actin': 120.0, 'rna': 180.0}
+
+        return baseline
+
+    except Exception as e:
+        logger.error(f"Failed to load baseline from database: {e}, using default A549 baseline")
         return {'er': 100.0, 'mito': 150.0, 'nucleus': 200.0, 'actin': 120.0, 'rna': 180.0}
-
-    with open(params_path, 'r') as f:
-        params = yaml.safe_load(f)
-
-    baseline_morphology = params.get('baseline_morphology', {})
-    baseline = baseline_morphology.get(cell_line)
-
-    if baseline is None:
-        logger.warning(f"No baseline for cell line '{cell_line}', falling back to A549")
-        baseline = baseline_morphology.get('A549', {
-            'er': 100.0, 'mito': 150.0, 'nucleus': 200.0, 'actin': 120.0, 'rna': 180.0
-        })
-
-    return baseline
 
 
 def normalize_channel_value(
@@ -356,7 +353,8 @@ def _aggregate_per_channel(
 
     # Agent 2: Detect and log near-duplicates (conditions that merged)
     near_duplicate_events = []
-    for canonical_key, raw_params_set in raw_params_by_canonical.items():
+    # Phase 5: Sort for deterministic iteration order (use tuple as sort key)
+    for canonical_key, raw_params_set in sorted(raw_params_by_canonical.items(), key=lambda x: (x[0].cell_line, x[0].compound_id, x[0].dose_nM, x[0].time_min, x[0].assay, x[0].position_class or "")):
         if len(raw_params_set) > 1:
             # Multiple raw (dose, time) pairs collapsed to same canonical key
             raw_doses = sorted(set(d for d, t in raw_params_set))
@@ -378,12 +376,13 @@ def _aggregate_per_channel(
 
     # Compute summary statistics per condition
     summaries = []
-    for canonical_key, values in conditions.items():
+    # Phase 5: Sort for deterministic iteration order (use tuple as sort key)
+    for canonical_key, values in sorted(conditions.items(), key=lambda x: (x[0].cell_line, x[0].compound_id, x[0].dose_nM, x[0].time_min, x[0].assay, x[0].position_class or "")):
         summary = _summarize_condition(canonical_key, values, normalization_mode)
         summaries.append(summary)
 
-    # Generate QC flags
-    qc_flags = _generate_qc_flags(summaries)
+    # Generate QC flags (including spatial autocorrelation checks)
+    qc_flags, qc_struct = _generate_qc_flags(summaries, raw_results=raw_results)
 
     # Agent 4: Build normalization metadata
     normalization_metadata = build_normalization_metadata(cell_lines_used, normalization_mode)
@@ -398,6 +397,7 @@ def _aggregate_per_channel(
         wells_spent=len(raw_results),
         budget_remaining=budget_remaining,
         qc_flags=qc_flags,
+        qc_struct=qc_struct,
         aggregation_strategy="default_per_channel",
         # Agent 4: Normalization transparency
         normalization_mode=normalization_mode,
@@ -651,19 +651,24 @@ def _empty_condition_summary(key: CanonicalCondition) -> ConditionSummary:
 # QC Flag Generation
 # =============================================================================
 
-def _generate_qc_flags(summaries: List[ConditionSummary]) -> List[str]:
-    """Generate QC flags from aggregated summaries.
+def _generate_qc_flags(
+    summaries: List[ConditionSummary],
+    raw_results: Optional[Sequence[RawWellResult]] = None
+) -> Tuple[List[str], Dict[str, Any]]:
+    """Generate QC flags from aggregated summaries and raw wells.
 
     QC flags are coarse indicators of potential issues. The agent
     must interpret these (world doesn't explain them).
 
     Args:
         summaries: Aggregated condition summaries
+        raw_results: Optional raw well results for spatial QC checks
 
     Returns:
-        List of QC flag strings
+        Tuple of (qc_flags: list of human-readable strings, qc_struct: machine-readable dict)
     """
     flags = []
+    qc_struct = {}
 
     # Check for edge bias (if both edge and center present)
     edge_means = [s.mean for s in summaries if s.position_tag == 'edge']
@@ -697,7 +702,40 @@ def _generate_qc_flags(summaries: List[ConditionSummary]) -> List[str]:
     if total_failed > 0:
         flags.append(f"{total_failed} wells failed QC")
 
-    return flags
+    # Spatial autocorrelation check (detect gradients, patterns)
+    if raw_results and len(raw_results) > 10:  # Need sufficient wells
+        from ..qc.spatial_diagnostics import check_spatial_autocorrelation
+
+        try:
+            flagged, diag = check_spatial_autocorrelation(
+                list(raw_results),
+                channel_key="morphology.nucleus",
+                significance_threshold=1.96  # p < 0.05
+            )
+
+            # Populate structured QC data
+            if "spatial_autocorrelation" not in qc_struct:
+                qc_struct["spatial_autocorrelation"] = {}
+
+            qc_struct["spatial_autocorrelation"]["morphology.nucleus"] = {
+                "morans_i": float(diag['morans_i']),
+                "z_score": float(diag['z_score']),
+                "p_value": 0.05 if abs(diag['z_score']) > 1.96 else 1.0,  # Rough approximation
+                "flagged": bool(flagged),
+                "n_wells": int(diag['n_wells'])
+            }
+
+            # Human-readable flag (keep for backwards compat)
+            if flagged:
+                flags.append(
+                    f"spatial_autocorrelation[morphology.nucleus]: "
+                    f"I={diag['morans_i']:.3f} (Z={diag['z_score']:.2f}, p<0.05) FLAGGED"
+                )
+        except Exception as e:
+            # Spatial QC is nice-to-have, don't crash if it fails
+            logger.warning(f"Spatial autocorrelation check failed: {e}")
+
+    return flags, qc_struct
 
 
 # =============================================================================
