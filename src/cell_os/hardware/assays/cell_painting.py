@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base import AssaySimulator
+from .assay_params import DEFAULT_ASSAY_PARAMS
 from .._impl import stable_u32, lognormal_multiplier
 from ..run_context import pipeline_transform
 from ...sim import biology_core
@@ -278,7 +279,10 @@ class CellPaintingAssay(AssaySimulator):
             "morphology_struct": morph_struct,
             "morphology_measured": morph,
             "morphology": morph,  # Backward compatibility
-            "signal_intensity": 0.3 + 0.7 * vessel.viability,  # Viability factor
+            "signal_intensity": (
+                DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR
+                + (1 - DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR) * vessel.viability
+            ),  # ASSUMPTION: See assay_params.py and ASSUMPTIONS_AND_BOUNDARIES.md
             "transport_dysfunction_score": transport_dysfunction_score,
             "timestamp": datetime.now().isoformat(),
             # Pipeline drift metadata for epistemic control
@@ -454,7 +458,11 @@ class CellPaintingAssay(AssaySimulator):
         t_measure = self.vm.simulated_time
 
         # 1. Viability factor (biological signal attenuation)
-        viability_factor = 0.3 + 0.7 * vessel.viability
+        # ASSUMPTION: Dead cells retain CP_DEAD_SIGNAL_FLOOR signal. See assay_params.py
+        viability_factor = (
+            DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR
+            + (1 - DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR) * vessel.viability
+        )
 
         # 2. Washout multiplier (measurement artifact)
         washout_multiplier = self._compute_washout_multiplier(vessel, t_measure)
@@ -1064,7 +1072,8 @@ class CellPaintingAssay(AssaySimulator):
             cell_params = hardware_sens.get(vessel.cell_line, hardware_sens.get('DEFAULT', {}))
             adhesion_heterogeneity = cell_params.get('adhesion_heterogeneity', 0.3)
 
-        c_base = 0.8
+        # ASSUMPTION: Segmentation yield degrades linearly with debris. See assay_params.py
+        c_base = DEFAULT_ASSAY_PARAMS.SEGMENTATION_C_BASE
         clumpiness_amplifier = 1.0 + 0.6 * adhesion_heterogeneity  # [1.0×, 1.3×]
         c_effective = c_base * clumpiness_amplifier
 

@@ -10,6 +10,7 @@ from typing import Dict, Any, TYPE_CHECKING
 from datetime import datetime
 
 from .base import AssaySimulator
+from .assay_params import DEFAULT_ASSAY_PARAMS
 from .._impl import stable_u32, lognormal_multiplier
 from ..constants import (
     ENABLE_INTERVENTION_COSTS,
@@ -70,9 +71,10 @@ class LDHViabilityAssay(AssaySimulator):
 
         # LDH scales with dead cell biomass
         # Use death amplification factor to avoid division by zero
+        # ASSUMPTION: Death amplification capped to prevent explosion. See assay_params.py
         death_fraction = 1.0 - vessel.viability
         death_amplification = death_fraction / max(0.1, 1.0 - death_fraction)
-        death_amplification = min(death_amplification, 10.0)  # Cap at 10×
+        death_amplification = min(death_amplification, DEFAULT_ASSAY_PARAMS.LDH_DEATH_AMPLIFICATION_CAP)
 
         cell_count_factor = vessel.cell_count / 1e6  # Normalize to 1M cells
         ldh_signal = baseline_ldh * cell_count_factor * death_amplification
@@ -118,7 +120,7 @@ class LDHViabilityAssay(AssaySimulator):
         }
 
         # Ground truth only when debug enabled
-        if self.vm.run_context.debug_truth_enabled:
+        if getattr(self.vm.run_context, 'debug_truth_enabled', False):
             result["_debug_truth"] = {
                 "viability": float(vessel.viability),
                 "cell_count": float(vessel.cell_count),
@@ -258,8 +260,11 @@ class LDHViabilityAssay(AssaySimulator):
 
     def _compute_atp_signal(self, vessel: "VesselState", washout_multiplier: float, **kwargs) -> float:
         """Compute ATP signal (mito dysfunction proxy)."""
+        # ASSUMPTION: ATP floor from basal/non-mito sources. See assay_params.py
         baseline_atp = 100.0
-        atp_signal = baseline_atp * max(0.3, 1.0 - 0.7 * vessel.mito_dysfunction)
+        atp_signal = baseline_atp * max(
+            DEFAULT_ASSAY_PARAMS.ATP_SIGNAL_FLOOR, 1.0 - 0.7 * vessel.mito_dysfunction
+        )
 
         # Biological noise
         atp_signal = self._add_biological_noise(vessel, atp_signal)
