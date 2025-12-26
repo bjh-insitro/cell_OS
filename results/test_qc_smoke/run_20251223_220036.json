@@ -1,0 +1,152 @@
+{
+  "run_id": "run_20251223_220036",
+  "budget": 288,
+  "max_cycles": 5,
+  "seed": 999,
+  "cycles_completed": 5,
+  "abort_reason": null,
+  "history": [
+    {
+      "cycle": 1,
+      "proposal": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "hypothesis": "Cycle 0: Learn instrument shape using CAL_384_RULES_WORLD_v4. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 96
+      },
+      "observation": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "n_conditions": 1,
+        "wells_spent": 96,
+        "budget_remaining": 192,
+        "qc_flags": [
+          "1/1 conditions have CV >15%",
+          "1 wells flagged as outliers (Z>3)"
+        ]
+      },
+      "elapsed_seconds": 0.015692949295043945
+    },
+    {
+      "cycle": 2,
+      "proposal": {
+        "design_id": "edge_test_c0002_47e23bf9f4da",
+        "hypothesis": "Resolve edge confound before biology. Test if well position (edge vs center) introduces systematic bias.",
+        "n_wells": 24
+      },
+      "observation": {
+        "design_id": "edge_test_c0002_47e23bf9f4da",
+        "n_conditions": 4,
+        "wells_spent": 24,
+        "budget_remaining": 168,
+        "qc_flags": [
+          "Edge wells show 13.4% lower signal than center"
+        ]
+      },
+      "elapsed_seconds": 0.002724170684814453
+    },
+    {
+      "cycle": 3,
+      "proposal": {
+        "design_id": "edge_test_c0003_47e23bf9f4da",
+        "hypothesis": "Resolve edge confound before biology. Test if well position (edge vs center) introduces systematic bias.",
+        "n_wells": 24
+      },
+      "observation": {
+        "design_id": "edge_test_c0003_47e23bf9f4da",
+        "n_conditions": 4,
+        "wells_spent": 24,
+        "budget_remaining": 144,
+        "qc_flags": [
+          "Edge wells show 13.4% lower signal than center"
+        ]
+      },
+      "elapsed_seconds": 0.002796173095703125
+    },
+    {
+      "cycle": 4,
+      "proposal": {
+        "design_id": "dose_ladder_c0004_d8aa82feed76",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for CCCP across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0004_d8aa82feed76",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 132,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0015082359313964844
+    },
+    {
+      "cycle": 5,
+      "proposal": {
+        "design_id": "dose_ladder_c0005_9ace0fdf6c46",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for H2O2 across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0005_9ace0fdf6c46",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 120,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.001432657241821289
+    }
+  ],
+  "beliefs_final": {
+    "noise_sigma_hat": 1.0500955927917055,
+    "noise_ci_low": 1.0803430429874916,
+    "noise_ci_high": 1.0276315880606979,
+    "noise_rel_width": 0.05019681568861652,
+    "noise_sigma_stable": true,
+    "noise_df_total": 105,
+    "ldh_df_total": 105,
+    "ldh_rel_width": 0.05019681568861656,
+    "ldh_sigma_stable": true,
+    "cell_paint_df_total": 105,
+    "cell_paint_rel_width": 0.05019681568861656,
+    "cell_paint_sigma_stable": true,
+    "scrna_df_total": 105,
+    "scrna_rel_width": 0.05019681568861656,
+    "scrna_sigma_stable": false,
+    "scrna_metric_source": "proxy:noisy_morphology",
+    "baseline_cv_scalar": 0.04164414661832721,
+    "baseline_cv_by_channel": {
+      "er": 0.043572443803785756,
+      "mito": 0.026219654152632336,
+      "nucleus": 0.1424425550558457,
+      "actin": 0.043964351098207295,
+      "rna": 0.02362202919733681
+    },
+    "calibration_reps": 108,
+    "edge_effect_strength_by_channel": {
+      "er": -0.1361995574773395,
+      "mito": -0.1396077100675839,
+      "nucleus": -0.18212098880654,
+      "actin": -0.13523475527697337,
+      "rna": -0.12432453694271542
+    },
+    "edge_effect_confident": true,
+    "edge_tests_run": 2,
+    "dose_curvature_seen": false,
+    "time_dependence_seen": false,
+    "tested_compounds": [
+      "CCCP",
+      "tBHQ",
+      "H2O2",
+      "DMSO"
+    ],
+    "tested_cell_lines": [
+      "A549"
+    ],
+    "total_observations": 5
+  },
+  "paths": {
+    "log": "run_20251223_220036.log",
+    "json": "run_20251223_220036.json",
+    "evidence": "run_20251223_220036_evidence.jsonl",
+    "decisions": "run_20251223_220036_decisions.jsonl",
+    "diagnostics": "run_20251223_220036_diagnostics.jsonl"
+  }
+}

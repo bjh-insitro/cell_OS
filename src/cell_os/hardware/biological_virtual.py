@@ -705,6 +705,45 @@ class BiologicalVirtualMachine(VirtualMachine):
         )
         self.simulated_time = t1
 
+    def _get_effective_dose_uM(self, vessel: VesselState, compound: str, now_h: float) -> float:
+        """
+        v5 Diff 3: Compute effective dose (intracellular burden after decay).
+
+        Contract:
+        - If not washed out: return current intracellular burden (= dose)
+        - If washed out: return decayed burden using exponential decay
+
+        Args:
+            vessel: Vessel state
+            compound: Compound name
+            now_h: Current simulated time (hours)
+
+        Returns:
+            Effective dose in µM (decayed burden if washed out)
+        """
+        exposures = vessel.compound_meta.get('exposures', {})
+        exp = exposures.get(compound)
+
+        if exp is None:
+            return 0.0
+
+        # If not washed out, extracellular = intracellular = dose
+        if not exp.get('is_washed_out', False):
+            return float(exp.get('intracellular_burden_uM', exp.get('dose_uM', 0.0)))
+
+        # After washout: exponential decay
+        t_w = exp.get('washout_time')
+        if t_w is None:
+            # Marked as washed out but no time? Shouldn't happen, but be safe
+            return float(exp.get('intracellular_burden_uM', 0.0))
+
+        half_life = float(exp.get('burden_half_life_h', 2.0))  # Default 2h
+        dt = max(0.0, float(now_h) - float(t_w))
+        decay_factor = 0.5 ** (dt / max(half_life, 1e-6))
+
+        burden_at_washout = float(exp.get('intracellular_burden_uM', 0.0))
+        return float(burden_at_washout * decay_factor)
+
     def _propose_hazard(self, vessel: VesselState, hazard_per_h: float, death_field: str):
         """
         Directly propose a hazard rate (deaths per hour) for a death cause.
@@ -974,6 +1013,53 @@ class BiologicalVirtualMachine(VirtualMachine):
                 f"This is a simulator bug, not user error. Cannot be silently renormalized."
             )
 
+    def _apply_stress_recovery(self, vessel: VesselState, hours: float):
+        """
+        v5 Diff 4: Apply stress axis recovery (decay) after washout.
+
+        Contract:
+        - Stress axes decay when effective dose is low (near zero)
+        - Viability remains monotone down (no resurrection)
+        - Recovery means "hazards stop increasing" not "death reverses"
+
+        Engineering knobs:
+        - tau_recovery_h: Time constant for stress decay (default 6h)
+        - epsilon_dose: Threshold below which recovery activates (default 0.01 µM)
+
+        Args:
+            vessel: Vessel state
+            hours: Time interval (hours)
+        """
+        if hours <= 0:
+            return  # No time → no recovery
+
+        tau_recovery_h = 6.0  # Engineering knob: recovery time constant
+        epsilon_dose = 0.01  # µM threshold for "effectively zero"
+
+        # Check all exposures to see if any have non-negligible effective dose
+        exposures = vessel.compound_meta.get('exposures', {})
+        max_effective_dose = 0.0
+
+        for compound in exposures.keys():
+            effective_dose = self._get_effective_dose_uM(vessel, compound, self.simulated_time)
+            max_effective_dose = max(max_effective_dose, effective_dose)
+
+        # If any compound has significant effective dose, no recovery
+        if max_effective_dose > epsilon_dose:
+            return
+
+        # All compounds negligible → stress axes decay
+        decay_factor = float(np.exp(-hours / tau_recovery_h))
+
+        for subpop_name in sorted(vessel.subpopulations.keys()):
+            subpop = vessel.subpopulations[subpop_name]
+
+            # Decay stress axes (but never increase them)
+            for axis in ['er_stress', 'mito_dysfunction', 'transport_dysfunction']:
+                current = subpop.get(axis, 0.0)
+                if current > 0:
+                    subpop[axis] = float(current * decay_factor)
+
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
@@ -1029,6 +1115,9 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # 3) Commit death once (combined survival + proportional allocation)
         self._commit_step_death(vessel, hours)
+
+        # 3b) v5 Diff 4: Apply stress recovery for washed-out compounds
+        self._apply_stress_recovery(vessel, hours)
 
         # 4) Manage confluence (cap growth, but don't kill cells)
         self._manage_confluence(vessel)
@@ -1159,26 +1248,26 @@ class BiologicalVirtualMachine(VirtualMachine):
         Uses biology_core for consistent attrition logic with standalone simulation.
         Attrition is "physics" - happens whether you observe it or not (Option 2).
         """
-        # Authoritative: InjectionManager
-        compounds_snapshot = None
-        if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
-            compounds_snapshot = self.injection_mgr.get_all_compounds_uM(vessel.vessel_id)
-        else:
-            compounds_snapshot = vessel.compounds
-
-        if not compounds_snapshot:
+        # v5 Diff 3: Iterate over exposure records (not just InjectionManager compounds)
+        # This allows washed-out compounds with decaying intracellular burden to continue causing hazards
+        exposures = vessel.compound_meta.get('exposures', {})
+        if not exposures:
             return
 
         # Lazy load thalamus params (need for dysfunction computation)
         if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
             self._load_cell_thalamus_params()
 
-        for compound, dose_uM in compounds_snapshot.items():
-            if dose_uM <= 0:
-                continue
+        for compound, exp in exposures.items():
+            # v5 Diff 3: Use effective dose (decayed intracellular burden) instead of extracellular
+            # Evaluate at END of interval (t0 + hours) for burden decay during this step
+            effective_dose_uM = self._get_effective_dose_uM(vessel, compound, self.simulated_time + hours)
 
-            # DEBUG: Log concentration being used for attrition
-            logger.debug(f"_apply_compound_attrition: {vessel.vessel_id} {compound} dose_uM={dose_uM:.3f}")
+            if effective_dose_uM <= 0:
+                continue  # Burden decayed to negligible
+
+            # DEBUG: Log effective dose being used for attrition
+            logger.debug(f"_apply_compound_attrition: {vessel.vessel_id} {compound} effective_dose_uM={effective_dose_uM:.3f}")
 
             # Get compound metadata (stored during treat_with_compound)
             meta = vessel.compound_meta.get(compound)
@@ -1197,13 +1286,14 @@ class BiologicalVirtualMachine(VirtualMachine):
 
             # Mechanism-specific add-on: mitotic catastrophe for microtubule stress
             # IMPORTANT: This happens BEFORE attrition check because it's independent
+            # v5 Diff 3: Use effective dose (decayed burden)
             if ENABLE_MITOTIC_CATASTROPHE:
                 # Use vessel-level IC50 for mitotic catastrophe (not subpop-specific)
                 ic50_vessel = meta['ic50_uM']
                 self._mitotic_catastrophe.apply(
                     vessel=vessel,
                     stress_axis=stress_axis,
-                    dose_uM=float(dose_uM),
+                    dose_uM=float(effective_dose_uM),  # v5: use effective dose
                     ic50_uM=float(ic50_vessel),
                     hours=hours,
                 )
@@ -1213,10 +1303,9 @@ class BiologicalVirtualMachine(VirtualMachine):
                 subpop = vessel.subpopulations[subpop_name]
 
                 # Clear cache at start of step (Guardrail 2: prevents stale hazards)
-                if '_hazards' not in subpop:
-                    subpop['_hazards'] = {}
-                if '_total_hazard' not in subpop:
-                    subpop['_total_hazard'] = 0.0
+                # ALWAYS reset (not just initialize) to prevent accumulation across steps
+                subpop['_hazards'] = {}
+                subpop['_total_hazard'] = 0.0
 
                 # Apply subpop-specific IC50 shift
                 ic50_shift = subpop['ic50_shift']
@@ -1242,7 +1331,8 @@ class BiologicalVirtualMachine(VirtualMachine):
 
                 # Guardrail 1: Commitment delay is REQUIRED for lethal doses, but only if v3 is present.
                 # v3 presence is defined by an exposure_id being recorded for this compound on this vessel.
-                dose_ratio = dose_uM / ic50_uM if ic50_uM > 0 else 0.0
+                # v5 Diff 3: Use effective dose for dose ratio
+                dose_ratio = effective_dose_uM / ic50_uM if ic50_uM > 0 else 0.0
 
                 if dose_ratio >= 1.0:
                     if exposure_id is None:
@@ -1263,21 +1353,39 @@ class BiologicalVirtualMachine(VirtualMachine):
                         )
 
                 # Compute transport dysfunction (observer-independent, from exposure)
+                # v5 Diff 3: Use effective dose
                 transport_dysfunction = biology_core.compute_transport_dysfunction_from_exposure(
                     cell_line=vessel.cell_line,
                     compound=compound,
-                    dose_uM=dose_uM,
+                    dose_uM=effective_dose_uM,  # v5: effective dose
                     stress_axis=stress_axis,
                     base_potency_uM=base_ec50,
                     time_since_treatment_h=time_since_treatment_start,
                     params=self.thalamus_params
                 )
 
+                # v5 Diff 3.5: Compute burden decay factor (slows time ramp when burden decays)
+                # When burden drops after washout, cells stop accumulating new damage
+                is_washed_out = exp.get('is_washed_out', False)
+                if is_washed_out:
+                    original_dose = float(exp.get('dose_uM', effective_dose_uM))
+                    if original_dose > 0:
+                        burden_decay_factor = effective_dose_uM / original_dose
+                    else:
+                        burden_decay_factor = 1.0
+                else:
+                    burden_decay_factor = 1.0  # No decay if not washed out
+
                 # Compute attrition for THIS subpop
+                # v5 Diff 3: Use effective dose
+                params_dict = {'commitment_delay_h': commitment_delay_h} if commitment_delay_h else {}
+                if is_washed_out:
+                    params_dict['burden_decay_factor'] = burden_decay_factor
+
                 attrition_rate = biology_core.compute_attrition_rate_interval_mean(
                     cell_line=vessel.cell_line,
                     compound=compound,
-                    dose_uM=dose_uM,
+                    dose_uM=effective_dose_uM,  # v5: effective dose
                     stress_axis=stress_axis,
                     ic50_uM=ic50_uM,  # Subpop-specific!
                     hill_slope=hill_slope,
@@ -1285,7 +1393,7 @@ class BiologicalVirtualMachine(VirtualMachine):
                     time_since_treatment_start_h=time_since_treatment_start,
                     dt_h=hours,
                     current_viability=subpop['viability'],  # Subpop-specific!
-                    params={'commitment_delay_h': commitment_delay_h} if commitment_delay_h else None
+                    params=params_dict
                 )
 
                 # Apply toxicity scalar
@@ -1841,6 +1949,17 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Mirror spine -> vessel fields for logging
         vessel.compounds = self.injection_mgr.get_all_compounds_uM(vessel_id)
 
+        # v5 Diff 2: Mark exposure records as washed out (state transition, not deletion)
+        # Extracellular concentration → 0 (already done by InjectionManager above)
+        # Intracellular burden begins decay from this point
+        exposures = vessel.compound_meta.get('exposures', {})
+        for comp in removed:
+            exp = exposures.get(comp)
+            if exp is not None:
+                exp['is_washed_out'] = True
+                exp['washout_time'] = float(self.simulated_time)
+                # Note: Do NOT delete exposure record - it contains commitment history
+
         logger.info(f"Washed out {('all compounds' if compound is None else compound)} from {vessel_id}")
 
         # Track washout for intervention costs
@@ -2257,6 +2376,25 @@ class BiologicalVirtualMachine(VirtualMachine):
             'base_ec50': base_ec50,
             'potency_scalar': potency_scalar,  # Scales k_on for latent induction
             'toxicity_scalar': toxicity_scalar  # Scales death rates
+        }
+
+        # v5 Diff 1: Track exposure state for washout/recovery semantics
+        # Create exposures dict if not exists
+        if 'exposures' not in vessel.compound_meta:
+            vessel.compound_meta['exposures'] = {}
+
+        # Get exposure_id from v3 (already assigned during commitment delay sampling)
+        exposure_id = vessel.compound_meta.get('exposure_ids', {}).get(compound)
+
+        # Store exposure record (overwrite if re-treating)
+        vessel.compound_meta['exposures'][compound] = {
+            'exposure_id': exposure_id,
+            'start_time': float(self.simulated_time),
+            'dose_uM': float(dose_uM),
+            'is_washed_out': False,
+            'washout_time': None,
+            'intracellular_burden_uM': float(dose_uM),  # Starts equal to dose
+            'burden_half_life_h': 2.0,  # Default 2h half-life (engineering knob)
         }
 
         self._simulate_delay(0.5)

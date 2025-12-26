@@ -446,11 +446,6 @@ def compute_attrition_rate_instantaneous(
     # Calculate dose ratio relative to IC50 (using shifted IC50 passed in)
     dose_ratio = dose_uM / ic50_uM
 
-    # v3: WORLD A - Sublethal doses (< IC50) never cause attrition (hard contract)
-    # This check comes FIRST to make the world model explicit
-    if dose_ratio < 1.0:
-        return 0.0
-
     # Only applies when viability is already low (< 50%)
     # Cells with high viability don't undergo attrition yet
     if current_viability >= 0.5:
@@ -469,11 +464,28 @@ def compute_attrition_rate_instantaneous(
     if time_since_treatment_h <= commitment_delay_h:
         return 0.0
 
+    # v5: Commitment is irreversible - once past commitment delay, cells can die
+    # even if dose drops below IC50 (e.g., after washout). Check sublethal AFTER
+    # commitment gate to preserve commitment irreversibility.
+    # For uncommitted cells (caught above), sublethal doses never trigger attrition.
+    if dose_ratio < 1.0:
+        # Cells committed but dose dropped below IC50 (post-washout decay)
+        # Scale attrition by dose_ratio to prevent phantom deaths at zero dose
+        # This gives smooth transition: dose→0 implies attrition→0
+        pass  # Continue with scaled attrition (dose_ratio affects stress_multiplier below)
+
     # v3: Time scaling ramps up from commitment_delay → commitment_delay+36h
     # Previously hardcoded 12h → 48h, now uses per-subpop commitment_delay
     ramp_duration_h = 36.0
     time_factor = (time_since_treatment_h - commitment_delay_h) / ramp_duration_h
     time_factor = min(1.0, max(0.0, time_factor))  # Clamp to [0, 1]
+
+    # v5: Scale time_factor by burden decay (after washout)
+    # When burden drops to 10%, damage accumulation slows to 10% rate
+    # This prevents time ramp from dominating when burden decays
+    if params and params.get('burden_decay_factor') is not None:
+        burden_decay_factor = params['burden_decay_factor']
+        time_factor *= burden_decay_factor
 
     # Base attrition rates per stress axis
     base_attrition_rates = {

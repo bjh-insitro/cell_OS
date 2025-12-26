@@ -1,0 +1,158 @@
+{
+  "run_id": "run_20251223_220036",
+  "budget": 288,
+  "max_cycles": 5,
+  "seed": 999,
+  "cycles_completed": 5,
+  "abort_reason": null,
+  "history": [
+    {
+      "cycle": 1,
+      "proposal": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "hypothesis": "Cycle 0: Learn instrument shape using CAL_384_RULES_WORLD_v4. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 96
+      },
+      "observation": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "n_conditions": 1,
+        "wells_spent": 96,
+        "budget_remaining": 192,
+        "qc_flags": [
+          "1/1 conditions have CV >15%",
+          "1 wells flagged as outliers (Z>3)"
+        ]
+      },
+      "elapsed_seconds": 0.015472173690795898
+    },
+    {
+      "cycle": 2,
+      "proposal": {
+        "design_id": "baseline_c0001_61f7c0129108_replate",
+        "hypothesis": "MITIGATION: Replate due to spatial QC flag. Original: Cycle 0: Learn instrument shape using CAL_384_RULES_WORLD_v4. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 96
+      },
+      "observation": {
+        "design_id": "baseline_c0001_61f7c0129108_replate",
+        "n_conditions": 1,
+        "wells_spent": 96,
+        "budget_remaining": 96,
+        "qc_flags": [
+          "1/1 conditions have CV >15%",
+          "1 wells flagged as outliers (Z>3)"
+        ]
+      },
+      "elapsed_seconds": 0.0157010555267334,
+      "is_mitigation": true,
+      "reward": -8.0
+    },
+    {
+      "cycle": 3,
+      "proposal": {
+        "design_id": "edge_test_c0002_47e23bf9f4da",
+        "hypothesis": "Resolve edge confound before biology. Test if well position (edge vs center) introduces systematic bias.",
+        "n_wells": 24
+      },
+      "observation": {
+        "design_id": "edge_test_c0002_47e23bf9f4da",
+        "n_conditions": 4,
+        "wells_spent": 24,
+        "budget_remaining": 72,
+        "qc_flags": [
+          "Edge wells show 12.7% lower signal than center"
+        ]
+      },
+      "elapsed_seconds": 0.0028107166290283203
+    },
+    {
+      "cycle": 4,
+      "proposal": {
+        "design_id": "edge_test_c0002_47e23bf9f4da_replate",
+        "hypothesis": "MITIGATION: Replate due to spatial QC flag. Original: Resolve edge confound before biology. Test if well position (edge vs center) introduces systematic bias.",
+        "n_wells": 24
+      },
+      "observation": {
+        "design_id": "edge_test_c0002_47e23bf9f4da_replate",
+        "n_conditions": 4,
+        "wells_spent": 24,
+        "budget_remaining": 48,
+        "qc_flags": [
+          "Edge wells show 12.2% lower signal than center"
+        ]
+      },
+      "elapsed_seconds": 0.0027980804443359375,
+      "is_mitigation": true,
+      "reward": -6.5
+    },
+    {
+      "cycle": 5,
+      "proposal": {
+        "design_id": "dose_ladder_c0003_d8aa82feed76",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for CCCP across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0003_d8aa82feed76",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 36,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0013728141784667969
+    }
+  ],
+  "beliefs_final": {
+    "noise_sigma_hat": 1.0517704613645225,
+    "noise_ci_low": 1.0728888246585344,
+    "noise_ci_high": 1.0347383701922481,
+    "noise_rel_width": 0.03627260497199313,
+    "noise_sigma_stable": true,
+    "noise_df_total": 200,
+    "ldh_df_total": 200,
+    "ldh_rel_width": 0.03627260497199314,
+    "ldh_sigma_stable": true,
+    "cell_paint_df_total": 200,
+    "cell_paint_rel_width": 0.03627260497199314,
+    "cell_paint_sigma_stable": true,
+    "scrna_df_total": 200,
+    "scrna_rel_width": 0.03627260497199314,
+    "scrna_sigma_stable": false,
+    "scrna_metric_source": "proxy:noisy_morphology",
+    "baseline_cv_scalar": 0.013531448390201846,
+    "baseline_cv_by_channel": {
+      "er": 0.01820598899823422,
+      "mito": 0.030138382673151325,
+      "nucleus": 0.021485783025448662,
+      "actin": 0.011497494420545177,
+      "rna": 0.03205902259711722
+    },
+    "calibration_reps": 204,
+    "edge_effect_strength_by_channel": {
+      "er": -0.12140886714048223,
+      "mito": -0.1173434125359579,
+      "nucleus": -0.12269672462232106,
+      "actin": -0.11418685830924057,
+      "rna": -0.11493139466034769
+    },
+    "edge_effect_confident": true,
+    "edge_tests_run": 2,
+    "dose_curvature_seen": false,
+    "time_dependence_seen": false,
+    "tested_compounds": [
+      "CCCP",
+      "tBHQ",
+      "DMSO"
+    ],
+    "tested_cell_lines": [
+      "A549"
+    ],
+    "total_observations": 5
+  },
+  "paths": {
+    "log": "run_20251223_220036.log",
+    "json": "run_20251223_220036.json",
+    "evidence": "run_20251223_220036_evidence.jsonl",
+    "decisions": "run_20251223_220036_decisions.jsonl",
+    "diagnostics": "run_20251223_220036_diagnostics.jsonl"
+  }
+}
