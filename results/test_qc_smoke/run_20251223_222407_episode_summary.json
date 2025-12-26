@@ -1,0 +1,87 @@
+{
+  "run_id": "run_20251223_222407",
+  "seed": 999,
+  "cycles_completed": 2,
+  "start_time": "2025-12-23T22:24:07.221096",
+  "end_time": "2025-12-23T22:24:07.296764",
+  "abort_reason": null,
+  "spending": {
+    "total_wells": 288,
+    "total_plates": 3.0,
+    "wells_by_action_type": {
+      "science": 96,
+      "mitigation": 0,
+      "epistemic": 192
+    },
+    "edge_wells_used": 57,
+    "calibration_wells": 288,
+    "exploration_wells": 0
+  },
+  "learning": {
+    "total_gain_bits": 3.5,
+    "variance_reduction": null,
+    "gates_earned": [
+      "ldh",
+      "cell_paint"
+    ],
+    "gates_lost": [],
+    "final_calibration_entropy": 6.5,
+    "compounds_tested": 1,
+    "model_confidence": null
+  },
+  "sacrifices": {
+    "health_debt_accumulated": 0.0,
+    "health_debt_repaid": 0.0,
+    "mitigation_actions": [
+      {
+        "cycle": 2,
+        "action": "replicate",
+        "trigger": "high_uncertainty",
+        "cost_wells": 0
+      }
+    ],
+    "contract_violations": 0,
+    "epistemic_debt_max": 0.0,
+    "epistemic_refusals": 0
+  },
+  "mitigation_timeline": [
+    {
+      "cycle": 2,
+      "trigger_cycle": 1,
+      "action": "replicate",
+      "trigger_reason": "high_uncertainty",
+      "morans_i_before": null,
+      "morans_i_after": null,
+      "uncertainty_before": 6.5,
+      "uncertainty_after": 6.5,
+      "cost_wells": 0,
+      "reward": 0.0,
+      "rationale": "High calibration uncertainty (6.50 bits > 4.0 threshold), replicate to tighten ruler confidence (consecutive: 1/2)"
+    }
+  ],
+  "instrument_health": {
+    "cycles": [
+      1,
+      2
+    ],
+    "nuclei_cv_max": [
+      0.0,
+      0.0
+    ],
+    "morans_i_max": [
+      0.0,
+      0.0
+    ],
+    "segmentation_quality_min": [
+      1.0,
+      1.0
+    ],
+    "noise_rel_width": [
+      0.030305387789224977,
+      0.030305387789224977
+    ]
+  },
+  "efficiency_bits_per_plate": 1.1666666666666667,
+  "health_balance": 0.0,
+  "exploration_ratio": 0.0
+}

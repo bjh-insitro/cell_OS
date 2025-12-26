@@ -95,6 +95,9 @@ def make_replate_proposal(
 def make_replicate_proposal(previous_proposal: Proposal) -> Proposal:
     """Create a replicate proposal: 2× replicates, same conditions.
 
+    NOTE: This creates a proposal that MAY exceed remaining budget.
+    Caller must use shrink_proposal_to_budget() to ensure budget compliance.
+
     Args:
         previous_proposal: Original proposal to replicate
 
@@ -115,3 +118,56 @@ def make_replicate_proposal(previous_proposal: Proposal) -> Proposal:
     )
 
     return replicate_proposal
+
+
+def shrink_proposal_to_budget(proposal: Proposal, remaining_wells: int) -> Proposal | None:
+    """Shrink proposal to fit remaining budget, or return None if impossible.
+
+    Scaling algorithm (deterministic, preserves as much science as possible):
+    1. If proposal fits: return as-is
+    2. Else: reduce number of wells (reduces replicates/coverage)
+    3. If budget < minimum feasible (e.g., <3 wells): return None
+
+    For replicate proposals specifically: this effectively reduces the replication factor
+    from 2× down to whatever fits, maintaining original conditions in order.
+
+    Args:
+        proposal: Proposal that may exceed budget
+        remaining_wells: Actual remaining well budget
+
+    Returns:
+        Shrunk proposal that fits budget, or None if unsatisfiable
+
+    Example:
+        Original: 96 wells
+        Replicate: 192 wells requested
+        Remaining: 144 wells
+        Shrunk: 144 wells (1.5× replication instead of 2×)
+    """
+    from dataclasses import replace
+
+    requested_wells = len(proposal.wells)
+
+    # Case 1: Fits perfectly
+    if requested_wells <= remaining_wells:
+        return proposal
+
+    # Case 2: Budget too small for minimum science (arbitrary floor: 3 wells)
+    # Prevents degenerate proposals that can't yield useful information
+    MIN_WELLS = 3
+    if remaining_wells < MIN_WELLS:
+        return None
+
+    # Case 3: Shrink by taking first N wells that fit
+    # This preserves condition ordering and reduces replication factor
+    shrunk_wells = proposal.wells[:remaining_wells]
+
+    shrunk_proposal = replace(
+        proposal,
+        design_id=f"{proposal.design_id}_shrunk",
+        hypothesis=f"{proposal.hypothesis} [BUDGET-CONSTRAINED: {requested_wells}→{remaining_wells} wells]",
+        wells=shrunk_wells,
+        budget_limit=remaining_wells
+    )
+
+    return shrunk_proposal

@@ -11,6 +11,7 @@ Observer independence requires that:
 Any violation of these contracts crashes immediately.
 """
 
+import copy
 import inspect
 from typing import Set, Optional, Any
 import numpy as np
@@ -209,3 +210,18 @@ class ValidatedRNG:
         count = self.call_count
         self.call_count = 0
         return count
+
+    def snapshot(self) -> dict:
+        """Capture current RNG state for reproducibility tests.
+
+        Returns deep copy to prevent accidental mutation.
+        """
+        return copy.deepcopy(self._rng.bit_generator.state)
+
+    def restore(self, state: dict):
+        """Restore RNG to previous state.
+
+        Args:
+            state: State dict from snapshot()
+        """
+        self._rng.bit_generator.state = state

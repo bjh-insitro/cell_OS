@@ -1,0 +1,97 @@
+{
+  "run_id": "run_20251223_222407",
+  "budget": 288,
+  "max_cycles": 5,
+  "seed": 999,
+  "cycles_completed": 2,
+  "abort_reason": null,
+  "history": [
+    {
+      "cycle": 1,
+      "proposal": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "hypothesis": "Cycle 0: Learn instrument shape using CAL_384_RULES_WORLD_v4. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 96
+      },
+      "observation": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "n_conditions": 1,
+        "wells_spent": 96,
+        "budget_remaining": 192,
+        "qc_flags": [
+          "1/1 conditions have CV >15%",
+          "1 wells flagged as outliers (Z>3)"
+        ]
+      },
+      "elapsed_seconds": 0.015539169311523438
+    },
+    {
+      "cycle": 2,
+      "proposal": {
+        "design_id": "baseline_c0001_61f7c0129108_replicate",
+        "hypothesis": "Replicate mitigation: Cycle 0: Learn instrument shape using CAL_384_RULES_WORLD_v4. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 192
+      },
+      "observation": {
+        "design_id": "baseline_c0001_61f7c0129108_replicate",
+        "n_conditions": 1,
+        "wells_spent": 192,
+        "budget_remaining": 0,
+        "qc_flags": [
+          "1/1 conditions have CV >15%",
+          "4 wells flagged as outliers (Z>3)"
+        ]
+      },
+      "elapsed_seconds": 0.04921579360961914,
+      "is_epistemic_action": true,
+      "epistemic_action": "replicate",
+      "reward": 0.0
+    }
+  ],
+  "beliefs_final": {
+    "noise_sigma_hat": 1.5748602363652657,
+    "noise_ci_low": 1.6008618256568155,
+    "noise_ci_high": 1.5531350754799356,
+    "noise_rel_width": 0.030305387789224977,
+    "noise_sigma_stable": false,
+    "noise_df_total": 286,
+    "ldh_df_total": 286,
+    "ldh_rel_width": 0.030305387789224827,
+    "ldh_sigma_stable": true,
+    "cell_paint_df_total": 286,
+    "cell_paint_rel_width": 0.030305387789224827,
+    "cell_paint_sigma_stable": true,
+    "scrna_df_total": 286,
+    "scrna_rel_width": 0.030305387789224827,
+    "scrna_sigma_stable": false,
+    "scrna_metric_source": "proxy:noisy_morphology",
+    "baseline_cv_scalar": 1.489213608780946,
+    "baseline_cv_by_channel": {
+      "er": 1.4797838644595347,
+      "mito": 1.350898404693259,
+      "nucleus": 1.79168733755988,
+      "actin": 1.538388930181455,
+      "rna": 1.6286608403515437
+    },
+    "calibration_reps": 288,
+    "edge_effect_strength_by_channel": {},
+    "edge_effect_confident": false,
+    "edge_tests_run": 0,
+    "dose_curvature_seen": false,
+    "time_dependence_seen": false,
+    "tested_compounds": [
+      "DMSO"
+    ],
+    "tested_cell_lines": [
+      "A549"
+    ],
+    "total_observations": 2
+  },
+  "paths": {
+    "log": "run_20251223_222407.log",
+    "json": "run_20251223_222407.json",
+    "evidence": "run_20251223_222407_evidence.jsonl",
+    "decisions": "run_20251223_222407_decisions.jsonl",
+    "diagnostics": "run_20251223_222407_diagnostics.jsonl"
+  }
+}

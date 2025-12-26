@@ -1,0 +1,236 @@
+{
+  "run_id": "run_20251223_220123",
+  "budget": 240,
+  "max_cycles": 10,
+  "seed": 42,
+  "cycles_completed": 10,
+  "abort_reason": null,
+  "history": [
+    {
+      "cycle": 1,
+      "proposal": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "hypothesis": "Cycle 0: Learn instrument shape using CAL_384_RULES_WORLD_v4. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 96
+      },
+      "observation": {
+        "design_id": "baseline_c0001_61f7c0129108",
+        "n_conditions": 1,
+        "wells_spent": 96,
+        "budget_remaining": 144,
+        "qc_flags": [
+          "1/1 conditions have CV >15%",
+          "1 wells flagged as outliers (Z>3)"
+        ]
+      },
+      "elapsed_seconds": 0.02184319496154785
+    },
+    {
+      "cycle": 2,
+      "proposal": {
+        "design_id": "edge_test_c0002_47e23bf9f4da",
+        "hypothesis": "Resolve edge confound before biology. Test if well position (edge vs center) introduces systematic bias.",
+        "n_wells": 24
+      },
+      "observation": {
+        "design_id": "edge_test_c0002_47e23bf9f4da",
+        "n_conditions": 4,
+        "wells_spent": 24,
+        "budget_remaining": 120,
+        "qc_flags": [
+          "Edge wells show 49.3% lower signal than center",
+          "1/4 conditions have CV >15%"
+        ]
+      },
+      "elapsed_seconds": 0.002870798110961914
+    },
+    {
+      "cycle": 3,
+      "proposal": {
+        "design_id": "edge_test_c0003_47e23bf9f4da",
+        "hypothesis": "Resolve edge confound before biology. Test if well position (edge vs center) introduces systematic bias.",
+        "n_wells": 24
+      },
+      "observation": {
+        "design_id": "edge_test_c0003_47e23bf9f4da",
+        "n_conditions": 4,
+        "wells_spent": 24,
+        "budget_remaining": 96,
+        "qc_flags": [
+          "Edge wells show 49.4% lower signal than center",
+          "1/4 conditions have CV >15%"
+        ]
+      },
+      "elapsed_seconds": 0.0028228759765625
+    },
+    {
+      "cycle": 4,
+      "proposal": {
+        "design_id": "dose_ladder_c0004_d8aa82feed76",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for CCCP across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0004_d8aa82feed76",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 84,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0014090538024902344
+    },
+    {
+      "cycle": 5,
+      "proposal": {
+        "design_id": "dose_ladder_c0005_9ace0fdf6c46",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for H2O2 across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0005_9ace0fdf6c46",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 72,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.001444101333618164
+    },
+    {
+      "cycle": 6,
+      "proposal": {
+        "design_id": "dose_ladder_c0006_41595cc6d5d9",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for MG132 across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0006_41595cc6d5d9",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 60,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0014371871948242188
+    },
+    {
+      "cycle": 7,
+      "proposal": {
+        "design_id": "dose_ladder_c0007_ce003694059d",
+        "hypothesis": "Explore compounds with dose-response. Map dose-response for etoposide across 4 log-spaced doses.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "dose_ladder_c0007_ce003694059d",
+        "n_conditions": 4,
+        "wells_spent": 12,
+        "budget_remaining": 48,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0014331340789794922
+    },
+    {
+      "cycle": 8,
+      "proposal": {
+        "design_id": "baseline_c0008_88d15c028c0b",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_c0008_88d15c028c0b",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 36,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0011339187622070312
+    },
+    {
+      "cycle": 9,
+      "proposal": {
+        "design_id": "baseline_c0009_88d15c028c0b",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_c0009_88d15c028c0b",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 24,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0011179447174072266
+    },
+    {
+      "cycle": 10,
+      "proposal": {
+        "design_id": "baseline_c0010_88d15c028c0b",
+        "hypothesis": "Continue calibration maintenance. Calibration: measure instrument noise to establish confidence intervals.",
+        "n_wells": 12
+      },
+      "observation": {
+        "design_id": "baseline_c0010_88d15c028c0b",
+        "n_conditions": 1,
+        "wells_spent": 12,
+        "budget_remaining": 12,
+        "qc_flags": []
+      },
+      "elapsed_seconds": 0.0012209415435791016
+    }
+  ],
+  "beliefs_final": {
+    "noise_sigma_hat": 1.3069164846396224,
+    "noise_ci_low": 1.3391718303284332,
+    "noise_ci_high": 1.2820257625454032,
+    "noise_rel_width": 0.04372587571943269,
+    "noise_sigma_stable": true,
+    "noise_df_total": 138,
+    "ldh_df_total": 138,
+    "ldh_rel_width": 0.043725875719432525,
+    "ldh_sigma_stable": true,
+    "cell_paint_df_total": 138,
+    "cell_paint_rel_width": 0.043725875719432525,
+    "cell_paint_sigma_stable": true,
+    "scrna_df_total": 138,
+    "scrna_rel_width": 0.043725875719432525,
+    "scrna_sigma_stable": false,
+    "scrna_metric_source": "proxy:noisy_morphology",
+    "baseline_cv_scalar": 0.03944588004134599,
+    "baseline_cv_by_channel": {
+      "er": 0.05720962610932755,
+      "mito": 0.23814992631658136,
+      "nucleus": 0.14156515783173904,
+      "actin": 0.14729485456198965,
+      "rna": 0.22571489533622807
+    },
+    "calibration_reps": 144,
+    "edge_effect_strength_by_channel": {
+      "er": -0.4629548020791794,
+      "mito": -0.589103453724464,
+      "nucleus": -0.596112328760286,
+      "actin": -0.4484374644114947,
+      "rna": -0.36515025570670967
+    },
+    "edge_effect_confident": true,
+    "edge_tests_run": 2,
+    "dose_curvature_seen": false,
+    "time_dependence_seen": false,
+    "tested_compounds": [
+      "CCCP",
+      "tBHQ",
+      "DMSO",
+      "H2O2",
+      "etoposide",
+      "MG132"
+    ],
+    "tested_cell_lines": [
+      "A549"
+    ],
+    "total_observations": 10
+  },
+  "paths": {
+    "log": "run_20251223_220123.log",
+    "json": "run_20251223_220123.json",
+    "evidence": "run_20251223_220123_evidence.jsonl",
+    "decisions": "run_20251223_220123_decisions.jsonl",
+    "diagnostics": "run_20251223_220123_diagnostics.jsonl"
+  }
+}

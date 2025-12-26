@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base import AssaySimulator
+from .assay_params import DEFAULT_ASSAY_PARAMS
 from .._impl import stable_u32, lognormal_multiplier
 from ..run_context import pipeline_transform
 from ...sim import biology_core
@@ -278,14 +279,19 @@ class CellPaintingAssay(AssaySimulator):
             "morphology_struct": morph_struct,
             "morphology_measured": morph,
             "morphology": morph,  # Backward compatibility
-            "signal_intensity": 0.3 + 0.7 * vessel.viability,  # Viability factor
+            "signal_intensity": (
+                DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR
+                + (1 - DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR) * vessel.viability
+            ),  # ASSUMPTION: See assay_params.py and ASSUMPTIONS_AND_BOUNDARIES.md
             "transport_dysfunction_score": transport_dysfunction_score,
             "timestamp": datetime.now().isoformat(),
             # Pipeline drift metadata for epistemic control
             "run_context_id": self.vm.run_context.context_id,
             "batch_id": batch_id,
             "plate_id": plate_id,
-            "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(),
+            "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(
+                self.vm.simulated_time, modality='imaging'
+            ),
         }
 
         # Check for well failure
@@ -454,7 +460,11 @@ class CellPaintingAssay(AssaySimulator):
         t_measure = self.vm.simulated_time
 
         # 1. Viability factor (biological signal attenuation)
-        viability_factor = 0.3 + 0.7 * vessel.viability
+        # ASSUMPTION: Dead cells retain CP_DEAD_SIGNAL_FLOOR signal. See assay_params.py
+        viability_factor = (
+            DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR
+            + (1 - DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR) * vessel.viability
+        )
 
         # 2. Washout multiplier (measurement artifact)
         washout_multiplier = self._compute_washout_multiplier(vessel, t_measure)
@@ -693,14 +703,15 @@ class CellPaintingAssay(AssaySimulator):
             is_edge = self._is_edge_well(well_position)
             edge_factor = (1.0 - edge_effect) if is_edge else 1.0
 
-        # Run context modifiers (lot/instrument effects)
-        meas_mods = self.vm.run_context.get_measurement_modifiers()
-        # DIAGNOSTIC: Disable illumination_bias to isolate per-channel coupling
+        # Run context modifiers (lot/instrument effects + temporal drift)
+        # Pass t_measure and modality='imaging' for time-dependent drift
+        meas_mods = self.vm.run_context.get_measurement_modifiers(t_measure, modality='imaging')
+        # DIAGNOSTIC: Disable gain to isolate per-channel coupling
         if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
-            illumination_bias = 1.0
+            gain = 1.0
             channel_biases = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
         else:
-            illumination_bias = meas_mods['illumination_bias']
+            gain = meas_mods['gain']  # Includes batch effect + temporal drift
             channel_biases = meas_mods['channel_biases']
 
         # Add coupled nuisance factors
@@ -741,8 +752,9 @@ class CellPaintingAssay(AssaySimulator):
             # Fallback: no hardware artifacts if import fails
             pass
 
-        # Shared factors (plate/day/operator/edge/illumination/hardware) - NOT per-channel well_factor
-        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * illumination_bias * hardware_factor
+        # Shared factors (plate/day/operator/edge/gain/hardware) - NOT per-channel well_factor
+        # CANONICAL GAIN APPLICATION: gain applied exactly once here (includes batch + drift)
+        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * gain * hardware_factor
 
         # Apply shared factors + per-channel well factor + biases + coupled stain/focus
         for channel in morph:
@@ -1064,7 +1076,8 @@ class CellPaintingAssay(AssaySimulator):
             cell_params = hardware_sens.get(vessel.cell_line, hardware_sens.get('DEFAULT', {}))
             adhesion_heterogeneity = cell_params.get('adhesion_heterogeneity', 0.3)
 
-        c_base = 0.8
+        # ASSUMPTION: Segmentation yield degrades linearly with debris. See assay_params.py
+        c_base = DEFAULT_ASSAY_PARAMS.SEGMENTATION_C_BASE
         clumpiness_amplifier = 1.0 + 0.6 * adhesion_heterogeneity  # [1.0×, 1.3×]
         c_effective = c_base * clumpiness_amplifier
 

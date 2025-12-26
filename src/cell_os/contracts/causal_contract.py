@@ -12,7 +12,9 @@ The contract is enforced at runtime via decorators and read-only proxies.
 from __future__ import annotations
 
 import os
+import time
 import warnings
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Set, List
 
@@ -332,6 +334,47 @@ def validate_measurement_output(contract: MeasurementContract, out: Any, debug_t
             _violation(f"[{contract.name}] _debug_truth must be a dict")
 
 
+def _emit_contract_report(
+    run_context: Any,
+    contract: MeasurementContract,
+    log: _AccessLog,
+    violations: List[str],
+    debug_truth_enabled: bool,
+    timing_ms: float
+) -> None:
+    """Emit contract report to run_context for forensic trail."""
+    if run_context is None:
+        return
+
+    read_counts = Counter(log.reads)
+    reads_top = dict(read_counts.most_common(25))
+
+    mode = "strict" if _strict_mode() else ("record" if _record_mode() else "warn")
+    cycle = getattr(run_context, "cycle", 0)
+
+    try:
+        from ..epistemic_agent.beliefs.ledger import ContractReport
+
+        report = ContractReport(
+            cycle=cycle,
+            assay_name=contract.name,
+            mode=mode,
+            reads_top=reads_top,
+            violations=list(violations),
+            writes_detected=list(log.writes),
+            decorator_present=True,
+            debug_truth_enabled=debug_truth_enabled,
+            timing_ms=timing_ms,
+        )
+
+        if not hasattr(run_context, "contract_reports"):
+            run_context.contract_reports = []
+
+        run_context.contract_reports.append(report)
+    except ImportError:
+        pass
+
+
 def enforce_measurement_contract(contract: MeasurementContract, vessel_arg_index: int = 1) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for VM assay entrypoints.
@@ -359,11 +402,17 @@ def enforce_measurement_contract(contract: MeasurementContract, vessel_arg_index
             run_context = getattr(vm, "run_context", None) if vm is not None else None
             debug_truth_enabled = bool(getattr(run_context, "debug_truth_enabled", False)) if run_context is not None else False
 
+            start_time = time.time()
+
             log = _AccessLog()
             ro_vessel = _ReadOnlyProxy(vessel, "state", log, contract, debug_truth_enabled)
 
             new_args = list(args)
             new_args[vessel_arg_index] = ro_vessel
+
+            violations_list = []
+            if _record_mode():
+                old_violations = list(_CONTRACT_VIOLATIONS)
 
             out = fn(*tuple(new_args), **kwargs)
 
@@ -372,6 +421,21 @@ def enforce_measurement_contract(contract: MeasurementContract, vessel_arg_index
 
             if log.writes:
                 _violation(f"[{contract.name}] writes detected: {sorted(log.writes)[:5]}")
+
+            if _record_mode():
+                new_violations = _CONTRACT_VIOLATIONS[len(old_violations):]
+                violations_list = list(new_violations)
+
+            elapsed_ms = (time.time() - start_time) * 1000.0
+
+            _emit_contract_report(
+                run_context=run_context,
+                contract=contract,
+                log=log,
+                violations=violations_list,
+                debug_truth_enabled=debug_truth_enabled,
+                timing_ms=elapsed_ms
+            )
 
             return out
 

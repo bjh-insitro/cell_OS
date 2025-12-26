@@ -1,0 +1,42 @@
+{
+  "git_sha": "291ed0a",
+  "metrics": {
+    "fig1": {
+      "cv_final_viability": 0.2289005799360739
+    },
+    "fig2": {
+      "thresh_0.7": {
+        "cv": 0.0,
+        "mean": 27.0,
+        "std": 0.0
+      },
+      "thresh_0.5": {
+        "cv": 0.0,
+        "mean": 27.0,
+        "std": 0.0
+      },
+      "thresh_0.3": {
+        "cv": 0.0,
+        "mean": 27.0,
+        "std": 0.0
+      }
+    },
+    "fig3": {
+      "mean_pairwise_correlation": 1.0
+    },
+    "fig5": {
+      "within_run_var": 0.0,
+      "between_run_var": 0.00022617921224567467
+    },
+    "fig6": {
+      "mean_within_run_corr": 1.0,
+      "mean_across_run_corr": 0.9999971800676988
+    },
+    "fig4": {
+      "cv_half_life": 0.0,
+      "mean_half_life": 6.0,
+      "cosmetic_warning": false
+    }
+  },
+  "warnings": []
+}

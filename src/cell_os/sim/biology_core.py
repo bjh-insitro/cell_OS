@@ -436,24 +436,56 @@ def compute_attrition_rate_instantaneous(
     Returns:
         Attrition rate (fraction killed per hour) at this time point
     """
-    # No attrition before 12h (cells need time to commit to death)
-    if time_since_treatment_h <= 12.0:
-        return 0.0
+    # v3: Guard - IC50 must be valid (fail loudly on junk)
+    if ic50_uM is None or not np.isfinite(ic50_uM) or ic50_uM <= 0:
+        raise ValueError(
+            f"Invalid IC50 {ic50_uM} for compound '{compound}' in {cell_line}. "
+            f"IC50 must be positive and finite."
+        )
+
+    # Calculate dose ratio relative to IC50 (using shifted IC50 passed in)
+    dose_ratio = dose_uM / ic50_uM
 
     # Only applies when viability is already low (< 50%)
+    # Cells with high viability don't undergo attrition yet
     if current_viability >= 0.5:
         return 0.0
 
-    # Calculate dose ratio relative to IC50
-    dose_ratio = dose_uM / ic50_uM
+    # v3: Per-subpopulation commitment delay (replaces hard 12h threshold)
+    # params contains 'commitment_delay_h' or None
+    if params and params.get('commitment_delay_h') is not None:
+        commitment_delay_h = params['commitment_delay_h']
+    else:
+        # Fallback to 12h for pre-patch vessels or dose=0 cases
+        commitment_delay_h = 12.0
 
-    # Only apply attrition when dose >= IC50 (threshold for commitment)
-    if dose_ratio < 1.0:
+    # v3: Commitment delay is a time gate (not a math input)
+    # If not yet committed, return 0 immediately
+    if time_since_treatment_h <= commitment_delay_h:
         return 0.0
 
-    # Time scaling: attrition ramps up between 12h → 48h
-    time_factor = (time_since_treatment_h - 12.0) / 36.0  # 0 at 12h, 1 at 48h
-    time_factor = min(1.0, max(0.0, time_factor))
+    # v5: Commitment is irreversible - once past commitment delay, cells can die
+    # even if dose drops below IC50 (e.g., after washout). Check sublethal AFTER
+    # commitment gate to preserve commitment irreversibility.
+    # For uncommitted cells (caught above), sublethal doses never trigger attrition.
+    if dose_ratio < 1.0:
+        # Cells committed but dose dropped below IC50 (post-washout decay)
+        # Scale attrition by dose_ratio to prevent phantom deaths at zero dose
+        # This gives smooth transition: dose→0 implies attrition→0
+        pass  # Continue with scaled attrition (dose_ratio affects stress_multiplier below)
+
+    # v3: Time scaling ramps up from commitment_delay → commitment_delay+36h
+    # Previously hardcoded 12h → 48h, now uses per-subpop commitment_delay
+    ramp_duration_h = 36.0
+    time_factor = (time_since_treatment_h - commitment_delay_h) / ramp_duration_h
+    time_factor = min(1.0, max(0.0, time_factor))  # Clamp to [0, 1]
+
+    # v5: Scale time_factor by burden decay (after washout)
+    # When burden drops to 10%, damage accumulation slows to 10% rate
+    # This prevents time ramp from dominating when burden decays
+    if params and params.get('burden_decay_factor') is not None:
+        burden_decay_factor = params['burden_decay_factor']
+        time_factor *= burden_decay_factor
 
     # Base attrition rates per stress axis
     base_attrition_rates = {
@@ -495,6 +527,11 @@ def compute_attrition_rate_instantaneous(
 
     # Final attrition rate (fraction per hour)
     attrition_rate = attrition_rate_base * stress_multiplier * time_factor / 36.0  # Normalize to per-hour
+
+    # v6 Diff 3: Apply run-level hazard multiplier (batch effect on attrition kinetics)
+    if params and 'hazard_multiplier' in params:
+        hazard_mult = params['hazard_multiplier']
+        attrition_rate *= hazard_mult
 
     return attrition_rate
 
@@ -562,13 +599,17 @@ def compute_attrition_rate_interval_mean(
         # Evaluate rate at midpoint = 17.5h
         # Return: 1.0 * rate(17.5h)
     """
-    ATTRITION_THRESHOLD_H = 12.0
+    # v3: Get commitment delay from params (per-subpop) or fallback to 12h
+    if params and params.get('commitment_delay_h') is not None:
+        attrition_threshold_h = params['commitment_delay_h']
+    else:
+        attrition_threshold_h = 12.0  # Fallback for pre-v3 vessels
 
     t0 = time_since_treatment_start_h
     t1 = t0 + dt_h
 
     # Fraction of interval past commitment threshold
-    frac_after = interval_fraction_after(t0, t1, ATTRITION_THRESHOLD_H)
+    frac_after = interval_fraction_after(t0, t1, attrition_threshold_h)
 
     if frac_after <= 0:
         return 0.0  # Entire interval before threshold
@@ -577,7 +618,7 @@ def compute_attrition_rate_interval_mean(
     # For interval [t0, t1) with threshold T:
     # - If t0 >= T: midpoint = t0 + 0.5 * dt
     # - If t0 < T < t1: midpoint = T + 0.5 * (t1 - T)
-    post_threshold_start = max(t0, ATTRITION_THRESHOLD_H)
+    post_threshold_start = max(t0, attrition_threshold_h)
     post_threshold_end = t1
     t_eval = post_threshold_start + 0.5 * (post_threshold_end - post_threshold_start)
 

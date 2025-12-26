@@ -170,6 +170,23 @@ class BeliefState:
     # Execution integrity tracking (plate map error detection)
     execution_integrity: ExecutionIntegrityState = field(default_factory=ExecutionIntegrityState)
 
+    # Health debt tracking (instrument quality degradation)
+    # Debt accumulates from QC violations (Moran's I excess, nuclei CV excess)
+    # Decays with mitigation actions or high-quality runs
+    # Influences policy: high debt → prefer calibration over exploration
+    health_debt: float = 0.0  # Accumulated quality debt (unitless, ~0-10 range)
+    health_debt_history: List[float] = field(default_factory=list)  # Per-cycle tracking
+
+    # Calibration uncertainty tracking (epistemic maintenance)
+    # Measures ignorance about measurement quality (distinct from health debt = damage)
+    # Increases with time since calibration and drift signals
+    # Decreases after calibration proportional to QC cleanliness
+    # Influences policy: high uncertainty → prefer calibration over exploration
+    calibration_uncertainty: float = 0.5  # Uncertainty about measurement quality [0, 1]
+    cycles_since_calibration: int = 0  # Time since last calibration
+    last_calibration_cycle: Optional[int] = None  # Cycle when last calibrated
+    last_action: Optional[str] = None  # Last epistemic action (for hysteresis)
+
     # Evidence ledger
     _cycle: int = 0
     _events: List[EvidenceEvent] = field(default_factory=list)
@@ -1269,6 +1286,36 @@ class BeliefState:
         """
         return self.calibration_entropy_bits
 
+    def estimate_calibration_uncertainty(self) -> float:
+        """
+        Return current calibration uncertainty (bits).
+
+        This measures uncertainty about MEASUREMENT QUALITY:
+        - Noise (CI width on pooled sigma)
+        - Edge effects (detection confidence)
+        - Assay gates (LDH, Cell Painting, scRNA)
+        - Dose-response patterns (curvature, time dependence)
+        - Exploration coverage (untested compounds)
+
+        This does NOT measure biological parameter uncertainty (IC50, mechanism).
+
+        Uses existing calibration_entropy_bits property which aggregates:
+        - Noise uncertainty (0-2 bits): wide CI → high entropy
+        - Assay uncertainty (0-3 bits): ungated assays → high entropy
+        - Edge effect uncertainty (0-1 bit): unknown edges → high entropy
+        - Exploration uncertainty (0-2 bits): untested compounds → high entropy
+        - Pattern uncertainty (0-2 bits): no dose curvature/time trends → high entropy
+
+        Typical range: 0-10 bits
+        - High (>6 bits): ruler uncertain, replicate to tighten
+        - Medium (3-6 bits): transitional
+        - Low (<3 bits): ruler confident, safe to expand
+
+        Returns:
+            Calibration uncertainty in bits
+        """
+        return self.calibration_entropy_bits
+
     def estimate_expected_gain(
         self,
         template_name: str,
@@ -1348,3 +1395,251 @@ class BeliefState:
             expected_gain = 0.05
 
         return expected_gain
+
+    def accumulate_health_debt(
+        self,
+        morans_i: Optional[float] = None,
+        nuclei_cv: Optional[float] = None,
+        segmentation_quality: Optional[float] = None
+    ) -> float:
+        """
+        Accumulate health debt from QC violations.
+
+        Health debt represents instrument quality degradation that must be paid down
+        through mitigation (replating, recalibration) or high-quality runs.
+
+        Design:
+        - Debt grows from excess spatial autocorrelation (Moran's I > 0.15)
+        - Debt grows from excess nuclei CV (> 0.20)
+        - Debt grows from poor segmentation quality (< 0.80)
+        - Debt is additive: multiple violations compound
+
+        Args:
+            morans_i: Spatial autocorrelation (0-1, flagged if > 0.15)
+            nuclei_cv: Nuclei count CV (flagged if > 0.20)
+            segmentation_quality: Segmentation quality score (flagged if < 0.80)
+
+        Returns:
+            Debt increment added this cycle
+        """
+        debt_increment = 0.0
+
+        # Spatial QC: Moran's I excess
+        if morans_i is not None and morans_i > 0.15:
+            # Debt proportional to excess over threshold
+            excess = morans_i - 0.15
+            debt_increment += excess * 10.0  # Scale to ~1-2 units per violation
+
+        # Nuclei CV excess
+        if nuclei_cv is not None and nuclei_cv > 0.20:
+            excess = nuclei_cv - 0.20
+            debt_increment += excess * 5.0
+
+        # Segmentation quality deficit
+        if segmentation_quality is not None and segmentation_quality < 0.80:
+            deficit = 0.80 - segmentation_quality
+            debt_increment += deficit * 3.0
+
+        if debt_increment > 0:
+            self.health_debt += debt_increment
+            self.health_debt_history.append(self.health_debt)
+
+            # Emit evidence event
+            self._set(
+                "health_debt",
+                self.health_debt,
+                evidence={
+                    "debt_increment": debt_increment,
+                    "morans_i": morans_i,
+                    "nuclei_cv": nuclei_cv,
+                    "segmentation_quality": segmentation_quality,
+                },
+                supporting_conditions=[],
+                note=f"Health debt accumulated: +{debt_increment:.2f} (total: {self.health_debt:.2f})"
+            )
+
+        return debt_increment
+
+    def decay_health_debt(
+        self,
+        decay_rate: float = 0.2,
+        reason: str = "high_quality_run"
+    ) -> float:
+        """
+        Decay health debt after high-quality runs or mitigation.
+
+        Design:
+        - Natural decay: clean runs reduce debt by fixed percentage (default 20%)
+        - Mitigation decay: replating/recalibration can apply larger decay
+        - Debt floor: never goes below 0
+
+        Args:
+            decay_rate: Fraction of debt to remove (0-1, default 0.2)
+            reason: Why debt is decaying ("high_quality_run", "mitigation_replate", etc.)
+
+        Returns:
+            Amount of debt repaid
+        """
+        if self.health_debt <= 0:
+            return 0.0
+
+        repayment = self.health_debt * decay_rate
+        self.health_debt = max(0.0, self.health_debt - repayment)
+        self.health_debt_history.append(self.health_debt)
+
+        # Emit evidence event
+        self._set(
+            "health_debt",
+            self.health_debt,
+            evidence={
+                "repayment": repayment,
+                "decay_rate": decay_rate,
+                "reason": reason,
+            },
+            supporting_conditions=[],
+            note=f"Health debt repaid: -{repayment:.2f} ({reason}, remaining: {self.health_debt:.2f})"
+        )
+
+        return repayment
+
+    def get_health_debt_pressure(self) -> str:
+        """
+        Return policy guidance based on current health debt.
+
+        Returns:
+            "low" (< 2.0): safe to explore
+            "medium" (2.0-5.0): prefer calibration
+            "high" (> 5.0): urgent mitigation needed
+        """
+        if self.health_debt < 2.0:
+            return "low"
+        elif self.health_debt < 5.0:
+            return "medium"
+        else:
+            return "high"
+
+    def advance_cycle_uncertainty(self):
+        """
+        Advance calibration uncertainty by one cycle (time-based drift).
+
+        Uncertainty increases with time since calibration as a drift prior.
+        This models the fact that instrument state changes over time.
+        """
+        self.cycles_since_calibration += 1
+
+        # Drift prior: uncertainty grows slowly with time
+        # Cap at 1.0 (full uncertainty)
+        drift_rate = 0.05  # +5% uncertainty per cycle without calibration
+        self.calibration_uncertainty = min(1.0, self.calibration_uncertainty + drift_rate)
+
+    def update_calibration_uncertainty_from_signals(
+        self,
+        morans_i: Optional[float] = None,
+        nuclei_cv: Optional[float] = None,
+        segmentation_quality: Optional[float] = None
+    ):
+        """
+        Update calibration uncertainty from QC signals (volatility indicators).
+
+        Uncertainty increases when QC signals show instability or drift.
+        This is distinct from health_debt (which tracks damage).
+
+        Args:
+            morans_i: Spatial autocorrelation (instability if high)
+            nuclei_cv: Nuclei count CV (instability if high)
+            segmentation_quality: Segmentation quality (instability if low)
+        """
+        uncertainty_increment = 0.0
+
+        # Spatial instability
+        if morans_i is not None and morans_i > 0.15:
+            excess = morans_i - 0.15
+            uncertainty_increment += excess * 0.5  # Scale to ~0-0.1 range
+
+        # Nuclei CV instability
+        if nuclei_cv is not None and nuclei_cv > 0.20:
+            excess = nuclei_cv - 0.20
+            uncertainty_increment += excess * 0.3
+
+        # Segmentation instability
+        if segmentation_quality is not None and segmentation_quality < 0.80:
+            deficit = 0.80 - segmentation_quality
+            uncertainty_increment += deficit * 0.2
+
+        if uncertainty_increment > 0:
+            self.calibration_uncertainty = min(1.0, self.calibration_uncertainty + uncertainty_increment)
+
+            # Emit evidence event
+            self._set(
+                "calibration_uncertainty",
+                self.calibration_uncertainty,
+                evidence={
+                    "uncertainty_increment": uncertainty_increment,
+                    "morans_i": morans_i,
+                    "nuclei_cv": nuclei_cv,
+                    "segmentation_quality": segmentation_quality,
+                },
+                supporting_conditions=[],
+                note=f"Calibration uncertainty increased: +{uncertainty_increment:.3f} (total: {self.calibration_uncertainty:.3f})"
+            )
+
+    def apply_calibration_result(
+        self,
+        calibration_metrics: dict,
+        cycle: int
+    ):
+        """
+        Apply calibration result to beliefs (reduce uncertainty, decay debt).
+
+        Calibration reduces uncertainty proportional to QC cleanliness.
+        Also decays health debt modestly if calibration was clean.
+
+        Args:
+            calibration_metrics: Dict with keys: morans_i, nuclei_cv, segmentation_quality, noise_rel_width
+            cycle: Current cycle number
+        """
+        # Extract cleanliness metrics
+        morans_i = calibration_metrics.get('morans_i', 0.1)
+        nuclei_cv = calibration_metrics.get('nuclei_cv', 0.15)
+        segmentation_quality = calibration_metrics.get('segmentation_quality', 0.85)
+        noise_rel_width = calibration_metrics.get('noise_rel_width')
+
+        # Compute cleanliness score [0, 1] (1 = perfect)
+        # Perfect: Moran's I < 0.10, nuclei_cv < 0.15, segmentation > 0.85
+        cleanliness = 1.0
+        if morans_i > 0.10:
+            cleanliness -= (morans_i - 0.10) * 2.0  # Penalty for spatial autocorrelation
+        if nuclei_cv > 0.15:
+            cleanliness -= (nuclei_cv - 0.15) * 1.5  # Penalty for variability
+        if segmentation_quality < 0.85:
+            cleanliness -= (0.85 - segmentation_quality) * 1.0  # Penalty for poor segmentation
+
+        cleanliness = max(0.0, min(1.0, cleanliness))
+
+        # Reduce uncertainty proportional to cleanliness
+        # Perfect calibration reduces uncertainty to ~0.1
+        # Poor calibration barely reduces uncertainty
+        uncertainty_reduction = self.calibration_uncertainty * (0.5 + 0.4 * cleanliness)  # 50-90% reduction
+        new_uncertainty = max(0.1, self.calibration_uncertainty - uncertainty_reduction)
+
+        self._set(
+            "calibration_uncertainty",
+            new_uncertainty,
+            evidence={
+                "cleanliness_score": cleanliness,
+                "uncertainty_reduction": uncertainty_reduction,
+                "calibration_metrics": calibration_metrics,
+            },
+            supporting_conditions=[],
+            note=f"Calibration applied: uncertainty {self.calibration_uncertainty:.3f} → {new_uncertainty:.3f} (cleanliness={cleanliness:.2f})"
+        )
+
+        # Reset cycles counter
+        self.cycles_since_calibration = 0
+        self.last_calibration_cycle = cycle
+
+        # Decay health debt modestly if calibration was clean
+        if cleanliness > 0.6:
+            # Clean calibration suggests instrument is healthy, decay debt
+            decay_rate = 0.3 * cleanliness  # Up to 30% decay for perfect calibration
+            self.decay_health_debt(decay_rate=decay_rate, reason="calibration")

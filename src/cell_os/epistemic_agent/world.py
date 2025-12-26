@@ -33,6 +33,9 @@ from .schemas import WellSpec, Proposal
 # Import adversarial plate system
 from ..adversarial import AdversarialPlateConfig, apply_adversaries
 
+# v6: Import run context for batch effect provenance
+from ..hardware.run_context import RunContext
+
 
 class ExperimentalWorld:
     """Interface for agent to query the biological world."""
@@ -56,6 +59,12 @@ class ExperimentalWorld:
         self.adversarial_plate_config = adversarial_plate_config
         self.history: List[Tuple[RawWellResult, ...]] = []  # Track raw results
 
+        # v6: RunContext (lazy initialization)
+        # NOTE: This is INTENDED context (not yet authoritative).
+        # Standalone simulator does not use RunContext yet.
+        # When BiologicalVirtualMachine integration happens, this becomes authoritative.
+        self._run_context: Optional[RunContext] = None
+
         # Plate geometry (96-well)
         self.ROWS = [chr(65 + i) for i in range(8)]  # A-H
         self.COLS = [f"{i:02d}" for i in range(1, 13)]  # 01-12
@@ -73,6 +82,21 @@ class ExperimentalWorld:
         all_wells = {f"{r}{c}" for r in self.ROWS for c in self.COLS}
         self.CENTER_WELLS = list(all_wells - self.EDGE_WELLS)
         self.EDGE_WELLS = list(self.EDGE_WELLS)
+
+    @property
+    def run_context(self) -> RunContext:
+        """
+        Get RunContext instance (lazy initialization).
+
+        Samples once on first access, then cached forever.
+        Same instance returned for entire run lifetime.
+
+        Returns:
+            RunContext instance for this run
+        """
+        if self._run_context is None:
+            self._run_context = RunContext.sample(self.seed)
+        return self._run_context
 
     def get_capabilities(self) -> Dict[str, Any]:
         """Return what instruments/compounds/cell lines are available.
@@ -97,6 +121,55 @@ class ExperimentalWorld:
             'plate_format': '96-well',
             'budget_total': self.budget_total,
             'budget_remaining': self.budget_remaining,
+        }
+
+    def get_run_context_dict(self) -> Dict[str, Any]:
+        """
+        Get run context metadata for logging (v6: batch effect provenance).
+
+        IMPORTANT: This is INTENDED context (not yet authoritative).
+        Standalone simulator (standalone_cell_thalamus.py) does not use RunContext yet.
+        When BiologicalVirtualMachine integration happens, this becomes authoritative.
+
+        Returns dict with:
+        - is_authoritative: False (admits this is intended, not yet governing biology)
+        - run_seed: World RNG seed
+        - context_id: Run identifier
+        - batch_effects: Semantic provenance (schema_version, profile, multipliers, hash)
+        - measurement_effects: Instrument/reagent biases
+        - run_context_hash: Hash over entire serialized context (for de-duplication)
+
+        This is "what we intended the run to use" - becomes truth when VM integration completes.
+        """
+        # Use owned RunContext instance (lazily initialized, cached)
+        # This is the SAME instance for entire run lifetime
+        ctx = self.run_context
+        ctx_dict = ctx.to_dict()
+
+        # Clarify seed semantics (no confusion about three different seeds)
+        # Remove redundant 'seed' field, rename others for clarity
+        if 'seed' in ctx_dict:
+            ctx_dict['run_context_seed'] = ctx_dict.pop('seed')
+
+        if 'batch_effects' in ctx_dict and 'seed' in ctx_dict['batch_effects']:
+            ctx_dict['batch_effects']['batch_effects_seed'] = ctx_dict['batch_effects'].pop('seed')
+
+        # Add top-level hash (cheap de-duplication across batch + measurement effects)
+        import hashlib
+        import json
+        canonical = json.dumps(
+            {'batch_effects': ctx_dict['batch_effects'],
+             'measurement_effects': ctx_dict['measurement_effects']},
+            sort_keys=True
+        )
+        run_context_hash = hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+        # Wrap with metadata about authoritativeness
+        return {
+            'is_authoritative': False,  # Honest: not yet governing biology
+            'run_seed': self.seed,       # Top-level world seed (clear semantics)
+            **ctx_dict,                  # Includes context_id, run_context_seed, batch_effects, measurement_effects
+            'run_context_hash': run_context_hash,  # Hash over entire context
         }
 
     def run_experiment(self, proposal: Proposal) -> Tuple[RawWellResult, ...]:
