@@ -125,12 +125,83 @@ def run_multi_run_multi_vessel(n_runs=8, n_vessels=8, cell_line="A549",
     return run_results, metadata
 
 
-def compute_time_to_threshold(viability_series, times, threshold):
-    """Find time when viability first drops below threshold."""
-    idx = np.where(viability_series < threshold)[0]
-    if len(idx) > 0:
-        return times[idx[0]]
-    return np.nan
+def compute_time_to_threshold_interpolated(
+    viability_series,
+    times,
+    threshold: float,
+    *,
+    require_crossing: bool = True,
+    eps: float = 1e-12,
+):
+    """
+    Linear-interpolated threshold crossing time.
+
+    Hardened against:
+    - Plateaus (v_next == v_curr) → no division by zero
+    - Numerical noise → clamp alpha to [0, 1]
+    - Edge cases → handle already-below, no-crossing, empty arrays
+
+    Args:
+        viability_series: Array of viability values (typically decreasing)
+        times: Array of corresponding timepoints
+        threshold: Threshold value to detect crossing
+        require_crossing: If True, return np.nan if no crossing found
+        eps: Numerical tolerance for zero-division check
+
+    Returns:
+        Interpolated time of threshold crossing, or np.nan if no crossing
+    """
+    v = np.asarray(viability_series, dtype=float)
+    t = np.asarray(times, dtype=float)
+
+    if v.size == 0 or t.size == 0 or v.size != t.size:
+        return np.nan
+
+    # Already below at start
+    if v[0] < threshold:
+        return float(t[0])
+
+    # Find first interval that crosses from >= threshold to < threshold
+    for i in range(v.size - 1):
+        v0 = float(v[i])
+        v1 = float(v[i + 1])
+        t0 = float(t[i])
+        t1 = float(t[i + 1])
+
+        # Skip degenerate or non-forward time
+        if t1 <= t0:
+            continue
+
+        if v0 >= threshold and v1 < threshold:
+            dv = v1 - v0
+            dt = t1 - t0
+
+            # If dv is ~0 (plateau), we cannot interpolate; fall back to right endpoint
+            if abs(dv) < eps:
+                return float(t1)
+
+            alpha = (threshold - v0) / dv  # dv is negative for decreasing series
+            # Clamp for numerical stability (should be in [0,1] but guard anyway)
+            alpha = float(np.clip(alpha, 0.0, 1.0))
+            return float(t0 + alpha * dt)
+
+    if require_crossing:
+        return np.nan
+
+    # If caller prefers "first time below" fallback when no crossing
+    idx = np.where(v < threshold)[0]
+    return float(t[idx[0]]) if idx.size > 0 else np.nan
+
+
+def _cv(x):
+    """Helper: compute coefficient of variation, robust to small N."""
+    x = np.asarray([v for v in x if np.isfinite(v)], dtype=float)
+    if x.size < 3:
+        return np.nan
+    mu = float(np.mean(x))
+    if abs(mu) < 1e-12:
+        return np.nan
+    return float(np.std(x) / mu)
 
 
 def plot_fig1_overlay(run_results, metadata, out_dir, git_sha):
@@ -173,7 +244,7 @@ def plot_fig2_thresholds_kde(run_results, metadata, out_dir, git_sha):
         times_to_thresh = []
         for run in run_results:
             for vessel in run['vessels']:
-                t = compute_time_to_threshold(vessel['viability'], vessel['times'], thresh)
+                t = compute_time_to_threshold_interpolated(vessel['viability'], vessel['times'], thresh)
                 if not np.isnan(t):
                     times_to_thresh.append(t)
 
@@ -197,7 +268,7 @@ def plot_fig2_thresholds_kde(run_results, metadata, out_dir, git_sha):
 
             mean_t = np.mean(times_to_thresh)
             std_t = np.std(times_to_thresh)
-            cv_t = std_t / mean_t if mean_t > 0 else 0
+            cv_t = _cv(times_to_thresh)
 
             ax.axvline(mean_t, color='green', linestyle='--', linewidth=2, label=f'Mean={mean_t:.1f}h')
             ax.text(0.02, 0.98, f'CV = {cv_t:.4f}\n±σ = {std_t:.2f}h',
