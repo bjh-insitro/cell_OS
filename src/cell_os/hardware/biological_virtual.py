@@ -495,7 +495,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_assay = ValidatedRNG(
             np.random.default_rng(seed + 3),
             stream_name="assay",
-            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression"},
+            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression", "_ensure_well_biology"},
             enforce=True
         )
 

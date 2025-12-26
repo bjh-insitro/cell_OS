@@ -289,7 +289,9 @@ class CellPaintingAssay(AssaySimulator):
             "run_context_id": self.vm.run_context.context_id,
             "batch_id": batch_id,
             "plate_id": plate_id,
-            "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(),
+            "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(
+                self.vm.simulated_time, modality='imaging'
+            ),
         }
 
         # Check for well failure
@@ -701,14 +703,15 @@ class CellPaintingAssay(AssaySimulator):
             is_edge = self._is_edge_well(well_position)
             edge_factor = (1.0 - edge_effect) if is_edge else 1.0
 
-        # Run context modifiers (lot/instrument effects)
-        meas_mods = self.vm.run_context.get_measurement_modifiers()
-        # DIAGNOSTIC: Disable illumination_bias to isolate per-channel coupling
+        # Run context modifiers (lot/instrument effects + temporal drift)
+        # Pass t_measure and modality='imaging' for time-dependent drift
+        meas_mods = self.vm.run_context.get_measurement_modifiers(t_measure, modality='imaging')
+        # DIAGNOSTIC: Disable gain to isolate per-channel coupling
         if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
-            illumination_bias = 1.0
+            gain = 1.0
             channel_biases = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
         else:
-            illumination_bias = meas_mods['illumination_bias']
+            gain = meas_mods['gain']  # Includes batch effect + temporal drift
             channel_biases = meas_mods['channel_biases']
 
         # Add coupled nuisance factors
@@ -749,8 +752,9 @@ class CellPaintingAssay(AssaySimulator):
             # Fallback: no hardware artifacts if import fails
             pass
 
-        # Shared factors (plate/day/operator/edge/illumination/hardware) - NOT per-channel well_factor
-        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * illumination_bias * hardware_factor
+        # Shared factors (plate/day/operator/edge/gain/hardware) - NOT per-channel well_factor
+        # CANONICAL GAIN APPLICATION: gain applied exactly once here (includes batch + drift)
+        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * gain * hardware_factor
 
         # Apply shared factors + per-channel well factor + biases + coupled stain/focus
         for channel in morph:

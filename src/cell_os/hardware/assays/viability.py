@@ -201,12 +201,15 @@ class LDHViabilityAssay(AssaySimulator):
         is_edge = self._is_edge_well(well_position)
         edge_factor = (1.0 - edge_effect) if is_edge else 1.0
 
-        # Run context modifiers (reader gain + kit lot effects)
-        meas_mods = self.vm.run_context.get_measurement_modifiers()
-        reader_gain = meas_mods['reader_gain']
+        # Run context modifiers (reader gain + kit lot effects + temporal drift)
+        # Pass t_measure and modality='reader' for time-dependent drift
+        t_measure = self.vm.simulated_time
+        meas_mods = self.vm.run_context.get_measurement_modifiers(t_measure, modality='reader')
+        gain = meas_mods['gain']  # Includes batch effect + temporal drift
         scalar_assay_biases = meas_mods['scalar_assay_biases']
 
-        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * reader_gain
+        # CANONICAL GAIN APPLICATION: gain applied exactly once here (includes batch + drift)
+        total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor * gain
         signal *= total_tech_factor * scalar_assay_biases[assay_name]
         signal = max(0.0, signal)
 

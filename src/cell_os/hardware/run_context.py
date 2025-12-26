@@ -17,6 +17,12 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+# v6: Import batch effects for semantic provenance
+from .batch_effects import RunBatchProfile
+
+# Drift model for within-run temporal measurement drift
+from .drift_model import DriftModel
+
 
 @dataclass
 class RunContext:
@@ -46,8 +52,15 @@ class RunContext:
     seed: int = 0
     context_id: str = ""
 
-    # v6: Cached biology modifiers (sampled once per run)
+    # v6: Batch effect profile (semantic provenance)
+    _profile: Optional[RunBatchProfile] = None
+
+    # v6: Cached biology modifiers (derived from profile once per run)
     _biology_modifiers: Optional[Dict[str, float]] = None
+
+    # Within-run drift (temporal measurement drift)
+    drift_enabled: bool = True
+    _drift_model: Optional[DriftModel] = None
 
     @staticmethod
     def sample(seed: int, config: Optional[Dict] = None) -> 'RunContext':
@@ -114,75 +127,123 @@ class RunContext:
         # Generate context ID for tracking
         context_id = f"ctx_{seed:08x}"
 
+        # Initialize drift model (if enabled)
+        drift_enabled = config.get('drift_enabled', True)
+        drift_model = DriftModel(seed + 200) if drift_enabled else None
+
         return RunContext(
             incubator_shift=float(incubator_shift),
             reagent_lot_shift=reagent_lot_shift,
             scalar_reagent_lot_shift=scalar_reagent_lot_shift,
             instrument_shift=float(instrument_shift),
             seed=seed,
-            context_id=context_id
+            context_id=context_id,
+            drift_enabled=drift_enabled,
+            _drift_model=drift_model
         )
 
     def get_biology_modifiers(self) -> Dict[str, float]:
         """
         Get modifiers for biological parameters.
 
-        v6 PATCH: Biology modifiers are now SAMPLED once per run (batch effects).
+        v6: Biology modifiers are derived from RunBatchProfile (correlated batch effects).
 
         These create run-level variability (cursed days, media lot variation, incubator drift)
         while preserving:
-        - Determinism: same seed → same modifiers
+        - Determinism: same seed → same profile → same modifiers
         - Observer independence: sampled from run seed, not assay RNG
         - Within-run correlation: all vessels in a run share these modifiers
+        - Semantic provenance: multipliers have named causes (media lot, incubator, cell state)
 
         Returns dict with:
-        - ec50_multiplier: lognormal CV~15% (dose-response shift)
-        - hazard_multiplier: lognormal CV~10% (attrition kinetics shift)
-        - growth_rate_multiplier: lognormal CV~8% (growth rate shift)
-        - burden_half_life_multiplier: lognormal CV~20% (washout clearance shift)
+        - ec50_multiplier: dose-response shift (from media lot + run context)
+        - hazard_multiplier: attrition kinetics shift (from media lot + cell state)
+        - growth_rate_multiplier: growth rate shift (from incubator + cell state)
+        - burden_half_life_multiplier: washout clearance shift (from incubator)
+        - stress_sensitivity: reserved for future use (stress mechanism k_on rates)
         """
-        # Lazy initialization: sample once, cache forever
+        # Lazy initialization: sample profile once, cache multipliers forever
         if self._biology_modifiers is None:
-            # Use run seed to generate modifiers (NOT assay RNG)
-            # This RNG is separate from measurement noise
-            rng_biology = np.random.default_rng(self.seed + 999)  # Offset to avoid collision
+            # Sample profile if not already set (test hook: allows explicit profile injection)
+            if self._profile is None:
+                # Sample batch effect profile using seed+999 offset (PRESERVED from v5)
+                # This RNG is separate from measurement noise (observer independence)
+                profile_seed = self.seed + 999
 
-            # Sample lognormal multipliers with specified CVs
-            # For lognormal: if X ~ lognormal(μ, σ), then E[X] = exp(μ + σ²/2), CV(X) = sqrt(exp(σ²) - 1)
-            # To get CV, solve: σ = sqrt(log(1 + CV²))
+                # Sample profile with correlated latent causes
+                self._profile = RunBatchProfile.sample(profile_seed)
 
-            def sample_lognormal_multiplier(cv: float) -> float:
-                """Sample lognormal with mean=1.0 and specified CV."""
-                sigma = np.sqrt(np.log(1 + cv**2))
-                mu = -0.5 * sigma**2  # Ensures mean = 1.0
-                value = float(rng_biology.lognormal(mean=mu, sigma=sigma))
-                # Clamp to reasonable bounds [0.5, 2.0] to avoid pathological runs
-                return np.clip(value, 0.5, 2.0)
+            # Derive multipliers from profile (single source of truth)
+            self._biology_modifiers = self._profile.to_multipliers()
 
-            self._biology_modifiers = {
-                'ec50_multiplier': sample_lognormal_multiplier(0.15),  # CV ~15%
-                'hazard_multiplier': sample_lognormal_multiplier(0.10),  # CV ~10%
-                'growth_rate_multiplier': sample_lognormal_multiplier(0.08),  # CV ~8%
-                'burden_half_life_multiplier': sample_lognormal_multiplier(0.20),  # CV ~20%
-                'stress_sensitivity': 1.0,  # Reserved for future use (stress mechanism k_on rates)
-            }
+            # Add stress_sensitivity placeholder (not yet implemented)
+            self._biology_modifiers['stress_sensitivity'] = 1.0
 
         return self._biology_modifiers
 
-    def get_measurement_modifiers(self) -> Dict[str, any]:
+    def set_batch_profile_for_testing(self, profile: RunBatchProfile) -> None:
         """
-        Get modifiers for measurement parameters.
+        Inject a custom batch profile for testing (NOT part of stable API).
+
+        This is a test-only hook to allow explicit control over batch effects.
+        Use case: Phase 4 tests that need to vary batch profile while holding
+        other factors constant.
+
+        WARNING: This bypasses the normal seed+999 sampling. Only use in tests.
+
+        Args:
+            profile: RunBatchProfile to inject
+
+        Example:
+            >>> ctx = RunContext.sample(seed=42)
+            >>> custom_profile = RunBatchProfile.nominal(seed=100)
+            >>> ctx.set_batch_profile_for_testing(custom_profile)
+            >>> mods = ctx.get_biology_modifiers()  # Uses custom_profile
+        """
+        if not isinstance(profile, RunBatchProfile):
+            raise TypeError(f"Expected RunBatchProfile, got {type(profile)}")
+
+        self._profile = profile
+        self._biology_modifiers = None  # Clear cache to force re-derivation
+
+    def get_measurement_modifiers(self, t_hours: float = 0.0, modality: str = 'imaging') -> Dict[str, any]:
+        """
+        Get modifiers for measurement parameters at time t for specific modality.
+
+        Args:
+            t_hours: Time in hours (for within-run drift)
+            modality: 'imaging' or 'reader'
 
         Returns dict with:
         - channel_biases: per-channel intensity multipliers (imaging reagent lots)
         - scalar_assay_biases: per-assay intensity multipliers (biochemical kit lots)
         - noise_inflation: multiplier for measurement CV (instrument drift)
-        - illumination_bias: global intensity shift for imaging (lamp aging, focus drift)
-        - reader_gain: global intensity shift for plate reader (scalar assays)
+        - gain: global intensity shift for this modality (includes batch + drift)
 
-        Key: illumination_bias and reader_gain are CORRELATED (both from instrument_shift),
-        so imaging and biochemical assays share measurement curse on bad days.
+        Key: imaging and reader gains can drift independently (modality-specific),
+        but share some common "cursed day" component via shared wander.
         """
+        # Units sanity check (catches seconds vs hours confusion)
+        t_hours = float(t_hours)
+        assert 0 <= t_hours <= 1000, (
+            f"Time must be in hours and < 1000h. Got t_hours={t_hours}. "
+            f"If this failed, check that simulated_time is in hours, not seconds."
+        )
+
+        # Static batch effects (existing, sampled once per run)
+        base_gain = float(np.exp(self.instrument_shift))  # ±5% from batch context
+
+        # Within-run temporal drift (if enabled)
+        if self.drift_enabled and self._drift_model is not None:
+            drift_gain = self._drift_model.get_gain(t_hours, modality)
+            drift_noise_inflation = self._drift_model.get_noise_inflation(t_hours, modality)
+        else:
+            drift_gain = 1.0
+            drift_noise_inflation = 1.0
+
+        # Combine batch and drift
+        total_gain = base_gain * drift_gain
+
         # Imaging reagent lot affects channel intensities
         channel_biases = {
             ch: float(np.exp(shift))  # ±0.05 → 0.95× to 1.05× intensity
@@ -195,19 +256,20 @@ class RunContext:
             for assay, shift in self.scalar_reagent_lot_shift.items()
         }
 
-        # Instrument shift affects noise and ALL intensity measurements
-        # CRITICAL: illumination_bias (imaging) and reader_gain (plate reader) are CORRELATED
-        # via shared instrument_shift latent, so cross-modality disagreement teaches caution
-        noise_inflation = float(1.0 + 0.5 * abs(self.instrument_shift))  # Up to 1.025× more noise
-        illumination_bias = float(np.exp(self.instrument_shift))  # ±0.05 → 0.95× to 1.05× intensity (imaging)
-        reader_gain = float(np.exp(self.instrument_shift))  # ±0.05 → 0.95× to 1.05× intensity (plate reader)
+        # Base noise inflation from batch context
+        base_noise_inflation = float(1.0 + 0.5 * abs(self.instrument_shift))  # Up to 1.025× more noise
+
+        # Total noise inflation (batch + drift)
+        total_noise_inflation = base_noise_inflation * drift_noise_inflation
 
         return {
             'channel_biases': channel_biases,
             'scalar_assay_biases': scalar_assay_biases,
-            'noise_inflation': noise_inflation,
-            'illumination_bias': illumination_bias,
-            'reader_gain': reader_gain
+            'noise_inflation': total_noise_inflation,
+            'gain': total_gain,
+            # Legacy fields for backward compatibility (can be deprecated later)
+            'illumination_bias': total_gain if modality == 'imaging' else base_gain,
+            'reader_gain': total_gain if modality == 'reader' else base_gain,
         }
 
     def summary(self) -> str:
@@ -229,6 +291,40 @@ class RunContext:
             f"actin={meas_mods['channel_biases']['actin']:.3f}×"
         ]
         return "\n".join(summary)
+
+    def to_dict(self) -> Dict:
+        """
+        Serialize RunContext for logging (v6: includes batch effect provenance).
+
+        Returns dict with:
+        - context_id: run identifier
+        - seed: RNG seed
+        - batch_effects: semantic provenance (schema_version, profile, multipliers, hash)
+        - measurement_effects: instrument/reagent biases (for future use)
+
+        This is the single source of truth for "why did this run behave this way?"
+        """
+        # Force profile initialization if not already cached
+        bio_mods = self.get_biology_modifiers()
+
+        # Get profile serialization (includes schema_version, mapping_version, profile_hash)
+        batch_effects_dict = self._profile.to_dict() if self._profile else None
+
+        # Get measurement modifiers (for completeness)
+        meas_mods = self.get_measurement_modifiers()
+
+        return {
+            'context_id': self.context_id,
+            'seed': self.seed,
+            'batch_effects': batch_effects_dict,
+            'measurement_effects': {
+                'channel_biases': meas_mods['channel_biases'],
+                'scalar_assay_biases': meas_mods['scalar_assay_biases'],
+                'noise_inflation': meas_mods['noise_inflation'],
+                'illumination_bias': meas_mods['illumination_bias'],
+                'reader_gain': meas_mods['reader_gain']
+            }
+        }
 
 
 def sample_plating_context(seed: int, config: Optional[Dict] = None) -> Dict[str, float]:
