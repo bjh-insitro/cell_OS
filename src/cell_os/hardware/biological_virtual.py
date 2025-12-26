@@ -1162,8 +1162,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         doubling_time = params.get("doubling_time_h", self.defaults.get("doubling_time_h", 24.0))
         max_confluence = params.get("max_confluence", self.defaults.get("max_confluence", 0.9))
 
+        # v6 Diff 4a: Apply run-level growth_rate_multiplier (batch effect on proliferation)
+        bio_mods = self.run_context.get_biology_modifiers()
+        effective_doubling_time = doubling_time / bio_mods['growth_rate_multiplier']
+
         # Exponential growth with confluence-dependent saturation
-        growth_rate = np.log(2) / doubling_time
+        growth_rate = np.log(2) / effective_doubling_time
 
         # --- 1. Lag Phase Dynamics ---
         # Growth ramps up linearly over lag_duration_h
@@ -1381,6 +1385,10 @@ class BiologicalVirtualMachine(VirtualMachine):
                 params_dict = {'commitment_delay_h': commitment_delay_h} if commitment_delay_h else {}
                 if is_washed_out:
                     params_dict['burden_decay_factor'] = burden_decay_factor
+
+                # v6 Diff 3: Add run-level hazard multiplier (batch effect on attrition kinetics)
+                bio_mods = self.run_context.get_biology_modifiers()
+                params_dict['hazard_multiplier'] = bio_mods['hazard_multiplier']
 
                 attrition_rate = biology_core.compute_attrition_rate_interval_mean(
                     cell_line=vessel.cell_line,
@@ -2386,6 +2394,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Get exposure_id from v3 (already assigned during commitment delay sampling)
         exposure_id = vessel.compound_meta.get('exposure_ids', {}).get(compound)
 
+        # v6 Diff 4b: Apply run-level burden_half_life_multiplier (batch effect on clearance)
+        bio_mods = self.run_context.get_biology_modifiers()
+        base_half_life_h = 2.0  # Default 2h
+        effective_half_life_h = base_half_life_h * bio_mods['burden_half_life_multiplier']
+
         # Store exposure record (overwrite if re-treating)
         vessel.compound_meta['exposures'][compound] = {
             'exposure_id': exposure_id,
@@ -2394,7 +2407,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             'is_washed_out': False,
             'washout_time': None,
             'intracellular_burden_uM': float(dose_uM),  # Starts equal to dose
-            'burden_half_life_h': 2.0,  # Default 2h half-life (engineering knob)
+            'burden_half_life_h': float(effective_half_life_h),  # v6: Run-level variability
         }
 
         self._simulate_delay(0.5)

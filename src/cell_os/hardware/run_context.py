@@ -46,6 +46,9 @@ class RunContext:
     seed: int = 0
     context_id: str = ""
 
+    # v6: Cached biology modifiers (sampled once per run)
+    _biology_modifiers: Optional[Dict[str, float]] = None
+
     @staticmethod
     def sample(seed: int, config: Optional[Dict] = None) -> 'RunContext':
         """
@@ -124,28 +127,47 @@ class RunContext:
         """
         Get modifiers for biological parameters.
 
-        IMPORTANT FIX #5: Biology modifiers are now CONSTANT across runs.
-        Run-to-run variability should come from MEASUREMENT drift, not biology drift.
+        v6 PATCH: Biology modifiers are now SAMPLED once per run (batch effects).
 
-        Incubator effects on biology (ec50, stress sensitivity, growth rate) are
-        intentionally disabled to maintain observer independence.
-
-        If you want biology variation, it should be:
-        1. Sampled from base_seed (not run_id), OR
-        2. Explicitly modeled as a separate "biological batch effect" with clear semantics
+        These create run-level variability (cursed days, media lot variation, incubator drift)
+        while preserving:
+        - Determinism: same seed → same modifiers
+        - Observer independence: sampled from run seed, not assay RNG
+        - Within-run correlation: all vessels in a run share these modifiers
 
         Returns dict with:
-        - ec50_multiplier: ALWAYS 1.0 (no EC50 variation)
-        - stress_sensitivity: ALWAYS 1.0 (no stress variation)
-        - growth_rate_multiplier: ALWAYS 1.0 (no growth variation)
+        - ec50_multiplier: lognormal CV~15% (dose-response shift)
+        - hazard_multiplier: lognormal CV~10% (attrition kinetics shift)
+        - growth_rate_multiplier: lognormal CV~8% (growth rate shift)
+        - burden_half_life_multiplier: lognormal CV~20% (washout clearance shift)
         """
-        # FIX #5: Return constants to preserve biology invariance across runs
-        # Previously: these were functions of self.incubator_shift, causing run-dependent biology
-        return {
-            'ec50_multiplier': 1.0,
-            'stress_sensitivity': 1.0,
-            'growth_rate_multiplier': 1.0
-        }
+        # Lazy initialization: sample once, cache forever
+        if self._biology_modifiers is None:
+            # Use run seed to generate modifiers (NOT assay RNG)
+            # This RNG is separate from measurement noise
+            rng_biology = np.random.default_rng(self.seed + 999)  # Offset to avoid collision
+
+            # Sample lognormal multipliers with specified CVs
+            # For lognormal: if X ~ lognormal(μ, σ), then E[X] = exp(μ + σ²/2), CV(X) = sqrt(exp(σ²) - 1)
+            # To get CV, solve: σ = sqrt(log(1 + CV²))
+
+            def sample_lognormal_multiplier(cv: float) -> float:
+                """Sample lognormal with mean=1.0 and specified CV."""
+                sigma = np.sqrt(np.log(1 + cv**2))
+                mu = -0.5 * sigma**2  # Ensures mean = 1.0
+                value = float(rng_biology.lognormal(mean=mu, sigma=sigma))
+                # Clamp to reasonable bounds [0.5, 2.0] to avoid pathological runs
+                return np.clip(value, 0.5, 2.0)
+
+            self._biology_modifiers = {
+                'ec50_multiplier': sample_lognormal_multiplier(0.15),  # CV ~15%
+                'hazard_multiplier': sample_lognormal_multiplier(0.10),  # CV ~10%
+                'growth_rate_multiplier': sample_lognormal_multiplier(0.08),  # CV ~8%
+                'burden_half_life_multiplier': sample_lognormal_multiplier(0.20),  # CV ~20%
+                'stress_sensitivity': 1.0,  # Reserved for future use (stress mechanism k_on rates)
+            }
+
+        return self._biology_modifiers
 
     def get_measurement_modifiers(self) -> Dict[str, any]:
         """

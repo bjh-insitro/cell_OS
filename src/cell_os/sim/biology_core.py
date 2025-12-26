@@ -528,6 +528,11 @@ def compute_attrition_rate_instantaneous(
     # Final attrition rate (fraction per hour)
     attrition_rate = attrition_rate_base * stress_multiplier * time_factor / 36.0  # Normalize to per-hour
 
+    # v6 Diff 3: Apply run-level hazard multiplier (batch effect on attrition kinetics)
+    if params and 'hazard_multiplier' in params:
+        hazard_mult = params['hazard_multiplier']
+        attrition_rate *= hazard_mult
+
     return attrition_rate
 
 
