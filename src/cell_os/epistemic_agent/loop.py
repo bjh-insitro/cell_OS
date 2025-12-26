@@ -849,6 +849,7 @@ class EpistemicLoop:
                 'decisions': str(self.decisions_file.name),
                 'diagnostics': str(self.diagnostics_file.name),
             },
+            'intended_run_context': self.world.get_run_context_dict(),  # v6: batch effect provenance (not yet authoritative)
         }
 
         if integrity_warnings:
