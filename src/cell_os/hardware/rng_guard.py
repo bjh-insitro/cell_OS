@@ -118,9 +118,11 @@ class ValidatedRNG:
             caller_func = caller_frame.f_code.co_name
             caller_file = caller_frame.f_code.co_filename
 
-            # Check if caller function matches any allowed pattern
+            # Check if caller function matches any allowed pattern (EXACT MATCH)
+            # NOTE: Changed from substring to exact match to prevent accidental whitelisting
+            # of functions like "heavy_tail_shock_debug" or "my_heavy_tail_shock_wrapper"
             for pattern in self.allowed_patterns:
-                if pattern in caller_func:
+                if caller_func == pattern:
                     return  # Authorized
 
             # Unauthorized - crash
@@ -199,6 +201,12 @@ class ValidatedRNG:
         self._check_caller()
         self.call_count += 1
         return self._rng.exponential(scale, size)
+
+    def standard_t(self, df, size=None):
+        """Generate Student's t-distributed values."""
+        self._check_caller()
+        self.call_count += 1
+        return self._rng.standard_t(df, size)
 
     def get_state(self):
         """Get current RNG state (for diagnostics only)."""

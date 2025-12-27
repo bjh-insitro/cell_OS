@@ -495,7 +495,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_assay = ValidatedRNG(
             np.random.default_rng(seed + 3),
             stream_name="assay",
-            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression", "_ensure_well_biology"},
+            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "heavy_tail_shock", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression", "_ensure_well_biology"},
             enforce=True
         )
 
@@ -1715,6 +1715,17 @@ class BiologicalVirtualMachine(VirtualMachine):
         # This gives wells persistent identity across runs
         well_seed = stable_u32(f"well_biology_{well_position}_{cell_line}")
         state.rng_well = np.random.default_rng(well_seed)
+
+        # Initialize per-well latent biology (persistent baseline shifts for Cell Painting)
+        # This must be done HERE (during seeding) not during measurement (violates purity contract)
+        state.well_biology = {
+            "er_baseline_shift": float(state.rng_well.normal(0.0, 0.08)),
+            "mito_baseline_shift": float(state.rng_well.normal(0.0, 0.10)),
+            "rna_baseline_shift": float(state.rng_well.normal(0.0, 0.06)),
+            "nucleus_baseline_shift": float(state.rng_well.normal(0.0, 0.04)),
+            "actin_baseline_shift": float(state.rng_well.normal(0.0, 0.05)),
+            "stress_susceptibility": float(state.rng_well.lognormal(mean=0.0, sigma=0.15)),
+        }
 
         # Injection A+B: seed event establishes initial exposure state
         self.scheduler.submit_intent(

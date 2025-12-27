@@ -13,7 +13,7 @@ from datetime import datetime
 
 from .base import AssaySimulator
 from .assay_params import DEFAULT_ASSAY_PARAMS
-from .._impl import stable_u32, lognormal_multiplier
+from .._impl import stable_u32, lognormal_multiplier, heavy_tail_shock
 from ..run_context import pipeline_transform
 from ...sim import biology_core
 from ..constants import (
@@ -614,11 +614,44 @@ class CellPaintingAssay(AssaySimulator):
             for ch in morph:
                 morph[ch] *= gain
 
-        # Residual biological noise, still dose/stress-dependent but small
+        # Residual biological noise: base lognormal (per-channel) + rare heavy-tail shock (shared)
+        # Structure: morph[ch] *= base_lognormal_i(cv) × shared_shock
+        #
+        # DESIGN NOTE - Channel correlation:
+        # Heavy-tail shock is sampled ONCE per measurement and applied to ALL channels.
+        # This creates "this well looks globally weird" signatures (focus drift, bubbles,
+        # contamination affect all channels together). Base lognormal remains per-channel
+        # to preserve existing variance structure. Result: outliers are correlated across
+        # channels, but not perfectly (base lognormal still varies per-channel).
         effective_cv = base_residual_cv * (1.0 + stress_level * (stress_multiplier - 1.0))
+
         if effective_cv > 0:
+            # Draw base lognormal per channel (existing behavior)
+            base_factors = {}
             for ch in morph:
-                morph[ch] *= lognormal_multiplier(self.vm.rng_assay, effective_cv)
+                base_factors[ch] = lognormal_multiplier(self.vm.rng_assay, effective_cv)
+
+            # Draw heavy-tail shock once (shared across all channels)
+            tech_noise = self.vm.thalamus_params.get('technical_noise', {})
+            p_heavy = tech_noise.get('heavy_tail_frequency', 0.0)
+
+            if p_heavy > 0:
+                # Heavy-tail shock enabled: overlay on base lognormal
+                shock = heavy_tail_shock(
+                    rng=self.vm.rng_assay,
+                    nu=tech_noise.get('heavy_tail_nu', 4.0),
+                    log_scale=tech_noise.get('heavy_tail_log_scale', 0.35),
+                    p_heavy=p_heavy,
+                    clip_min=tech_noise.get('heavy_tail_min_multiplier', 0.2),
+                    clip_max=tech_noise.get('heavy_tail_max_multiplier', 5.0)
+                )
+            else:
+                # Heavy-tail shock dormant: no overlay
+                shock = 1.0
+
+            # Apply: base (per-channel) × shock (shared)
+            for ch in morph:
+                morph[ch] *= base_factors[ch] * shock
 
         return morph
 
@@ -705,6 +738,7 @@ class CellPaintingAssay(AssaySimulator):
 
         # Run context modifiers (lot/instrument effects + temporal drift)
         # Pass t_measure and modality='imaging' for time-dependent drift
+        t_measure = self.vm.simulated_time
         meas_mods = self.vm.run_context.get_measurement_modifiers(t_measure, modality='imaging')
         # DIAGNOSTIC: Disable gain to isolate per-channel coupling
         if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
