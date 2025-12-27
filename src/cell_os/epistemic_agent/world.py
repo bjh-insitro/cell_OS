@@ -316,7 +316,16 @@ class ExperimentalWorld:
             assay = AssayType.CELL_PAINTING
 
             # Extract readouts (morphology channels)
-            morph = sim_result['morphology']
+            morph_raw = sim_result['morphology']
+
+            # Use corrected morphology if calibration was applied
+            if 'morphology_corrected' in sim_result:
+                morph = sim_result['morphology_corrected']
+                # Log that calibration was used
+                self.logger.info(f"Using vignette-corrected morphology for well {sim_result.get('well_id', 'unknown')}")
+            else:
+                morph = morph_raw
+
             readouts = {
                 'morphology': {
                     'er': morph['er'],
@@ -337,6 +346,10 @@ class ExperimentalWorld:
                 qc['failed'] = sim_result['failed']
             if 'failure_type' in sim_result:
                 qc['failure_type'] = sim_result['failure_type']
+
+            # Pass calibration metadata through if present
+            if 'calibration' in sim_result:
+                qc['calibration_applied'] = sim_result['calibration']
 
             raw_result = RawWellResult(
                 location=location,

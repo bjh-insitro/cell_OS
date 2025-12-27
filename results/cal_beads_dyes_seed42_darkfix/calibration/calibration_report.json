@@ -1,0 +1,314 @@
+{
+  "channels": [
+    "er",
+    "mito",
+    "nucleus",
+    "actin",
+    "rna"
+  ],
+  "created_utc": "2025-12-27T19:21:12Z",
+  "exposure_recommendations": {
+    "global": {
+      "warnings": []
+    },
+    "observable": true,
+    "per_channel": {
+      "actin": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 377.1611554131383,
+        "warnings": []
+      },
+      "er": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 334.5779665827422,
+        "warnings": []
+      },
+      "mito": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 415.9477189288169,
+        "warnings": []
+      },
+      "nucleus": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 501.60316166933717,
+        "warnings": []
+      },
+      "rna": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 453.224664072633,
+        "warnings": []
+      }
+    },
+    "policy": {
+      "floor_margin_sigma": 10.0,
+      "target_fraction_of_saturation": 0.8
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "floor": {
+    "dark_well_stats": {
+      "n_wells": 12
+    },
+    "observable": true,
+    "per_channel": {
+      "actin": {
+        "mean": 0.23498893720912492,
+        "std": 0.0,
+        "unique_values": [
+          0.15869382772564278,
+          0.1953154802777142,
+          0.20752269779507135,
+          0.21972991531242847,
+          0.23193713282978562,
+          0.24414435034714274,
+          0.25635156786449986,
+          0.30518043793392846
+        ]
+      },
+      "er": {
+        "mean": 0.2644897128760713,
+        "std": 0.0,
+        "unique_values": [
+          0.1953154802777142,
+          0.21972991531242847,
+          0.23193713282978562,
+          0.24414435034714274,
+          0.25635156786449986,
+          0.268558785381857,
+          0.30518043793392846,
+          0.3295948729686427,
+          0.3662165255207141
+        ]
+      },
+      "mito": {
+        "mean": 0.281528953994049,
+        "std": 0.0,
+        "unique_values": [
+          0.17853055619134814,
+          0.21972991531242847,
+          0.23346303501945526,
+          0.2746623941405356,
+          0.28839551384756235,
+          0.3158617532616159,
+          0.3295948729686427,
+          0.3433279926756695
+        ]
+      },
+      "nucleus": {
+        "mean": 0.3140815340403346,
+        "std": 0.0,
+        "unique_values": [
+          0.22888532845044632,
+          0.27466239414053556,
+          0.289921416037232,
+          0.3051804379339284,
+          0.32043945983062483,
+          0.3509575036240177,
+          0.41199359121080337
+        ]
+      },
+      "rna": {
+        "mean": 0.2604842196281885,
+        "std": 0.0,
+        "unique_values": [
+          0.1556420233463035,
+          0.20752269779507135,
+          0.22049286640726332,
+          0.23346303501945526,
+          0.27237354085603116,
+          0.324254215304799,
+          0.33722438391699094,
+          0.3761348897535668
+        ]
+      }
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "inputs": {
+    "design_json": null,
+    "design_sha256": null,
+    "detector_config_sha256": null,
+    "detector_config_snapshot": null,
+    "observations_jsonl": "results/cal_beads_dyes_seed42_darkfix/observations.jsonl"
+  },
+  "notes": [],
+  "quantization": {
+    "cross_channel_consistency": {
+      "cv": 0.08601511233963086,
+      "interpretation": "Quantization step consistent across channels (CV < 20%).",
+      "is_consistent": true,
+      "mean_step": 0.013275349050125887,
+      "std_step": 0.00114188063989439
+    },
+    "observable": true,
+    "per_channel": {
+      "actin": {
+        "quant_step_estimate": 0.012207217517357137,
+        "quant_step_from_delta": 0.015320057984283188,
+        "quant_step_from_metadata": 0.012207217517357137,
+        "quantization_detected": true
+      },
+      "er": {
+        "quant_step_estimate": 0.012207217517357137,
+        "quant_step_from_delta": 0.014709697108415298,
+        "quant_step_from_metadata": 0.012207217517357137,
+        "quantization_detected": true
+      },
+      "mito": {
+        "quant_step_estimate": 0.013733119707026785,
+        "quant_step_from_delta": 0.018883039597161824,
+        "quant_step_from_metadata": 0.013733119707026785,
+        "quantization_detected": true
+      },
+      "nucleus": {
+        "quant_step_estimate": 0.015259021896696421,
+        "quant_step_from_delta": 0.022964827954528033,
+        "quant_step_from_metadata": 0.015259021896696421,
+        "quantization_detected": true
+      },
+      "rna": {
+        "quant_step_estimate": 0.01297016861219196,
+        "quant_step_from_delta": 0.017509727626452046,
+        "quant_step_from_metadata": 0.01297016861219196,
+        "quantization_detected": true
+      }
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "run_summary": {
+    "distinct_assays": [
+      "cell_painting"
+    ],
+    "distinct_modes": [
+      "optical_material"
+    ],
+    "distinct_run_context_ids": [
+      "ctx_0000002a"
+    ],
+    "distinct_well_seeds_count": 384,
+    "n_records": 384
+  },
+  "saturation": {
+    "interpretation": "No clipping observed; saturation cap is above observed max values. Threshold estimates are extrapolations, not direct observations.",
+    "observable": true,
+    "overall_confidence": "medium",
+    "per_channel": {
+      "actin": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 478.4130617227436,
+        "p99": 458.1462729839018,
+        "p999": 471.45144426642287,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "er": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 421.64950026703286,
+        "p99": 407.0858014801251,
+        "p999": 418.22245822842774,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "mito": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 526.8986037994964,
+        "p99": 503.0986953536279,
+        "p999": 519.9346486610211,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "nucleus": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 632.3338673990997,
+        "p99": 599.6658274204624,
+        "p999": 627.0039520866715,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "rna": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 567.6783398184177,
+        "p99": 553.2295719844358,
+        "p999": 566.5308300907913,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      }
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "schema_version": "bead_plate_calibration_report_v1",
+  "vignette": {
+    "center_multiplier": {
+      "actin": 1.0,
+      "er": 1.0,
+      "mito": 1.0,
+      "nucleus": 1.0,
+      "rna": 1.0
+    },
+    "edge_multiplier": {
+      "actin": 0.8591910051413041,
+      "er": 0.871429839455254,
+      "mito": 0.8754626682815869,
+      "nucleus": 0.873995346306672,
+      "rna": 0.8552016218595576
+    },
+    "fit_quality": {
+      "r_squared": {
+        "actin": 0.5429417625478555,
+        "er": 0.49997809919869163,
+        "mito": 0.46362206099201764,
+        "nucleus": 0.47810270449533043,
+        "rna": 0.5719020270769604
+      },
+      "r_squared_extended": {
+        "actin": 0.5440938441863654,
+        "er": 0.5020432939805182,
+        "mito": 0.4666280606051716,
+        "nucleus": 0.4781514627676303,
+        "rna": 0.5738666253291694
+      },
+      "rmse": {
+        "actin": 1.675200084851957,
+        "er": 1.7989237875419197,
+        "mito": 2.1833072286631507,
+        "nucleus": 2.4599238154305563,
+        "rna": 1.91754607575674
+      },
+      "unmodeled_structure_detected": {
+        "actin": false,
+        "er": false,
+        "mito": false,
+        "nucleus": false,
+        "rna": false
+      }
+    },
+    "model": "radial_quadratic",
+    "observable": true,
+    "reason": null,
+    "recommendation": null
+  }
+}

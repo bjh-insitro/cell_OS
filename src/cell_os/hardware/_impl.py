@@ -10,10 +10,13 @@ import numpy as np
 
 def stable_u32(s: str) -> int:
     """
-    Stable deterministic hash for RNG seeding.
+    Stable deterministic hash for RNG seeding (32-bit).
 
     Unlike Python's hash(), this is NOT salted per process, so it gives
     consistent seeds across runs and machines. Critical for reproducibility.
+
+    WARNING: 32-bit space has collision risk in large-scale calibrations.
+    For high-volume seeding (e.g., calibration plates), use stable_u64() instead.
 
     Args:
         s: String to hash
@@ -22,6 +25,22 @@ def stable_u32(s: str) -> int:
         Unsigned 32-bit integer suitable for RNG seeding
     """
     return int.from_bytes(hashlib.blake2s(s.encode(), digest_size=4).digest(), "little")
+
+
+def stable_u64(s: str) -> int:
+    """
+    Stable deterministic hash for RNG seeding (64-bit).
+
+    Provides larger seed space than stable_u32, reducing collision risk
+    in high-volume scenarios (calibration plates, large experiments).
+
+    Args:
+        s: String to hash
+
+    Returns:
+        Unsigned 64-bit integer suitable for RNG seeding
+    """
+    return int.from_bytes(hashlib.blake2s(s.encode(), digest_size=8).digest(), "little")
 
 
 def lognormal_multiplier(rng: np.random.Generator, cv: float) -> float:

@@ -94,6 +94,10 @@ class ConditionSummary:
     canonical_dose_nM: Optional[int] = None    # Integer nanomolar (1000 nM = 1 µM)
     canonical_time_min: Optional[int] = None   # Integer minutes (60 min = 1 h)
 
+    # Phase 4: SNR policy enforcement (missingness tracking)
+    usable_channels: List[str] = field(default_factory=list)    # Channels with sufficient SNR
+    masked_channels: List[str] = field(default_factory=list)    # Channels masked by SNR policy
+
     @property
     def condition_key(self) -> tuple:
         """Unique key for this condition."""

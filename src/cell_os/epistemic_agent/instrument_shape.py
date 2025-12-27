@@ -559,6 +559,10 @@ def _estimate_channel_coupling(dmso_conditions: List[ConditionSummary]) -> Tuple
     for cond in dmso_conditions:
         if cond.feature_means:
             for feature, value in cond.feature_means.items():
+                # Phase 4: Skip SNR-masked channels (None values)
+                if value is None:
+                    continue
+
                 if feature not in all_features:
                     all_features[feature] = []
                 all_features[feature].append(value)

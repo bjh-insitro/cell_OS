@@ -1,0 +1,310 @@
+{
+  "channels": [
+    "er",
+    "mito",
+    "nucleus",
+    "actin",
+    "rna"
+  ],
+  "created_utc": "2025-12-27T17:53:56Z",
+  "exposure_recommendations": {
+    "global": {
+      "warnings": [
+        "Floor unobservable: cannot guarantee signal above floor by k*sigma."
+      ]
+    },
+    "observable": true,
+    "per_channel": {
+      "actin": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 376.9524330815443,
+        "warnings": [
+          "Floor unobservable: cannot guarantee signal above floor by k*sigma."
+        ]
+      },
+      "er": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 334.3951206895303,
+        "warnings": [
+          "Floor unobservable: cannot guarantee signal above floor by k*sigma."
+        ]
+      },
+      "mito": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 415.77865669601306,
+        "warnings": [
+          "Floor unobservable: cannot guarantee signal above floor by k*sigma."
+        ]
+      },
+      "nucleus": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 501.40269661442994,
+        "warnings": [
+          "Floor unobservable: cannot guarantee signal above floor by k*sigma."
+        ]
+      },
+      "rna": {
+        "current_max": null,
+        "headroom_ratio": null,
+        "recommended_exposure_multiplier": 1.0,
+        "safe_max": 452.9879833046061,
+        "warnings": [
+          "Floor unobservable: cannot guarantee signal above floor by k*sigma."
+        ]
+      }
+    },
+    "policy": {
+      "floor_margin_sigma": null,
+      "target_fraction_of_saturation": 0.8
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "floor": {
+    "dark_well_stats": {
+      "n_wells": 12,
+      "per_channel_unique_values": {
+        "actin": [
+          0.0
+        ],
+        "er": [
+          0.0
+        ],
+        "mito": [
+          0.0
+        ],
+        "nucleus": [
+          0.0
+        ],
+        "rna": [
+          0.0
+        ]
+      }
+    },
+    "observable": false,
+    "per_channel": {
+      "actin": {
+        "mean": 0.0,
+        "std": 0.0,
+        "unique_values": [
+          0.0
+        ]
+      },
+      "er": {
+        "mean": 0.0,
+        "std": 0.0,
+        "unique_values": [
+          0.0
+        ]
+      },
+      "mito": {
+        "mean": 0.0,
+        "std": 0.0,
+        "unique_values": [
+          0.0
+        ]
+      },
+      "nucleus": {
+        "mean": 0.0,
+        "std": 0.0,
+        "unique_values": [
+          0.0
+        ]
+      },
+      "rna": {
+        "mean": 0.0,
+        "std": 0.0,
+        "unique_values": [
+          0.0
+        ]
+      }
+    },
+    "reason": "DARK wells return literal 0.0 with zero variance across channels, floor is clamped or bypassed.",
+    "recommendation": "Add detector bias offset, remove negative clamp, or allow post-noise clamping only."
+  },
+  "inputs": {
+    "design_json": "validation_frontend/public/plate_designs/CAL_384_MICROSCOPE_BEADS_DYES_v1.json",
+    "design_sha256": "dd89a27c2732a854be89a11fde86d822bb6f27480203eac113be6c9e91780fc6",
+    "detector_config_sha256": null,
+    "detector_config_snapshot": null,
+    "observations_jsonl": "results/cal_beads_dyes_seed42/observations.jsonl"
+  },
+  "notes": [
+    "Partial calibration: floor not observable; vignette/saturation/quantization may still be actionable."
+  ],
+  "quantization": {
+    "cross_channel_consistency": {
+      "cv": 0.1144085109684598,
+      "interpretation": "Quantization step consistent across channels (CV < 20%).",
+      "is_consistent": true,
+      "mean_step": 0.015254277572502212,
+      "std_step": 0.0017452191829695498
+    },
+    "observable": true,
+    "per_channel": {
+      "actin": {
+        "quant_step_estimate": 0.014110472498453354,
+        "quant_step_from_delta": 0.014110472498453354,
+        "quant_step_from_metadata": null,
+        "quantization_detected": true
+      },
+      "er": {
+        "quant_step_estimate": 0.013145805073641555,
+        "quant_step_from_delta": 0.013145805073641555,
+        "quant_step_from_metadata": null,
+        "quantization_detected": true
+      },
+      "mito": {
+        "quant_step_estimate": 0.015444590610576868,
+        "quant_step_from_delta": 0.015444590610576868,
+        "quant_step_from_metadata": null,
+        "quantization_detected": true
+      },
+      "nucleus": {
+        "quant_step_estimate": 0.01832652088179387,
+        "quant_step_from_delta": 0.01832652088179387,
+        "quant_step_from_metadata": null,
+        "quantization_detected": true
+      },
+      "rna": {
+        "quant_step_estimate": 0.015243998798045411,
+        "quant_step_from_delta": 0.015243998798045411,
+        "quant_step_from_metadata": null,
+        "quantization_detected": true
+      }
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "run_summary": {
+    "distinct_assays": [
+      "cell_painting"
+    ],
+    "distinct_modes": [
+      "optical_material"
+    ],
+    "distinct_run_context_ids": [
+      "ctx_0000002a"
+    ],
+    "distinct_well_seeds_count": 384,
+    "n_records": 384
+  },
+  "saturation": {
+    "interpretation": "No clipping observed; saturation cap is above observed max values. Threshold estimates are extrapolations, not direct observations.",
+    "observable": true,
+    "overall_confidence": "medium",
+    "per_channel": {
+      "actin": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 478.1349987379507,
+        "p99": 457.91973558104644,
+        "p999": 471.1905413519304,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "er": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 421.468710561455,
+        "p99": 406.78520818384027,
+        "p999": 417.99390086191283,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "mito": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 526.6377896152608,
+        "p99": 502.9134153356345,
+        "p999": 519.7233208700163,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "nucleus": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 632.060966904575,
+        "p99": 599.3536925686798,
+        "p999": 626.7533707680374,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      },
+      "rna": {
+        "cap_inferred": false,
+        "confidence": "medium",
+        "max_observed": 567.4034325183094,
+        "p99": 552.9722404102054,
+        "p999": 566.2349791307576,
+        "saturation_fraction": 0.0,
+        "threshold_estimate": null,
+        "top_bin_fraction": 0.0026041666666666665
+      }
+    },
+    "reason": null,
+    "recommendation": null
+  },
+  "schema_version": "bead_plate_calibration_report_v1",
+  "vignette": {
+    "center_multiplier": {
+      "actin": 1.0,
+      "er": 1.0,
+      "mito": 1.0,
+      "nucleus": 1.0,
+      "rna": 1.0
+    },
+    "edge_multiplier": {
+      "actin": 0.8586177306515377,
+      "er": 0.87091460631846,
+      "mito": 0.8752397439789499,
+      "nucleus": 0.8735867349168135,
+      "rna": 0.8545666147668944
+    },
+    "fit_quality": {
+      "r_squared": {
+        "actin": 0.543311094284876,
+        "er": 0.4985230489276121,
+        "mito": 0.46316055188623173,
+        "nucleus": 0.4782560878849117,
+        "rna": 0.5728620575433162
+      },
+      "r_squared_extended": {
+        "actin": 0.544496972845748,
+        "er": 0.5005743869497248,
+        "mito": 0.4661679197228764,
+        "nucleus": 0.47829611328413024,
+        "rna": 0.5748911704811057
+      },
+      "rmse": {
+        "actin": 1.6731942536347066,
+        "er": 1.8039901628022283,
+        "mito": 2.1804354890538113,
+        "nucleus": 2.4576268243915957,
+        "rna": 1.9144408034056943
+      },
+      "unmodeled_structure_detected": {
+        "actin": false,
+        "er": false,
+        "mito": false,
+        "nucleus": false,
+        "rna": false
+      }
+    },
+    "model": "radial_quadratic",
+    "observable": true,
+    "reason": null,
+    "recommendation": null
+  }
+}

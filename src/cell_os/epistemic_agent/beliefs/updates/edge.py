@@ -77,6 +77,11 @@ class EdgeBeliefUpdater(BaseBeliefUpdater):
                     if channel in center.feature_means:
                         edge_val = edge.feature_means[channel]
                         center_val = center.feature_means[channel]
+
+                        # Phase 4: Skip SNR-masked channels (None values)
+                        if edge_val is None or center_val is None:
+                            continue
+
                         if center_val > 0:
                             effect = (edge_val - center_val) / center_val
 

@@ -3032,3 +3032,109 @@ class BiologicalVirtualMachine(VirtualMachine):
                 out[channel] = out[channel] * (1.0 + coeff * p)
 
         return out
+
+    # ============================================================================
+    # Material Measurement (Beads/Dyes for Calibration)
+    # ============================================================================
+
+    def measure_material(self, material_state, **kwargs) -> Dict[str, Any]:
+        """
+        Measure non-biological calibration material (beads, dyes, buffer).
+
+        Materials have no biology (no viability, no growth, no compounds).
+        They produce known optical signals for detector calibration.
+        All materials go through the SAME detector stack as cells.
+
+        RNG ISOLATION: Uses per-material deterministic seed (no shared RNG coupling).
+        This prevents material measurements from shifting biological assay RNG sequences.
+
+        Args:
+            material_state: MaterialState instance (ephemeral, not stored in VM)
+            **kwargs: Measurement parameters (exposure_multiplier, plate_id, etc.)
+
+        Returns:
+            Dict with morphology and detector_metadata (same structure as Cell Painting)
+        """
+        from .optical_materials import generate_material_base_signal
+        from .detector_stack import apply_detector_stack
+
+        # Create per-material RNG (deterministic, isolated from biology)
+        # Use 64-bit seed space to avoid collisions in large calibration runs
+        from ._impl import stable_u64
+        import re
+
+        # Parse well_position to row/col (structured, not string-dependent)
+        match = re.search(r'([A-P])(\d{1,2})$', material_state.well_position.upper())
+        if match:
+            well_row_letter = match.group(1)
+            well_col_num = int(match.group(2))
+            well_row_idx = ord(well_row_letter) - ord('A')  # 0-15 for A-P
+        else:
+            # Fallback for malformed well position
+            well_row_letter = "A"
+            well_col_num = 1
+            well_row_idx = 0
+
+        # Material type ID (semantic identity, not string formatting)
+        MATERIAL_TYPE_IDS = {
+            'buffer_only': 1,
+            'fluorescent_dye_solution': 2,
+            'fluorescent_beads': 3
+        }
+        material_type_id = MATERIAL_TYPE_IDS.get(material_state.material_type, 0)
+
+        # Structured seed: tuple of typed fields (no string formatting drift)
+        # Format: "material|run_seed|type_id|row_idx|col_num"
+        # This is stable even if material names change (as long as type_id stays same)
+        seed_string = f"material|{self.run_context.seed}|{material_type_id}|{well_row_idx}|{well_col_num}"
+        material_seed = stable_u64(seed_string)
+        rng_material = np.random.default_rng(material_seed)
+
+        # Detector RNG: separate seed for detector noise (stateless w.r.t. call order)
+        # This ensures detector randomness is independent of base signal RNG consumption
+        detector_seed_string = f"detector|{self.run_context.seed}|{material_type_id}|{well_row_idx}|{well_col_num}"
+        detector_seed = stable_u64(detector_seed_string)
+        rng_detector = np.random.default_rng(detector_seed)
+
+        # Generate base optical signal (pure function, no VM state)
+        signal = generate_material_base_signal(
+            material_type=material_state.material_type,
+            base_intensities=material_state.base_intensities,
+            spatial_pattern=material_state.spatial_pattern,
+            bead_count=material_state.bead_count,
+            well_position=material_state.well_position,
+            enable_vignette=kwargs.get('enable_vignette', True),
+            rng=rng_material
+        )
+
+        # Apply detector stack (exposure, floor, saturation, quantization)
+        # Use explicit detector params + dedicated RNG (no VM coupling)
+        # Detector RNG is stateless: same (run_seed, well, type) → same detector noise
+        detector_params = self.thalamus_params['technical_noise']
+        measured_signal, detector_metadata = apply_detector_stack(
+            signal=signal,
+            detector_params=detector_params,
+            rng_detector=rng_detector,  # Dedicated detector RNG (stateless)
+            exposure_multiplier=kwargs.get('exposure_multiplier', 1.0),
+            well_position=material_state.well_position,
+            plate_format=384,  # TODO: get from plate design
+            enable_vignette=kwargs.get('enable_vignette', True),
+            enable_pipeline=kwargs.get('enable_pipeline', True),
+            enable_detector_bias=True  # Enable bias for optical materials (calibration)
+        )
+
+        # Simulate measurement delay
+        self._simulate_delay(2.0)
+
+        return {
+            'status': 'success',
+            'action': 'measure_material',
+            'morphology': measured_signal,
+            'material_type': material_state.material_type,
+            'material_id': material_state.material_id,
+            'well_position': material_state.well_position,
+            'detector_metadata': detector_metadata,
+            'timestamp': datetime.now().isoformat(),
+            'enable_vignette': kwargs.get('enable_vignette', True),
+        }
+

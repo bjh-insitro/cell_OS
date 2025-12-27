@@ -180,7 +180,8 @@ def aggregate_observation(
     *,
     cycle: int = 0,
     strategy: AggregationStrategy = "default_per_channel",
-    normalization_mode: NormalizationMode = "none"
+    normalization_mode: NormalizationMode = "none",
+    snr_policy = None
 ) -> Observation:
     """Aggregate raw well results into an Observation.
 
@@ -194,6 +195,7 @@ def aggregate_observation(
         cycle: Current cycle number (for integrity checking with hysteresis)
         strategy: Aggregation strategy to use
         normalization_mode: Cell line normalization mode (none/fold_change/zscore)
+        snr_policy: Optional SNRPolicy instance for filtering low-SNR conditions (Phase 4)
 
     Returns:
         Observation with aggregated summaries and QC flags
@@ -205,6 +207,9 @@ def aggregate_observation(
 
         Agent 4 (Nuisance Control): normalization_mode removes cell line baseline
         confounding. Default is "none" so agent must discover the confound.
+
+        Phase 4 (SNR Policy): snr_policy filters/flags conditions below minimum
+        detectable signal to prevent agent from learning in sub-noise regimes.
     """
     # Run execution integrity checks BEFORE aggregation
     # This operates on raw wells to detect plate map errors before they're smoothed away
@@ -242,17 +247,40 @@ def aggregate_observation(
     )
 
     if strategy == "default_per_channel":
-        return _aggregate_per_channel(
+        obs = _aggregate_per_channel(
             proposal, raw_results, budget_remaining, normalization_mode,
             integrity_state=integrity_state
         )
     elif strategy == "legacy_scalar_mean":
-        return _aggregate_legacy_scalar(
+        obs = _aggregate_legacy_scalar(
             proposal, raw_results, budget_remaining, normalization_mode,
             integrity_state=integrity_state
         )
     else:
         raise ValueError(f"Unknown aggregation strategy: {strategy}")
+
+    # Phase 4: Apply SNR policy if provided
+    if snr_policy is not None:
+        # Convert Observation to dict, apply policy, convert back
+        obs_dict = _observation_to_dict(obs)
+        filtered_dict = snr_policy.filter_observation(obs_dict, annotate=True)
+        # Update observation with filtered conditions and SNR metadata
+        obs = _update_observation_from_dict(obs, filtered_dict)
+
+    return obs
+
+
+# =============================================================================
+# Phase 4: SNR Policy Enforcement Helpers
+# =============================================================================
+
+def _drop_none(xs):
+    """Filter None values from a list (used to handle SNR-masked channels).
+
+    Phase 4: SNR policy masks channels with insufficient signal to None.
+    Aggregation must ignore these masked channels, not launder them to 0.0.
+    """
+    return [x for x in xs if x is not None]
 
 
 # =============================================================================
@@ -328,18 +356,24 @@ def _aggregate_per_channel(
         ))
 
         # Extract morphology channels
+        # Phase 4: Preserve None from SNR policy (do NOT launder to 0.0)
         morph = result.readouts.get('morphology', {})
         features = {
-            'er': morph.get('er', 0.0),
-            'mito': morph.get('mito', 0.0),
-            'nucleus': morph.get('nucleus', 0.0),
-            'actin': morph.get('actin', 0.0),
-            'rna': morph.get('rna', 0.0),
+            'er': morph.get('er', None),
+            'mito': morph.get('mito', None),
+            'nucleus': morph.get('nucleus', None),
+            'actin': morph.get('actin', None),
+            'rna': morph.get('rna', None),
         }
 
         # Compute scalar response for backward compatibility
-        # (but mark it as derived, not primary)
-        response = np.mean(list(features.values()))
+        # Phase 4: Exclude masked (None) channels from scalar computation
+        usable_features = {k: v for k, v in features.items() if v is not None}
+        if usable_features:
+            response = float(np.mean(list(usable_features.values())))
+        else:
+            # All channels masked → cannot compute scalar
+            response = None
 
         conditions[canonical_key].append({
             'response': response,
@@ -492,21 +526,35 @@ def _summarize_condition(
         # All wells failed QC
         return _empty_condition_summary(key)
 
-    # Compute statistics on USED wells only
-    responses = all_responses
-    n = n_wells_used
+    # Phase 4: Filter None from responses (all channels masked case)
+    responses = [r for r in all_responses if r is not None]
+    n = len(responses)
 
-    # Scalar statistics
-    mean_val = float(np.mean(responses))
-    std_val = float(np.std(responses, ddof=1)) if n > 1 else 0.0
-    sem_val = std_val / np.sqrt(n) if n > 0 else 0.0
-    cv_val = std_val / mean_val if mean_val > 0 else 0.0
-    min_val = float(np.min(responses))
-    max_val = float(np.max(responses))
+    # Scalar statistics (handle case where all responses are None)
+    if n == 0:
+        # All channels masked → no scalar statistics possible
+        mean_val = None
+        std_val = None
+        sem_val = None
+        cv_val = None
+        min_val = None
+        max_val = None
+    else:
+        mean_val = float(np.mean(responses))
+        std_val = float(np.std(responses, ddof=1)) if n > 1 else 0.0
+        sem_val = std_val / np.sqrt(n) if n > 0 else 0.0
+        cv_val = std_val / mean_val if mean_val > 0 else 0.0
+        min_val = float(np.min(responses))
+        max_val = float(np.max(responses))
 
     # Agent 3: Robust dispersion metrics (MAD, IQR)
-    mad_val = float(np.median(np.abs(np.array(responses) - np.median(responses)))) if n > 0 else 0.0
-    iqr_val = float(np.percentile(responses, 75) - np.percentile(responses, 25)) if n > 1 else 0.0
+    # Phase 4: Handle case where all responses are None
+    if n > 0 and responses:
+        mad_val = float(np.median(np.abs(np.array(responses) - np.median(responses))))
+        iqr_val = float(np.percentile(responses, 75) - np.percentile(responses, 25)) if n > 1 else 0.0
+    else:
+        mad_val = None
+        iqr_val = None
 
     # Per-channel statistics (Agent 4: Apply normalization before statistics)
     channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
@@ -516,6 +564,9 @@ def _summarize_condition(
     for ch in channels:
         ch_values = [v['features'][ch] for v in used_values]
 
+        # Phase 4: Filter out None (SNR-masked channels) BEFORE normalization
+        ch_values = _drop_none(ch_values)
+
         # Agent 4: Apply cell line normalization BEFORE computing statistics
         if normalization_mode != "none":
             ch_values_normalized = [
@@ -524,8 +575,13 @@ def _summarize_condition(
             ]
             ch_values = ch_values_normalized
 
-        feature_means[ch] = float(np.mean(ch_values))
-        feature_stds[ch] = float(np.std(ch_values, ddof=1)) if n > 1 else 0.0
+        # Phase 4: If all replicates masked, propagate None
+        if len(ch_values) == 0:
+            feature_means[ch] = None
+            feature_stds[ch] = None
+        else:
+            feature_means[ch] = float(np.mean(ch_values))
+            feature_stds[ch] = float(np.std(ch_values, ddof=1)) if len(ch_values) > 1 else 0.0
 
     # Outlier detection (Z-score > 3 on scalar response)
     # Agent 3: Count outliers but DO NOT DROP them (already filtered by QC above)
@@ -558,6 +614,10 @@ def _summarize_condition(
             details={"condition_key": str(key), "dose_uM": dose_uM}
         )
 
+    # Phase 4: Track which channels were usable vs masked by SNR policy
+    usable_channels = [ch for ch, val in feature_means.items() if val is not None]
+    masked_channels = [ch for ch, val in feature_means.items() if val is None]
+
     summary = ConditionSummary(
         cell_line=key.cell_line,
         compound=key.compound_id,
@@ -587,6 +647,9 @@ def _summarize_condition(
         # Agent 2: Store canonical representation for audit
         canonical_dose_nM=key.dose_nM,
         canonical_time_min=key.time_min,
+        # Phase 4: SNR policy enforcement metadata
+        usable_channels=usable_channels,
+        masked_channels=masked_channels,
     )
 
     return summary
@@ -686,7 +749,8 @@ def _generate_qc_flags(
             )
 
     # Check for high variance
-    high_cv_conditions = [s for s in summaries if s.cv > 0.15]
+    # Phase 4: Handle None cv values (all channels masked case)
+    high_cv_conditions = [s for s in summaries if s.cv is not None and s.cv > 0.15]
     if high_cv_conditions:
         flags.append(
             f"{len(high_cv_conditions)}/{len(summaries)} conditions have CV >15%"
@@ -771,3 +835,30 @@ def compute_observation_fingerprint(
 
     canonical = json.dumps(data, sort_keys=True)
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
+# =============================================================================
+# SNR Policy Integration Helpers (Phase 4)
+# =============================================================================
+
+def _observation_to_dict(obs: Observation) -> Dict[str, Any]:
+    """Convert Observation to dict for SNR policy filtering."""
+    from dataclasses import asdict
+    return asdict(obs)
+
+
+def _update_observation_from_dict(obs: Observation, filtered_dict: Dict[str, Any]) -> Observation:
+    """Update Observation with SNR-filtered conditions and metadata."""
+    # Update conditions with filtered list
+    obs.conditions = [
+        ConditionSummary(**cond) if isinstance(cond, dict) else cond
+        for cond in filtered_dict.get("conditions", [])
+    ]
+
+    # Add SNR policy summary to QC struct (if not already there)
+    if "snr_policy_summary" in filtered_dict:
+        if obs.qc_struct is None:
+            obs.qc_struct = {}
+        obs.qc_struct["snr_policy"] = filtered_dict["snr_policy_summary"]
+
+    return obs

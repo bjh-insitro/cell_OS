@@ -115,7 +115,10 @@ def validate_compounds(parsed_wells: List['ParsedWell']) -> None:
     """
     unknown = set()
     for pw in parsed_wells:
-        if pw.reagent == "DMSO":
+        # Phase 2: Skip material wells (no compounds)
+        if pw.mode == "optical_material":
+            continue
+        if pw.reagent == "DMSO" or pw.reagent == "NONE":
             continue
         try:
             canonicalize_compound(pw.reagent)
@@ -149,6 +152,9 @@ class ParsedWell:
     imaging_focus_offset_um: float
     timepoint_hours: float
     exposure_multiplier: float  # Agent-controlled signal scaling (default 1.0)
+    # Phase 2: Material measurement support
+    mode: str = "biological"  # "biological" or "optical_material"
+    material_assignment: Optional[str] = None  # "DARK", "FLATFIELD_DYE_LOW", etc.
 
 
 @dataclass
@@ -227,10 +233,18 @@ def parse_plate_design_v2(json_path: Path) -> Tuple[List[ParsedWell], Dict]:
     """
     Parse plate design with validation and precomputed maps.
 
+    Handles both biological plates (cells) and material plates (beads/dyes).
+
     Returns:
         (parsed_wells, metadata) where metadata contains precomputed maps
     """
-    design, well_to_tile, well_to_anchor, well_to_probe_type = _load_and_validate_design(json_path)
+    design, well_to_tile, well_to_anchor, well_to_probe_type, plate_type = _load_and_validate_design(json_path)
+
+    # Material plate path (beads/dyes, no biology)
+    if plate_type == 'material':
+        return _parse_material_plate(design)
+
+    # Cell plate path (existing logic)
     design_components = _extract_design_components(design)
     background_wells = set(design_components['non_bio']['background_controls']['wells_no_cells'])
 
@@ -336,17 +350,111 @@ def _convert_v1_to_v2_format(v1_design: Dict) -> Dict:
     return v2_design
 
 
+def _parse_material_plate(design: Dict) -> Tuple[List[ParsedWell], Dict]:
+    """
+    Parse microscope calibration plate (beads/dyes, no biology).
+
+    Material plates have schema_version='microscope_calibration_plate_v1'.
+    All wells are optical materials (no cells, no staining, no time).
+
+    Returns:
+        (parsed_wells, metadata)
+    """
+    plate = design['plate']
+    rows = plate['rows']
+    cols = plate['cols']
+
+    # Extract assignment strategy
+    layout_strategy = design.get('layout_strategy', {})
+    default_assignment = layout_strategy.get('default_assignment', {})
+    default_material = default_assignment.get('material', 'DARK')
+
+    # Build well → material mapping with overlap detection
+    well_to_material = {}
+    well_to_group = {}  # Track which group assigned each well
+
+    # Apply explicit assignments (highest precedence)
+    # Fail loudly if wells appear in multiple groups
+    explicit_assignments = design.get('explicit_assignments', {})
+    for group_name, group_data in explicit_assignments.items():
+        material_name = group_data.get('material')
+        wells = group_data.get('wells', [])
+        for well_id in wells:
+            if well_id in well_to_material:
+                # Overlap detected - fail with helpful error
+                raise ValueError(
+                    f"Well {well_id} appears in multiple explicit assignment groups:\\n"
+                    f"  Group 1: '{well_to_group[well_id]}' → {well_to_material[well_id]}\\n"
+                    f"  Group 2: '{group_name}' → {material_name}\\n"
+                    f"Calibration plates must have exactly one assignment per well.\\n"
+                    f"Fix the plate design JSON to remove overlaps."
+                )
+            well_to_material[well_id] = material_name
+            well_to_group[well_id] = group_name
+
+    # Build ParsedWell list
+    parsed_wells = []
+    for row in rows:
+        for col in cols:
+            well_id = f"{row}{col}"
+
+            # Get material assignment (explicit or default)
+            material = well_to_material.get(well_id, default_material)
+
+            # Create ParsedWell for material
+            pw = ParsedWell(
+                well_id=well_id,
+                row=row,
+                col=col,
+                cell_line="NONE",
+                treatment=f"MATERIAL_{material}",
+                reagent="NONE",
+                dose_uM=0.0,
+                cell_density="NONE",
+                stain_scale=1.0,
+                fixation_timing_offset_min=0.0,
+                imaging_focus_offset_um=0.0,
+                timepoint_hours=0.0,  # Materials have no time
+                exposure_multiplier=1.0,  # Can be overridden in design
+                # Phase 2 fields
+                mode="optical_material",
+                material_assignment=material
+            )
+            parsed_wells.append(pw)
+
+    # Build metadata
+    metadata = {
+        'plate_id': plate.get('plate_id', 'UNKNOWN'),
+        'schema_version': design.get('schema_version'),
+        'intent': design.get('intent', ''),
+        'materials_used': sorted(set(pw.material_assignment for pw in parsed_wells))
+    }
+
+    return parsed_wells, metadata
+
+
 def _load_and_validate_design(json_path: Path):
-    """Load JSON design and build assignment maps."""
+    """Load JSON design and build assignment maps.
+
+    Returns different structures based on plate type:
+    - Material plates: (design, None, None, None, 'material')
+    - Cell plates: (design, well_to_tile, well_to_anchor, well_to_probe_type, 'biological')
+    """
     with open(json_path) as f:
         design = json.load(f)
 
-    # Convert v1 to v2 format if needed
-    if design.get('schema_version') == 'calibration_plate_v1':
+    # Detect material plate (beads/dyes, no biology)
+    schema_version = design.get('schema_version', '')
+    if schema_version == 'microscope_calibration_plate_v1':
+        # Material plate - no tile/anchor/probe maps needed
+        return design, None, None, None, 'material'
+
+    # Cell plates - convert v1 to v2 format if needed
+    if schema_version == 'calibration_plate_v1':
         design = _convert_v1_to_v2_format(design)
 
     well_to_tile, well_to_anchor, well_to_probe_type = build_assignment_maps(design)
-    return design, well_to_tile, well_to_anchor, well_to_probe_type
+    return design, well_to_tile, well_to_anchor, well_to_probe_type, 'biological'
 
 
 def _extract_design_components(design: Dict) -> Dict:
@@ -622,6 +730,7 @@ def stable_hash_seed(base_seed: int, *components: str) -> int:
 
 def execute_well(
     pw: ParsedWell,
+    vm: BiologicalVirtualMachine,
     base_seed: int,
     run_context: RunContext,
     plate_id: str = "CAL_384",
@@ -632,19 +741,60 @@ def execute_well(
 
     Args:
         pw: Parsed well specification
+        vm: Shared VM instance (stateless for materials, per-well for cells)
         base_seed: Base random seed for plate
         run_context: Shared RunContext for plate-level batch effects
         plate_id: Plate identifier for technical noise
+        vessel_type: Vessel type (e.g., "384-well")
 
     Returns:
         Result dictionary with measurements and metadata
     """
     # Deterministic per-well seed
-    well_seed = stable_hash_seed(base_seed, pw.well_id, pw.cell_line)
+    well_seed = stable_hash_seed(base_seed, pw.well_id, pw.cell_line or "material")
 
-    # Create fresh VM per well (fixes time accumulation bug)
-    # Disable database to avoid SQLite locking in parallel execution
-    vm = BiologicalVirtualMachine(seed=well_seed, run_context=run_context, use_database=False)
+    # Phase 2: Material dispatch (beads/dyes, no biology)
+    if pw.mode == "optical_material":
+        from src.cell_os.hardware.material_assignments import create_material_from_assignment
+
+        # Validate assignment is mapped
+        # create_material_from_assignment will raise ValueError if unmapped
+        material = create_material_from_assignment(pw.material_assignment, pw.well_id, seed=well_seed)
+
+        # Measure material (stateless, no biology)
+        result = vm.measure_material(
+            material,
+            exposure_multiplier=pw.exposure_multiplier,
+            enable_vignette=True,
+            enable_pipeline=True
+        )
+
+        # Return observation matching cell schema (keep assay="cell_painting" for unified pipeline)
+        return {
+            "well_id": pw.well_id,
+            "row": pw.row,
+            "col": pw.col,
+            "cell_line": "NONE",
+            "compound": "NONE",
+            "dose_uM": 0.0,
+            "time_h": 0.0,  # Materials have no time
+            "assay": "cell_painting",  # Same assay for unified downstream
+            "mode": "optical_material",  # Distinguish from cells
+            "material_assignment": pw.material_assignment,
+            "material_type": material.material_type,
+            "morphology": result['morphology'],
+            "morphology_struct": {k: 0.0 for k in result['morphology'].keys()},  # No structure
+            "viability": 1.0,  # Not applicable
+            "n_cells": 0,
+            "treatment": f"MATERIAL_{pw.material_assignment}",
+            "cell_density": "NONE",
+            "initial_cell_count": 0,
+            "run_context_id": run_context.context_id,
+            "batch_id": "batch_default",
+            "well_seed": well_seed,
+            "exposure_multiplier": pw.exposure_multiplier,
+            "detector_metadata": result.get('detector_metadata', {})
+        }
 
     # Build measurement context
     measurement_ctx = MeasurementContext(
@@ -671,12 +821,14 @@ def execute_well(
                 "dose_uM": 0.0,
                 "time_h": pw.timepoint_hours,
                 "assay": "cell_painting",
+                "mode": "biological",  # Phase 2: unified schema
                 "morphology": background,
                 "morphology_struct": {k: 0.0 for k in background.keys()},  # True structure is zero
                 "viability": 0.0,
                 "n_cells": 0,
                 "treatment": pw.treatment,
                 "cell_density": pw.cell_density,
+                "detector_metadata": {},  # Phase 2: no detector metadata for synthetic background
                 **measurement_ctx.to_kwargs()
             }
 
@@ -714,6 +866,7 @@ def execute_well(
             "dose_uM": pw.dose_uM,
             "time_h": pw.timepoint_hours,
             "assay": "cell_painting",
+            "mode": "biological",  # Phase 2: distinguish from optical_material
             "morphology": cp_result.get("morphology", {}),
             "morphology_struct": cp_result.get("morphology_struct", {}),
             "viability": cp_result.get("viability", 1.0),
@@ -724,6 +877,7 @@ def execute_well(
             "run_context_id": cp_result.get("run_context_id", ""),
             "batch_id": cp_result.get("batch_id", ""),
             "well_seed": well_seed,
+            "detector_metadata": cp_result.get("detector_metadata", {}),  # Phase 2: unified schema
             **measurement_ctx.to_kwargs()
         }
 
@@ -817,18 +971,30 @@ def execute_plate_design(
     treatments = set(pw.treatment for pw in parsed_wells)
     compounds = set(pw.reagent for pw in parsed_wells if pw.reagent != "DMSO")
 
+    # Detect plate mode
+    is_material_plate = any(pw.mode == "optical_material" for pw in parsed_wells)
+
     if verbose:
         print(f"\nPlate summary:")
-        print(f"  Cell lines: {', '.join(sorted(cell_lines))}")
-        print(f"  Compounds: {', '.join(sorted(compounds))}")
+        print(f"  Mode: {'Material calibration' if is_material_plate else 'Biological'}")
+        if not is_material_plate:
+            print(f"  Cell lines: {', '.join(sorted(cell_lines))}")
+            print(f"  Compounds: {', '.join(sorted(compounds))}")
         print(f"  Treatments: {len(treatments)} unique")
-        print(f"  Background wells: {len(parse_metadata['background_wells'])}")
-        print(f"\nExecution mode: Per-well isolated simulation")
+        if 'background_wells' in parse_metadata:
+            print(f"  Background wells: {len(parse_metadata['background_wells'])}")
+        print(f"\nExecution mode: Shared VM (stateless)")
         print(f"Seed: {seed}")
 
     # Create shared RunContext for plate-level batch effects
     run_context = RunContext.sample(seed=seed)
     plate_id = json_path.stem
+
+    # Phase 2: Create one VM for entire plate (reused across wells)
+    # Materials are stateless, cells create per-well vessels
+    vm = BiologicalVirtualMachine(seed=seed, run_context=run_context, use_database=False)
+    if is_material_plate:
+        vm._load_cell_thalamus_params()  # Load detector params for materials
 
     if verbose:
         print(f"\nExecuting {len(parsed_wells)} wells...")
@@ -839,7 +1005,7 @@ def execute_plate_design(
         if verbose and (i + 1) % 96 == 0:
             print(f"  Progress: {i + 1}/{len(parsed_wells)} wells ({100*(i+1)//len(parsed_wells)}%)")
 
-        result = execute_well(pw, seed, run_context, plate_id, vessel_type)
+        result = execute_well(pw, vm, seed, run_context, plate_id, vessel_type)
         raw_results.append(result)
 
     if verbose:

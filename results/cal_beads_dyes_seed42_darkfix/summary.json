@@ -1,0 +1,24 @@
+{
+  "plate_id": "CAL_384_MICROSCOPE_BEADS_DYES_v1",
+  "seed": 42,
+  "n_wells": 384,
+  "materials_used": [
+    "BLANK",
+    "DARK",
+    "FLATFIELD_DYE_HIGH",
+    "FLATFIELD_DYE_LOW",
+    "FOCUS_BEADS",
+    "MULTICOLOR_BEADS_DENSE",
+    "MULTICOLOR_BEADS_SPARSE"
+  ],
+  "schema_version": "microscope_calibration_plate_v1",
+  "channels": [
+    "er",
+    "mito",
+    "nucleus",
+    "actin",
+    "rna"
+  ],
+  "dark_floor_fix_applied": true,
+  "calibration_params_file": "data/calibration_thalamus_params.yaml"
+}

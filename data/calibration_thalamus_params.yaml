@@ -1,0 +1,72 @@
+# Calibration Thalamus Params - Detector Characterization Only
+# Used for bead plate calibration runs (optical materials, not cells)
+# Enables detector bias and floor noise to make DARK observable
+
+technical_noise:
+  # Detector baseline offset (bias + dark current)
+  # Applied BEFORE exposure, enables DARK floor observability
+  # Dynamic: uses dark_bias_lsbs * quant_step_param (default 20 LSB)
+  dark_bias_lsbs: 20.0  # 20 LSB baseline offset (0.3 AU with 0.015 AU/LSB quantization)
+
+  # Per-channel detector bias (explicit override if needed, optional)
+  # If not set, computed as: dark_bias_lsbs * quant_step_param
+  # detector_bias_er: 0.3
+  # detector_bias_mito: 0.3
+  # detector_bias_nucleus: 0.3
+  # detector_bias_actin: 0.3
+  # detector_bias_rna: 0.3
+
+  # Additive floor (detector read noise): Per-channel Gaussian noise
+  # Models CCD/PMT dark current and electronics noise
+  # Set to ~3 LSB (0.045 AU with 0.015 AU/LSB quantization)
+  # This ensures DARK wells have observable variance across quantization bins
+  additive_floor_sigma_er: 0.045       # ER channel detector noise
+  additive_floor_sigma_mito: 0.045     # Mito channel detector noise
+  additive_floor_sigma_nucleus: 0.045  # Nucleus channel detector noise
+  additive_floor_sigma_actin: 0.045    # Actin channel detector noise
+  additive_floor_sigma_rna: 0.045      # RNA channel detector noise
+
+  # Saturation (detector dynamic range limits): Per-channel maximum
+  # Set to ~4× dye_high intensity to capture full dynamic range
+  # Enables bits-mode quantization (requires ceiling > 0)
+  saturation_ceiling_er: 800.0         # ER channel ceiling
+  saturation_ceiling_mito: 900.0       # Mito channel ceiling
+  saturation_ceiling_nucleus: 1000.0   # Nucleus channel ceiling
+  saturation_ceiling_actin: 800.0      # Actin channel ceiling
+  saturation_ceiling_rna: 850.0        # RNA channel ceiling
+
+  # Soft-knee parameters (shared across channels)
+  saturation_knee_start_fraction: 0.85  # Compression begins at 85% of ceiling
+  saturation_tau_fraction: 0.08         # Rate of approach to ceiling
+
+  # ADC quantization (analog-to-digital conversion)
+  # bits-mode: derives step = ceiling/(2^bits-1)
+  # Example: bits=12, ceiling=800 → step ≈ 0.195 AU (4095 codes)
+  # This gives quant_step ~0.015-0.020 AU depending on channel ceiling
+  adc_quant_bits_default: 16            # 16-bit ADC (65535 codes)
+  adc_quant_step_default: 0.0           # Use bits-mode (step computed from ceiling)
+  adc_quant_rounding_mode: "round_half_up"
+
+  # Spatial effects (vignette + edge effects)
+  # Vignette is applied in detector (not here), but edge_effect models evaporation/temp
+  edge_effect: 0.12   # 12% signal reduction for edge wells (evaporation, temperature)
+
+  # Well-level measurement noise (excluding detector floor, which is explicit above)
+  well_cv: 0.015      # 1.5% well-to-well measurement noise
+
+  # Plate-level variations (for multi-plate calibration, not used in single bead plate)
+  plate_cv: 0.010     # 1% plate-to-plate variation
+  day_cv: 0.015       # 1.5% day-to-day variation
+
+  # Stain/focus variations (not relevant for beads/dyes, but kept for schema compat)
+  stain_cv: 0.0       # No stain variation (optical materials, not stains)
+  focus_cv: 0.0       # No focus variation (beads are uniform)
+
+  # Well failure rate (extremely low for calibration materials)
+  well_failure_rate: 0.0  # No failures for bead plate (beads are stable)
+
+  # Heavy-tail noise (dormant for calibration)
+  heavy_tail_frequency: 0.0
+
+# Calibration materials don't need biological noise, compound mappings, etc.
+# Those sections are omitted (VM will use defaults or skip)
