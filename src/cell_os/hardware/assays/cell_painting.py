@@ -461,12 +461,26 @@ class CellPaintingAssay(AssaySimulator):
     ) -> tuple[Dict[str, float], Dict[str, Any]]:
         """Apply measurement layer: viability scaling, washout artifacts, debris artifacts, noise, batch effects.
 
+        Measurement pipeline order:
+        1. Viability factor (biological signal attenuation)
+        2. Washout multiplier (measurement artifact)
+        3. Exposure multiplier (agent-controlled instrument setting)
+        4. Debris background (fluorescence contamination)
+        5. Biological noise (dose-dependent lognormal)
+        6. Plating artifacts (early timepoint variance inflation)
+        7. Technical noise (plate/day/operator/well/edge effects)
+        8. Additive floor (detector read noise, stochastic)
+        9. Saturation (detector dynamic range, deterministic)
+        10. Quantization (ADC digitization, deterministic)
+        11. Pipeline drift (software feature extraction)
+
         Returns:
             tuple: (morphology, detector_metadata) where detector_metadata contains:
                 - is_saturated[ch]: True if signal hit ceiling
                 - is_quantized[ch]: True if quantization applied
                 - quant_step[ch]: Quantization step size (0.0 if dormant)
                 - snr_floor_proxy[ch]: signal / sigma_floor (None if sigma_floor == 0)
+                - exposure_multiplier: Agent-controlled signal scaling (default 1.0)
         """
         t_measure = self.vm.simulated_time
         tech_noise = self.vm.thalamus_params['technical_noise']
@@ -481,7 +495,14 @@ class CellPaintingAssay(AssaySimulator):
         # 2. Washout multiplier (measurement artifact)
         washout_multiplier = self._compute_washout_multiplier(vessel, t_measure)
 
-        # 3. Debris background fluorescence multiplier (Layer B: branch on flag)
+        # 3. Exposure multiplier (scales signal strength before detector)
+        # Agent-controlled: trade-off between SNR (floor-limited) and saturation
+        exposure_multiplier = kwargs.get('exposure_multiplier', 1.0)
+        if exposure_multiplier != 1.0:
+            for channel in morph:
+                morph[channel] *= exposure_multiplier
+
+        # 4. Debris background fluorescence multiplier (Layer B: branch on flag)
         if self._structured_artifacts is not None:
             # Structured artifacts enabled (per-channel)
             bg_mults = self._structured_artifacts['background']
@@ -501,18 +522,18 @@ class CellPaintingAssay(AssaySimulator):
             for channel in morph:
                 morph[channel] *= viability_factor * washout_multiplier * debris_multiplier
 
-        # 4. Biological noise (dose-dependent)
+        # 5. Biological noise (dose-dependent)
         morph = self._add_biological_noise(vessel, morph)
 
-        # 5. Plating artifacts (early timepoint variance inflation)
+        # 6. Plating artifacts (early timepoint variance inflation)
         morph = self._add_plating_artifacts(vessel, morph, t_measure)
 
-        # 6. Technical noise (plate/day/operator/well/edge effects)
+        # 7. Technical noise (plate/day/operator/well/edge effects)
         # NOTE: Debris also inflates noise variance via bg_noise_multiplier
         # Applied in _add_technical_noise() by scaling CVs
         morph = self._add_technical_noise(vessel, morph, **kwargs)
 
-        # 7. Additive floor (detector read noise)
+        # 8. Additive floor (detector read noise)
         # Applied BEFORE saturation and pipeline_transform
         morph = self._add_additive_floor(morph)
 
@@ -527,17 +548,17 @@ class CellPaintingAssay(AssaySimulator):
             else:
                 snr_floor_proxy[ch] = None  # No floor, SNR undefined
 
-        # 8. Saturation (detector dynamic range limits)
+        # 9. Saturation (detector dynamic range limits)
         # Applied AFTER additive floor (noise can push into saturation),
         # BEFORE quantization (analog compression before digitization)
         morph, is_saturated = self._apply_saturation(morph)
 
-        # 9. ADC quantization (analog-to-digital conversion)
+        # 10. ADC quantization (analog-to-digital conversion)
         # Applied AFTER saturation (analog → digital),
         # BEFORE pipeline_transform (digitization before software)
         morph, quant_step, is_quantized = self._apply_adc_quantization(morph)
 
-        # 10. Pipeline drift (batch-dependent feature extraction)
+        # 11. Pipeline drift (batch-dependent feature extraction)
         plate_id = kwargs.get('plate_id', 'P1')
         batch_id = kwargs.get('batch_id', 'batch_default')
         # Shared factors re-enabled after fixing nutrient depletion bug (commit b241033)
@@ -557,6 +578,7 @@ class CellPaintingAssay(AssaySimulator):
             'is_quantized': is_quantized,
             'quant_step': quant_step,
             'snr_floor_proxy': snr_floor_proxy,
+            'exposure_multiplier': exposure_multiplier,  # Agent-controlled instrument setting
         }
 
         return morph, detector_metadata
