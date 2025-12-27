@@ -148,6 +148,7 @@ class ParsedWell:
     fixation_timing_offset_min: float
     imaging_focus_offset_um: float
     timepoint_hours: float
+    exposure_multiplier: float  # Agent-controlled signal scaling (default 1.0)
 
 
 @dataclass
@@ -158,6 +159,7 @@ class MeasurementContext:
     imaging_focus_offset_um: float = 0.0
     cell_density: str = "NOMINAL"
     well_position: str = ""  # For spatial effects
+    exposure_multiplier: float = 1.0  # Agent-controlled instrument setting
 
     def to_kwargs(self) -> Dict[str, Any]:
         """Convert to kwargs for cell_painting_assay."""
@@ -166,7 +168,8 @@ class MeasurementContext:
             'fixation_offset_min': self.fixation_timing_offset_min,
             'focus_offset_um': self.imaging_focus_offset_um,
             'cell_density': self.cell_density,
-            'well_position': self.well_position
+            'well_position': self.well_position,
+            'exposure_multiplier': self.exposure_multiplier
         }
 
 
@@ -437,7 +440,7 @@ def _apply_probe_settings(assignment: Dict, well_id: str, well_to_probe_type: Di
 
 
 def _apply_anchor(assignment: Dict, well_id: str, well_to_anchor: Dict, anchors_data: Dict):
-    """Apply biological anchor (treatment, reagent, dose)."""
+    """Apply biological anchor (treatment, reagent, dose, exposure)."""
     if well_id not in well_to_anchor:
         return
 
@@ -446,6 +449,9 @@ def _apply_anchor(assignment: Dict, well_id: str, well_to_anchor: Dict, anchors_
     assignment["treatment"] = anchor_id
     assignment["reagent"] = anchor["reagent"]
     assignment["dose_uM"] = anchor["dose_uM"]
+    # Allow per-anchor exposure override (optional)
+    if "exposure_multiplier" in anchor:
+        assignment["exposure_multiplier"] = anchor["exposure_multiplier"]
 
 
 def _apply_tile(assignment: Dict, well_id: str, well_to_tile: Dict):
@@ -460,6 +466,9 @@ def _apply_tile(assignment: Dict, well_id: str, well_to_tile: Dict):
     assignment["dose_uM"] = tile_assignment["dose_uM"]
     if "cell_density" in tile_assignment:
         assignment["cell_density"] = tile_assignment["cell_density"]
+    # Allow per-tile exposure override (optional)
+    if "exposure_multiplier" in tile_assignment:
+        assignment["exposure_multiplier"] = tile_assignment["exposure_multiplier"]
 
 
 def _apply_background(assignment: Dict, well_id: str, background_wells: set, non_bio: Dict):
@@ -469,8 +478,41 @@ def _apply_background(assignment: Dict, well_id: str, background_wells: set, non
         assignment.update(bg_assignment)
 
 
+def _validate_exposure_multiplier(exposure: float, treatment: str) -> None:
+    """
+    Validate exposure_multiplier at parse time.
+
+    Args:
+        exposure: Exposure multiplier value
+        treatment: Treatment name (for error message context)
+
+    Raises:
+        ValueError: If exposure is invalid (NaN, inf, or outside [0.1, 5.0])
+    """
+    import math
+
+    # Reject NaN/inf
+    if not math.isfinite(exposure):
+        raise ValueError(
+            f"exposure_multiplier must be finite (not NaN/inf), "
+            f"got {exposure} for treatment '{treatment}'"
+        )
+
+    # Enforce range [0.1, 5.0]
+    if not (0.1 <= exposure <= 5.0):
+        raise ValueError(
+            f"exposure_multiplier must be in [0.1, 5.0], "
+            f"got {exposure} for treatment '{treatment}'. "
+            f"Valid range: 0.1 (10× attenuation) to 5.0 (5× amplification)"
+        )
+
+
 def _create_parsed_well(well_id: str, row: str, col: int, assignment: Dict) -> ParsedWell:
     """Create ParsedWell object from assignment dictionary."""
+    # Extract and validate exposure_multiplier
+    exposure = assignment.get("exposure_multiplier", 1.0)
+    _validate_exposure_multiplier(exposure, assignment["treatment"])
+
     return ParsedWell(
         well_id=well_id,
         row=row,
@@ -483,7 +525,8 @@ def _create_parsed_well(well_id: str, row: str, col: int, assignment: Dict) -> P
         stain_scale=assignment.get("stain_scale", 1.0),
         fixation_timing_offset_min=assignment.get("fixation_timing_offset_min", 0),
         imaging_focus_offset_um=assignment.get("imaging_focus_offset_um", 0),
-        timepoint_hours=assignment["timepoint_hours"]
+        timepoint_hours=assignment["timepoint_hours"],
+        exposure_multiplier=exposure
     )
 
 
@@ -609,7 +652,8 @@ def execute_well(
         fixation_timing_offset_min=pw.fixation_timing_offset_min,
         imaging_focus_offset_um=pw.imaging_focus_offset_um,
         cell_density=pw.cell_density,
-        well_position=pw.well_id
+        well_position=pw.well_id,
+        exposure_multiplier=pw.exposure_multiplier
     )
 
     try:
