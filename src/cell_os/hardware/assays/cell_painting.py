@@ -258,7 +258,8 @@ class CellPaintingAssay(AssaySimulator):
         )
 
         # Apply measurement layer (viability + artifacts + noise)
-        morph = self._apply_measurement_layer(vessel, morph, **kwargs)
+        # Returns both morphology and detector metadata (saturation/quantization flags)
+        morph, detector_metadata = self._apply_measurement_layer(vessel, morph, **kwargs)
 
         # Simulate delay
         self.vm._simulate_delay(2.0)
@@ -292,6 +293,8 @@ class CellPaintingAssay(AssaySimulator):
             "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(
                 self.vm.simulated_time, modality='imaging'
             ),
+            # Detector metadata: censoring flags for agent reasoning about measurement quality
+            "detector_metadata": detector_metadata,
         }
 
         # Check for well failure
@@ -455,9 +458,18 @@ class CellPaintingAssay(AssaySimulator):
 
     def _apply_measurement_layer(
         self, vessel: "VesselState", morph: Dict[str, float], **kwargs
-    ) -> Dict[str, float]:
-        """Apply measurement layer: viability scaling, washout artifacts, debris artifacts, noise, batch effects."""
+    ) -> tuple[Dict[str, float], Dict[str, Any]]:
+        """Apply measurement layer: viability scaling, washout artifacts, debris artifacts, noise, batch effects.
+
+        Returns:
+            tuple: (morphology, detector_metadata) where detector_metadata contains:
+                - is_saturated[ch]: True if signal hit ceiling
+                - is_quantized[ch]: True if quantization applied
+                - quant_step[ch]: Quantization step size (0.0 if dormant)
+                - snr_floor_proxy[ch]: signal / sigma_floor (None if sigma_floor == 0)
+        """
         t_measure = self.vm.simulated_time
+        tech_noise = self.vm.thalamus_params['technical_noise']
 
         # 1. Viability factor (biological signal attenuation)
         # ASSUMPTION: Dead cells retain CP_DEAD_SIGNAL_FLOOR signal. See assay_params.py
@@ -504,15 +516,26 @@ class CellPaintingAssay(AssaySimulator):
         # Applied BEFORE saturation and pipeline_transform
         morph = self._add_additive_floor(morph)
 
+        # Compute SNR floor proxy (signal / sigma_floor) after additive floor
+        # This is the signal level relative to detector noise floor
+        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+        snr_floor_proxy = {}
+        for ch in channels:
+            sigma = tech_noise.get(f'additive_floor_sigma_{ch}', 0.0)
+            if sigma > 0:
+                snr_floor_proxy[ch] = morph[ch] / sigma
+            else:
+                snr_floor_proxy[ch] = None  # No floor, SNR undefined
+
         # 8. Saturation (detector dynamic range limits)
         # Applied AFTER additive floor (noise can push into saturation),
         # BEFORE quantization (analog compression before digitization)
-        morph = self._apply_saturation(morph)
+        morph, is_saturated = self._apply_saturation(morph)
 
         # 9. ADC quantization (analog-to-digital conversion)
         # Applied AFTER saturation (analog → digital),
         # BEFORE pipeline_transform (digitization before software)
-        morph = self._apply_adc_quantization(morph)
+        morph, quant_step, is_quantized = self._apply_adc_quantization(morph)
 
         # 10. Pipeline drift (batch-dependent feature extraction)
         plate_id = kwargs.get('plate_id', 'P1')
@@ -528,7 +551,15 @@ class CellPaintingAssay(AssaySimulator):
             )
         # else: skip pipeline_transform (no-op)
 
-        return morph
+        # Assemble detector metadata
+        detector_metadata = {
+            'is_saturated': is_saturated,
+            'is_quantized': is_quantized,
+            'quant_step': quant_step,
+            'snr_floor_proxy': snr_floor_proxy,
+        }
+
+        return morph, detector_metadata
 
     def _compute_debris_background_multiplier(self, vessel: "VesselState") -> float:
         """
@@ -900,7 +931,7 @@ class CellPaintingAssay(AssaySimulator):
 
         return morph
 
-    def _apply_saturation(self, morph: Dict[str, float]) -> Dict[str, float]:
+    def _apply_saturation(self, morph: Dict[str, float]) -> tuple[Dict[str, float], Dict[str, bool]]:
         """
         Apply detector saturation (dynamic range limits).
 
@@ -937,19 +968,27 @@ class CellPaintingAssay(AssaySimulator):
         tau_frac = tech_noise.get('saturation_tau_fraction', 0.08)
 
         # Apply per-channel saturation (independent ceilings)
+        # Track which channels saturated (for detector metadata)
+        is_saturated = {}
         for ch in channels:
             ceiling = tech_noise.get(f'saturation_ceiling_{ch}', 0.0)
             if ceiling > 0:  # Only apply if enabled for this channel
-                morph[ch] = apply_saturation(
-                    y=morph[ch],
+                y_pre = morph[ch]
+                y_sat = apply_saturation(
+                    y=y_pre,
                     ceiling=ceiling,
                     knee_start_frac=knee_start_frac,
                     tau_frac=tau_frac
                 )
+                morph[ch] = y_sat
+                # Mark as saturated if within epsilon of ceiling
+                is_saturated[ch] = (y_sat >= ceiling - 0.001)
+            else:
+                is_saturated[ch] = False
 
-        return morph
+        return morph, is_saturated
 
-    def _apply_adc_quantization(self, morph: Dict[str, float]) -> Dict[str, float]:
+    def _apply_adc_quantization(self, morph: Dict[str, float]) -> tuple[Dict[str, float], Dict[str, float], Dict[str, bool]]:
         """
         Apply ADC quantization (analog-to-digital conversion).
 
@@ -990,6 +1029,10 @@ class CellPaintingAssay(AssaySimulator):
         mode = tech_noise.get('adc_quant_rounding_mode', 'round_half_up')
 
         # Apply per-channel quantization
+        # Track quantization metadata (for detector metadata)
+        quant_step = {}
+        is_quantized = {}
+
         for ch in channels:
             # Per-channel overrides (fall back to defaults)
             bits = int(tech_noise.get(f'adc_quant_bits_{ch}', bits_default))
@@ -998,6 +1041,15 @@ class CellPaintingAssay(AssaySimulator):
             # Get ceiling from saturation config (needed for bits-mode)
             # If saturation is dormant (ceiling=0), bits-mode will raise ValueError
             ceiling = float(tech_noise.get(f'saturation_ceiling_{ch}', 0.0))
+
+            # Determine effective step (same logic as quantize_adc)
+            effective_step = 0.0
+            if bits > 0:
+                if ceiling > 0:
+                    num_codes = (1 << bits) - 1
+                    effective_step = ceiling / max(num_codes, 1)
+            elif step > 0:
+                effective_step = step
 
             # Apply quantization (dormant if bits=0 and step=0.0)
             if bits > 0 or step > 0:
@@ -1008,8 +1060,13 @@ class CellPaintingAssay(AssaySimulator):
                     ceiling=ceiling,
                     mode=mode
                 )
+                is_quantized[ch] = True
+                quant_step[ch] = effective_step
+            else:
+                is_quantized[ch] = False
+                quant_step[ch] = 0.0
 
-        return morph
+        return morph, quant_step, is_quantized
 
     def _apply_well_failure(
         self, morph: Dict[str, float], well_position: str, plate_id: str, batch_id: str

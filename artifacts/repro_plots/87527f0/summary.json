@@ -1,0 +1,42 @@
+{
+  "git_sha": "87527f0",
+  "metrics": {
+    "fig1": {
+      "cv_final_viability": 0.2289005799360739
+    },
+    "fig2": {
+      "thresh_0.7": {
+        "cv": 0.0007117966839729021,
+        "mean": 24.93395729042218,
+        "std": 0.017747908117644474
+      },
+      "thresh_0.5": {
+        "cv": 0.001188426334192517,
+        "mean": 25.601069640723736,
+        "std": 0.030424985344532647
+      },
+      "thresh_0.3": {
+        "cv": 0.001640846807980366,
+        "mean": 26.268181991025287,
+        "std": 0.04310206257142118
+      }
+    },
+    "fig3": {
+      "mean_pairwise_correlation": 1.0
+    },
+    "fig5": {
+      "within_run_var": 0.0,
+      "between_run_var": 0.00022617921224567467
+    },
+    "fig6": {
+      "mean_within_run_corr": 1.0,
+      "mean_across_run_corr": 0.9999971800676988
+    },
+    "fig4": {
+      "cv_half_life": 0.0,
+      "mean_half_life": 6.0,
+      "cosmetic_warning": false
+    }
+  },
+  "warnings": []
+}

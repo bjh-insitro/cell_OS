@@ -221,5 +221,65 @@ def test_quantization_visible_banding_at_low_signal():
     print(f"✓ Visible banding at low signal: {len(low_signal_inputs)} inputs → {unique_outputs} unique outputs")
 
 
+def test_quantization_detector_metadata():
+    """Detector metadata includes censoring flags for agent reasoning."""
+    from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+
+    # Create VM with saturation + quantization enabled
+    vm = BiologicalVirtualMachine(seed=42)
+    vm._load_cell_thalamus_params()
+
+    # Enable saturation on all channels (required for bits-mode quantization)
+    vm.thalamus_params['technical_noise']['saturation_ceiling_er'] = 200.0
+    vm.thalamus_params['technical_noise']['saturation_ceiling_mito'] = 250.0
+    vm.thalamus_params['technical_noise']['saturation_ceiling_nucleus'] = 300.0
+    vm.thalamus_params['technical_noise']['saturation_ceiling_actin'] = 220.0
+    vm.thalamus_params['technical_noise']['saturation_ceiling_rna'] = 240.0
+
+    # Enable quantization (shared default, all channels)
+    vm.thalamus_params['technical_noise']['adc_quant_bits_default'] = 8  # 255 codes
+
+    # Enable additive floor only on ER (for SNR test)
+    vm.thalamus_params['technical_noise']['additive_floor_sigma_er'] = 3.0
+
+    # Seed and measure
+    vm.seed_vessel("test_well", "A549", initial_count=5000, capacity=1e6)
+    vm.advance_time(12.0)
+    result = vm.cell_painting_assay("test_well")
+
+    # Verify detector_metadata is present
+    assert 'detector_metadata' in result, "detector_metadata missing from result"
+
+    meta = result['detector_metadata']
+
+    # Verify structure
+    assert 'is_saturated' in meta
+    assert 'is_quantized' in meta
+    assert 'quant_step' in meta
+    assert 'snr_floor_proxy' in meta
+
+    # Verify per-channel data
+    for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']:
+        assert ch in meta['is_saturated']
+        assert ch in meta['is_quantized']
+        assert ch in meta['quant_step']
+        assert ch in meta['snr_floor_proxy']
+
+    # Verify values for ER (saturation + quantization enabled)
+    assert isinstance(meta['is_saturated']['er'], bool)
+    assert meta['is_quantized']['er'] is True  # Quantization enabled
+    assert meta['quant_step']['er'] > 0  # Non-zero step
+    assert meta['snr_floor_proxy']['er'] is not None  # Additive floor enabled
+
+    # Verify values for other channels (only quantization enabled, no saturation/floor)
+    assert meta['is_saturated']['mito'] is False  # No saturation
+    assert meta['is_quantized']['mito'] is True  # Quantization enabled (shared default)
+    assert meta['snr_floor_proxy']['mito'] is None  # No additive floor
+
+    print(f"✓ Detector metadata present with correct structure")
+    print(f"  ER: saturated={meta['is_saturated']['er']}, quantized={meta['is_quantized']['er']}, "
+          f"step={meta['quant_step']['er']:.3f}, snr={meta['snr_floor_proxy']['er']:.1f}")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-xvs"])
