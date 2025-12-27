@@ -329,6 +329,50 @@ technical_noise:
   heavy_tail_min_multiplier: 0.2 # Hard floor: max 5× attenuation (prevents signal dropout)
   heavy_tail_max_multiplier: 5.0 # Hard ceiling: max 5× amplification (prevents numeric explosion)
 
+  # Additive floor (detector read noise): Per-channel Gaussian noise independent of signal
+  # Models CCD/PMT dark current and electronics noise that dominates at low signal
+  # Default DORMANT (sigma=0.0) to preserve golden files and existing tests
+  # Enable for realism: set to ~1.5-3.0 (1-2% of baseline ~150)
+  # Cell Painting only (not viability assays)
+  additive_floor_sigma_er: 0.0       # ER channel detector noise (0.0=dormant)
+  additive_floor_sigma_mito: 0.0     # Mito channel detector noise (0.0=dormant)
+  additive_floor_sigma_nucleus: 0.0  # Nucleus channel detector noise (0.0=dormant)
+  additive_floor_sigma_actin: 0.0    # Actin channel detector noise (0.0=dormant)
+  additive_floor_sigma_rna: 0.0      # RNA channel detector noise (0.0=dormant)
+
+  # Saturation (detector dynamic range limits): Per-channel maximum digitized output
+  # Models camera well depth / PMT ceiling / ADC max
+  # Default DORMANT (ceiling=0.0) to preserve golden files and existing tests
+  # Enable for realism: set to 3-4× baseline (e.g., 600-800 AU for baseline ~150-200)
+  # Creates plateaus in dose-response, compressed variance at saturation
+  # Cell Painting only (not viability assays)
+  saturation_ceiling_er: 0.0         # ER channel ceiling (0.0=dormant, ~600-800 AU moderate)
+  saturation_ceiling_mito: 0.0       # Mito channel ceiling (0.0=dormant, ~700-900 AU moderate)
+  saturation_ceiling_nucleus: 0.0    # Nucleus channel ceiling (0.0=dormant, ~800-1000 AU moderate)
+  saturation_ceiling_actin: 0.0      # Actin channel ceiling (0.0=dormant, ~600-800 AU moderate)
+  saturation_ceiling_rna: 0.0        # RNA channel ceiling (0.0=dormant, ~650-850 AU moderate)
+
+  # Soft-knee parameters (shared across channels, only used when ceiling > 0)
+  saturation_knee_start_fraction: 0.85  # Compression begins at 85% of ceiling (linear below)
+  saturation_tau_fraction: 0.08         # Rate of approach to ceiling (smaller = faster saturation)
+
+  # ADC quantization (analog-to-digital conversion): Discrete digitization levels
+  # Models digitizer bit depth / ADC resolution
+  # Default DORMANT (bits=0, step=0.0) to preserve golden files and existing tests
+  # Creates banding at low signal, bin merging near saturation, removes fake precision
+  # Cell Painting only (not viability assays)
+  #
+  # Quantization modes (priority order):
+  # 1. bits-mode (realistic): Requires saturation ceiling > 0, derives step = ceiling/(2^bits-1)
+  #    Example: bits=12, ceiling=800 → step ≈ 0.2 AU (4095 codes)
+  # 2. step-mode (direct): Uses explicit step size (e.g., step=0.5 → quantize to 0.5 AU bins)
+  # 3. dormant: bits=0 and step=0.0 → no quantization (golden-preserving)
+  #
+  # IMPORTANT: bits-mode requires saturation ceiling > 0 on same channel (raises ValueError otherwise)
+  adc_quant_bits_default: 0             # Shared bit depth (0=dormant, 8/10/12/16 typical)
+  adc_quant_step_default: 0.0           # Shared step size (0.0=dormant, AU units)
+  adc_quant_rounding_mode: "round_half_up"  # Rounding (only "round_half_up" supported)
+
 # Well failure modes (when well_failure_rate triggers)
 well_failure_modes:
   bubble:

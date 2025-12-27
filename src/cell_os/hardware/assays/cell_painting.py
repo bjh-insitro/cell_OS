@@ -13,7 +13,7 @@ from datetime import datetime
 
 from .base import AssaySimulator
 from .assay_params import DEFAULT_ASSAY_PARAMS
-from .._impl import stable_u32, lognormal_multiplier, heavy_tail_shock
+from .._impl import stable_u32, lognormal_multiplier, heavy_tail_shock, additive_floor_noise, apply_saturation, quantize_adc
 from ..run_context import pipeline_transform
 from ...sim import biology_core
 from ..constants import (
@@ -500,7 +500,21 @@ class CellPaintingAssay(AssaySimulator):
         # Applied in _add_technical_noise() by scaling CVs
         morph = self._add_technical_noise(vessel, morph, **kwargs)
 
-        # 6. Pipeline drift (batch-dependent feature extraction)
+        # 7. Additive floor (detector read noise)
+        # Applied BEFORE saturation and pipeline_transform
+        morph = self._add_additive_floor(morph)
+
+        # 8. Saturation (detector dynamic range limits)
+        # Applied AFTER additive floor (noise can push into saturation),
+        # BEFORE quantization (analog compression before digitization)
+        morph = self._apply_saturation(morph)
+
+        # 9. ADC quantization (analog-to-digital conversion)
+        # Applied AFTER saturation (analog → digital),
+        # BEFORE pipeline_transform (digitization before software)
+        morph = self._apply_adc_quantization(morph)
+
+        # 10. Pipeline drift (batch-dependent feature extraction)
         plate_id = kwargs.get('plate_id', 'P1')
         batch_id = kwargs.get('batch_id', 'batch_default')
         # Shared factors re-enabled after fixing nutrient depletion bug (commit b241033)
@@ -846,6 +860,156 @@ class CellPaintingAssay(AssaySimulator):
         elif plate_format == 96:
             return row in ['A', 'H'] or col in [1, 12]
         return False
+
+    def _add_additive_floor(self, morph: Dict[str, float]) -> Dict[str, float]:
+        """
+        Add detector read noise (additive floor).
+
+        Applies additive Gaussian noise independent of signal magnitude.
+        This models CCD/PMT dark current and read noise that dominates at
+        low signal but becomes negligible at high signal.
+
+        Golden-preserving: only draws from rng_assay when at least one sigma > 0.
+        This avoids changing RNG consumption in existing tests with dormant config.
+
+        Design trade: violates strict draw-count invariance across configs, but
+        preserves baseline golden test trajectories. If strict invariance is needed,
+        add dedicated rng_detector stream (future work).
+
+        Args:
+            morph: Morphology dict (after multiplicative noise stack)
+
+        Returns:
+            Morphology with additive floor applied and clamped at 0
+        """
+        tech_noise = self.vm.thalamus_params['technical_noise']
+
+        # Use canonical channel list (not morph.keys()) to avoid silent failures
+        # if morph ever contains extra features
+        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+
+        # Check if any sigma is nonzero (golden-preserving: skip RNG if all 0)
+        sigmas = {ch: tech_noise.get(f'additive_floor_sigma_{ch}', 0.0) for ch in channels}
+
+        if any(s > 0 for s in sigmas.values()):
+            for ch in channels:
+                sigma = sigmas[ch]
+                if sigma > 0:
+                    noise = additive_floor_noise(self.vm.rng_assay, sigma)
+                    morph[ch] = max(0.0, morph[ch] + noise)
+
+        return morph
+
+    def _apply_saturation(self, morph: Dict[str, float]) -> Dict[str, float]:
+        """
+        Apply detector saturation (dynamic range limits).
+
+        Models camera/PMT photon well depth and digitizer max. Signal compresses
+        smoothly as it approaches ceiling, asymptotically saturating. This creates:
+        - Plateaus in dose-response curves at high signal
+        - Compressed variance at saturation boundary
+        - Reduced information gain in clipped regime
+
+        Epistemic forcing function: Agent must learn to:
+        - Operate in linear regime (not just "go bigger")
+        - Recognize when instrument is information-limited
+        - Calibrate dynamic range, not just pick compounds
+
+        Deterministic (no RNG): Detector physics, not randomness.
+        Golden-preserving: Dormant when all ceilings <= 0.
+
+        Applied AFTER additive floor (detector noise happens first),
+        BEFORE pipeline_transform (software post-processing happens last).
+
+        Args:
+            morph: Morphology dict (after additive floor)
+
+        Returns:
+            Morphology with saturation applied (soft knee compression)
+        """
+        tech_noise = self.vm.thalamus_params['technical_noise']
+
+        # Use canonical channel list (not morph.keys())
+        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+
+        # Shared soft-knee parameters (apply to all channels)
+        knee_start_frac = tech_noise.get('saturation_knee_start_fraction', 0.85)
+        tau_frac = tech_noise.get('saturation_tau_fraction', 0.08)
+
+        # Apply per-channel saturation (independent ceilings)
+        for ch in channels:
+            ceiling = tech_noise.get(f'saturation_ceiling_{ch}', 0.0)
+            if ceiling > 0:  # Only apply if enabled for this channel
+                morph[ch] = apply_saturation(
+                    y=morph[ch],
+                    ceiling=ceiling,
+                    knee_start_frac=knee_start_frac,
+                    tau_frac=tau_frac
+                )
+
+        return morph
+
+    def _apply_adc_quantization(self, morph: Dict[str, float]) -> Dict[str, float]:
+        """
+        Apply ADC quantization (analog-to-digital conversion).
+
+        Models digitizer bit depth: continuous analog signal → discrete digital codes.
+        Removes arbitrarily fine decimal precision that doesn't exist in real detectors.
+        Creates visible banding at low signal and dead zones where signal changes don't
+        affect output.
+
+        Epistemic forcing function: Agent must recognize:
+        - Digitization limits (can't resolve sub-LSB differences)
+        - Information dead zones (plateaus where nudging has no effect)
+        - Low-signal coarseness (banding visible)
+
+        Deterministic (no RNG): ADC conversion is electronics, not randomness.
+        Golden-preserving: Dormant when all bits=0 and step=0.0.
+
+        Applied AFTER saturation (analog compression),
+        BEFORE pipeline_transform (software feature extraction).
+
+        NOTE: This is "feature-level quantization" (applied to morphology channels),
+        not pixel-level ADC simulation. It approximates the effect of digitization
+        on aggregated features.
+
+        Args:
+            morph: Morphology dict (after saturation)
+
+        Returns:
+            Morphology with ADC quantization applied
+        """
+        tech_noise = self.vm.thalamus_params['technical_noise']
+
+        # Use canonical channel list (not morph.keys())
+        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+
+        # Shared defaults
+        bits_default = int(tech_noise.get('adc_quant_bits_default', 0))
+        step_default = float(tech_noise.get('adc_quant_step_default', 0.0))
+        mode = tech_noise.get('adc_quant_rounding_mode', 'round_half_up')
+
+        # Apply per-channel quantization
+        for ch in channels:
+            # Per-channel overrides (fall back to defaults)
+            bits = int(tech_noise.get(f'adc_quant_bits_{ch}', bits_default))
+            step = float(tech_noise.get(f'adc_quant_step_{ch}', step_default))
+
+            # Get ceiling from saturation config (needed for bits-mode)
+            # If saturation is dormant (ceiling=0), bits-mode will raise ValueError
+            ceiling = float(tech_noise.get(f'saturation_ceiling_{ch}', 0.0))
+
+            # Apply quantization (dormant if bits=0 and step=0.0)
+            if bits > 0 or step > 0:
+                morph[ch] = quantize_adc(
+                    y=morph[ch],
+                    step=step,
+                    bits=bits,
+                    ceiling=ceiling,
+                    mode=mode
+                )
+
+        return morph
 
     def _apply_well_failure(
         self, morph: Dict[str, float], well_position: str, plate_id: str, batch_id: str
