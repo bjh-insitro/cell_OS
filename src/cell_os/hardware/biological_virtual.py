@@ -487,7 +487,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_treatment = ValidatedRNG(
             np.random.default_rng(seed + 2),
             stream_name="treatment",
-            allowed_patterns={"_apply_compound", "_attrition", "_treatment", "_compute_viability", "lognormal_multiplier"},
+            allowed_patterns={"_apply_compound", "_attrition", "_treatment", "_compute_viability", "lognormal_multiplier", "_sample_commitment_delays_for_treatment"},
             enforce=True
         )
 
@@ -495,7 +495,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_assay = ValidatedRNG(
             np.random.default_rng(seed + 3),
             stream_name="assay",
-            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "heavy_tail_shock", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression", "_ensure_well_biology"},
+            allowed_patterns={"measure", "count_cells", "_measure_", "_compute_readouts", "lognormal_multiplier", "heavy_tail_shock", "additive_floor_noise", "add_noise", "simulate_scrna_counts", "_sample_library_sizes", "_sample_gene_expression", "_ensure_well_biology"},
             enforce=True
         )
 
