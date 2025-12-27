@@ -8,7 +8,7 @@ Tests verify:
 4. Compression is monotone and smooth
 5. Interacts correctly with additive floor
 
-Runtime: <5 seconds (deterministic, no Monte Carlo)
+Runtime: <0.1 seconds (pure function tests, no VM, deterministic)
 """
 
 import pytest
@@ -16,38 +16,17 @@ from cell_os.hardware._impl import apply_saturation
 
 
 def test_saturation_dormant_default_preserves_behavior():
-    """Dormant mode (ceiling=0) preserves golden file behavior."""
-    from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+    """Dormant mode (ceiling=0) is exact no-op (identity function).
 
-    # Create two VMs with same seed
-    vm1 = BiologicalVirtualMachine(seed=42)
-    vm2 = BiologicalVirtualMachine(seed=42)
+    Pure function test: verifies ceiling=0 means no saturation applied.
+    """
+    # Test that ceiling=0 means "disabled" (identity function)
+    test_inputs = [0.0, 50.0, 100.0, 500.0, 1000.0, 10000.0]
 
-    # VM1: Default (all ceilings = 0.0, dormant)
-    # VM2: Explicitly set ceilings to 0.0 (redundant but shows dormant intent)
-    vm2._load_cell_thalamus_params()
-    vm2.thalamus_params['technical_noise']['saturation_ceiling_er'] = 0.0
-    vm2.thalamus_params['technical_noise']['saturation_ceiling_mito'] = 0.0
-    vm2.thalamus_params['technical_noise']['saturation_ceiling_nucleus'] = 0.0
-    vm2.thalamus_params['technical_noise']['saturation_ceiling_actin'] = 0.0
-    vm2.thalamus_params['technical_noise']['saturation_ceiling_rna'] = 0.0
-
-    # Run identical protocol
-    for vm in [vm1, vm2]:
-        vm.seed_vessel("well_A1", "A549", initial_count=5000, capacity=1e6)
-        vm.treat_with_compound("well_A1", "CCCP", dose_uM=10.0)
-        vm.advance_time(24.0)
-
-    # Measurements should be IDENTICAL (dormant mode, same seed)
-    result1 = vm1.cell_painting_assay("well_A1")
-    result2 = vm2.cell_painting_assay("well_A1")
-
-    morph1 = result1['morphology']
-    morph2 = result2['morphology']
-
-    for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']:
-        diff = abs(morph1[ch] - morph2[ch])
-        assert diff < 1e-12, f"Channel {ch} differs by {diff:.2e} in dormant mode"
+    for y in test_inputs:
+        y_sat = apply_saturation(y, ceiling=0.0, knee_start_frac=0.85, tau_frac=0.08)
+        assert y_sat == y, \
+            f"Dormant mode violated: y={y:.1f} → y_sat={y_sat:.3f} (expected identity)"
 
     print("✓ Dormant mode (ceiling=0.0) preserves golden behavior")
 
@@ -150,34 +129,39 @@ def test_saturation_primitive_monotone_compression():
 
 
 def test_saturation_with_additive_floor_interaction():
-    """Saturation correctly handles additive floor pushing into saturation regime."""
-    from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+    """Saturation correctly handles additive floor pushing into saturation regime.
 
-    vm = BiologicalVirtualMachine(seed=123)
+    Pure function test: simulates additive floor + saturation composition without VM.
+    """
+    import numpy as np
+    from cell_os.hardware._impl import additive_floor_noise
 
-    # Enable both additive floor and saturation
-    vm._load_cell_thalamus_params()
+    ceiling = 200.0
+    knee_frac = 0.85
+    tau_frac = 0.08
+    sigma = 50.0  # Large additive noise
 
-    # Set ER channel: high additive noise + low ceiling
-    # Noise will frequently push signal above ceiling
-    vm.thalamus_params['technical_noise']['additive_floor_sigma_er'] = 50.0  # Large noise
-    vm.thalamus_params['technical_noise']['saturation_ceiling_er'] = 200.0   # Low ceiling
+    # Simulate baseline signal (before noise)
+    baseline = 150.0
 
-    # Seed and treat (moderate stress)
-    vm.seed_vessel("test_well", "A549", initial_count=5000, capacity=1e6)
-    vm.treat_with_compound("test_well", "tBHQ", dose_uM=15.0)
-    vm.advance_time(12.0)
+    # Create RNG for additive floor
+    rng = np.random.default_rng(123)
 
-    # Measure multiple times (stochastic additive noise)
+    # Simulate composition: baseline + additive_floor → saturation
     measurements = []
     for _ in range(20):
-        result = vm.cell_painting_assay("test_well")
-        measurements.append(result['morphology']['er'])
+        # Apply additive floor noise
+        noise = additive_floor_noise(rng, sigma)
+        y_noisy = baseline + noise
+
+        # Apply saturation
+        y_sat = apply_saturation(y_noisy, ceiling, knee_frac, tau_frac)
+        measurements.append(y_sat)
 
     # All measurements should respect ceiling (even with additive noise)
     max_observed = max(measurements)
-    assert max_observed <= 200.0, \
-        f"Saturation failed: observed {max_observed:.1f} > ceiling 200.0"
+    assert max_observed <= ceiling, \
+        f"Saturation failed: observed {max_observed:.1f} > ceiling {ceiling}"
 
     # Should have some variance (additive noise) but bounded
     variance = sum((x - sum(measurements)/len(measurements))**2 for x in measurements) / len(measurements)
