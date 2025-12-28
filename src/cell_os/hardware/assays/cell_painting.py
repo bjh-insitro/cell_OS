@@ -533,30 +533,48 @@ class CellPaintingAssay(AssaySimulator):
         # Applied in _add_technical_noise() by scaling CVs
         morph = self._add_technical_noise(vessel, morph, **kwargs)
 
-        # 8. Additive floor (detector read noise)
-        # Applied BEFORE saturation and pipeline_transform
-        morph = self._add_additive_floor(morph)
+        # 8-10. Detector stack (v7: unified with optical materials, includes realism layers)
+        # Applies: additive floor, saturation, QC pathologies, quantization
+        # v7 realism: position effects, edge noise inflation, outliers
+        from ..detector_stack import apply_detector_stack
 
-        # Compute SNR floor proxy (signal / sigma_floor) after additive floor
-        # This is the signal level relative to detector noise floor
-        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
-        snr_floor_proxy = {}
-        for ch in channels:
-            sigma = tech_noise.get(f'additive_floor_sigma_{ch}', 0.0)
-            if sigma > 0:
-                snr_floor_proxy[ch] = morph[ch] / sigma
-            else:
-                snr_floor_proxy[ch] = None  # No floor, SNR undefined
+        # Get realism config from run context
+        realism_config = self.vm.run_context.get_realism_config()
 
-        # 9. Saturation (detector dynamic range limits)
-        # Applied AFTER additive floor (noise can push into saturation),
-        # BEFORE quantization (analog compression before digitization)
-        morph, is_saturated = self._apply_saturation(morph)
+        # Get well position (parse from vessel_id or kwargs)
+        well_position = kwargs.get('well_position', vessel.vessel_id)
 
-        # 10. ADC quantization (analog-to-digital conversion)
-        # Applied AFTER saturation (analog → digital),
-        # BEFORE pipeline_transform (digitization before software)
-        morph, quant_step, is_quantized = self._apply_adc_quantization(morph)
+        # Create dedicated detector RNG (same strategy as optical materials)
+        # Seed from (run_seed, "cell_painting_detector", well_position)
+        import hashlib
+        seed_string = f"cp_detector|{self.vm.run_context.seed}|{well_position}"
+        hash_bytes = hashlib.blake2s(seed_string.encode(), digest_size=4).digest()
+        detector_seed = int.from_bytes(hash_bytes, byteorder='little')
+        import numpy as np
+        rng_detector = np.random.default_rng(detector_seed)
+
+        # Apply unified detector stack
+        morph, detector_metadata = apply_detector_stack(
+            signal=morph,
+            detector_params=tech_noise,
+            rng_detector=rng_detector,
+            exposure_multiplier=1.0,  # Already applied in step 3
+            well_position=well_position,
+            plate_format=384,  # TODO: get from plate design
+            enable_vignette=False,  # Cell Painting doesn't use vignette (that's for materials)
+            enable_pipeline=False,  # Pipeline drift handled separately in step 11
+            enable_detector_bias=False,  # No detector bias for cells (only materials)
+            run_seed=self.vm.run_context.seed,
+            realism_config=realism_config
+        )
+
+        # Extract metadata (detector_stack returns all fields we need)
+        is_saturated = detector_metadata['is_saturated']
+        is_quantized = detector_metadata['is_quantized']
+        quant_step = detector_metadata['quant_step']
+        snr_floor_proxy = detector_metadata['snr_floor_proxy']
+        edge_distance = detector_metadata.get('edge_distance', 0.0)  # v7
+        qc_flags = detector_metadata.get('qc_flags', {})  # v7
 
         # 11. Pipeline drift (batch-dependent feature extraction)
         plate_id = kwargs.get('plate_id', 'P1')
@@ -572,13 +590,15 @@ class CellPaintingAssay(AssaySimulator):
             )
         # else: skip pipeline_transform (no-op)
 
-        # Assemble detector metadata
+        # Assemble detector metadata (v7: includes edge_distance, qc_flags)
         detector_metadata = {
             'is_saturated': is_saturated,
             'is_quantized': is_quantized,
             'quant_step': quant_step,
             'snr_floor_proxy': snr_floor_proxy,
             'exposure_multiplier': exposure_multiplier,  # Agent-controlled instrument setting
+            'edge_distance': edge_distance,  # v7: continuous edge distance (0 = center, 1 = edge)
+            'qc_flags': qc_flags,  # v7: outlier flags (is_outlier, pathology_type, affected_channel)
         }
 
         return morph, detector_metadata

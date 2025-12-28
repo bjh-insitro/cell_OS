@@ -62,6 +62,16 @@ class RunContext:
     drift_enabled: bool = True
     _drift_model: Optional[DriftModel] = None
 
+    # v7: Simulation realism controls (demo-visible plate artifacts)
+    realism_profile: str = "clean"  # "clean", "realistic", or "hostile"
+    batch_id: str = ""  # Derived from context_id for batch tracking
+
+    # Optional batch metadata (for demo outputs and plotting)
+    operator_id: Optional[str] = None
+    media_lot_id: Optional[str] = None
+    stain_lot_id: Optional[str] = None
+    instrument_day: Optional[str] = None
+
     @staticmethod
     def sample(seed: int, config: Optional[Dict] = None) -> 'RunContext':
         """
@@ -131,6 +141,14 @@ class RunContext:
         drift_enabled = config.get('drift_enabled', True)
         drift_model = DriftModel(seed + 200) if drift_enabled else None
 
+        # v7: Realism profile and batch metadata
+        realism_profile = config.get('realism_profile', 'clean')
+        batch_id = config.get('batch_id', f"batch_{seed:08x}")
+        operator_id = config.get('operator_id', None)
+        media_lot_id = config.get('media_lot_id', None)
+        stain_lot_id = config.get('stain_lot_id', None)
+        instrument_day = config.get('instrument_day', None)
+
         return RunContext(
             incubator_shift=float(incubator_shift),
             reagent_lot_shift=reagent_lot_shift,
@@ -139,7 +157,13 @@ class RunContext:
             seed=seed,
             context_id=context_id,
             drift_enabled=drift_enabled,
-            _drift_model=drift_model
+            _drift_model=drift_model,
+            realism_profile=realism_profile,
+            batch_id=batch_id,
+            operator_id=operator_id,
+            media_lot_id=media_lot_id,
+            stain_lot_id=stain_lot_id,
+            instrument_day=instrument_day
         )
 
     def get_biology_modifiers(self) -> Dict[str, float]:
@@ -271,6 +295,56 @@ class RunContext:
             'illumination_bias': total_gain if modality == 'imaging' else base_gain,
             'reader_gain': total_gain if modality == 'reader' else base_gain,
         }
+
+    def get_realism_config(self) -> Dict[str, float]:
+        """
+        Get realism layer parameters for detector-side effects.
+
+        v7: Demo-visible plate artifacts (position effects, QC pathologies).
+        Profiles control the strength of visual realism in plots.
+
+        Returns dict with:
+        - position_row_bias_pct: Row gradient magnitude (±N% end-to-end)
+        - position_col_bias_pct: Col gradient magnitude (±N% end-to-end)
+        - edge_mean_shift_pct: Mean shift at edges (negative = dimmer)
+        - edge_noise_multiplier: Noise inflation at edges (1.0 = no change)
+        - outlier_rate: Fraction of wells with QC pathologies (0.0-1.0)
+        - batch_effect_strength: Amplify existing batch shifts (1.0 = normal)
+
+        Profile presets:
+        - clean: All effects disabled (default for existing tests)
+        - realistic: Moderate effects (visible but plausible)
+        - hostile: Strong effects (stress-test agent robustness)
+        """
+        profile = self.realism_profile.lower()
+
+        if profile == "realistic":
+            return {
+                'position_row_bias_pct': 2.0,
+                'position_col_bias_pct': 2.0,
+                'edge_mean_shift_pct': -5.0,
+                'edge_noise_multiplier': 2.0,
+                'outlier_rate': 0.01,
+                'batch_effect_strength': 1.0,
+            }
+        elif profile == "hostile":
+            return {
+                'position_row_bias_pct': 3.0,
+                'position_col_bias_pct': 3.0,
+                'edge_mean_shift_pct': -7.0,
+                'edge_noise_multiplier': 2.5,
+                'outlier_rate': 0.03,
+                'batch_effect_strength': 1.5,
+            }
+        else:  # "clean" or unknown
+            return {
+                'position_row_bias_pct': 0.0,
+                'position_col_bias_pct': 0.0,
+                'edge_mean_shift_pct': 0.0,
+                'edge_noise_multiplier': 1.0,
+                'outlier_rate': 0.0,
+                'batch_effect_strength': 1.0,
+            }
 
     def summary(self) -> str:
         """Human-readable summary of context effects."""
