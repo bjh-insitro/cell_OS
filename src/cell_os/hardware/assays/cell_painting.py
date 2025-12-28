@@ -538,8 +538,9 @@ class CellPaintingAssay(AssaySimulator):
         # v7 realism: position effects, edge noise inflation, outliers
         from ..detector_stack import apply_detector_stack
 
-        # Get realism config from run context
-        realism_config = self.vm.run_context.get_realism_config()
+        # Get realism config from run context (or override for counterfactual analysis)
+        realism_config = kwargs.get('realism_config_override') or self.vm.run_context.get_realism_config()
+        realism_config_source = "override" if 'realism_config_override' in kwargs else "run_context"
 
         # Get well position (parse from vessel_id or kwargs)
         well_position = kwargs.get('well_position', vessel.vessel_id)
@@ -590,7 +591,12 @@ class CellPaintingAssay(AssaySimulator):
             )
         # else: skip pipeline_transform (no-op)
 
-        # Assemble detector metadata (v7: includes edge_distance, qc_flags)
+        # Compute realism config hash for auditability
+        import json
+        realism_config_str = json.dumps(realism_config, sort_keys=True)
+        realism_config_hash = hashlib.blake2s(realism_config_str.encode(), digest_size=4).hexdigest()
+
+        # Assemble detector metadata (v7: includes edge_distance, qc_flags, realism provenance)
         detector_metadata = {
             'is_saturated': is_saturated,
             'is_quantized': is_quantized,
@@ -599,6 +605,8 @@ class CellPaintingAssay(AssaySimulator):
             'exposure_multiplier': exposure_multiplier,  # Agent-controlled instrument setting
             'edge_distance': edge_distance,  # v7: continuous edge distance (0 = center, 1 = edge)
             'qc_flags': qc_flags,  # v7: outlier flags (is_outlier, pathology_type, affected_channel)
+            'realism_config_source': realism_config_source,  # v7: "run_context" or "override" (for provenance)
+            'realism_config_hash': realism_config_hash,  # v7: short hash for auditability
         }
 
         return morph, detector_metadata
