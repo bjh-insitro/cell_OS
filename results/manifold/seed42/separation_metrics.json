@@ -1,0 +1,10 @@
+{
+  "raw": {
+    "mean_within_condition_variance": 3.039950149525877,
+    "median_within_condition_variance": 3.102318962559229
+  },
+  "calibrated": {
+    "mean_within_condition_variance": 3.0202316146503736,
+    "median_within_condition_variance": 3.1605543946446213
+  }
+}

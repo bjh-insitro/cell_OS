@@ -1,0 +1,7 @@
+{
+  "n_wells": 376,
+  "n_conditions": 6,
+  "replicate_spread_median": 204.42748053771243,
+  "condition_separation_median": 73.84871740807542,
+  "separation_over_spread": 0.3612465271979514
+}
