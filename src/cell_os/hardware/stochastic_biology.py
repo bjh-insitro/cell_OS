@@ -127,6 +127,15 @@ class StochasticBiologyHelper:
         # Variance split
         self.plate_fraction = config.get('plate_level_fraction', 0.3)
 
+        # Phase 2A.1: ER commitment event parameters (default OFF)
+        self.er_commitment_enabled = config.get('er_commitment_enabled', False)
+        self.er_commitment_threshold = config.get('er_commitment_threshold', 0.60)
+        self.er_commitment_baseline_hazard_per_h = config.get('er_commitment_baseline_hazard_per_h', 0.01)
+        self.er_commitment_sharpness_p = config.get('er_commitment_sharpness_p', 2.0)
+        self.er_commitment_hazard_cap_per_h = config.get('er_commitment_hazard_cap_per_h', 0.10)
+        self.er_committed_death_hazard_per_h = config.get('er_committed_death_hazard_per_h', 0.50)
+        self.er_commitment_track_snapshot = config.get('er_commitment_track_snapshot', True)
+
         # Key mapping for consistent naming
         self.KEYMAP = {
             'growth': 'growth_rate_mult',
@@ -212,3 +221,89 @@ class StochasticBiologyHelper:
             re[full_key] = mult
 
         return re
+
+    def make_event_rng(self, lineage_id: str, event_name: str, mechanism: str) -> np.random.Generator:
+        """
+        Create deterministic RNG substream for discrete stochastic events.
+
+        Uses lineage-based keying to ensure events are deterministic from
+        provenance keys, independent of vessel instantiation order.
+
+        Args:
+            lineage_id: Stable vessel lineage identifier
+            event_name: Event type (e.g., "commitment")
+            mechanism: Mechanism name (e.g., "er_stress")
+
+        Returns:
+            np.random.Generator seeded deterministically from lineage + event + mechanism
+        """
+        # Combine lineage_id, event_name, and mechanism into unique key
+        key = f"{lineage_id}|{event_name}|{mechanism}"
+
+        # Use offset 100 to avoid collision with plate (offset 1) and vessel (offset 2) RE substreams
+        seed = self._make_substream_seed(100, key)
+        return np.random.default_rng(seed)
+
+    @staticmethod
+    def compute_commitment_hazard(
+        S: float,
+        S_commit: float,
+        lambda0: float,
+        p: float,
+        cap: float
+    ) -> float:
+        """
+        Compute commitment hazard rate as function of stress level.
+
+        Model: λ_commit = min(cap, λ0 * ((S - S_commit) / (1 - S_commit))^p)
+
+        This gives:
+        - No commitment below threshold (S <= S_commit)
+        - Monotonically increasing hazard as stress rises above threshold
+        - Bounded by cap to prevent runaway rates
+
+        Args:
+            S: Current stress level in [0, 1]
+            S_commit: Commitment threshold in [0, 1)
+            lambda0: Baseline hazard rate at threshold (per hour)
+            p: Sharpness parameter (>0, typically 1-3)
+            cap: Maximum hazard rate (per hour)
+
+        Returns:
+            Commitment hazard rate (per hour), in [0, cap]
+        """
+        if S <= S_commit:
+            return 0.0
+
+        # Normalized distance above threshold, in (0, 1]
+        u = (S - S_commit) / (1.0 - S_commit)
+
+        # Power law with cap
+        lambda_commit = lambda0 * (u ** p)
+        return float(min(cap, lambda_commit))
+
+    @staticmethod
+    def sample_poisson_event(lambda_rate: float, dt_h: float, rng: np.random.Generator) -> bool:
+        """
+        Sample whether a Poisson event occurs in time interval dt.
+
+        For Poisson process with rate λ, probability of event in interval dt is:
+            P(event) = 1 - exp(-λ * dt)
+
+        Args:
+            lambda_rate: Event rate (per hour)
+            dt_h: Time interval (hours)
+            rng: Random number generator
+
+        Returns:
+            True if event occurs, False otherwise
+        """
+        if lambda_rate <= 0 or dt_h <= 0:
+            return False
+
+        # Probability of event in this timestep
+        p_event = 1.0 - np.exp(-lambda_rate * dt_h)
+
+        # Sample uniform and compare
+        u = rng.random()
+        return u < p_event

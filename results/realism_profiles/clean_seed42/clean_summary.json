@@ -1,0 +1,25 @@
+{
+  "profile": "clean",
+  "n_wells": 96,
+  "batch_id": "batch_0000002a",
+  "context_id": "ctx_0000002a",
+  "edge_sensitivity_per_channel": {
+    "er": 0.5149377365326245,
+    "mito": 0.5177834364122751,
+    "nucleus": 0.5034567696306853,
+    "actin": 0.33304372115163317,
+    "rna": 0.5234836567705108
+  },
+  "edge_variance_ratio_per_channel": {
+    "er": 383.6374269170988,
+    "mito": 53.188505792267144,
+    "nucleus": 75.00631771807394,
+    "actin": 16.55037659246576,
+    "rna": 228.40291117921487
+  },
+  "outlier_rate_observed": 0.0,
+  "outlier_counts_by_pathology": {},
+  "edge_threshold": 0.8,
+  "center_threshold": 0.2,
+  "seed": 42
+}

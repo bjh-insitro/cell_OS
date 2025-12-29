@@ -81,6 +81,7 @@ TRACKED_DEATH_FIELDS = {
     "death_mito_dysfunction",
     "death_confluence",
     "death_unknown",  # Known unknowns (seeding stress, contamination)
+    "death_committed_er",  # Phase 2A.1: Stochastic ER commitment (post-commitment hazard)
     # death_unattributed is NOT in this list (it's computed, not proposed)
     # death_transport_dysfunction is NOT in this list (Phase 2 stub, no hazard in v1)
 }

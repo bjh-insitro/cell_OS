@@ -190,6 +190,7 @@ class VesselState:
         self.death_mitotic_catastrophe = 0.0
         self.death_er_stress = 0.0
         self.death_mito_dysfunction = 0.0
+        self.death_committed_er = 0.0  # Phase 2A.1: Post-commitment ER death (discrete event hazard)
         # Fix #9: death_transport_dysfunction is a Phase 2 stub (no hazard in v1)
         # Explicitly excluded from conservation checks and death accounting
         # If you activate transport dysfunction death, you MUST:
@@ -265,6 +266,12 @@ class VesselState:
         #   'stress_sensitivity_mult': float, # Mean-1 lognormal on k_on rates
         #   'hazard_scale_mult': float       # Mean-1 lognormal on H_max hazards
         # }
+
+        # Phase 2A.1: Stochastic death commitment (discrete branching events)
+        self.death_committed: bool = False  # Once True, irreversible
+        self.death_committed_at_h: Optional[float] = None  # Simulated time of commitment (set once)
+        self.death_commitment_mechanism: Optional[str] = None  # Which mechanism committed (set once)
+        self.death_commitment_stress_snapshot: Optional[Dict[str, float]] = None  # Stress state at commitment
 
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
@@ -1740,9 +1747,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         state.plating_context = sample_plating_context(plating_seed)
 
         # Initialize per-well RNG for persistent latent biology
-        # Key to physical coordinates (well position + cell line), NOT run/vessel IDs
-        # This gives wells persistent identity across runs
-        well_seed = stable_u32(f"well_biology_{well_position}_{cell_line}")
+        # EXCHANGEABLE SAMPLING FIX (Attack 2):
+        # Seed from run_context + vessel_id, NOT well_position.
+        # This makes biology reproducible under same run seed but not geometry-coded.
+        # Wells are exchangeable: swapping positions doesn't change their biology.
+        well_seed = stable_u32(f"well_biology_{self.run_context.seed}_{vessel_id}_{cell_line}")
         state.rng_well = np.random.default_rng(well_seed)
 
         # Initialize per-well latent biology (persistent baseline shifts for Cell Painting)

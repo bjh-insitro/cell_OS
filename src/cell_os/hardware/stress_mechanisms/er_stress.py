@@ -103,6 +103,50 @@ class ERStressMechanism(StressMechanism):
         # Update scalar for backward compatibility
         vessel.er_stress = vessel.er_stress_mixture
 
+        # Phase 2A.1: Check for stochastic death commitment event
+        # This adds discrete branching: commitment is irreversible and triggers committed hazard
+        if (self.vm.stochastic_biology.er_commitment_enabled and
+            not vessel.death_committed and
+            vessel.lineage_id is not None):
+
+            # Use vessel-level ER stress (mixture across subpops)
+            S = vessel.er_stress
+
+            # Compute commitment hazard
+            lambda_commit = self.vm.stochastic_biology.compute_commitment_hazard(
+                S=S,
+                S_commit=self.vm.stochastic_biology.er_commitment_threshold,
+                lambda0=self.vm.stochastic_biology.er_commitment_baseline_hazard_per_h,
+                p=self.vm.stochastic_biology.er_commitment_sharpness_p,
+                cap=self.vm.stochastic_biology.er_commitment_hazard_cap_per_h
+            )
+
+            # Sample commitment event using lineage-specific RNG (order-independent)
+            if lambda_commit > 0:
+                rng_event = self.vm.stochastic_biology.make_event_rng(
+                    lineage_id=vessel.lineage_id,
+                    event_name="commitment",
+                    mechanism="er_stress"
+                )
+
+                event_occurred = self.vm.stochastic_biology.sample_poisson_event(
+                    lambda_rate=lambda_commit,
+                    dt_h=hours,
+                    rng=rng_event
+                )
+
+                if event_occurred:
+                    # Commitment is irreversible - set fields exactly once
+                    vessel.death_committed = True
+                    vessel.death_committed_at_h = float(self.vm.simulated_time + hours)  # End of this step
+                    vessel.death_commitment_mechanism = "er_stress"
+
+                    # Optionally record stress snapshot at commitment
+                    if self.vm.stochastic_biology.er_commitment_track_snapshot:
+                        vessel.death_commitment_stress_snapshot = {
+                            "er_stress": float(S)
+                        }
+
         # Propose vessel-level death hazard from weighted per-subpop hazards
         hazard_er_total = 0.0
 
@@ -126,3 +170,9 @@ class ERStressMechanism(StressMechanism):
 
         if hazard_er_total > 0:
             self._propose_hazard(vessel, hazard_er_total, "death_er_stress")
+
+        # Phase 2A.1: Add committed death hazard (separate channel for provenance)
+        # Once committed, add large hazard that dominates survival
+        if vessel.death_committed and vessel.death_commitment_mechanism == "er_stress":
+            committed_hazard = self.vm.stochastic_biology.er_committed_death_hazard_per_h
+            self._propose_hazard(vessel, committed_hazard, "death_committed_er")
