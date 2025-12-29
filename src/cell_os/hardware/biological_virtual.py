@@ -191,6 +191,7 @@ class VesselState:
         self.death_er_stress = 0.0
         self.death_mito_dysfunction = 0.0
         self.death_committed_er = 0.0  # Phase 2A.1: Post-commitment ER death (discrete event hazard)
+        self.death_committed_mito = 0.0  # Phase 2A.2: Post-commitment mito death (discrete event hazard)
         # Fix #9: death_transport_dysfunction is a Phase 2 stub (no hazard in v1)
         # Explicitly excluded from conservation checks and death accounting
         # If you activate transport dysfunction death, you MUST:
@@ -1864,7 +1865,8 @@ class BiologicalVirtualMachine(VirtualMachine):
                 seed=self.run_context.seed,
                 tech_noise=tech_noise,
                 cell_line=vessel.cell_line,
-                cell_line_params=hardware_sensitivity
+                cell_line_params=hardware_sensitivity,
+                run_context=self.run_context
             )
 
             # Physical volume model: feeding = remove old media + add fresh media

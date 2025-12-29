@@ -118,6 +118,50 @@ class MitoDysfunctionMechanism(StressMechanism):
         # Update scalar for backward compatibility
         vessel.mito_dysfunction = vessel.mito_dysfunction_mixture
 
+        # Phase 2A.2: Check for stochastic death commitment event
+        # This adds discrete branching: commitment is irreversible and triggers committed hazard
+        if (self.vm.stochastic_biology.mito_commitment_enabled and
+            not vessel.death_committed and
+            vessel.lineage_id is not None):
+
+            # Use vessel-level mito dysfunction (mixture across subpops)
+            S = vessel.mito_dysfunction
+
+            # Compute commitment hazard
+            lambda_commit = self.vm.stochastic_biology.compute_commitment_hazard(
+                S=S,
+                S_commit=self.vm.stochastic_biology.mito_commitment_threshold,
+                lambda0=self.vm.stochastic_biology.mito_commitment_baseline_hazard_per_h,
+                p=self.vm.stochastic_biology.mito_commitment_sharpness_p,
+                cap=self.vm.stochastic_biology.mito_commitment_hazard_cap_per_h
+            )
+
+            # Sample commitment event using lineage-specific RNG (order-independent)
+            if lambda_commit > 0:
+                rng_event = self.vm.stochastic_biology.make_event_rng(
+                    lineage_id=vessel.lineage_id,
+                    event_name="commitment",
+                    mechanism="mito"
+                )
+
+                event_occurred = self.vm.stochastic_biology.sample_poisson_event(
+                    lambda_rate=lambda_commit,
+                    dt_h=hours,
+                    rng=rng_event
+                )
+
+                if event_occurred:
+                    # Commitment is irreversible - set fields exactly once
+                    vessel.death_committed = True
+                    vessel.death_committed_at_h = float(self.vm.simulated_time + hours)  # End of this step
+                    vessel.death_commitment_mechanism = "mito"
+
+                    # Optionally record stress snapshot at commitment
+                    if self.vm.stochastic_biology.mito_commitment_track_snapshot:
+                        vessel.death_commitment_stress_snapshot = {
+                            "mito_dysfunction": float(S)
+                        }
+
         # Propose vessel-level death hazard from weighted per-subpop hazards
         hazard_mito_total = 0.0
 
@@ -141,3 +185,9 @@ class MitoDysfunctionMechanism(StressMechanism):
 
         if hazard_mito_total > 0:
             self._propose_hazard(vessel, hazard_mito_total, "death_mito_dysfunction")
+
+        # Phase 2A.2: Add committed death hazard (separate channel for provenance)
+        # Once committed, add large hazard that dominates survival
+        if vessel.death_committed and vessel.death_commitment_mechanism == "mito":
+            committed_hazard = self.vm.stochastic_biology.mito_committed_death_hazard_per_h
+            self._propose_hazard(vessel, committed_hazard, "death_committed_mito")

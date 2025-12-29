@@ -136,6 +136,15 @@ class StochasticBiologyHelper:
         self.er_committed_death_hazard_per_h = config.get('er_committed_death_hazard_per_h', 0.50)
         self.er_commitment_track_snapshot = config.get('er_commitment_track_snapshot', True)
 
+        # Phase 2A.2: Mito commitment event parameters (default OFF, same defaults as ER)
+        self.mito_commitment_enabled = config.get('mito_commitment_enabled', False)
+        self.mito_commitment_threshold = config.get('mito_commitment_threshold', 0.60)
+        self.mito_commitment_baseline_hazard_per_h = config.get('mito_commitment_baseline_hazard_per_h', 0.01)
+        self.mito_commitment_sharpness_p = config.get('mito_commitment_sharpness_p', 2.0)
+        self.mito_commitment_hazard_cap_per_h = config.get('mito_commitment_hazard_cap_per_h', 0.10)
+        self.mito_committed_death_hazard_per_h = config.get('mito_committed_death_hazard_per_h', 0.50)
+        self.mito_commitment_track_snapshot = config.get('mito_commitment_track_snapshot', True)
+
         # Key mapping for consistent naming
         self.KEYMAP = {
             'growth': 'growth_rate_mult',

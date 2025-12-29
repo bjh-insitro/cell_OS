@@ -874,7 +874,8 @@ class CellPaintingAssay(AssaySimulator):
                 seed=self.vm.run_context.seed,
                 tech_noise=tech_noise,
                 cell_line=vessel.cell_line,
-                cell_line_params=hardware_sensitivity
+                cell_line_params=hardware_sensitivity,
+                run_context=self.vm.run_context
             )
 
             hardware_factor = hardware_bias['combined_factor']
