@@ -316,3 +316,121 @@ class StochasticBiologyHelper:
         # Sample uniform and compare
         u = rng.random()
         return u < p_event
+
+    def maybe_trigger_commitment(
+        self,
+        vessel,
+        mechanism: str,
+        stress_S: float,
+        sim_time_h: float,
+        dt_h: float
+    ) -> None:
+        """
+        Phase 2A.3: Shared commitment event sampler (mechanism-agnostic).
+
+        Samples stochastic commitment event and mutates vessel fields if triggered.
+        Does nothing if commitment already occurred or mechanism not enabled.
+
+        Args:
+            vessel: VesselState to potentially mutate
+            mechanism: Mechanism name ("er_stress" or "mito")
+            stress_S: Current stress level in [0, 1]
+            sim_time_h: Current simulated time (hours)
+            dt_h: Time interval (hours)
+
+        Mutates vessel fields if commitment occurs:
+            - death_committed = True
+            - death_committed_at_h = sim_time_h + dt_h (end of step)
+            - death_commitment_mechanism = mechanism
+            - death_commitment_stress_snapshot (if tracking enabled)
+
+        Returns:
+            None (mutates vessel state directly)
+        """
+        # Skip if already committed or lineage_id missing
+        if vessel.death_committed or vessel.lineage_id is None:
+            return
+
+        # Get mechanism-specific config (ER or mito)
+        if mechanism == "er_stress":
+            enabled = self.er_commitment_enabled
+            threshold = self.er_commitment_threshold
+            baseline_hazard = self.er_commitment_baseline_hazard_per_h
+            sharpness = self.er_commitment_sharpness_p
+            cap = self.er_commitment_hazard_cap_per_h
+            track_snapshot = self.er_commitment_track_snapshot
+        elif mechanism == "mito":
+            enabled = self.mito_commitment_enabled
+            threshold = self.mito_commitment_threshold
+            baseline_hazard = self.mito_commitment_baseline_hazard_per_h
+            sharpness = self.mito_commitment_sharpness_p
+            cap = self.mito_commitment_hazard_cap_per_h
+            track_snapshot = self.mito_commitment_track_snapshot
+        else:
+            raise ValueError(f"Unknown commitment mechanism: {mechanism}")
+
+        # Skip if not enabled for this mechanism
+        if not enabled:
+            return
+
+        # Compute commitment hazard
+        lambda_commit = self.compute_commitment_hazard(
+            S=stress_S,
+            S_commit=threshold,
+            lambda0=baseline_hazard,
+            p=sharpness,
+            cap=cap
+        )
+
+        # Sample event
+        if lambda_commit > 0:
+            rng_event = self.make_event_rng(
+                lineage_id=vessel.lineage_id,
+                event_name="commitment",
+                mechanism=mechanism
+            )
+
+            event_occurred = self.sample_poisson_event(
+                lambda_rate=lambda_commit,
+                dt_h=dt_h,
+                rng=rng_event
+            )
+
+            if event_occurred:
+                # Commit is irreversible - set fields exactly once
+                vessel.death_committed = True
+                vessel.death_committed_at_h = float(sim_time_h + dt_h)
+                vessel.death_commitment_mechanism = mechanism
+
+                # Optionally record stress snapshot
+                if track_snapshot:
+                    stress_field = "er_stress" if mechanism == "er_stress" else "mito_dysfunction"
+                    vessel.death_commitment_stress_snapshot = {
+                        stress_field: float(stress_S)
+                    }
+
+    @staticmethod
+    def add_committed_hazard(
+        vessel,
+        mechanism: str,
+        base_hazard_per_h: float,
+        committed_hazard_per_h: float
+    ) -> float:
+        """
+        Phase 2A.3: Shared committed hazard augmentation (mechanism-agnostic).
+
+        Returns total hazard with committed hazard added if this mechanism committed.
+        Otherwise returns base hazard unchanged.
+
+        Args:
+            vessel: VesselState to check
+            mechanism: Mechanism name ("er_stress" or "mito")
+            base_hazard_per_h: Base hazard from smooth accumulation
+            committed_hazard_per_h: Additional hazard if committed
+
+        Returns:
+            Total hazard (base + committed if this mechanism committed, else base)
+        """
+        if vessel.death_committed and vessel.death_commitment_mechanism == mechanism:
+            return base_hazard_per_h + committed_hazard_per_h
+        return base_hazard_per_h
