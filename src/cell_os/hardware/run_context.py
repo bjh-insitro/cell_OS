@@ -72,6 +72,12 @@ class RunContext:
     stain_lot_id: Optional[str] = None
     instrument_day: Optional[str] = None
 
+    # Exchangeable well UIDs (Attack 2 fix: position-independent well identifiers)
+    # Maps (plate_id, well_position) -> uint32 unique ID
+    # Generated lazily per plate, deterministic under run seed
+    _well_uid_map: Optional[Dict] = None
+    _rng_well_uids: Optional[np.random.Generator] = None
+
     @staticmethod
     def sample(seed: int, config: Optional[Dict] = None) -> 'RunContext':
         """
@@ -149,6 +155,11 @@ class RunContext:
         stain_lot_id = config.get('stain_lot_id', None)
         instrument_day = config.get('instrument_day', None)
 
+        # Initialize well UID infrastructure (Attack 2 fix)
+        # Dedicated RNG stream for well UIDs (offset seed to avoid coupling)
+        rng_well_uids = np.random.default_rng(seed + 321_987)
+        well_uid_map = {}
+
         return RunContext(
             incubator_shift=float(incubator_shift),
             reagent_lot_shift=reagent_lot_shift,
@@ -163,7 +174,9 @@ class RunContext:
             operator_id=operator_id,
             media_lot_id=media_lot_id,
             stain_lot_id=stain_lot_id,
-            instrument_day=instrument_day
+            instrument_day=instrument_day,
+            _well_uid_map=well_uid_map,
+            _rng_well_uids=rng_well_uids
         )
 
     def get_biology_modifiers(self) -> Dict[str, float]:
@@ -345,6 +358,77 @@ class RunContext:
                 'outlier_rate': 0.0,
                 'batch_effect_strength': 1.0,
             }
+
+    def get_well_uid(self, plate_id: str, well_position: str) -> int:
+        """
+        Get exchangeable unique ID for a well.
+
+        Attack 2 fix: Wells are assigned unique IDs that are NOT functions of
+        their geometric position. IDs are sampled deterministically from run seed,
+        making them reproducible but position-independent.
+
+        Args:
+            plate_id: Plate identifier (e.g., "PLATE1", "P1")
+            well_position: Well position string (e.g., "A01", "A1", "H12")
+
+        Returns:
+            uint32 unique ID for this well (deterministic under run seed)
+        """
+        # Normalize well_position to 2-digit format (A1 → A01)
+        if len(well_position) >= 2 and well_position[1].isdigit():
+            row = well_position[0]
+            col_str = well_position[1:]
+            well_position_normalized = f"{row}{int(col_str):02d}"
+        else:
+            well_position_normalized = well_position
+
+        key = (plate_id, well_position_normalized)
+        if key not in self._well_uid_map:
+            # Lazily initialize all wells for this plate
+            self._init_plate_well_uids(plate_id, well_position_normalized)
+        return self._well_uid_map[key]
+
+    def _init_plate_well_uids(self, plate_id: str, first_well_position: str) -> None:
+        """
+        Initialize well UIDs for a plate.
+
+        Infers plate format from first well position and generates UIDs for all
+        wells in canonical order. Uses dedicated RNG stream to avoid coupling.
+
+        Args:
+            plate_id: Plate identifier
+            first_well_position: First well seen (used to infer format)
+        """
+        # Infer plate format (96-well, 384-well, etc.)
+        # Heuristic: if well has 2-digit column, it's 96-well (max col 12)
+        # If 3-digit or col > 12, assume 384-well (max col 24)
+        col_str = first_well_position[1:]
+        try:
+            col_num = int(col_str)
+            if col_num <= 12:
+                n_rows, n_cols = 8, 12  # 96-well
+            else:
+                n_rows, n_cols = 16, 24  # 384-well
+        except:
+            # Fallback to 96-well
+            n_rows, n_cols = 8, 12
+
+        # Generate canonical well list (A01, A02, ..., H12 for 96-well)
+        wells = []
+        for row_idx in range(n_rows):
+            row_letter = chr(ord('A') + row_idx)
+            for col_idx in range(1, n_cols + 1):
+                well_pos = f"{row_letter}{col_idx:02d}"
+                wells.append(well_pos)
+
+        # Sample UIDs (uint32 range, deterministic from run seed)
+        n_wells = len(wells)
+        uids = self._rng_well_uids.integers(0, 2**32, size=n_wells, dtype=np.uint32)
+
+        # Store mapping
+        for well_pos, uid in zip(wells, uids):
+            key = (plate_id, well_pos)
+            self._well_uid_map[key] = int(uid)
 
     def summary(self) -> str:
         """Human-readable summary of context effects."""

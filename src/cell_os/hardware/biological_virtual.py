@@ -1677,10 +1677,18 @@ class BiologicalVirtualMachine(VirtualMachine):
                 logger.warning(f"Could not initialize volume tracking: {e}")
 
         # Parse well position early for hardware artifacts
+        # Supports multiple formats: "well_A01", "Plate1_A01", "PLATE1_A01"
         if vessel_id.startswith("well_"):
             parts = vessel_id.split("_")
             if len(parts) >= 2:
                 well_position = parts[1]  # e.g., "A1", "B7"
+            else:
+                well_position = vessel_id  # fallback
+        elif "_" in vessel_id:
+            # Format: "Plate1_A01" or "PLATE1_A01" → extract well part
+            parts = vessel_id.split("_")
+            if len(parts) >= 2:
+                well_position = parts[-1]  # Last part after underscore (e.g., "A01")
             else:
                 well_position = vessel_id  # fallback
         else:
@@ -1712,7 +1720,8 @@ class BiologicalVirtualMachine(VirtualMachine):
                 seed=self.run_context.seed,
                 tech_noise=tech_noise,
                 cell_line=cell_line,
-                cell_line_params=hardware_sensitivity
+                cell_line_params=hardware_sensitivity,
+                run_context=self.run_context
             )
 
             # Apply volume variation to cell count

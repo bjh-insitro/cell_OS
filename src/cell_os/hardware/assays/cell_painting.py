@@ -810,13 +810,15 @@ class CellPaintingAssay(AssaySimulator):
             operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
 
         # Per-channel well factor (breaks global multiplier dominance)
-        # Use per-channel deterministic seeding for transparency and persistence
+        # EXCHANGEABLE SAMPLING FIX (Attack 2): Use well_uid, not well_position
         well_cv = tech_noise['well_cv']
         well_factors_per_channel = {}
         if well_cv > 0:
+            # Get exchangeable well UID from RunContext
+            well_uid = self.vm.run_context.get_well_uid(plate_id, well_position)
             for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
-                # Deterministic per-channel: key to plate + well + channel
-                channel_seed = stable_u32(f"well_factor_{plate_id}_{well_position}_{channel}")
+                # Deterministic per-channel: key to well_uid + channel (NOT position)
+                channel_seed = stable_u32(f"well_factor_{well_uid}_{channel}")
                 channel_rng = np.random.default_rng(channel_seed)
                 well_factors_per_channel[channel] = lognormal_multiplier(channel_rng, well_cv)
         else:
