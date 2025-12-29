@@ -95,4 +95,9 @@ class NutrientDepletionMechanism(StressMechanism):
 
         # Propose starvation death hazard
         starvation_rate = MAX_STARVATION_RATE_PER_H * nutrient_stress
+
+        # Phase 1: Apply intrinsic biology hazard scale multiplier (persistent per-vessel)
+        if vessel.bio_random_effects:
+            starvation_rate *= vessel.bio_random_effects['hazard_scale_mult']
+
         self._propose_hazard(vessel, starvation_rate, "death_starvation")

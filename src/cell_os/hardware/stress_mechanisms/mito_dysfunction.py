@@ -106,6 +106,10 @@ class MitoDysfunctionMechanism(StressMechanism):
             bio_mods = self.vm.run_context.get_biology_modifiers()
             k_on_effective = MITO_DYSFUNCTION_K_ON * bio_mods['stress_sensitivity']
 
+            # Phase 1: Apply intrinsic biology random effect (persistent per-vessel)
+            if vessel.bio_random_effects:
+                k_on_effective *= vessel.bio_random_effects['stress_sensitivity_mult']
+
             # Dynamics
             S = subpop['mito_dysfunction']
             dS_dt = k_on_effective * induction_total * (1.0 - S) - MITO_DYSFUNCTION_K_OFF * S + contact_mito_rate * (1.0 - S)
@@ -130,6 +134,10 @@ class MitoDysfunctionMechanism(StressMechanism):
                 sigmoid = float(1.0 / (1.0 + np.exp(-x)))
                 hazard_subpop = MITO_DYSFUNCTION_H_MAX * sigmoid * subpop['fraction']
                 hazard_mito_total += hazard_subpop
+
+        # Phase 1: Apply intrinsic biology hazard scale multiplier (persistent per-vessel)
+        if vessel.bio_random_effects and hazard_mito_total > 0:
+            hazard_mito_total *= vessel.bio_random_effects['hazard_scale_mult']
 
         if hazard_mito_total > 0:
             self._propose_hazard(vessel, hazard_mito_total, "death_mito_dysfunction")

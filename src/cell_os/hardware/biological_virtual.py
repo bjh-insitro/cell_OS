@@ -257,6 +257,15 @@ class VesselState:
         self.well_biology = None
         self.rng_well = None
 
+        # Intrinsic biology provenance (Phase 1: persistent random effects)
+        self.lineage_id: Optional[str] = None  # Stable founder seed (hash of vessel_id at creation)
+        self.bio_random_effects: Optional[Dict[str, float]] = None  # Cached RE multipliers
+        # Structure: {
+        #   'growth_rate_mult': float,      # Mean-1 lognormal on growth rate
+        #   'stress_sensitivity_mult': float, # Mean-1 lognormal on k_on rates
+        #   'hazard_scale_mult': float       # Mean-1 lognormal on H_max hazards
+        # }
+
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
         # Initialize to None to signal "no step in progress" (set to {} during _step_vessel)
@@ -425,7 +434,8 @@ class BiologicalVirtualMachine(VirtualMachine):
                  params_file: Optional[str] = None,
                  use_database: bool = True,
                  seed: int = 0,
-                 run_context: Optional[RunContext] = None):
+                 run_context: Optional[RunContext] = None,
+                 bio_noise_config: Optional[Dict] = None):
         """
         Initialize BiologicalVirtualMachine.
 
@@ -436,6 +446,15 @@ class BiologicalVirtualMachine(VirtualMachine):
             seed: RNG seed for reproducibility (default: 0).
             run_context: Optional RunContext for Phase 5B realism layer.
                          If None, samples a new context from seed.
+            bio_noise_config: Optional config dict for intrinsic biology stochasticity.
+                              Format: {
+                                  'enabled': bool,
+                                  'growth_cv': float,
+                                  'stress_sensitivity_cv': float,
+                                  'hazard_scale_cv': float,
+                                  'plate_level_fraction': float
+                              }
+                              If None, defaults to {'enabled': False}.
 
                   Seed contract:
                   - seed=0 → Fully deterministic (physics + measurements)
@@ -512,6 +531,12 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Injection B: Initialize OperationScheduler (deterministic event ordering)
         self.scheduler = OperationScheduler()
+
+        # Phase 1: Initialize intrinsic biology stochasticity helper
+        from .stochastic_biology import StochasticBiologyHelper
+        if bio_noise_config is None:
+            bio_noise_config = {'enabled': False}
+        self.stochastic_biology = StochasticBiologyHelper(bio_noise_config, seed)
 
         self._load_parameters(params_file)
         self._load_raw_yaml_for_nested_params(params_file)  # Load nested params for CellROX/segmentation
@@ -1166,6 +1191,10 @@ class BiologicalVirtualMachine(VirtualMachine):
         bio_mods = self.run_context.get_biology_modifiers()
         effective_doubling_time = doubling_time / bio_mods['growth_rate_multiplier']
 
+        # Phase 1: Apply intrinsic biology random effect (persistent per-vessel)
+        if vessel.bio_random_effects:
+            effective_doubling_time /= vessel.bio_random_effects['growth_rate_mult']
+
         # Exponential growth with confluence-dependent saturation
         growth_rate = np.log(2) / effective_doubling_time
 
@@ -1726,6 +1755,20 @@ class BiologicalVirtualMachine(VirtualMachine):
             "actin_baseline_shift": float(state.rng_well.normal(0.0, 0.05)),
             "stress_susceptibility": float(state.rng_well.lognormal(mean=0.0, sigma=0.15)),
         }
+
+        # Phase 1: Initialize lineage_id and intrinsic biology random effects
+        # Use hash(vessel_id) as stable lineage key (TODO: replace with WCB lineage when available)
+        from .stochastic_biology import extract_plate_id_defensive
+        state.lineage_id = f"lineage_{stable_u32(vessel_id):08x}"
+
+        # Extract plate_id from vessel_id with defensive fallback
+        plate_id = extract_plate_id_defensive(vessel_id)
+
+        # Sample intrinsic biology random effects (hierarchical: plate + vessel)
+        state.bio_random_effects = self.stochastic_biology.sample_random_effects(
+            lineage_id=state.lineage_id,
+            plate_id=plate_id
+        )
 
         # Injection A+B: seed event establishes initial exposure state
         self.scheduler.submit_intent(
@@ -2505,6 +2548,52 @@ class BiologicalVirtualMachine(VirtualMachine):
             self.rng_operations.reset_call_count()
 
         return audit
+
+    def get_biology_random_effects_summary(self) -> Dict[str, any]:
+        """
+        Export intrinsic biology random effects values for variance provenance analysis.
+
+        Returns summary statistics of RE values across all vessels.
+        Used for validating that empirical CV matches configured CV and for
+        decomposing variance into biology vs measurement sources.
+
+        Returns:
+            Dict with structure:
+                enabled: bool
+                growth_rate_mult: {mean, std, cv}
+                stress_sensitivity_mult: {mean, std, cv}
+                hazard_scale_mult: {mean, std, cv}
+        """
+        if not self.stochastic_biology.enabled:
+            return {'enabled': False}
+
+        # Collect RE values from all vessels
+        re_values = {
+            'growth_rate_mult': [],
+            'stress_sensitivity_mult': [],
+            'hazard_scale_mult': []
+        }
+
+        for vessel in self.vessel_states.values():
+            if vessel.bio_random_effects:
+                for key in re_values:
+                    re_values[key].append(vessel.bio_random_effects[key])
+
+        # Compute summary statistics
+        summary = {'enabled': True}
+        for key, values in re_values.items():
+            if values:
+                mean_val = float(np.mean(values))
+                std_val = float(np.std(values))
+                summary[key] = {
+                    'mean': mean_val,
+                    'std': std_val,
+                    'cv': float(std_val / mean_val) if mean_val > 0 else 0.0
+                }
+            else:
+                summary[key] = {'mean': 0.0, 'std': 0.0, 'cv': 0.0}
+
+        return summary
 
     def simulate_cellrox_signal(self, vessel_id: str, compound: str, dose_uM: float) -> float:
         """

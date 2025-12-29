@@ -76,4 +76,8 @@ class MitoticCatastropheMechanism(StressMechanism):
         # Instantaneous mitotic death hazard (deaths per hour)
         hazard_mitotic = mitosis_rate * p_fail
 
+        # Phase 1: Apply intrinsic biology hazard scale multiplier (persistent per-vessel)
+        if vessel.bio_random_effects:
+            hazard_mitotic *= vessel.bio_random_effects['hazard_scale_mult']
+
         self._propose_hazard(vessel, hazard_mitotic, "death_mitotic_catastrophe")

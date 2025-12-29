@@ -85,6 +85,10 @@ class TransportDysfunctionMechanism(StressMechanism):
             bio_mods = self.vm.run_context.get_biology_modifiers()
             k_on_effective = TRANSPORT_DYSFUNCTION_K_ON * bio_mods['stress_sensitivity']
 
+            # Phase 1: Apply intrinsic biology random effect (persistent per-vessel)
+            if vessel.bio_random_effects:
+                k_on_effective *= vessel.bio_random_effects['stress_sensitivity_mult']
+
             # Dynamics
             S = subpop['transport_dysfunction']
             dS_dt = k_on_effective * induction_total * (1.0 - S) - TRANSPORT_DYSFUNCTION_K_OFF * S + contact_transport_rate * (1.0 - S)
