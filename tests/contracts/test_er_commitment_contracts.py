@@ -93,23 +93,36 @@ def test_timing_distribution_sanity():
     bio_noise_config = {
         'enabled': False,  # Disable Phase 1 for deterministic stress
         'er_commitment_enabled': True,
-        'er_commitment_threshold': 0.20,  # Low threshold for quick saturation
-        'er_commitment_baseline_hazard_per_h': 0.10,  # λ0 = 0.10/h → mean ~10h at threshold
+        'er_commitment_threshold': 0.10,  # Lower threshold for faster saturation
+        'er_commitment_baseline_hazard_per_h': 1.00,  # λ0 = 1.00/h → testable timing in 5-10h
         'er_commitment_sharpness_p': 1.0,  # Linear (easier to reason about)
+        'er_commitment_hazard_cap_per_h': 10.0,  # High cap (effectively no cap for this test)
     }
 
-    commitment_times = []
+    # Use SINGLE VM with multiple vessels (all share same run_context)
+    vm = BiologicalVirtualMachine(seed=seed_base, bio_noise_config=bio_noise_config)
 
-    # Run many vessels with identical treatment
+    # Seed all vessels
+    vessel_ids = []
     for i in range(n_vessels):
-        vm = BiologicalVirtualMachine(seed=seed_base + i, bio_noise_config=bio_noise_config)
-        vessel_id = "Plate1_A01"
+        row_idx = (i // 12) % 8
+        col_idx = (i % 12) + 1
+        row_letter = chr(ord('A') + row_idx)
+        vessel_id = f"Plate{(i // 96) + 1}_{row_letter}{col_idx:02d}"
+        vessel_ids.append(vessel_id)
         vm.seed_vessel(vessel_id, "A549", 50000, 50.0, 0.0)
 
-        # High dose to quickly saturate stress above threshold
+    # Treat all vessels identically
+    for vessel_id in vessel_ids:
         vm.treat_with_compound(vessel_id, "tunicamycin", 20.0)
-        vm.advance_time(60.0)  # Run long enough for most to commit
 
+    # Advance time in small steps
+    commitment_times = []
+    for step in range(120):
+        vm.advance_time(1.0)  # 1h steps for all vessels simultaneously
+
+    # Collect commitment times after simulation
+    for vessel_id in vessel_ids:
         if vm.vessel_states[vessel_id].death_committed:
             commitment_times.append(vm.vessel_states[vessel_id].death_committed_at_h)
 
@@ -119,14 +132,14 @@ def test_timing_distribution_sanity():
 
     empirical_mean = np.mean(commitment_times)
 
-    # Theoretical expectation: with S quickly saturating to ~0.8-1.0 (typical for high dose),
-    # and threshold 0.20, we have u ≈ (0.8 - 0.2)/(1 - 0.2) = 0.75
-    # With p=1.0 (linear), λ ≈ 0.10 * 0.75 = 0.075/h
-    # So mean time to commit ≈ 1/0.075 ≈ 13h
-    # But stress builds up over time, so actual mean will be slightly higher
+    # Theoretical expectation: with S quickly saturating to ~0.7-0.8 (typical for high dose),
+    # and threshold 0.10, we have u ≈ (0.7 - 0.10)/(1 - 0.10) = 0.67
+    # With p=1.0 (linear), λ ≈ 1.00 * 0.67 = 0.67/h
+    # So mean time to commit ≈ 1/0.67 ≈ 1.5h
+    # But stress builds up over time, so actual mean will be higher (2-5h range expected)
 
     # Sanity check: mean should be in a reasonable range (stress ramp-up delays commitment)
-    assert 10 < empirical_mean < 65, \
+    assert 1 < empirical_mean < 15, \
         f"Empirical mean commitment time out of range: {empirical_mean:.1f}h"
 
     # Distribution shape check: coefficient of variation for exponential is 1.0
