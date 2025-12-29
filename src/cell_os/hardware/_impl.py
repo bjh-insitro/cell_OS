@@ -59,12 +59,20 @@ def lognormal_multiplier(rng: np.random.Generator, cv: float) -> float:
 
     Returns:
         Positive multiplicative factor with E[factor] ≈ 1
+
+    Note:
+        RNG draw-count invariance: This function ALWAYS consumes exactly one
+        RNG draw, even when cv=0, to ensure that downstream randomness is
+        independent of config parameters under the same seed.
     """
+    sigma = max(cv, 1e-10)  # Avoid exactly zero to ensure draw occurs
+    mu = -0.5 * sigma ** 2
+    sample = float(rng.lognormal(mean=mu, sigma=sigma))
+
+    # If cv was actually 0, return 1.0 but we already consumed the draw
     if cv <= 0:
         return 1.0
-    sigma = cv
-    mu = -0.5 * sigma ** 2
-    return float(rng.lognormal(mean=mu, sigma=sigma))
+    return sample
 
 
 def additive_floor_noise(rng: np.random.Generator, sigma: float) -> float:
