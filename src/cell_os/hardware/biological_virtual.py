@@ -1748,10 +1748,12 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Initialize per-well RNG for persistent latent biology
         # EXCHANGEABLE SAMPLING FIX (Attack 2):
-        # Seed from run_context + vessel_id, NOT well_position.
-        # This makes biology reproducible under same run seed but not geometry-coded.
+        # Use well_uid from RunContext, NOT well_position or vessel_id.
+        # well_uid is sampled deterministically from run seed but independent of geometry.
         # Wells are exchangeable: swapping positions doesn't change their biology.
-        well_seed = stable_u32(f"well_biology_{self.run_context.seed}_{vessel_id}_{cell_line}")
+        plate_id = vessel_id.split('_')[0] if '_' in vessel_id else 'unknown_plate'
+        well_uid = self.run_context.get_well_uid(plate_id, well_position)
+        well_seed = stable_u32(f"well_biology_{well_uid}_{cell_line}")
         state.rng_well = np.random.default_rng(well_seed)
 
         # Initialize per-well latent biology (persistent baseline shifts for Cell Painting)
