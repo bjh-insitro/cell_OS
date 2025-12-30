@@ -89,8 +89,11 @@ def maybe_trigger_contamination(
     # Poisson probability for this timestep
     p_event = 1.0 - np.exp(-rate_per_h * dt_h)
 
-    # Get order-independent RNG for this vessel
-    rng = get_operational_rng(run_seed, vessel.vessel_id, domain="contamination")
+    # Get order-independent RNG for this vessel + timestep
+    # CRITICAL: Include timestep in domain so each timestep gets independent draws
+    # Without this, the RNG recreates with the same seed and produces identical draws!
+    domain = f"contamination_t{int(t_h)}"
+    rng = get_operational_rng(run_seed, vessel.vessel_id, domain=domain)
 
     # Draw trigger
     u_trigger = rng.uniform(0.0, 1.0)
