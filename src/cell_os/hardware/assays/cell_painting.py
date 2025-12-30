@@ -26,6 +26,8 @@ from ..constants import (
     TRANSPORT_DYSFUNCTION_MORPH_ALPHA,
     WASHOUT_INTENSITY_PENALTY,
     WASHOUT_INTENSITY_RECOVERY_H,
+    CELL_PAINTING_DAMAGE_CV_SCALE,
+    CELL_PAINTING_DAMAGE_CV_CAP,
 )
 from ..injections.segmentation_failure import SegmentationFailureInjection
 from ..injections.base import InjectionContext
@@ -907,10 +909,11 @@ class CellPaintingAssay(AssaySimulator):
         # Damaged cells show higher measurement-to-measurement variance (irregular uptake, heterogeneous morphology)
         # This is applied PER MEASUREMENT (not batch-level), so it creates detectable variance differences
         damage_noise_mult = self._compute_damage_noise_multiplier(vessel)
-        # Convert noise multiplier to CV: mult=2 → cv~0.35, mult=4 → cv~1.05
-        # Use strong scaling to make damage-dependent variance detectable against baseline noise
-        # Aggressive scaling needed because base Cell Painting noise (biological + technical) dilutes signal
-        damage_cv = 0.35 * (damage_noise_mult - 1.0)  # D=0 → cv=0, D=0.8 → cv~0.74, D=1.0 → cv~1.05
+        # Convert noise multiplier to CV with soft cap to prevent "pure chaos" at max damage
+        # CELL_PAINTING_DAMAGE_CV_SCALE: variance rises sharply with damage (pedagogical signal)
+        # CELL_PAINTING_DAMAGE_CV_CAP: prevents CV > 1.0 at max damage (keeps assay usable)
+        raw_damage_cv = CELL_PAINTING_DAMAGE_CV_SCALE * (damage_noise_mult - 1.0)
+        damage_cv = float(np.clip(raw_damage_cv, 0.0, CELL_PAINTING_DAMAGE_CV_CAP))
         # ALWAYS draw from RNG to keep streams synchronized (draw from N(0,1) scaled by cv)
         if damage_cv > 0:
             damage_noise_factor = lognormal_multiplier(self.vm.rng_assay, damage_cv)
