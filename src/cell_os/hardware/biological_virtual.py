@@ -1012,18 +1012,46 @@ class BiologicalVirtualMachine(VirtualMachine):
             if current > 0.0:
                 setattr(vessel, axis, float(current * decay_factor))
 
+    def _compute_aggregate_stress(self, vessel: VesselState) -> float:
+        """
+        Compute aggregate stress across all axes for growth penalty.
+
+        Uses max (not sum) to avoid double-counting overlapping mechanisms.
+        This is the stress level that affects growth rate.
+
+        Args:
+            vessel: Vessel state
+
+        Returns:
+            Aggregate stress in [0, 1]
+        """
+        return float(max(
+            getattr(vessel, "er_stress", 0.0),
+            getattr(vessel, "mito_dysfunction", 0.0),
+            getattr(vessel, "transport_dysfunction", 0.0)
+        ))
+
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
         Update vessel state over time interval.
 
-        Order matters:
+        Order matters (v2: predictor-corrector for growth-stress coupling):
         0. Mirror evaporated concentrations (evaporation already applied globally in advance_time)
-        1. Growth (viable cells only)
-        2. Death proposal phase (nutrient depletion, compound attrition, mitotic catastrophe)
+        1a. Capture stress at start-of-interval (t0)
+        1b. Update stress mechanisms over interval → stress at end-of-interval (t1)
+        1c. Compute interval-average stress (trapezoidal rule: mean = 0.5*(t0+t1))
+        1d. Growth using interval-average stress (prevents one-step lag exploit)
+        2. Death proposal phase (compound attrition, synergy, chronic damage)
         3. Commit death (apply combined survival, allocate to ledgers)
         4. Confluence management (cap growth, no killing)
         5. Update death mode label
         6. Clean up per-step bookkeeping (signals that step is complete)
+
+        Rationale for predictor-corrector:
+        - Prevents "arbitrage the scheduler" exploit where agents time actions to dodge penalties
+        - Growth penalty applies during same interval as stress induction (not one step late)
+        - Minimal invasiveness: no full growth substepping, just use interval-average stress
+        - See tests/phase6a/test_ordering_seams.py for exploit detection
         """
         # 0) Mirror the authoritative concentrations into VesselState (evaporation already applied)
         if self.injection_mgr is not None and self.injection_mgr.has_vessel(vessel.vessel_id):
@@ -1031,8 +1059,9 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.media_glucose_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glucose")
             vessel.media_glutamine_mM = self.injection_mgr.get_nutrient_conc_mM(vessel.vessel_id, "glutamine")
 
-        # 1) Growth (viable cells only - dead cells don't grow)
-        self._update_vessel_growth(vessel, hours)
+        # 1a) Capture stress at START of interval (before stress updates)
+        # This is stress_t0 for predictor-corrector
+        stress_t0 = self._compute_aggregate_stress(vessel)
 
         # 1b) Update volume (evaporation)
         self._update_vessel_volume(vessel, hours)
@@ -1060,7 +1089,7 @@ class BiologicalVirtualMachine(VirtualMachine):
                 config=self.contamination_config
             )
 
-        # Begin death proposal phase: initialize per-step hazard proposals AFTER growth
+        # Begin death proposal phase: initialize per-step hazard proposals BEFORE stress updates
         vessel._step_hazard_proposals = {}
         vessel._step_viability_start = float(np.clip(vessel.viability, 0.0, 1.0))
         vessel._step_cell_count_start = float(max(0.0, vessel.cell_count))
@@ -1068,7 +1097,8 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel._step_total_kill = 0.0
         vessel._step_ledger_scale = 1.0
 
-        # 2) Death proposal phase - mechanisms propose hazards without mutating viability
+        # 1e) Run stress mechanism updates over interval (internally substepped for dt-independence)
+        # These update vessel.er_stress, vessel.mito_dysfunction, etc. to END-of-interval values
         # IMPORTANT: Transport dysfunction must update BEFORE mito dysfunction
         # so that cross-talk coupling sees current transport state
         if ENABLE_NUTRIENT_DEPLETION:
@@ -1082,6 +1112,19 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         if ENABLE_MITO_DYSFUNCTION:
             self._mito_dysfunction.update(vessel, hours)
+
+        # 1f) Capture stress at END of interval (after stress updates)
+        # This is stress_t1 for predictor-corrector
+        stress_t1 = self._compute_aggregate_stress(vessel)
+
+        # 1g) Compute interval-average stress (trapezoidal rule)
+        # This is the stress level that growth "sees" during the interval
+        # Prevents one-step lag where growth reads stress from N-1 while stress updates to N
+        stress_mean = 0.5 * (stress_t0 + stress_t1)
+
+        # 1h) NOW run growth using interval-average stress
+        # Growth penalty applies during same interval as stress induction (no lag)
+        self._update_vessel_growth(vessel, hours, stress_mean=stress_mean)
 
         self._apply_compound_attrition(vessel, hours)
 
@@ -1134,11 +1177,18 @@ class BiologicalVirtualMachine(VirtualMachine):
         # This allows instant_kill to be called safely outside of _step_vessel
         vessel._step_hazard_proposals = None
             
-    def _update_vessel_growth(self, vessel: VesselState, hours: float):
+    def _update_vessel_growth(self, vessel: VesselState, hours: float, stress_mean: float = None):
         """
         Update cell count based on growth model.
 
         Growth is for viable cells only - dead cells don't grow.
+
+        Args:
+            vessel: Vessel state to update
+            hours: Time interval (hours)
+            stress_mean: Optional interval-average stress for penalty calculation.
+                        If None, uses current vessel stress (legacy behavior).
+                        If provided, uses this value (predictor-corrector mode).
         """
         if hours <= 0:
             return  # Zero time → zero growth (no phantom effects)
@@ -1214,13 +1264,18 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Prevents agents from camping at cliff edges where stress is high but death hasn't started
         stress_penalty_factor = 1.0
         if ENABLE_CONTINUOUS_SUBTHRESHOLD_COST:
-            # Aggregate stress across all axes (use max, not sum, to avoid double-counting)
-            max_stress = max(
-                float(getattr(vessel, "er_stress", 0.0)),
-                float(getattr(vessel, "mito_dysfunction", 0.0)),
-                float(getattr(vessel, "transport_dysfunction", 0.0))
-            )
-            max_stress = float(np.clip(max_stress, 0.0, 1.0))
+            # Use interval-average stress if provided (predictor-corrector mode)
+            # Otherwise fall back to current vessel stress (legacy behavior)
+            if stress_mean is not None:
+                max_stress = float(np.clip(stress_mean, 0.0, 1.0))
+            else:
+                # Aggregate stress across all axes (use max, not sum, to avoid double-counting)
+                max_stress = max(
+                    float(getattr(vessel, "er_stress", 0.0)),
+                    float(getattr(vessel, "mito_dysfunction", 0.0)),
+                    float(getattr(vessel, "transport_dysfunction", 0.0))
+                )
+                max_stress = float(np.clip(max_stress, 0.0, 1.0))
 
             # Linear penalty: 1.0 at S=0, (1 - penalty_coeff) at S=1.0
             # At S=0.65 (high subthreshold): 67.5% growth
