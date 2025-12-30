@@ -1,0 +1,8 @@
+expected_counts:
+  A_clean: 0.002
+  B_enriched: 0.2
+  C_held_out: 0.1
+  D_disabled: 0.0
+message: 'INSUFFICIENT_EVENTS: Regime B expected 0.20 < 10. Need more vessels or longer
+  duration.'
+status: INSUFFICIENT_EVENTS
