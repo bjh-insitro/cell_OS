@@ -70,6 +70,18 @@ ER_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (2
 ER_DAMAGE_BOOST = 5.0  # Convex induction boost: k_on *= (1 + boost * D²), makes damage mechanistically compulsory
 ER_DAMAGE_RECOVERY_SLOW = 1.0  # Recovery slowdown: k_off /= (1 + slow * D), damage visible in trajectory slopes
 
+# Phase: Scars - Mito damage accumulation (persistent memory, matches ER pattern)
+MITO_DAMAGE_K_ACCUM = 0.05  # Accumulation rate (per hour): dD/dt += k_accum * S
+MITO_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
+MITO_DAMAGE_BOOST = 4.0  # Convex induction boost: k_on *= (1 + boost * D²)
+MITO_DAMAGE_RECOVERY_SLOW = 0.8  # Recovery slowdown: k_off /= (1 + slow * D)
+
+# Phase: Scars - Transport damage accumulation (persistent memory, matches ER pattern)
+TRANSPORT_DAMAGE_K_ACCUM = 0.04  # Accumulation rate (per hour): dD/dt += k_accum * S
+TRANSPORT_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
+TRANSPORT_DAMAGE_BOOST = 3.0  # Convex induction boost: k_on *= (1 + boost * D²)
+TRANSPORT_DAMAGE_RECOVERY_SLOW = 0.6  # Recovery slowdown: k_off /= (1 + slow * D)
+
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
 MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
 MITO_DYSFUNCTION_K_OFF = 0.05  # Decay rate constant (per hour)

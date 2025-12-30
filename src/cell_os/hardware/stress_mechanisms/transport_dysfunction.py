@@ -11,6 +11,10 @@ from .base import StressMechanism
 from ..constants import (
     TRANSPORT_DYSFUNCTION_K_ON,
     TRANSPORT_DYSFUNCTION_K_OFF,
+    TRANSPORT_DAMAGE_K_ACCUM,
+    TRANSPORT_DAMAGE_K_REPAIR,
+    TRANSPORT_DAMAGE_BOOST,
+    TRANSPORT_DAMAGE_RECOVERY_SLOW,
 )
 
 if TYPE_CHECKING:
@@ -44,6 +48,12 @@ class TransportDysfunctionMechanism(StressMechanism):
 
         # Phase 2: Vessel-level transport dysfunction (no subpops)
         S = vessel.transport_dysfunction
+
+        # Phase: Scars - ALWAYS update damage accumulation (even without compounds)
+        # Damage accumulates from current stress and repairs slowly
+        D = vessel.transport_damage
+        dD_dt = TRANSPORT_DAMAGE_K_ACCUM * S - TRANSPORT_DAMAGE_K_REPAIR * D
+        vessel.transport_damage = float(np.clip(D + dD_dt * hours, 0.0, 1.0))
 
         if not vessel.compounds:
             # No compounds, but contact pressure can still induce dysfunction
@@ -88,8 +98,15 @@ class TransportDysfunctionMechanism(StressMechanism):
         stress_sens_mult = float(bio_re.get('stress_sensitivity_mult', 1.0))
         k_on_effective *= stress_sens_mult
 
-        # Dynamics
-        dS_dt = k_on_effective * induction_total * (1.0 - S) - TRANSPORT_DYSFUNCTION_K_OFF * S + contact_transport_rate * (1.0 - S)
+        # Phase: Scars - Damage boosts induction (convex: D² makes damage compulsory)
+        D_current = vessel.transport_damage
+        k_on_boosted = k_on_effective * (1.0 + TRANSPORT_DAMAGE_BOOST * D_current * D_current)
+
+        # Phase: Scars - Damage slows recovery (visible in trajectory slopes)
+        k_off_effective = TRANSPORT_DYSFUNCTION_K_OFF / (1.0 + TRANSPORT_DAMAGE_RECOVERY_SLOW * D_current)
+
+        # Dynamics (using damage-modified rates)
+        dS_dt = k_on_boosted * induction_total * (1.0 - S) - k_off_effective * S + contact_transport_rate * (1.0 - S)
         vessel.transport_dysfunction = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
 
-        # NO death hazard in v1
+        # NO death hazard in v1 (chronic damage hazard handled in biological_virtual)

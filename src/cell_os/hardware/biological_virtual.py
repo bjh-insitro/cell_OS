@@ -230,8 +230,10 @@ class VesselState:
         self.er_damage = 0.0  # Accumulated ER damage (0-1, persistent memory trace)
         self.er_stress_mixture = 0.0  # Mixed ER stress (for multi-compound interactions)
         self.mito_dysfunction = 0.0  # Mito dysfunction level (0-1)
+        self.mito_damage = 0.0  # Accumulated mitochondrial damage (0-1, persistent memory trace)
         self.mito_dysfunction_mixture = 0.0  # Mixed mito dysfunction
         self.transport_dysfunction = 0.0  # Transport dysfunction level (0-1)
+        self.transport_damage = 0.0  # Accumulated transport damage (0-1, persistent memory trace)
         self.transport_dysfunction_mixture = 0.0  # Mixed transport dysfunction
 
         # Phase 6: Continuous heterogeneity (discrete subpopulations removed)
@@ -908,6 +910,64 @@ class BiologicalVirtualMachine(VirtualMachine):
                 f"This is a simulator bug, not user error. Cannot be silently renormalized."
             )
 
+    def _apply_chronic_damage_hazard(self, vessel: VesselState, hours: float):
+        """
+        Propose chronic damage hazards (Phase: Scars).
+
+        Accumulated damage causes slow, continuous attrition even when stress is low.
+        This implements "second hit sensitivity" and removes the "immortal above 0.5
+        viability" pathology.
+
+        Hazard scales with max damage across all axes:
+        - damage=0 → zero hazard (no accumulated scars)
+        - damage=0.5 → moderate chronic hazard
+        - damage=1.0 → strong chronic hazard
+
+        Base chronic hazard rate: 0.01 per hour at damage=1.0 (slow burn)
+        This gives ~23% death over 24h from pure damage (no compound).
+
+        Args:
+            vessel: Vessel state
+            hours: Time interval (hours)
+        """
+        if hours <= 0:
+            return  # No time → no hazard
+
+        # Get maximum damage across all axes (worst scar dominates)
+        max_damage = max(
+            float(getattr(vessel, 'er_damage', 0.0)),
+            float(getattr(vessel, 'mito_damage', 0.0)),
+            float(getattr(vessel, 'transport_damage', 0.0))
+        )
+        max_damage = float(np.clip(max_damage, 0.0, 1.0))
+
+        if max_damage <= 0.01:
+            return  # No significant damage
+
+        # Base chronic hazard rate (per hour at damage=1.0)
+        # Chosen to be noticeable but not dominant:
+        # - 0.01/h gives ~23% death over 24h from pure damage
+        # - Much slower than acute compound attrition (which is ~0.1-0.4/h)
+        k_chronic_base = 0.01  # per hour
+
+        # Quadratic scaling: mild damage has little effect, severe damage dominates
+        # damage^2 means: 50% damage → 0.25× effect, 80% damage → 0.64× effect
+        chronic_hazard = k_chronic_base * (max_damage ** 2.0)
+
+        # Propose hazard to appropriate death channel based on which axis has most damage
+        er_dmg = float(getattr(vessel, 'er_damage', 0.0))
+        mito_dmg = float(getattr(vessel, 'mito_damage', 0.0))
+        transport_dmg = float(getattr(vessel, 'transport_damage', 0.0))
+
+        if er_dmg >= mito_dmg and er_dmg >= transport_dmg:
+            death_field = 'death_er_stress'
+        elif mito_dmg >= transport_dmg:
+            death_field = 'death_mito_dysfunction'
+        else:
+            death_field = 'death_compound'  # Transport doesn't have dedicated channel
+
+        self._propose_hazard(vessel, chronic_hazard, death_field)
+
     def _apply_stress_recovery(self, vessel: VesselState, hours: float):
         """
         v5 Diff 4: Apply stress axis recovery (decay) after washout.
@@ -1048,6 +1108,11 @@ class BiologicalVirtualMachine(VirtualMachine):
                 synergy_hazard = SYNERGY_K_HAZARD * syn
                 # Credit to death_compound (synergy is about combined treatment risk)
                 self._propose_hazard(vessel, synergy_hazard, 'death_compound')
+
+        # 2b) NEW: Propose chronic damage hazards (Phase: Scars)
+        # Accumulated damage causes slow attrition even without active stress
+        # This removes "immortal above viability 0.5" pathology
+        self._apply_chronic_damage_hazard(vessel, hours)
 
         # 3) Commit death once (combined survival + proportional allocation)
         self._commit_step_death(vessel, hours)

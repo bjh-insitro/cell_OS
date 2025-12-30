@@ -18,6 +18,10 @@ from ..constants import (
     MITO_DYSFUNCTION_DEATH_THETA,
     MITO_DYSFUNCTION_DEATH_WIDTH,
     MITO_DYSFUNCTION_H_MAX,
+    MITO_DAMAGE_K_ACCUM,
+    MITO_DAMAGE_K_REPAIR,
+    MITO_DAMAGE_BOOST,
+    MITO_DAMAGE_RECOVERY_SLOW,
 )
 
 if TYPE_CHECKING:
@@ -65,6 +69,12 @@ class MitoDysfunctionMechanism(StressMechanism):
         # Phase 2: Vessel-level mito dysfunction (no subpops)
         S = vessel.mito_dysfunction
 
+        # Phase: Scars - ALWAYS update damage accumulation (even without compounds)
+        # Damage accumulates from current stress and repairs slowly
+        D = vessel.mito_damage
+        dD_dt = MITO_DAMAGE_K_ACCUM * S - MITO_DAMAGE_K_REPAIR * D
+        vessel.mito_damage = float(np.clip(D + dD_dt * hours, 0.0, 1.0))
+
         if not vessel.compounds and coupling_induction <= 0:
             # No compounds, no coupling, but contact pressure can still induce dysfunction
             dS_dt = -MITO_DYSFUNCTION_K_OFF * S + contact_mito_rate * (1.0 - S)
@@ -110,8 +120,15 @@ class MitoDysfunctionMechanism(StressMechanism):
         stress_sens_mult = float(bio_re.get('stress_sensitivity_mult', 1.0))
         k_on_effective *= stress_sens_mult
 
-        # Dynamics
-        dS_dt = k_on_effective * induction_total * (1.0 - S) - MITO_DYSFUNCTION_K_OFF * S + contact_mito_rate * (1.0 - S)
+        # Phase: Scars - Damage boosts induction (convex: D² makes damage compulsory)
+        D_current = vessel.mito_damage
+        k_on_boosted = k_on_effective * (1.0 + MITO_DAMAGE_BOOST * D_current * D_current)
+
+        # Phase: Scars - Damage slows recovery (visible in trajectory slopes)
+        k_off_effective = MITO_DYSFUNCTION_K_OFF / (1.0 + MITO_DAMAGE_RECOVERY_SLOW * D_current)
+
+        # Dynamics (using damage-modified rates)
+        dS_dt = k_on_boosted * induction_total * (1.0 - S) - k_off_effective * S + contact_mito_rate * (1.0 - S)
         vessel.mito_dysfunction = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
 
         # Phase 2A.2: Check for stochastic death commitment event
