@@ -1,0 +1,25 @@
+{
+  "phase1": {
+    "enabled": true,
+    "growth_cv": 0.1,
+    "stress_sensitivity_cv": 0.08,
+    "hazard_scale_cv": 0.12,
+    "plate_level_fraction": 0.3
+  },
+  "phase2a_er": {
+    "enabled": true,
+    "threshold": 0.6,
+    "baseline_hazard_per_h": 0.2,
+    "sharpness_p": 2.0,
+    "hazard_cap_per_h": 2.0,
+    "committed_death_hazard_per_h": 0.5
+  },
+  "phase2a_mito": {
+    "enabled": true,
+    "threshold": 0.6,
+    "baseline_hazard_per_h": 0.15,
+    "sharpness_p": 2.5,
+    "hazard_cap_per_h": 2.0,
+    "committed_death_hazard_per_h": 0.5
+  }
+}

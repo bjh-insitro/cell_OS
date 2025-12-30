@@ -242,6 +242,9 @@ class CellPaintingAssay(AssaySimulator):
         # Treatment blinding: use only latent states, NOT compound identity
         morph = self._apply_latent_stress_effects(vessel, morph)
 
+        # Phase 2D.1: Apply contamination morphology signature (if contaminated)
+        morph = self._apply_contamination_morphology(vessel, morph)
+
         # Infer microtubule compound presence from transport dysfunction
         # (Observable from morphology, not from treatment identity)
         has_microtubule_compound = float(getattr(vessel, "transport_dysfunction", 0.0) or 0.0) > 0.3
@@ -421,6 +424,45 @@ class CellPaintingAssay(AssaySimulator):
 
         if ENABLE_TRANSPORT_DYSFUNCTION and vessel.transport_dysfunction > 0:
             morph['actin'] *= (1.0 + TRANSPORT_DYSFUNCTION_MORPH_ALPHA * vessel.transport_dysfunction)
+
+        return morph
+
+    def _apply_contamination_morphology(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+        """
+        Apply contamination-specific morphology signature (Phase 2D.1).
+
+        Contamination creates deterministic channel shifts (no RNG) that are:
+        - Type-specific (bacterial vs fungal vs mycoplasma)
+        - Severity-scaled (magnitude increases with contamination_severity)
+        - Phase-dependent (latent = 0, arrest/death = full shift)
+
+        This is detectable WITHOUT accessing contamination labels.
+        """
+        # Check if contamination is enabled and vessel is contaminated
+        if not self.vm.contamination_config or not self.vm.contamination_config.get('enabled', False):
+            return morph
+        if not getattr(vessel, 'contaminated', False):
+            return morph
+
+        # Import helpers from operational_events
+        from ..operational_events import get_contamination_morphology_shift, CONTAMINATION_MORPHOLOGY_SIGNATURES
+
+        # Get shift magnitude (zero during latent phase, severity-scaled afterward)
+        shift_magnitude = get_contamination_morphology_shift(vessel, self.vm.contamination_config)
+        if shift_magnitude <= 0.0:
+            return morph
+
+        # Get type-specific signature
+        contam_type = vessel.contamination_type
+        if contam_type not in CONTAMINATION_MORPHOLOGY_SIGNATURES:
+            return morph
+
+        signature = CONTAMINATION_MORPHOLOGY_SIGNATURES[contam_type]
+
+        # Apply deterministic shifts (no RNG - detectable pattern)
+        for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
+            if channel in morph and channel in signature:
+                morph[channel] *= (1.0 + shift_magnitude * signature[channel])
 
         return morph
 

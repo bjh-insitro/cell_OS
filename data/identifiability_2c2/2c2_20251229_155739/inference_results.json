@@ -1,0 +1,107 @@
+{
+  "params_er": {
+    "threshold": 0.5666666666666667,
+    "baseline_hazard_per_h": 0.3727593720314938,
+    "sharpness_p": 3.5,
+    "log_likelihood": -18.297622799181,
+    "n_wells": 48,
+    "n_events": 15
+  },
+  "params_mito": {
+    "threshold": 0.9,
+    "baseline_hazard_per_h": 0.001,
+    "sharpness_p": 1.0,
+    "log_likelihood": 0.0,
+    "n_wells": 48,
+    "n_events": 0
+  },
+  "attribution_results": {
+    "attributions": [
+      {
+        "well_id": "PlateC1_C01",
+        "event_time_h": 96.0,
+        "posterior_er": 1.0,
+        "posterior_mito": 0.0,
+        "predicted_mech": "er_stress",
+        "s_er_at_event": 0.6074775154470561,
+        "s_mito_at_event": 0.6074734284718992
+      }
+    ],
+    "predicted_fraction_total": 0.00010379451965951678,
+    "predicted_fraction_er": 0.00010379451965951678,
+    "predicted_fraction_mito": 0.0,
+    "n_wells": 48,
+    "n_events_observed": 1,
+    "stress_correlation": null
+  },
+  "validation_er_dominant": {
+    "accuracy": 1.0,
+    "confusion_matrix": {
+      "er_er": 15,
+      "er_mito": 0,
+      "mito_er": 0,
+      "mito_mito": 0
+    },
+    "n_events": 15,
+    "per_mechanism_accuracy": {
+      "er": 1.0,
+      "mito": 0.0
+    }
+  },
+  "validation_mito_dominant": {
+    "accuracy": 0.0,
+    "confusion_matrix": {
+      "er_er": 0,
+      "er_mito": 0,
+      "mito_er": 0,
+      "mito_mito": 0
+    },
+    "n_events": 0,
+    "per_mechanism_accuracy": {
+      "er": 0.0,
+      "mito": 0.0
+    }
+  },
+  "validation_mixed": {
+    "accuracy": 1.0,
+    "confusion_matrix": {
+      "er_er": 1,
+      "er_mito": 0,
+      "mito_er": 0,
+      "mito_mito": 0
+    },
+    "n_events": 1,
+    "per_mechanism_accuracy": {
+      "er": 1.0,
+      "mito": 0.0
+    },
+    "empirical_fraction": 0.020833333333333332,
+    "empirical_er_fraction": 0.020833333333333332,
+    "empirical_mito_fraction": 0.0
+  },
+  "truth": {
+    "phase1": {
+      "enabled": true,
+      "growth_cv": 0.1,
+      "stress_sensitivity_cv": 0.08,
+      "hazard_scale_cv": 0.12,
+      "plate_level_fraction": 0.3
+    },
+    "phase2a_er": {
+      "enabled": true,
+      "threshold": 0.6,
+      "baseline_hazard_per_h": 0.2,
+      "sharpness_p": 2.0,
+      "hazard_cap_per_h": 2.0,
+      "committed_death_hazard_per_h": 0.5
+    },
+    "phase2a_mito": {
+      "enabled": true,
+      "threshold": 0.6,
+      "baseline_hazard_per_h": 0.15,
+      "sharpness_p": 2.5,
+      "hazard_cap_per_h": 2.0,
+      "committed_death_hazard_per_h": 0.5
+    }
+  }
+}

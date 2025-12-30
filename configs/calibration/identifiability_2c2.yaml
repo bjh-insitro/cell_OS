@@ -1,0 +1,153 @@
+# Phase 2C.2: Multi-Mechanism Identifiability Design
+# Tests whether ER and mito commitment mechanisms are discriminable from observables alone
+# NO mechanism labels in inference - only stress trajectories + event timing
+
+# Global settings
+global:
+  seed: 42
+  cell_line: "A549"
+  total_wells_per_regime: 48
+  vessel_type: "384-well"
+  working_volume_ml: 50.0
+  initial_confluence: 0.0
+  initial_count: 50000
+
+# Extended observation window (like 2C.1.3)
+timepoints:
+  - 0.0
+  - 12.0
+  - 24.0
+  - 48.0
+  - 72.0
+  - 96.0
+  - 120.0
+
+# Metrics (ER stress + mito dysfunction both observable)
+metrics:
+  - cell_count
+  - viability
+  - confluence
+  - er_stress
+  - mito_dysfunction
+
+# Four regimes: ER-dominant, mito-dominant, mixed, control
+regimes:
+  # Regime A: ER-Dominant (mito low)
+  # Purpose: Recover ER mechanism parameters without mito confounding
+  er_dominant:
+    plate_id_prefix: "PlateA"
+    n_wells_per_dose: 12  # 12 wells × 4 doses = 48 total
+    doses:
+      # Stress-bracketed for ER (targeting S_ER ∈ [0.4, 0.6, 0.7, 0.8])
+      # Mito kept low by avoiding mitochondrial stressors
+      - compound: "tunicamycin"  # ER stressor only
+        dose_uM: 0.130
+        description: "Below ER threshold (S_ER ~ 0.43, S_mito ~ 0)"
+      - compound: "tunicamycin"
+        dose_uM: 0.197
+        description: "At ER threshold (S_ER ~ 0.59, S_mito ~ 0)"
+      - compound: "tunicamycin"
+        dose_uM: 0.245
+        description: "Above ER threshold (S_ER ~ 0.68, S_mito ~ 0)"
+      - compound: "tunicamycin"
+        dose_uM: 0.300
+        description: "Well above ER threshold (S_ER ~ 0.75, S_mito ~ 0)"
+    description: "ER-dominant regime: High ER stress, negligible mito dysfunction. Events should attribute to ER."
+    expected_mechanism: "er_stress"
+
+  # Regime B: Mito-Dominant (ER low)
+  # Purpose: Recover mito mechanism parameters without ER confounding
+  mito_dominant:
+    plate_id_prefix: "PlateB"
+    n_wells_per_dose: 12  # 12 wells × 4 doses = 48 total
+    doses:
+      # Stress-bracketed for mito (targeting S_mito ∈ [0.4, 0.6, 0.7, 0.8])
+      # ER kept low by using mito-specific stressors
+      # Scout result: rotenone produces high stress at low doses
+      - compound: "rotenone"  # Mito stressor (complex I inhibitor)
+        dose_uM: 0.10
+        description: "Below mito threshold (S_mito ~ 0.39, S_ER ~ 0)"
+      - compound: "rotenone"
+        dose_uM: 0.15
+        description: "At mito threshold (S_mito ~ 0.50, S_ER ~ 0)"
+      - compound: "rotenone"
+        dose_uM: 0.23
+        description: "Above mito threshold (S_mito ~ 0.64, S_ER ~ 0)"
+      - compound: "rotenone"
+        dose_uM: 0.35
+        description: "Well above mito threshold (S_mito ~ 0.80, S_ER ~ 0)"
+    description: "Mito-dominant regime: High mito dysfunction, negligible ER stress. Events should attribute to mito."
+    expected_mechanism: "mito"
+
+  # Regime C: Mixed (both mid, held-out test)
+  # Purpose: Test mechanism discrimination when both stresses compete
+  mixed:
+    plate_id_prefix: "PlateC"
+    n_wells: 48
+    compound_combo:
+      - compound: "tunicamycin"
+        dose_uM: 0.15  # Mid ER stress (S_ER ~ 0.50)
+      - compound: "rotenone"
+        dose_uM: 0.15  # Mid mito dysfunction (S_mito ~ 0.50, adjusted from scout)
+    description: "Mixed regime: Both ER and mito at mid-levels. Tests mechanism competition and attribution."
+    expected_mechanism: "mixed"
+
+  # Regime D: Control (RE baseline)
+  # Purpose: Phase 1 RE variance (unchanged from 2C.1)
+  control:
+    plate_id_prefix: "PlateD"
+    n_wells: 48
+    compound: "dmso"
+    dose_uM: 0.0
+    description: "Control regime for RE estimation. Both stresses negligible."
+    expected_commitments: 0
+
+# Ground truth (BOTH mechanisms enabled)
+truth:
+  # Phase 1 smooth REs
+  phase1:
+    enabled: true
+    growth_cv: 0.10
+    stress_sensitivity_cv: 0.08
+    hazard_scale_cv: 0.12
+    plate_level_fraction: 0.3
+
+  # Phase 2A ER commitment
+  phase2a_er:
+    enabled: true
+    threshold: 0.60
+    baseline_hazard_per_h: 0.20  # Same as 2C.1.3
+    sharpness_p: 2.0
+    hazard_cap_per_h: 2.0
+    committed_death_hazard_per_h: 0.50
+
+  # Phase 2A Mito commitment (NOW ENABLED)
+  phase2a_mito:
+    enabled: true
+    threshold: 0.60  # Same threshold to test discrimination
+    baseline_hazard_per_h: 0.15  # Slightly lower than ER
+    sharpness_p: 2.5  # Slightly different sharpness
+    hazard_cap_per_h: 2.0
+    committed_death_hazard_per_h: 0.50
+
+# Acceptance criteria for multi-mechanism identifiability
+acceptance:
+  # Per-mechanism parameter recovery (same as 2C.1)
+  recovery:
+    threshold_abs_error: 0.10
+    sharpness_abs_error: 1.0
+    baseline_hazard_log_factor: 3.0
+
+  # Held-out prediction (total commitment fraction)
+  prediction:
+    commitment_fraction_abs_error: 0.15
+
+  # NEW: Mechanism attribution accuracy
+  attribution:
+    min_accuracy_dominant_regimes: 0.80  # ≥80% correct attribution in A/B
+    mechanism_split_abs_error: 0.20      # Within ±0.20 for C mechanism fractions
+
+  # Ablation tests
+  ablation:
+    max_parameter_change_scrambled_labels: 0.05  # Parameters should not change >5% when labels scrambled
+    max_hallucinated_mechanism_fraction: 0.10     # ≤10% false attribution when one mechanism disabled

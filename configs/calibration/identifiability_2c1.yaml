@@ -1,0 +1,119 @@
+# Phase 2C.1: Identifiability Calibration Design
+# Three-regime design to prove Phase 1 (smooth REs) and Phase 2A (commitment) are identifiable
+
+# Global settings
+global:
+  seed: 42
+  cell_line: "A549"  # Use A549 (well-characterized)
+  total_wells_per_regime: 48  # Small mode for fast tests, 96+ for production
+  vessel_type: "384-well"  # Standard multiwell plate
+  working_volume_ml: 50.0  # Standard 384-well volume
+  initial_confluence: 0.0  # Seed at low confluence
+  initial_count: 50000  # Cells per well at seeding
+
+# Measurement timepoints (hours post-seeding)
+timepoints:
+  - 0.0   # t0 (post-seed baseline)
+  - 12.0  # Early
+  - 24.0  # Mid
+  - 36.0  # Late-mid
+  - 48.0  # Late
+
+# Metrics to record
+# Note: "stress_proxy" is internal (not a real assay) - used for inference only
+metrics:
+  - cell_count        # Growth proxy
+  - viability         # Death proxy
+  - confluence        # Density proxy
+  - er_stress         # ER stress state (internal)
+  - mito_dysfunction  # Mito stress state (internal)
+
+# Regimes
+regimes:
+  # Regime A: Low-stress (RE-only, no events)
+  # Purpose: Estimate Phase 1 RE variance with near-zero commitment contamination
+  low_stress_re_only:
+    plate_id_prefix: "PlateA"
+    n_wells: 48
+    compound: "dmso"  # DMSO control (no stress)
+    dose_uM: 0.0
+    description: "Low stress regime for RE estimation. Commitment probability ~ 0."
+    expected_commitments: 0
+
+  # Regime B: Mid-stress (mixed, held-out for prediction)
+  # Purpose: Create regime where both REs and commitment matter
+  mid_stress_mixed:
+    plate_id_prefix: "PlateB"
+    n_wells: 48
+    compound: "tunicamycin"  # ER stress inducer
+    dose_uM: 0.250  # Empirically tuned via dose scout (29% commitment, 2C.1.2)
+    description: "Mid stress regime for held-out prediction. Mix of smooth REs and discrete events."
+    expected_commitments: 0.29  # ~29% of wells commit (empirically validated)
+
+  # Regime C: High-stress (event-rich for commitment param recovery)
+  # Purpose: Estimate commitment hazard parameters with power
+  # Stratified doses span commitment curve for threshold identifiability
+  high_stress_event_rich:
+    plate_id_prefix: "PlateC"
+    n_wells_per_dose: 12  # 12 wells × 4 doses = 48 total
+    doses:
+      - compound: "tunicamycin"
+        dose_uM: 0.275
+        description: "Below inflection (~17% commitment, anchors low end)"
+      - compound: "tunicamycin"
+        dose_uM: 0.331
+        description: "Near inflection (~46% commitment, critical region)"
+      - compound: "tunicamycin"
+        dose_uM: 0.438
+        description: "Above inflection (~63% commitment, steep region)"
+      - compound: "tunicamycin"
+        dose_uM: 0.637
+        description: "Upper plateau (~75% commitment, saturation check)"
+    description: "Stratified stress regime spanning commitment curve for threshold/sharpness identifiability."
+    expected_commitments: 0.50  # ~50% mean across stratified doses (empirically validated, 2C.1.2)
+
+# Ground truth (simulator parameters used in this run)
+# These are used by inference to check recovery accuracy
+truth:
+  # Phase 1 smooth REs
+  phase1:
+    enabled: true
+    growth_cv: 0.10
+    stress_sensitivity_cv: 0.08
+    hazard_scale_cv: 0.12
+    plate_level_fraction: 0.3
+
+  # Phase 2A ER commitment
+  phase2a_er:
+    enabled: true
+    threshold: 0.60  # Commitment threshold (ER stress level)
+    baseline_hazard_per_h: 0.20  # λ0 at threshold (increased 20x for identifiability)
+    sharpness_p: 2.0  # Power law sharpness
+    hazard_cap_per_h: 2.0  # Max hazard rate (increased proportionally)
+    committed_death_hazard_per_h: 0.50  # Post-commitment death rate
+
+  # Phase 2A Mito commitment (disabled for this calibration - focus on ER)
+  phase2a_mito:
+    enabled: false
+
+# Acceptance criteria for recovery tests
+acceptance:
+  # Parameter recovery tolerances
+  recovery:
+    threshold_abs_error: 0.10  # ±0.10 absolute error on threshold
+    sharpness_abs_error: 1.0   # ±1.0 absolute error on p
+    baseline_hazard_log_factor: 3.0  # Within factor 3 on λ0 (log scale)
+
+  # Held-out prediction tolerances
+  prediction:
+    commitment_fraction_abs_error: 0.15  # ±0.15 on commitment fraction
+    ks_stat_max: 0.25  # KS statistic <= 0.25 on event times
+
+  # RE identifiability (monotonicity checks)
+  re_identifiability:
+    icc_increase_cv_0_to_010: 0.15  # ICC(cv=0.10) >= ICC(cv=0) + 0.15
+
+  # Ablation thresholds
+  ablation:
+    max_events_when_commitment_off: 0.02  # <= 2% false positives
+    icc_collapse_ratio_phase1_off: 0.3  # ICC collapses to <30% when Phase1 off

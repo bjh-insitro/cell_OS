@@ -1,0 +1,140 @@
+# Phase 2C.2 Ablation Variant: ER-OFF (Mito-only)
+# Tests that inference doesn't hallucinate ER events when ER mechanism is disabled
+# Expected: Predicted ER fraction ≤ 10% in all regimes
+
+# Global settings (same as 2C.2)
+global:
+  seed: 44  # Different seed to avoid identical RNG sequence
+  cell_line: "A549"
+  total_wells_per_regime: 48
+  vessel_type: "384-well"
+  working_volume_ml: 50.0
+  initial_confluence: 0.0
+  initial_count: 50000
+
+# Extended observation window
+timepoints:
+  - 0.0
+  - 12.0
+  - 24.0
+  - 48.0
+  - 72.0
+  - 96.0
+  - 120.0
+
+# Metrics (both ER and mito observable, but only mito mechanism active)
+metrics:
+  - cell_count
+  - viability
+  - confluence
+  - er_stress
+  - mito_dysfunction
+
+# Four regimes (same design, but all events will be mito-driven)
+regimes:
+  # ER-dominant (should produce NO events because ER is disabled)
+  er_dominant:
+    plate_id_prefix: "PlateA"
+    n_wells_per_dose: 12
+    doses:
+      - compound: "tunicamycin"
+        dose_uM: 0.130
+        description: "Below ER threshold (but ER OFF)"
+      - compound: "tunicamycin"
+        dose_uM: 0.197
+        description: "At ER threshold (but ER OFF)"
+      - compound: "tunicamycin"
+        dose_uM: 0.245
+        description: "Above ER threshold (but ER OFF)"
+      - compound: "tunicamycin"
+        dose_uM: 0.300
+        description: "Well above ER threshold (but ER OFF)"
+    description: "ER-dominant regime: Should produce NO events (ER is OFF)"
+    expected_mechanism: null  # No mechanism should fire
+
+  # Mito-dominant (should produce mito events)
+  mito_dominant:
+    plate_id_prefix: "PlateB"
+    n_wells_per_dose: 12
+    doses:
+      - compound: "rotenone"
+        dose_uM: 0.5
+        description: "Below mito threshold"
+      - compound: "rotenone"
+        dose_uM: 1.0
+        description: "At mito threshold"
+      - compound: "rotenone"
+        dose_uM: 2.0
+        description: "Above mito threshold"
+      - compound: "rotenone"
+        dose_uM: 4.0
+        description: "Well above mito threshold"
+    description: "Mito-dominant regime: All events should be mito (ER is OFF)"
+    expected_mechanism: "mito"
+
+  # Mixed (should produce only mito events, if any)
+  mixed:
+    plate_id_prefix: "PlateC"
+    n_wells: 48
+    compound_combo:
+      - compound: "tunicamycin"
+        dose_uM: 0.15
+      - compound: "rotenone"
+        dose_uM: 0.8
+    description: "Mixed regime: Only mito events should occur (ER is OFF)"
+    expected_mechanism: "mito"
+
+  # Control (no events expected)
+  control:
+    plate_id_prefix: "PlateD"
+    n_wells: 48
+    compound: "dmso"
+    dose_uM: 0.0
+    description: "Control regime (no events expected)"
+    expected_commitments: 0
+
+# Ground truth: ER DISABLED
+truth:
+  # Phase 1 smooth REs
+  phase1:
+    enabled: true
+    growth_cv: 0.10
+    stress_sensitivity_cv: 0.08
+    hazard_scale_cv: 0.12
+    plate_level_fraction: 0.3
+
+  # Phase 2A ER commitment (DISABLED)
+  phase2a_er:
+    enabled: false  # ← KEY DIFFERENCE
+    threshold: 0.60
+    baseline_hazard_per_h: 0.20
+    sharpness_p: 2.0
+    hazard_cap_per_h: 2.0
+    committed_death_hazard_per_h: 0.50
+
+  # Phase 2A Mito commitment (ENABLED)
+  phase2a_mito:
+    enabled: true
+    threshold: 0.60
+    baseline_hazard_per_h: 0.15
+    sharpness_p: 2.5
+    hazard_cap_per_h: 2.0
+    committed_death_hazard_per_h: 0.50
+
+# Acceptance criteria
+acceptance:
+  recovery:
+    threshold_abs_error: 0.10
+    sharpness_abs_error: 1.0
+    baseline_hazard_log_factor: 3.0
+
+  prediction:
+    commitment_fraction_abs_error: 0.15
+
+  attribution:
+    min_accuracy_dominant_regimes: 0.80
+    mechanism_split_abs_error: 0.20
+
+  ablation:
+    max_parameter_change_scrambled_labels: 0.05
+    max_hallucinated_mechanism_fraction: 0.10  # ≤10% ER attribution allowed

@@ -73,16 +73,17 @@ DEATH_EPS = 1e-9
 # Tracked death fields (allowlist for _propose_hazard validation)
 # These are the ONLY fields that contribute to death accounting
 # Any typo or new field must be explicitly added here AND to conservation checks
-TRACKED_DEATH_FIELDS = {
+TRACKED_DEATH_FIELDS = frozenset({
     "death_compound",
     "death_starvation",
     "death_mitotic_catastrophe",
     "death_er_stress",
     "death_mito_dysfunction",
     "death_confluence",
-    "death_unknown",  # Known unknowns (seeding stress, contamination)
+    "death_contamination",  # Phase 2D.1: Operational events (bacterial/fungal contamination)
+    "death_unknown",  # Known unknowns (seeding stress, handling mishaps)
     "death_committed_er",  # Phase 2A.1: Stochastic ER commitment (post-commitment hazard)
     "death_committed_mito",  # Phase 2A.2: Stochastic mito commitment (post-commitment hazard)
     # death_unattributed is NOT in this list (it's computed, not proposed)
     # death_transport_dysfunction is NOT in this list (Phase 2 stub, no hazard in v1)
-}
+})

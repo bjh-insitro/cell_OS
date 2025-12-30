@@ -171,11 +171,21 @@ class VesselState:
         self.compound_volumes_added_ul = {}  # compound -> total volume added (µL)
 
         # Death accounting (cumulative fractions)
+        self.death_total = 0.0  # Total death fraction (1 - viability)
         self.death_compound = 0.0  # Fraction killed by compound attrition
         self.death_confluence = 0.0  # Fraction killed by overconfluence
         self.death_unknown = 0.0  # Fraction killed by KNOWN unknowns (contamination, handling mishaps)
         self.death_unattributed = 0.0  # Fraction killed by UNKNOWN unknowns (numerical residue, missing model)
         self.death_mode = None  # "compound", "confluence", "mixed", "unknown", None
+
+        # Phase 2: Vessel-level hazard accumulator (per-step cache)
+        self._hazards = {}  # {axis: hazard_rate} for current step
+        self._total_hazard = 0.0  # Sum of all hazards for current step
+
+        # Phase 2: Vessel-level stress axes (replace subpop stress)
+        self.er_stress = 0.0
+        self.mito_dysfunction = 0.0
+        self.transport_dysfunction = 0.0
 
         # Mechanistic biology state
         # Media nutrients (simple scalars). last_feed_time already exists as the clock anchor.
@@ -201,43 +211,25 @@ class VesselState:
         # Until then, this field exists only for schema compatibility
         self.death_transport_dysfunction = 0.0
 
+        # Phase 2D.1: Operational events - Contamination
+        self.contaminated = False  # Contamination event occurred
+        self.contamination_type: Optional[str] = None  # "bacterial" | "fungal" | "mycoplasma"
+        self.contamination_onset_h: Optional[float] = None  # Time when contamination started
+        self.contamination_phase: Optional[str] = None  # "latent" | "arrest" | "death"
+        self.contamination_severity: Optional[float] = None  # Severity multiplier (0.25-3.0)
+        self.death_contamination = 0.0  # Death from contamination (separate channel)
+
         # Latent stress states (morphology-first, death-later)
         self.er_stress = 0.0  # ER stress level (0-1)
+        self.er_stress_mixture = 0.0  # Mixed ER stress (for multi-compound interactions)
         self.mito_dysfunction = 0.0  # Mito dysfunction level (0-1)
+        self.mito_dysfunction_mixture = 0.0  # Mixed mito dysfunction
         self.transport_dysfunction = 0.0  # Transport dysfunction level (0-1)
+        self.transport_dysfunction_mixture = 0.0  # Mixed transport dysfunction
 
-        # Phase 5: Population heterogeneity (3-bucket model)
-        # Keystone fix: prevents overconfident early classification
-        # Each subpopulation has shifted IC50 and stress thresholds
-        self.subpopulations = {
-            'sensitive': {
-                'fraction': 0.25,  # 25% of cells are more sensitive
-                'ic50_shift': 0.5,  # 50% lower IC50 (more sensitive to compounds)
-                'stress_threshold_shift': 0.8,  # Lower death thresholds (die earlier)
-                'viability': 0.98,  # Per-subpopulation viability
-                'er_stress': 0.0,
-                'mito_dysfunction': 0.0,
-                'transport_dysfunction': 0.0
-            },
-            'typical': {
-                'fraction': 0.50,  # 50% of cells are typical
-                'ic50_shift': 1.0,  # Normal IC50
-                'stress_threshold_shift': 1.0,  # Normal death thresholds
-                'viability': 0.98,
-                'er_stress': 0.0,
-                'mito_dysfunction': 0.0,
-                'transport_dysfunction': 0.0
-            },
-            'resistant': {
-                'fraction': 0.25,  # 25% of cells are more resistant
-                'ic50_shift': 2.0,  # 2× higher IC50 (more resistant to compounds)
-                'stress_threshold_shift': 1.2,  # Higher death thresholds (die later)
-                'viability': 0.98,
-                'er_stress': 0.0,
-                'mito_dysfunction': 0.0,
-                'transport_dysfunction': 0.0
-            }
-        }
+        # Phase 6: Continuous heterogeneity (discrete subpopulations removed)
+        # Heterogeneity via per-vessel continuous random effects (bio_random_effects)
+        # Optional discrete persisters: see pathologies/discrete_persisters.py (not yet implemented)
 
         # Phase 5B Injection #2: Plating artifacts (time-dependent)
         # Makes early timepoints unreliable for structural reasons
@@ -285,103 +277,8 @@ class VesselState:
         # Signal when we had to renormalize ledger (should be ~never)
         self._step_ledger_scale: float = 1.0
 
-    # Phase 5: Properties for weighted mixture values from subpopulations
-    @property
-    def viability_mixture(self) -> float:
-        """Compute viability as weighted mixture of subpopulations."""
-        return sum(
-            subpop['fraction'] * subpop['viability']
-            for subpop in self.subpopulations.values()
-        )
-
-    @property
-    def er_stress_mixture(self) -> float:
-        """Compute ER stress as weighted mixture of subpopulations."""
-        return sum(
-            subpop['fraction'] * subpop['er_stress']
-            for subpop in self.subpopulations.values()
-        )
-
-    @property
-    def mito_dysfunction_mixture(self) -> float:
-        """Compute mito dysfunction as weighted mixture of subpopulations."""
-        return sum(
-            subpop['fraction'] * subpop['mito_dysfunction']
-            for subpop in self.subpopulations.values()
-        )
-
-    @property
-    def transport_dysfunction_mixture(self) -> float:
-        """Compute transport dysfunction as weighted mixture of subpopulations."""
-        return sum(
-            subpop['fraction'] * subpop['transport_dysfunction']
-            for subpop in self.subpopulations.values()
-        )
-
-    def get_mixture_width(self, field: str) -> float:
-        """
-        Compute mixture width (std dev) for a field across subpopulations.
-
-        This is CRITICAL for confidence accounting:
-        - Wide mixture → conflicting signals → low confidence
-        - Narrow mixture → consistent signals → high confidence
-
-        Args:
-            field: 'er_stress', 'mito_dysfunction', or 'transport_dysfunction'
-
-        Returns:
-            Standard deviation across subpopulations (weighted)
-        """
-        values = [subpop[field] for subpop in self.subpopulations.values()]
-        fractions = [subpop['fraction'] for subpop in self.subpopulations.values()]
-
-        # Weighted mean
-        mean = sum(v * f for v, f in zip(values, fractions))
-
-        # Weighted variance
-        variance = sum(f * (v - mean) ** 2 for v, f in zip(values, fractions))
-
-        return float(np.sqrt(variance))
-
-    def get_artifact_inflated_mixture_width(self, field: str, simulated_time: float) -> float:
-        """
-        Compute mixture width inflated by plating artifacts (Phase 5B Injection #2).
-
-        Early timepoints show wide mixture due to:
-        - Biological heterogeneity (subpopulations)
-        - Plating artifacts (post-dissociation stress, clumpiness)
-
-        Artifacts decay over time, revealing true biological heterogeneity.
-
-        Args:
-            field: 'er_stress', 'mito_dysfunction', or 'transport_dysfunction'
-            simulated_time: Current simulated time (for artifact decay)
-
-        Returns:
-            Mixture width inflated by time-decaying artifacts
-        """
-        # Base biological heterogeneity
-        base_width = self.get_mixture_width(field)
-
-        # Add plating artifact inflation (decays over time)
-        if self.plating_context is not None:
-            time_since_seed = simulated_time - self.seed_time
-            tau_recovery = self.plating_context['tau_recovery_h']
-
-            # Artifact contribution to apparent heterogeneity
-            post_dissoc_stress = self.plating_context['post_dissociation_stress']
-            clumpiness = self.plating_context['clumpiness']
-
-            # Combined artifact decays exponentially
-            artifact_width = (post_dissoc_stress + clumpiness) * float(
-                np.exp(-time_since_seed / tau_recovery)
-            )
-
-            # Total width = sqrt(base^2 + artifact^2) (quadrature sum)
-            total_width = float(np.sqrt(base_width**2 + artifact_width**2))
-            return total_width
-
-        return base_width
+    # Phase 6: Mixture properties removed (discrete subpopulations deleted)
+    # Heterogeneity is now continuous via bio_random_effects
 
     @property
     def capturable_cells(self) -> float:
@@ -560,7 +457,11 @@ class BiologicalVirtualMachine(VirtualMachine):
         self._transport_dysfunction = TransportDysfunctionMechanism(self)
         self._nutrient_depletion = NutrientDepletionMechanism(self)
         self._mitotic_catastrophe = MitoticCatastropheMechanism(self)
-    
+
+        # Phase 2D.1: Load contamination config (if operational events enabled)
+        self.contamination_config = None
+        # Will be populated after thalamus_params load in _load_cell_thalamus_params()
+
     def _load_parameters(self, params_file: Optional[str] = None):
         """Load simulation parameters from database."""
 
@@ -805,25 +706,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel._step_hazard_proposals = {}
         vessel._step_hazard_proposals[death_field] = vessel._step_hazard_proposals.get(death_field, 0.0) + hazard
 
-    def _recompute_vessel_from_subpops(self, vessel: VesselState):
-        """
-        v4 Diff 1: Derive vessel viability and death_total from subpopulations.
-
-        Subpop viability is authoritative. Vessel viability is readout.
-        This is the core semantic change in v4.
-
-        Args:
-            vessel: Vessel state
-        """
-        total_v = 0.0
-        for name in sorted(vessel.subpopulations.keys()):  # Sorted for determinism
-            sp = vessel.subpopulations[name]
-            frac = float(sp.get('fraction', 0.0))
-            v = float(np.clip(sp.get('viability', 1.0), 0.0, 1.0))
-            total_v += frac * v
-
-        vessel.viability = float(np.clip(total_v, 0.0, 1.0))
-        vessel.death_total = float(np.clip(1.0 - vessel.viability, 0.0, 1.0))
+    # _recompute_vessel_from_subpops deleted (Phase 6: subpopulations removed)
+    # vessel.viability is now authoritative, not derived from subpops
 
     def _apply_instant_kill(self, vessel: VesselState, kill_fraction: float, death_field: str):
         """
@@ -869,27 +753,18 @@ class BiologicalVirtualMachine(VirtualMachine):
         if v0 <= DEATH_EPS or kill_fraction <= DEATH_EPS:
             return
 
-        # v4 Diff 2: Apply kill independently to each subpop (authoritative)
-        for name in sorted(vessel.subpopulations.keys()):  # Sorted for determinism
-            sp = vessel.subpopulations[name]
-            sv0 = float(np.clip(sp.get('viability', v0), 0.0, 1.0))
+        # Phase 2: Apply kill to vessel-level viability (authoritative)
+        v_before = v0
+        v_after = float(np.clip(v0 * (1.0 - kill_fraction), 0.0, 1.0))
 
-            # Apply kill as fraction of viable
-            sv1 = float(np.clip(sv0 * (1.0 - kill_fraction), 0.0, 1.0))
-
-            sp['viability'] = sv1
-            sp['death_total'] = float(np.clip(1.0 - sv1, 0.0, 1.0))
-
-        # v4 Diff 2: Derive vessel viability from subpops (FORWARD authority, not backward)
-        v_before = vessel.viability
-        self._recompute_vessel_from_subpops(vessel)
-        v_after = vessel.viability
+        vessel.viability = v_after
+        vessel.death_total = float(np.clip(1.0 - v_after, 0.0, 1.0))
 
         # Scale cell count proportionally to vessel viability change
         if v_before > DEATH_EPS:
             vessel.cell_count *= (v_after / v_before)
 
-        # Credit vessel death ledger with realized kill (compatibility readout)
+        # Credit vessel death ledger with realized kill
         realized_kill = float(np.clip(v_before - v_after, 0.0, 1.0))
         current_ledger = getattr(vessel, death_field, 0.0)
         setattr(vessel, death_field, float(np.clip(current_ledger + realized_kill, 0.0, 1.0)))
@@ -897,114 +772,90 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Update confluence
         vessel.confluence = vessel.cell_count / vessel.vessel_capacity
 
-        # v4 Diff 4: Runtime invariant (vessel = weighted mean)
-        wm = sum(sp['fraction'] * np.clip(sp.get('viability', 1.0), 0.0, 1.0)
-                 for sp in vessel.subpopulations.values())
-        assert abs(vessel.viability - wm) < 1e-9, \
-            f"INVARIANT: vessel.viability ({vessel.viability:.10f}) != weighted mean ({wm:.10f}). " \
-            f"Subpop viabilities are authoritative."
-
     def _commit_step_death(self, vessel: VesselState, hours: float):
         """
-        Apply combined survival once and update cumulative death buckets proportionally.
+        Apply combined survival at vessel level (continuous heterogeneity).
 
-        This is where competing-risks semantics happen:
-        1. Sum all hazard proposals into total_hazard
-        2. Compute combined survival = exp(-total_hazard * hours)
-        3. Apply to viability/cell_count once
-        4. Allocate realized death to buckets proportionally to hazard share
-        5. Enforce conservation law: sum(death_*) <= 1 - viability + epsilon
+        Contract: ALL mechanisms propose RAW hazards via _propose_hazard().
+        Vessel-level hazard scaling (bio_random_effects, etc.) is applied HERE ONLY.
 
-        Special case: If hours <= 0, this is a no-op (zero time = zero physics).
-        Proposals are recorded but not applied.
-
-        Args:
-            vessel: Vessel state
-            hours: Time interval (hours)
+        Updates:
+          - vessel.viability (authoritative)
+          - vessel.cell_count scaled proportionally
+          - tracked death ledgers allocated proportionally to RAW hazards
+          - vessel._step_total_hazard, vessel._step_total_kill
         """
         hours = float(hours)
 
-        # Zero time means zero physics (no death, no ledger updates)
+        # Zero time means zero physics
         if hours <= 0:
             vessel._step_total_hazard = 0.0
             vessel._step_total_kill = 0.0
             vessel._step_ledger_scale = 1.0
             return
 
-        v_before = float(np.clip(vessel.viability, 0.0, 1.0))
-        c0 = float(max(0.0, vessel.cell_count))
+        v_before = float(np.clip(getattr(vessel, "viability", 1.0), 0.0, 1.0))
+        c0 = float(max(0.0, getattr(vessel, "cell_count", 0.0)))
 
         if v_before <= DEATH_EPS:
+            vessel._step_total_hazard = 0.0
             vessel._step_total_kill = 0.0
             vessel._step_ledger_scale = 1.0
             return
 
-        # v4 Diff 3: Apply survival per subpop (authoritative)
-        for name in sorted(vessel.subpopulations.keys()):  # Sorted for determinism
-            sp = vessel.subpopulations[name]
-            sv0 = float(np.clip(sp.get('viability', v_before), 0.0, 1.0))
+        proposals = getattr(vessel, "_step_hazard_proposals", None) or {}
+        total_hazard_raw = float(sum(float(max(0.0, h)) for h in proposals.values()))
 
-            # Use per-subpop total hazard (computed upstream by Prereq B)
-            total_hazard_subpop = float(max(0.0, sp.get('_total_hazard', 0.0)))
+        # Single point of truth for vessel-level scaling
+        total_hazard = total_hazard_raw
+        bio_re = getattr(vessel, "bio_random_effects", None) or {}
+        if "hazard_scale_mult" in bio_re:
+            total_hazard *= float(bio_re["hazard_scale_mult"])
 
-            # Compute survival for this subpop
-            survival = float(np.exp(-total_hazard_subpop * hours))
-            sv1 = float(np.clip(sv0 * survival, 0.0, 1.0))
+        # NOTE: run-level hazard_multiplier is already applied inside biology_core
+        # (compute_attrition_rate_*). Do not apply it again here.
 
-            sp['viability'] = sv1
-            sp['death_total'] = float(np.clip(1.0 - sv1, 0.0, 1.0))
+        survival = float(np.exp(-total_hazard * hours)) if total_hazard > 0.0 else 1.0
+        v_after = float(np.clip(v_before * survival, 0.0, 1.0))
 
-        # v4 Diff 3: Derive vessel viability from subpops
-        self._recompute_vessel_from_subpops(vessel)
-        v_after = vessel.viability
+        vessel.viability = v_after
 
-        # Scale cell count proportionally to vessel viability change
-        if v_before > DEATH_EPS:
-            vessel.cell_count = float(max(0.0, c0 * (v_after / v_before)))
+        # Scale cell count proportionally to viability change
+        vessel.cell_count = float(max(0.0, c0 * (v_after / v_before))) if v_before > DEATH_EPS else c0
 
-        # Assert non-negative invariants
+        kill_total = float(max(0.0, v_before - v_after))
+        vessel._step_total_kill = kill_total
+        vessel._step_total_hazard = float(total_hazard)
+
+        # Allocate realized kill across tracked causes proportionally using RAW hazards
+        if kill_total > DEATH_EPS and total_hazard_raw > DEATH_EPS:
+            for death_field, hazard_raw in proposals.items():
+                hazard_raw = float(max(0.0, hazard_raw))
+                if hazard_raw <= 0.0:
+                    continue
+
+                # Defensive: should already be enforced by _propose_hazard
+                if death_field not in TRACKED_DEATH_FIELDS:
+                    raise ValueError(
+                        f"Invalid death_field '{death_field}' in hazard proposals. "
+                        f"Must be one of: {sorted(TRACKED_DEATH_FIELDS)}"
+                    )
+
+                frac = hazard_raw / total_hazard_raw
+                allocated = frac * kill_total
+
+                current = float(getattr(vessel, death_field, 0.0))
+                setattr(vessel, death_field, float(np.clip(current + allocated, 0.0, 1.0)))
+
+        # Update confluence (if capacity exists)
+        if hasattr(vessel, "vessel_capacity") and float(vessel.vessel_capacity) > 0:
+            vessel.confluence = float(vessel.cell_count / float(vessel.vessel_capacity))
+
+        # Enforce invariants
         assert 0.0 <= vessel.viability <= 1.0, f"viability={vessel.viability} out of bounds"
         assert vessel.cell_count >= 0.0, f"cell_count={vessel.cell_count} negative"
 
-        # Realized kill at vessel level (compatibility)
-        kill_total = float(max(0.0, v_before - v_after))
-        vessel._step_total_kill = kill_total
-
-        # Allocate realized kill across causes at vessel level (cosmetic ledger)
-        # Aggregate hazards from all subpops, weighted by fraction
-        total_hazard_weighted = 0.0
-        hazards_aggregated = {}
-
-        for name in sorted(vessel.subpopulations.keys()):
-            sp = vessel.subpopulations[name]
-            frac = float(sp.get('fraction', 0.0))
-            for axis, h in sp.get('_hazards', {}).items():
-                hazards_aggregated[axis] = hazards_aggregated.get(axis, 0.0) + frac * h
-            total_hazard_weighted += frac * sp.get('_total_hazard', 0.0)
-
-        # Record vessel-level total hazard (for diagnostics)
-        vessel._step_total_hazard = total_hazard_weighted
-
-        # Proportional allocation to vessel death fields (for reporting/compatibility)
-        if total_hazard_weighted > DEATH_EPS:
-            for field, h in hazards_aggregated.items():
-                if h <= 0.0:
-                    continue
-                share = h / total_hazard_weighted
-                d = kill_total * share
-                current = getattr(vessel, field, 0.0)
-                setattr(vessel, field, float(np.clip(current + d, 0.0, 1.0)))
-
-        # Conservation enforcement
         self._assert_conservation(vessel, gate="_commit_step_death")
-
-        # v4 Diff 4: Runtime invariant (vessel = weighted mean)
-        wm = sum(sp['fraction'] * np.clip(sp.get('viability', 1.0), 0.0, 1.0)
-                 for sp in vessel.subpopulations.values())
-        assert abs(vessel.viability - wm) < 1e-9, \
-            f"INVARIANT: vessel.viability ({vessel.viability:.10f}) != weighted mean ({wm:.10f}). " \
-            f"Subpop viabilities are authoritative."
-
         vessel._step_ledger_scale = 1.0
 
     def _assert_conservation(self, vessel: VesselState, gate: str = "unknown"):
@@ -1024,25 +875,29 @@ class BiologicalVirtualMachine(VirtualMachine):
             ConservationViolationError if conservation violated beyond DEATH_EPS
         """
         total_dead = 1.0 - float(np.clip(vessel.viability, 0.0, 1.0))
-        credited = float(
-            max(0.0, vessel.death_compound)
-            + max(0.0, vessel.death_starvation)
-            + max(0.0, vessel.death_mitotic_catastrophe)
-            + max(0.0, vessel.death_er_stress)
-            + max(0.0, vessel.death_mito_dysfunction)
-            + max(0.0, vessel.death_confluence)
-            + max(0.0, vessel.death_unknown)  # Include known unknowns (seeding stress, contamination)
-        )
+
+        # Sum ALL tracked/proposable death ledgers (includes committed channels).
+        # death_unattributed is intentionally excluded (residual, computed not proposed).
+        credited_by_field = {}
+        credited = 0.0
+        for field in TRACKED_DEATH_FIELDS:
+            v = float(getattr(vessel, field, 0.0))
+            v = max(0.0, v)
+            credited_by_field[field] = v
+            credited += v
 
         if credited > total_dead + DEATH_EPS:
+            # Stable, readable per-field breakdown
+            field_lines = "\n".join(
+                f"  {k}={credited_by_field[k]:.9f}"
+                for k in sorted(credited_by_field.keys())
+            )
+
             raise ConservationViolationError(
                 f"Ledger overflow in {gate}: credited={credited:.9f} > total_dead={total_dead:.9f}\n"
                 f"  vessel_id={vessel.vessel_id}\n"
                 f"  viability={vessel.viability:.6f}, total_dead={total_dead:.6f}\n"
-                f"  compound={vessel.death_compound:.9f}, starvation={vessel.death_starvation:.9f}, "
-                f"mitotic={vessel.death_mitotic_catastrophe:.9f}, er={vessel.death_er_stress:.9f}, "
-                f"mito={vessel.death_mito_dysfunction:.9f}, confluence={vessel.death_confluence:.9f}, "
-                f"unknown={vessel.death_unknown:.9f}\n"
+                f"{field_lines}\n"
                 f"This is a simulator bug, not user error. Cannot be silently renormalized."
             )
 
@@ -1081,17 +936,14 @@ class BiologicalVirtualMachine(VirtualMachine):
         if max_effective_dose > epsilon_dose:
             return
 
-        # All compounds negligible → stress axes decay
+        # All compounds negligible → stress axes decay at vessel level
         decay_factor = float(np.exp(-hours / tau_recovery_h))
 
-        for subpop_name in sorted(vessel.subpopulations.keys()):
-            subpop = vessel.subpopulations[subpop_name]
-
-            # Decay stress axes (but never increase them)
-            for axis in ['er_stress', 'mito_dysfunction', 'transport_dysfunction']:
-                current = subpop.get(axis, 0.0)
-                if current > 0:
-                    subpop[axis] = float(current * decay_factor)
+        # Phase 2: Decay vessel-level stress axes
+        for axis in ['er_stress', 'mito_dysfunction', 'transport_dysfunction']:
+            current = float(getattr(vessel, axis, 0.0) or 0.0)
+            if current > 0.0:
+                setattr(vessel, axis, float(current * decay_factor))
 
     def _step_vessel(self, vessel: VesselState, hours: float):
         """
@@ -1121,6 +973,26 @@ class BiologicalVirtualMachine(VirtualMachine):
         # 1c) Update contact pressure (lagged state, responds to confluence)
         self._update_contact_pressure(vessel, hours)
 
+        # 1d) Phase 2D.1: Maybe trigger contamination (if enabled)
+        if self.contamination_config and self.contamination_config.get('enabled', False):
+            from .operational_events import maybe_trigger_contamination, update_contamination_phase
+
+            # Trigger check (Poisson process in continuous time)
+            maybe_trigger_contamination(
+                vessel=vessel,
+                t_h=float(self.simulated_time),
+                dt_h=float(hours),
+                run_seed=self.run_context.seed,
+                config=self.contamination_config
+            )
+
+            # Update phase (deterministic progression)
+            update_contamination_phase(
+                vessel=vessel,
+                t_h=float(self.simulated_time + hours),
+                config=self.contamination_config
+            )
+
         # Begin death proposal phase: initialize per-step hazard proposals AFTER growth
         vessel._step_hazard_proposals = {}
         vessel._step_viability_start = float(np.clip(vessel.viability, 0.0, 1.0))
@@ -1146,6 +1018,13 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         self._apply_compound_attrition(vessel, hours)
 
+        # Phase 2D.1: Contamination death hazard
+        if self.contamination_config and self.contamination_config.get('enabled', False):
+            from .operational_events import get_contamination_death_hazard
+            contam_hazard = get_contamination_death_hazard(vessel, self.contamination_config)
+            if contam_hazard > 0.0:
+                self._propose_hazard(vessel, contam_hazard, 'death_contamination')
+
         # 3) Commit death once (combined survival + proportional allocation)
         self._commit_step_death(vessel, hours)
 
@@ -1161,14 +1040,6 @@ class BiologicalVirtualMachine(VirtualMachine):
         # CRITICAL: Record END of interval time, not start
         # We simulated physics over [t0, t1), so "last update" should be t1
         vessel.last_update_time = float(self.simulated_time + hours)
-
-        # v4 Diff 4: Runtime invariant (vessel = weighted mean)
-        # Catches any hidden backward mutations (e.g., viability clips in _update_death_mode)
-        wm = sum(sp['fraction'] * np.clip(sp.get('viability', 1.0), 0.0, 1.0)
-                 for sp in vessel.subpopulations.values())
-        assert abs(vessel.viability - wm) < 1e-9, \
-            f"INVARIANT: vessel.viability ({vessel.viability:.10f}) != weighted mean ({wm:.10f}). " \
-            f"Subpop viabilities are authoritative."
 
         # 6) Clean up per-step bookkeeping (signals that step is complete)
         # This allows instant_kill to be called safely outside of _step_vessel
@@ -1242,8 +1113,15 @@ class BiologicalVirtualMachine(VirtualMachine):
         contact_pressure = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
         contact_inhibition_factor = 1.0 - (0.20 * contact_pressure)  # 1.0 at p=0, 0.8 at p=1
 
+        # --- 5. Phase 2D.1: Contamination Growth Arrest ---
+        # Contamination arrests cell growth during arrest/death phases
+        contamination_growth_multiplier = 1.0
+        if self.contamination_config and self.contamination_config.get('enabled', False):
+            from .operational_events import get_contamination_growth_multiplier
+            contamination_growth_multiplier = get_contamination_growth_multiplier(vessel, self.contamination_config)
+
         # Apply factors (NO viability_factor - death already updated cell_count)
-        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty) * context_growth_modifier * contact_inhibition_factor
+        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty) * context_growth_modifier * contact_inhibition_factor * contamination_growth_multiplier
 
         # --- 5. Confluence Saturation (Interval-Integrated) ---
         # Use predictor-corrector to approximate interval-average saturation
@@ -1284,177 +1162,133 @@ class BiologicalVirtualMachine(VirtualMachine):
             
     def _apply_compound_attrition(self, vessel: VesselState, hours: float):
         """
-        Apply time-dependent compound attrition.
+        Propose hazards from compound attrition at vessel level.
 
-        Uses biology_core for consistent attrition logic with standalone simulation.
-        Attrition is "physics" - happens whether you observe it or not (Option 2).
+        Produces RAW hazard proposals via _propose_hazard().
+        Run-level hazard_multiplier is applied inside biology_core.
+        Vessel-level hazard_scale_mult is applied in _commit_step_death (not here).
         """
-        # v5 Diff 3: Iterate over exposure records (not just InjectionManager compounds)
-        # This allows washed-out compounds with decaying intracellular burden to continue causing hazards
-        exposures = vessel.compound_meta.get('exposures', {})
+        hours = float(hours)
+        if hours <= 0:
+            return
+
+        exposures = (getattr(vessel, "compound_meta", {}) or {}).get("exposures", {})
         if not exposures:
             return
 
-        # Lazy load thalamus params (need for dysfunction computation)
-        if not hasattr(self, 'thalamus_params') or self.thalamus_params is None:
+        if not hasattr(self, "thalamus_params") or self.thalamus_params is None:
             self._load_cell_thalamus_params()
 
+        # Vessel-level continuous IC50 shift (consistent across all mechanisms)
+        bio_re = getattr(vessel, "bio_random_effects", None) or {}
+        ic50_shift_mult = float(bio_re.get("ic50_shift_mult", 1.0))
+
+        # Pull run-level multipliers once
+        bio_mods = self.run_context.get_biology_modifiers()
+        hazard_multiplier = float(bio_mods.get("hazard_multiplier", 1.0))
+        ec50_multiplier = float(bio_mods.get("ec50_multiplier", 1.0))
+
         for compound, exp in exposures.items():
-            # v5 Diff 3: Use effective dose (decayed intracellular burden) instead of extracellular
-            # Evaluate at END of interval (t0 + hours) for burden decay during this step
-            effective_dose_uM = self._get_effective_dose_uM(vessel, compound, self.simulated_time + hours)
+            effective_dose_uM = float(self._get_effective_dose_uM(vessel, compound, self.simulated_time + hours))
+            if effective_dose_uM <= 0.0:
+                continue
 
-            if effective_dose_uM <= 0:
-                continue  # Burden decayed to negligible
-
-            # DEBUG: Log effective dose being used for attrition
-            logger.debug(f"_apply_compound_attrition: {vessel.vessel_id} {compound} effective_dose_uM={effective_dose_uM:.3f}")
-
-            # Get compound metadata (stored during treat_with_compound)
-            meta = vessel.compound_meta.get(compound)
+            meta = (getattr(vessel, "compound_meta", {}) or {}).get(compound)
             if not meta:
                 logger.warning(f"Missing metadata for compound {compound}, skipping attrition")
                 continue
 
-            hill_slope = meta['hill_slope']
-            stress_axis = meta['stress_axis']
-            base_ec50 = meta['base_ec50']
-            toxicity_scalar = meta.get('toxicity_scalar', 1.0)
+            hill_slope = float(meta["hill_slope"])
+            stress_axis = meta["stress_axis"]
+            base_ec50 = float(meta["base_ec50"])
+            toxicity_scalar = float(meta.get("toxicity_scalar", 1.0))
 
-            # Get exposure_id for commitment delay lookup
-            exposure_id = vessel.compound_meta.get('exposure_ids', {}).get(compound)
-            time_since_treatment_start = self.simulated_time - vessel.compound_start_time.get(compound, self.simulated_time)
+            exposure_id = (getattr(vessel, "compound_meta", {}) or {}).get("exposure_ids", {}).get(compound)
+            t0 = float((getattr(vessel, "compound_start_time", {}) or {}).get(compound, self.simulated_time))
+            time_since_treatment_start = float(self.simulated_time - t0)
 
-            # Mechanism-specific add-on: mitotic catastrophe for microtubule stress
-            # IMPORTANT: This happens BEFORE attrition check because it's independent
-            # v5 Diff 3: Use effective dose (decayed burden)
+            # Mitotic catastrophe happens before attrition and can propose its own hazards
             if ENABLE_MITOTIC_CATASTROPHE:
-                # Use vessel-level IC50 for mitotic catastrophe (not subpop-specific)
-                ic50_vessel = meta['ic50_uM']
+                ic50_vessel = float(meta.get("ic50_uM", base_ec50))
                 self._mitotic_catastrophe.apply(
                     vessel=vessel,
                     stress_axis=stress_axis,
-                    dose_uM=float(effective_dose_uM),  # v5: use effective dose
-                    ic50_uM=float(ic50_vessel),
+                    dose_uM=effective_dose_uM,
+                    ic50_uM=ic50_vessel,
                     hours=hours,
                 )
 
-            # ===== v4 PREREQ B: PER-SUBPOP HAZARD COMPUTATION =====
-            for subpop_name in sorted(vessel.subpopulations.keys()):
-                subpop = vessel.subpopulations[subpop_name]
+            # Vessel-level adjusted IC50
+            ic50_uM = biology_core.compute_adjusted_ic50(
+                compound=compound,
+                cell_line=vessel.cell_line,
+                base_ec50=base_ec50,
+                stress_axis=stress_axis,
+                cell_line_sensitivity=self.thalamus_params.get("cell_line_sensitivity", {}),
+                proliferation_index=biology_core.PROLIF_INDEX.get(vessel.cell_line),
+            )
 
-                # Clear cache at start of step (Guardrail 2: prevents stale hazards)
-                # ALWAYS reset (not just initialize) to prevent accumulation across steps
-                subpop['_hazards'] = {}
-                subpop['_total_hazard'] = 0.0
+            # Apply vessel RE + run context EC50 multiplier
+            ic50_uM = float(ic50_uM) * ic50_shift_mult * ec50_multiplier
 
-                # Apply subpop-specific IC50 shift
-                ic50_shift = subpop['ic50_shift']
-                ic50_uM = biology_core.compute_adjusted_ic50(
-                    compound=compound,
-                    cell_line=vessel.cell_line,
-                    base_ec50=base_ec50,
-                    stress_axis=stress_axis,
-                    cell_line_sensitivity=self.thalamus_params.get('cell_line_sensitivity', {}),
-                    proliferation_index=biology_core.PROLIF_INDEX.get(vessel.cell_line)
-                )
-                ic50_uM *= ic50_shift  # Apply subpop shift
+            # Commitment delay is now per (compound, exposure_id), not per subpop
+            commitment_delay_h = None
+            if exposure_id is not None:
+                cache_key = (compound, exposure_id)
+                commitment_delay_h = (getattr(vessel, "compound_meta", {}) or {}).get("commitment_delays", {}).get(cache_key)
 
-                # Run context modifier
-                bio_mods = self.run_context.get_biology_modifiers()
-                ic50_uM *= bio_mods['ec50_multiplier']
+            # Guardrail: commitment delay required for lethal-ish doses
+            dose_ratio = (effective_dose_uM / ic50_uM) if ic50_uM > 0 else 0.0
+            if dose_ratio >= 1.0:
+                if exposure_id is None:
+                    raise ValueError(f"Exposure_id required for lethal dose regime: {compound}")
+                if commitment_delay_h is None:
+                    raise ValueError(f"Commitment delay missing for lethal dose regime: {compound}, exposure_id={exposure_id}")
 
-                # Get commitment delay for this subpop (from v3 cache)
-                commitment_delay_h = None
-                if exposure_id is not None:
-                    cache_key = (compound, exposure_id, subpop_name)
-                    commitment_delay_h = vessel.compound_meta.get('commitment_delays', {}).get(cache_key)
+            # Transport dysfunction and washout burden
+            transport_dysfunction = biology_core.compute_transport_dysfunction_from_exposure(
+                cell_line=vessel.cell_line,
+                compound=compound,
+                dose_uM=effective_dose_uM,
+                stress_axis=stress_axis,
+                base_potency_uM=base_ec50,
+                time_since_treatment_h=time_since_treatment_start,
+                params=self.thalamus_params,
+            )
 
-                # Guardrail 1: Commitment delay is REQUIRED for lethal doses, but only if v3 is present.
-                # v3 presence is defined by an exposure_id being recorded for this compound on this vessel.
-                # v5 Diff 3: Use effective dose for dose ratio
-                dose_ratio = effective_dose_uM / ic50_uM if ic50_uM > 0 else 0.0
+            is_washed_out = bool(exp.get("is_washed_out", False))
+            if is_washed_out:
+                original_dose = float(exp.get("dose_uM", effective_dose_uM))
+                burden_decay_factor = (effective_dose_uM / original_dose) if original_dose > 0 else 1.0
+            else:
+                burden_decay_factor = 1.0
 
-                if dose_ratio >= 1.0:
-                    if exposure_id is None:
-                        # v3 is not merged (or this vessel was treated via a legacy path).
-                        # Fail loudly with the true dependency, not a misleading "sampling skipped".
-                        raise ValueError(
-                            f"Per-subpopulation hazard computation requires v3 commitment delays, "
-                            f"but no exposure_id is present for compound='{compound}' on vessel='{vessel.vessel_id}'. "
-                            f"(dose_ratio={dose_ratio:.2f}). Merge v3 (commitment heterogeneity) before v4."
-                        )
+            params_dict = {}
+            if commitment_delay_h is not None:
+                params_dict["commitment_delay_h"] = float(commitment_delay_h)
+            if is_washed_out:
+                params_dict["burden_decay_factor"] = float(burden_decay_factor)
 
-                    # v3 is present, so missing delay is a real invariant violation (cache key mismatch or partial sampling).
-                    if commitment_delay_h is None:
-                        raise ValueError(
-                            f"v3 invariant violation: missing commitment_delay_h for subpop='{subpop_name}' "
-                            f"with exposure_id={exposure_id} at lethal dose (dose_ratio={dose_ratio:.2f}). "
-                            f"Cache key mismatch or sampling failed."
-                        )
+            # Run-level batch effect on attrition kinetics (applied INSIDE biology_core)
+            params_dict["hazard_multiplier"] = hazard_multiplier
 
-                # Compute transport dysfunction (observer-independent, from exposure)
-                # v5 Diff 3: Use effective dose
-                transport_dysfunction = biology_core.compute_transport_dysfunction_from_exposure(
-                    cell_line=vessel.cell_line,
-                    compound=compound,
-                    dose_uM=effective_dose_uM,  # v5: effective dose
-                    stress_axis=stress_axis,
-                    base_potency_uM=base_ec50,
-                    time_since_treatment_h=time_since_treatment_start,
-                    params=self.thalamus_params
-                )
+            attrition_rate = biology_core.compute_attrition_rate_interval_mean(
+                cell_line=vessel.cell_line,
+                compound=compound,
+                dose_uM=effective_dose_uM,
+                stress_axis=stress_axis,
+                ic50_uM=ic50_uM,
+                hill_slope=hill_slope,
+                transport_dysfunction=transport_dysfunction,
+                time_since_treatment_start_h=time_since_treatment_start,
+                dt_h=hours,
+                current_viability=float(np.clip(getattr(vessel, "viability", 1.0), 0.0, 1.0)),
+                params=params_dict,
+            )
 
-                # v5 Diff 3.5: Compute burden decay factor (slows time ramp when burden decays)
-                # When burden drops after washout, cells stop accumulating new damage
-                is_washed_out = exp.get('is_washed_out', False)
-                if is_washed_out:
-                    original_dose = float(exp.get('dose_uM', effective_dose_uM))
-                    if original_dose > 0:
-                        burden_decay_factor = effective_dose_uM / original_dose
-                    else:
-                        burden_decay_factor = 1.0
-                else:
-                    burden_decay_factor = 1.0  # No decay if not washed out
-
-                # Compute attrition for THIS subpop
-                # v5 Diff 3: Use effective dose
-                params_dict = {'commitment_delay_h': commitment_delay_h} if commitment_delay_h else {}
-                if is_washed_out:
-                    params_dict['burden_decay_factor'] = burden_decay_factor
-
-                # v6 Diff 3: Add run-level hazard multiplier (batch effect on attrition kinetics)
-                bio_mods = self.run_context.get_biology_modifiers()
-                params_dict['hazard_multiplier'] = bio_mods['hazard_multiplier']
-
-                attrition_rate = biology_core.compute_attrition_rate_interval_mean(
-                    cell_line=vessel.cell_line,
-                    compound=compound,
-                    dose_uM=effective_dose_uM,  # v5: effective dose
-                    stress_axis=stress_axis,
-                    ic50_uM=ic50_uM,  # Subpop-specific!
-                    hill_slope=hill_slope,
-                    transport_dysfunction=transport_dysfunction,
-                    time_since_treatment_start_h=time_since_treatment_start,
-                    dt_h=hours,
-                    current_viability=subpop['viability'],  # Subpop-specific!
-                    params=params_dict
-                )
-
-                # Apply toxicity scalar
-                attrition_rate *= toxicity_scalar
-
-                if attrition_rate <= 0:
-                    continue
-
-                # Cache per-subpop hazard (used by _commit_step_death)
-                death_field = "death_compound"
-                subpop['_hazards'][death_field] = attrition_rate
-                subpop['_total_hazard'] += attrition_rate
-
-                logger.debug(
-                    f"{vessel.vessel_id}:{subpop_name}: Attrition hazard={attrition_rate:.4f}/h"
-                )
+            attrition_rate = float(attrition_rate) * toxicity_scalar
+            if attrition_rate > 0.0:
+                self._propose_hazard(vessel, attrition_rate, "death_compound")
 
     def _manage_confluence(self, vessel: VesselState):
         """
@@ -1512,67 +1346,51 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Compute total death and currently tracked causes
         total_dead = 1.0 - vessel.viability
 
-        # Tracked KNOWN causes (including credited unknowns like contamination)
-        tracked_known = (
-            vessel.death_compound
-            + vessel.death_starvation
-            + vessel.death_mitotic_catastrophe
-            + vessel.death_er_stress
-            + vessel.death_mito_dysfunction
-            + vessel.death_confluence
-            + vessel.death_unknown  # KNOWN unknowns (explicitly credited)
-        )
+        # Sum all proposable death ledgers (using single source of truth)
+        tracked_known = sum(float(getattr(vessel, field, 0.0)) for field in TRACKED_DEATH_FIELDS)
 
         # 2. Check for ledger overflow (tracked > total_dead)
         # This means death was over-credited somewhere - NOT ALLOWED
         # Use DEATH_EPS for strict conservation
         if tracked_known > total_dead + DEATH_EPS:
+            # Per-field breakdown for debugging
+            field_values = "\n".join(
+                f"  {field}={float(getattr(vessel, field, 0.0)):.6f}"
+                for field in sorted(TRACKED_DEATH_FIELDS)
+            )
             raise ConservationViolationError(
                 f"Death ledger overflow: tracked={tracked_known:.6f} > total_dead={total_dead:.6f} "
                 f"(vessel_id={vessel.vessel_id})\n"
-                f"  compound={vessel.death_compound:.6f}, starvation={vessel.death_starvation:.6f}, "
-                f"  mitotic={vessel.death_mitotic_catastrophe:.6f}, er_stress={vessel.death_er_stress:.6f}, "
-                f"  mito={vessel.death_mito_dysfunction:.6f}, confluence={vessel.death_confluence:.6f}, "
-                f"  unknown={vessel.death_unknown:.6f}\n"
+                f"{field_values}\n"
                 f"This violation cannot be silently renormalized."
             )
 
         # Unattributed is whatever is left (numerical residue or missing model)
         # This is NOT a credited bucket - it's bookkeeping only
         vessel.death_unattributed = float(max(0.0, total_dead - tracked_known))
-        for field in [
-            "death_compound",
-            "death_starvation",
-            "death_mitotic_catastrophe",
-            "death_er_stress",
-            "death_mito_dysfunction",
-            "death_confluence",
-            "death_unknown",
-        ]:
+
+        # Clamp all proposable fields to [0, 1]
+        for field in TRACKED_DEATH_FIELDS:
             setattr(vessel, field, float(np.clip(getattr(vessel, field, 0.0), 0.0, 1.0)))
 
         # Conservation law (epsilon tolerance)
         # Use DEATH_EPS for strict, consistent conservation enforcement
         total_dead = 1.0 - vessel.viability
-        tracked_total = (
-            vessel.death_compound
-            + vessel.death_starvation
-            + vessel.death_mitotic_catastrophe
-            + vessel.death_er_stress
-            + vessel.death_mito_dysfunction
-            + vessel.death_confluence
-            + vessel.death_unknown
-            + vessel.death_unattributed
-        )
+        tracked_total = sum(float(getattr(vessel, field, 0.0)) for field in TRACKED_DEATH_FIELDS)
+        tracked_total += vessel.death_unattributed  # Add residual
+
         if tracked_total > total_dead + DEATH_EPS:
+            # Per-field breakdown for debugging
+            field_values = "\n".join(
+                f"  {field}={float(getattr(vessel, field, 0.0)):.6f}"
+                for field in sorted(TRACKED_DEATH_FIELDS)
+            )
             raise ConservationViolationError(
                 f"Death ledger violates conservation law after clamping: "
                 f"tracked={tracked_total:.6f} > total_dead={total_dead:.6f} "
-                f"(vessel_id={vessel.vessel_id}, compound={vessel.death_compound:.6f}, "
-                f"starvation={vessel.death_starvation:.6f}, mitotic={vessel.death_mitotic_catastrophe:.6f}, "
-                f"er_stress={vessel.death_er_stress:.6f}, mito={vessel.death_mito_dysfunction:.6f}, "
-                f"confluence={vessel.death_confluence:.6f}, unknown={vessel.death_unknown:.6f}, "
-                f"unattributed={vessel.death_unattributed:.6f})"
+                f"(vessel_id={vessel.vessel_id})\n"
+                f"{field_values}\n"
+                f"  death_unattributed={vessel.death_unattributed:.6f}"
             )
 
         # Death mode labeling (based on thresholds)
@@ -1586,11 +1404,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         er_stress_death = vessel.death_er_stress > threshold
         mito_dysfunction_death = vessel.death_mito_dysfunction > threshold
         confluence_death = vessel.death_confluence > threshold
+        contamination_death = vessel.death_contamination > threshold  # Phase 2D.1
         unknown_death = vessel.death_unknown > unknown_threshold
 
         # Priority: known causes > unknown > none
-        # Count number of active causes
-        active_causes = sum([compound_death, starvation_death, mitotic_death, er_stress_death, mito_dysfunction_death, confluence_death])
+        # Count number of active causes (including contamination)
+        active_causes = sum([compound_death, starvation_death, mitotic_death, er_stress_death, mito_dysfunction_death, confluence_death, contamination_death])
 
         if active_causes > 1:
             vessel.death_mode = "mixed"
@@ -1606,6 +1425,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             vessel.death_mode = "mito_dysfunction"
         elif confluence_death:
             vessel.death_mode = "confluence"
+        elif contamination_death:
+            vessel.death_mode = "contamination"
         elif unknown_death:
             vessel.death_mode = "unknown"
         elif vessel.viability < 0.5:
@@ -1739,12 +1560,6 @@ class BiologicalVirtualMachine(VirtualMachine):
         seeding_stress_death = 1.0 - state.viability
         if seeding_stress_death > DEATH_EPS:
             state.death_unknown = seeding_stress_death
-
-        # v4 Diff 1: Initialize subpop viabilities to match vessel viability
-        # This ensures subpops start synchronized (heterogeneity emerges during treatment)
-        for subpop_name in sorted(state.subpopulations.keys()):
-            state.subpopulations[subpop_name]['viability'] = state.viability
-            state.subpopulations[subpop_name]['death_total'] = 1.0 - state.viability
 
         state.vessel_capacity = capacity
         state.last_passage_time = self.simulated_time
@@ -2218,13 +2033,8 @@ class BiologicalVirtualMachine(VirtualMachine):
         target.compound_meta = source.compound_meta.copy()
         target.compound_start_time = source.compound_start_time.copy()
 
-        # Copy subpopulation states (heterogeneity persists through passage)
-        for subpop_name in target.subpopulations.keys():
-            if subpop_name in source.subpopulations:
-                target.subpopulations[subpop_name]['viability'] = source.subpopulations[subpop_name]['viability']
-                target.subpopulations[subpop_name]['er_stress'] = source.subpopulations[subpop_name]['er_stress']
-                target.subpopulations[subpop_name]['mito_dysfunction'] = source.subpopulations[subpop_name]['mito_dysfunction']
-                target.subpopulations[subpop_name]['transport_dysfunction'] = source.subpopulations[subpop_name]['transport_dysfunction']
+        # Phase 2: Continuous heterogeneity (bio_random_effects) already copied during VesselState creation
+        # No discrete subpop states to copy
 
         self.vessel_states[target_vessel] = target
 
@@ -2255,10 +2065,10 @@ class BiologicalVirtualMachine(VirtualMachine):
 
     def _sample_commitment_delays_for_treatment(self, vessel: VesselState, compound: str, dose_uM: float, ic50_uM: float):
         """
-        v3: Sample commitment delays per subpopulation for a compound treatment.
+        Phase 2: Sample commitment delay per exposure (vessel-level, not per-subpop).
 
-        This function contains '_treatment' in its name to satisfy RNG guard (rng_treatment stream).
-        Sampling uses biological variability RNG (rng_treatment).
+        Heterogeneity is captured via deterministic per-vessel RNG seeded from lineage_id.
+        This function contains '_treatment' in its name to satisfy RNG guard.
 
         Args:
             vessel: Vessel state
@@ -2288,29 +2098,34 @@ class BiologicalVirtualMachine(VirtualMachine):
             # Compute dose_ratio (using adjusted IC50)
             dose_ratio = dose_uM / max(ic50_uM, 1e-6)
 
-            # Sample commitment delay for each subpop (sorted for determinism)
-            for subpop_name in sorted(vessel.subpopulations.keys()):
-                cache_key = (compound, exposure_id, subpop_name)
+            # Phase 2: Sample ONE delay per (compound, exposure_id) using deterministic vessel RNG
+            cache_key = (compound, exposure_id)
 
-                # Dose-dependent mean: 12 / sqrt(1 + dose_ratio)
-                # At IC50: 12h, at 4×IC50: 5.4h, at 100×IC50: 1.2h
-                mean_commitment_h = 12.0 / np.sqrt(1.0 + dose_ratio)
+            # Dose-dependent mean: 12 / sqrt(1 + dose_ratio)
+            # At IC50: 12h, at 4×IC50: 5.4h, at 100×IC50: 1.2h
+            mean_commitment_h = 12.0 / np.sqrt(1.0 + dose_ratio)
 
-                # Engineering bounds: [1.5h, 48h]
-                mean_commitment_h = np.clip(mean_commitment_h, 1.5, 48.0)
+            # Engineering bounds: [1.5h, 48h]
+            mean_commitment_h = np.clip(mean_commitment_h, 1.5, 48.0)
 
-                # Fixed CV=0.25 (tunable parameter)
-                cv = 0.25
-                sigma = np.sqrt(np.log(1 + cv**2))
-                mu = np.log(mean_commitment_h) - 0.5 * sigma**2
+            # Fixed CV=0.25 (tunable parameter)
+            cv = 0.25
+            sigma = np.sqrt(np.log(1 + cv**2))
+            mu = np.log(mean_commitment_h) - 0.5 * sigma**2
 
-                # Sample using rng_treatment (biological variability)
-                delay_h = float(self.rng_treatment.lognormal(mean=mu, sigma=sigma))
+            # Deterministic RNG per vessel+exposure (for reproducibility and heterogeneity)
+            # Seed from lineage_id (persistent vessel identity) + exposure_id (event identity)
+            lineage_id = getattr(vessel, 'lineage_id', f"vessel_{vessel.vessel_id}")
+            rng_seed = stable_u32(f"{lineage_id}:{compound}:{exposure_id}:commit_delay")
+            rng_local = np.random.default_rng(rng_seed)
 
-                # Hard clamp on sampled value (prevents pathological tails)
-                delay_h = np.clip(delay_h, 1.5, 48.0)
+            # Sample using deterministic local RNG
+            delay_h = float(rng_local.lognormal(mean=mu, sigma=sigma))
 
-                vessel.compound_meta['commitment_delays'][cache_key] = delay_h
+            # Hard clamp on sampled value (prevents pathological tails)
+            delay_h = np.clip(delay_h, 1.5, 48.0)
+
+            vessel.compound_meta['commitment_delays'][cache_key] = delay_h
 
     def treat_with_compound(self, vessel_id: str, compound: str, dose_uM: float, **kwargs) -> Dict[str, Any]:
         """
@@ -2902,6 +2717,13 @@ class BiologicalVirtualMachine(VirtualMachine):
             self.thalamus_params = yaml.safe_load(f)
 
         logger.info("Loaded Cell Thalamus parameters")
+
+        # Phase 2D.1: Load contamination config (if operational events enabled)
+        if self.thalamus_params:
+            ops = self.thalamus_params.get('operational_events', {})
+            if ops.get('enabled', False):
+                self.contamination_config = ops.get('contamination', {})
+                logger.info("Phase 2D.1: Contamination events enabled")
 
     def cell_painting_assay(self, vessel_id: str, **kwargs) -> Dict[str, Any]:
         """

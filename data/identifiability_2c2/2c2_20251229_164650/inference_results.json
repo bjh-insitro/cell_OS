@@ -1,0 +1,101 @@
+{
+  "params_er": {
+    "threshold": 0.3,
+    "baseline_hazard_per_h": 0.001,
+    "sharpness_p": 1.0,
+    "log_likelihood": 0.0,
+    "n_wells": 50,
+    "n_events": 0,
+    "predicted_commit_prob": 0.0,
+    "observed_commit_frac": 0.0
+  },
+  "params_mito": {
+    "threshold": 0.3,
+    "baseline_hazard_per_h": 0.001,
+    "sharpness_p": 1.0,
+    "log_likelihood": 0.0,
+    "n_wells": 48,
+    "n_events": 0,
+    "predicted_commit_prob": 0.0,
+    "observed_commit_frac": 0.0
+  },
+  "attribution_results": {
+    "attributions": [],
+    "predicted_fraction_total": 0.0,
+    "predicted_fraction_er": 0.0,
+    "predicted_fraction_mito": 0.0,
+    "n_wells": 48,
+    "n_events_observed": 0,
+    "stress_correlation": null
+  },
+  "validation_er_dominant": {
+    "accuracy": 0.0,
+    "confusion_matrix": {
+      "er_er": 0,
+      "er_mito": 0,
+      "mito_er": 0,
+      "mito_mito": 0
+    },
+    "n_events": 0,
+    "per_mechanism_accuracy": {
+      "er": 0.0,
+      "mito": 0.0
+    }
+  },
+  "validation_mito_dominant": {
+    "accuracy": 0.0,
+    "confusion_matrix": {
+      "er_er": 0,
+      "er_mito": 0,
+      "mito_er": 0,
+      "mito_mito": 0
+    },
+    "n_events": 0,
+    "per_mechanism_accuracy": {
+      "er": 0.0,
+      "mito": 0.0
+    }
+  },
+  "validation_mixed": {
+    "accuracy": 0.0,
+    "confusion_matrix": {
+      "er_er": 0,
+      "er_mito": 0,
+      "mito_er": 0,
+      "mito_mito": 0
+    },
+    "n_events": 0,
+    "per_mechanism_accuracy": {
+      "er": 0.0,
+      "mito": 0.0
+    },
+    "empirical_fraction": 0.0,
+    "empirical_er_fraction": 0.0,
+    "empirical_mito_fraction": 0.0
+  },
+  "truth": {
+    "phase1": {
+      "enabled": true,
+      "growth_cv": 0.1,
+      "stress_sensitivity_cv": 0.08,
+      "hazard_scale_cv": 0.12,
+      "plate_level_fraction": 0.3
+    },
+    "phase2a_er": {
+      "enabled": true,
+      "threshold": 0.6,
+      "baseline_hazard_per_h": 0.2,
+      "sharpness_p": 2.0,
+      "hazard_cap_per_h": 2.0,
+      "committed_death_hazard_per_h": 0.5
+    },
+    "phase2a_mito": {
+      "enabled": true,
+      "threshold": 0.6,
+      "baseline_hazard_per_h": 0.8,
+      "sharpness_p": 2.5,
+      "hazard_cap_per_h": 10.0,
+      "committed_death_hazard_per_h": 0.5
+    }
+  }
+}

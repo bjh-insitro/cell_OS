@@ -83,11 +83,13 @@ class ScRNASeqAssay(AssaySimulator):
             "contact_inhibition": float(getattr(vessel, "contact_pressure", 0.0)),
         }
 
-        # Extract subpopulation fractions
-        subpop_fractions = {
-            name: float(subpop['fraction'])
-            for name, subpop in vessel.subpopulations.items()
-        }
+        # Phase 6: Generate per-cell heterogeneity (continuous, not discrete subpops)
+        # No privileged subpop fractions - heterogeneity is emergent from per-cell factors
+        per_cell_stress_factors = self.vm.rng_assay.lognormal(
+            mean=0.0,
+            sigma=0.3,  # 30% CV in stress response
+            size=n_cells
+        )
 
         # Couple to RunContext for correlated batch drift
         run_context_latent = None
@@ -103,7 +105,7 @@ class ScRNASeqAssay(AssaySimulator):
             rng=self.vm.rng_assay,
             params_path=str(params_path),
             batch_id=batch_id if batch_id is not None else "default",
-            subpop_fractions=subpop_fractions,
+            per_cell_factors=per_cell_stress_factors,  # Continuous heterogeneity
             run_context_latent=run_context_latent,
         )
 
