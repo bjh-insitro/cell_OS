@@ -328,9 +328,9 @@ technical_noise:
                                      # See presets above for alternative calibrations
   # Heavy-tail noise: Rare lab outliers (focus drift, contamination, bubbles)
   # Models fat-tailed deviations beyond lognormal (Student-t on log-scale)
-  # Default DORMANT (frequency=0.0) to preserve golden files and existing tests
-  # Enable explicitly for realism runs by setting heavy_tail_frequency > 0
-  heavy_tail_frequency: 0.0      # Frequency of heavy-tail shocks (0.0=dormant, 0.01=1%, 0.02=2%)
+  # Realism default: 2% outlier rate (typical for real Cell Painting)
+  # These outliers are cross-channel correlated (not independent per channel)
+  heavy_tail_frequency: 0.02     # Frequency of heavy-tail shocks (2% of wells show outlier behavior)
   heavy_tail_nu: 4.0             # Student-t degrees of freedom (lower=heavier tails, recommend 4)
   heavy_tail_log_scale: 0.35     # Scale on log-space (NOT cv, recommend 0.35 for ~2× typical shock)
   heavy_tail_min_multiplier: 0.2 # Hard floor: max 5× attenuation (prevents signal dropout)
