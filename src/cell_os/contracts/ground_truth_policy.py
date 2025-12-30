@@ -31,6 +31,13 @@ ALWAYS_FORBIDDEN_PATTERNS = [
     r"^transport_dysfunction$",
     r"^stress_axis$",
 
+    # Contamination labels (operational event ground truth)
+    r"^contaminated$",
+    r"^contamination_type$",
+    r"^contamination_onset_h$",
+    r"^contamination_severity$",
+    r"^contamination_phase$",
+
     # Internal compound parameters (hidden from measurement)
     r"^ic50_uM$",
     r"^ec50_uM$",
