@@ -5,8 +5,15 @@ Validates that ER damage increases mito dysfunction susceptibility continuously.
 
 Design (from pilot):
 - CCCP 0.7 µM (mid-slope: median=0.384, IQR=[0.352, 0.425])
+  WHY 0.7 µM: Pilot identified this as the sensitive operating point where
+  mito_dysfunction ≈ 0.35-0.45 (mid-slope regime). Lower doses are too weak
+  to detect coupling signal; higher doses saturate and mask the effect.
 - ER damage levels: 0.0, 0.3, 0.6 (span sensitive region)
 - Assert: Spearman ρ > 0.6
+
+CI behavior:
+- Default CI: Runs these tests (fast, deterministic)
+- Not marked @pytest.mark.realism (unit/integration hybrid)
 """
 
 import pytest

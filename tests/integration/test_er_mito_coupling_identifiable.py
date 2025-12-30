@@ -9,6 +9,12 @@ Design:
 - Condition B: Tunicamycin 2 µM (24h) → washout → CCCP 0.7 µM
 - N=12 replicates each
 - Assert: Distributions differ (KS test p < 0.05, effect size > 20%)
+
+CI behavior:
+- Marked @pytest.mark.realism (statistical test, slower)
+- Default CI: SKIPPED (excluded via -m "not realism")
+- Run explicitly: pytest -m realism -v
+- Run all: pytest -v (includes realism)
 """
 
 import pytest
