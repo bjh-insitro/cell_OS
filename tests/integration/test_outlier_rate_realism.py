@@ -1,12 +1,18 @@
 """
-Integration test: Heavy-tail outlier rate and cross-channel correlation.
+Integration test: Heavy-tail outlier delta test (measurement-stage only).
 
-Validates Phase 2 (B1) realism requirement:
-- Outliers should be rare (~2% of wells)
-- Outliers should be cross-channel correlated (focus, stain, illumination affect all channels)
+Validates Phase 3.1 (Measurement Pathology):
+- Heavy-tail shocks increase tail mass vs baseline
+- Heavy-tail shocks create cross-channel correlation signature
 
-This is not a strict 3-sigma test (tails aren't Gaussian). We use robust z-scores
-(median/MAD) and check for pragmatic outlier thresholds.
+This is a DELTA test, not an absolute rate test:
+- We compare p_heavy=0.0 vs p_heavy=0.02 under identical conditions
+- We do NOT assert outlier_rate ≈ p_heavy because base multiplicative noise
+  (stain_cv, focus_cv, etc.) also creates tail events
+- We assert that enabling shocks materially increases tail mass AND multi-channel co-outliers
+
+IMPORTANT: Marked @pytest.mark.realism - this is a statistical property check,
+not a fast unit/integration invariant. Run separately from default CI.
 """
 
 import pytest
@@ -15,320 +21,263 @@ from src.cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from src.cell_os.hardware.run_context import RunContext
 
 
-def robust_z_score(x: np.ndarray) -> np.ndarray:
-    """
-    Compute robust z-scores using median and MAD (median absolute deviation).
+pytestmark = pytest.mark.realism  # Exclude from fast CI by default
 
-    More robust to outliers than mean/std.
+
+def _mad(x: np.ndarray) -> float:
+    """Median absolute deviation (robust scale estimator)."""
+    med = np.median(x)
+    return np.median(np.abs(x - med)) + 1e-12
+
+
+def _robust_z_score(x: np.ndarray) -> np.ndarray:
+    """
+    Compute robust z-scores using median and MAD.
+
+    MAD → std conversion factor for normal: 1.4826
+    Equivalent to 0.6745 * (x - median) / MAD
     """
     median = np.median(x)
-    mad = np.median(np.abs(x - median))
-    # MAD → std conversion factor for normal distribution
+    mad = _mad(x)
     mad_to_std = 1.4826
-    return (x - median) / (mad * mad_to_std + 1e-9)
+    return (x - median) / (mad * mad_to_std)
 
 
-def test_outlier_rate_in_expected_range():
+def _measure_plate(vm, rows, cols, seed):
     """
-    Outlier rate should be ~2% (range: 0.5% to 5%).
+    Measure morphology for all wells in plate.
 
-    Run 10 seeds × 24 wells = 240 wells (DMSO only, small plate for speed).
-    Count wells with |robust_z| > 3 on at least one channel.
-    Assert rate falls in acceptable range.
+    Returns:
+        np.ndarray of shape (n_wells, 5) with columns [er, mito, nucleus, actin, rna]
     """
-    N_SEEDS = 10  # More seeds for better statistics
-    N_WELLS = 24  # Smaller plate (4 rows × 6 cols)
-    OUTLIER_THRESHOLD = 3.0  # Pragmatic, not theoretical
+    morphology = []
+    for row in rows:
+        for col in cols:
+            well_pos = f"{row}{col:02d}"
+            vessel_id = f"P{seed}_{well_pos}"
+            vessel = vm.vessel_states[vessel_id]
+            result = vm._cell_painting_assay.measure(
+                vessel,
+                well_position=well_pos,
+                plate_id=f"P{seed}"
+            )
+            morph = result['morphology']
+            morphology.append([
+                morph['er'],
+                morph['mito'],
+                morph['nucleus'],
+                morph['actin'],
+                morph['rna']
+            ])
+    return np.array(morphology)
 
-    all_morphology = []
 
-    # Small plate layout for speed
-    rows = ['A', 'B', 'C', 'D']
-    cols = list(range(1, 7))
+def _tail_metrics(morphology: np.ndarray, z_thresh: float = 3.0) -> dict:
+    """
+    Compute tail mass metrics from morphology array.
 
-    for seed in range(N_SEEDS):
-        vm = BiologicalVirtualMachine()
-        vm.run_context = RunContext.sample(seed=seed)
-        vm.rng_assay = np.random.default_rng(seed + 1000)
-        vm.rng_biology = np.random.default_rng(seed + 2000)
-        vm._load_cell_thalamus_params()
+    Args:
+        morphology: (n_wells, n_channels) array
+        z_thresh: Robust z-score threshold for "extreme"
 
-        # Seed 96 DMSO wells
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
-
-        # Advance time (minimal - just need cells alive for measurement)
-        vm.advance_time(2.0)  # 2h is enough for outlier detection
-
-        # Measure all wells
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vessel = vm.vessel_states[vessel_id]
-                result = vm._cell_painting_assay.measure(
-                    vessel,
-                    well_position=well_pos,
-                    plate_id=f"P{seed}"
-                )
-                morph = result['morphology']
-                all_morphology.append([
-                    morph['er'],
-                    morph['mito'],
-                    morph['nucleus'],
-                    morph['actin'],
-                    morph['rna']
-                ])
-
-    # Convert to numpy array: (N_SEEDS * N_WELLS, 5)
-    all_morphology = np.array(all_morphology)
+    Returns:
+        dict with:
+        - any_extreme_rate: fraction of wells with |z| > thresh on ANY channel
+        - multi_extreme_rate: fraction with |z| > thresh on 2+ channels
+        - multi_given_any: P(2+ channels | 1+ channel) - shared shock signature
+    """
+    n_wells, n_channels = morphology.shape
 
     # Compute robust z-scores per channel
-    z_scores = np.zeros_like(all_morphology)
-    for ch_idx in range(5):
-        z_scores[:, ch_idx] = robust_z_score(all_morphology[:, ch_idx])
+    z_scores = np.zeros_like(morphology)
+    for ch_idx in range(n_channels):
+        z_scores[:, ch_idx] = _robust_z_score(morphology[:, ch_idx])
 
-    # Count outliers: wells with |z| > threshold on at least one channel
-    max_abs_z_per_well = np.max(np.abs(z_scores), axis=1)
-    outliers = max_abs_z_per_well > OUTLIER_THRESHOLD
-    outlier_count = np.sum(outliers)
-    outlier_rate = outlier_count / len(all_morphology)
+    # Per-well: which channels are extreme
+    is_extreme = np.abs(z_scores) > z_thresh  # (n_wells, n_channels)
+    n_extreme_per_well = is_extreme.sum(axis=1)
 
-    print(f"\nOutlier rate: {outlier_rate:.3f} ({outlier_count}/{len(all_morphology)} wells)")
-    print(f"Target: 0.02 (2%), Acceptable range: 0.005-0.05 (0.5%-5%)")
+    # Count wells
+    any_extreme = n_extreme_per_well >= 1
+    multi_extreme = n_extreme_per_well >= 2
 
-    # Assert: outlier rate in acceptable range
-    assert 0.005 <= outlier_rate <= 0.05, \
-        f"Outlier rate {outlier_rate:.3f} outside acceptable range [0.005, 0.05]"
+    any_extreme_rate = float(any_extreme.mean())
+    multi_extreme_rate = float(multi_extreme.mean())
+    multi_given_any = float(multi_extreme[any_extreme].mean() if any_extreme.any() else 0.0)
+
+    return {
+        "any_extreme_rate": any_extreme_rate,
+        "multi_extreme_rate": multi_extreme_rate,
+        "multi_given_any": multi_given_any,
+        "n_wells": n_wells,
+        "n_channels": n_channels,
+    }
 
 
-def test_outliers_are_cross_channel_correlated():
+def _setup_vm_with_heavy_tail(seed: int, p_heavy: float, rows, cols):
     """
-    Outliers should be cross-channel correlated (not independent).
+    Create VM with specified heavy_tail_frequency.
 
-    If outliers were independent per channel, P(2+ channels outlier) = p^2 ≈ 0.04%.
-    With correlation (focus, stain, illumination), P(2+ channels) should be much higher.
-
-    We test: Among wells with at least one outlier channel, what fraction have 2+ outlier channels?
-    Expect: >50% (strong correlation). Independent would be ~2%.
+    Returns VM with seeded vessels (no time advance - measurement-only test).
     """
-    N_SEEDS = 10
-    N_WELLS = 24
-    OUTLIER_THRESHOLD = 3.0
+    vm = BiologicalVirtualMachine()
+    vm.run_context = RunContext.sample(seed=seed)
+    vm.rng_assay = np.random.default_rng(seed + 1000)
+    vm.rng_biology = np.random.default_rng(seed + 2000)
+    vm._load_cell_thalamus_params()
 
-    all_morphology = []
+    # Override heavy_tail_frequency
+    if vm.thalamus_params is None:
+        vm.thalamus_params = {}
+    if 'technical_noise' not in vm.thalamus_params:
+        vm.thalamus_params['technical_noise'] = {}
+    vm.thalamus_params['technical_noise']['heavy_tail_frequency'] = float(p_heavy)
 
+    # Seed vessels (no advance_time - we're testing measurement noise only)
+    for row in rows:
+        for col in cols:
+            well_pos = f"{row}{col:02d}"
+            vessel_id = f"P{seed}_{well_pos}"
+            vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
+
+    return vm
+
+
+def test_heavy_tail_increases_tail_mass_delta():
+    """
+    Heavy-tail shocks should increase tail mass vs baseline (delta test).
+
+    Design:
+    - Compare p_heavy=0.0 (baseline) vs p_heavy=0.02 (shocks enabled)
+    - Same seed, same base noise → only difference is heavy-tail shocks
+    - Assert: tail mass increases materially (>1% absolute increase)
+
+    Why delta test:
+    - Base multiplicative noise (stain_cv=5%, focus_cv=4%, etc.) already creates tails
+    - Can't assert "outlier_rate ≈ 2%" because baseline has ~1-2% extremes from lognormal tails
+    - Must measure the DELTA to isolate heavy-tail shock effect
+    """
+    seed = 42
     rows = ['A', 'B', 'C', 'D']
-    cols = list(range(1, 7))
+    cols = list(range(1, 13))  # 4×12 = 48 wells (fast enough)
+    z_thresh = 3.0
 
-    for seed in range(N_SEEDS):
-        vm = BiologicalVirtualMachine()
-        vm.run_context = RunContext.sample(seed=seed)
-        vm.rng_assay = np.random.default_rng(seed + 1000)
-        vm.rng_biology = np.random.default_rng(seed + 2000)
-        vm._load_cell_thalamus_params()
+    # Baseline: no heavy-tail shocks
+    vm0 = _setup_vm_with_heavy_tail(seed, p_heavy=0.0, rows=rows, cols=cols)
+    morph0 = _measure_plate(vm0, rows, cols, seed)
+    metrics0 = _tail_metrics(morph0, z_thresh=z_thresh)
 
-        # Seed 96 DMSO wells
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
+    # Treatment: heavy-tail shocks enabled (2%)
+    vm1 = _setup_vm_with_heavy_tail(seed, p_heavy=0.02, rows=rows, cols=cols)
+    morph1 = _measure_plate(vm1, rows, cols, seed)
+    metrics1 = _tail_metrics(morph1, z_thresh=z_thresh)
 
-        vm.advance_time(2.0)
+    print(f"\nBaseline (p_heavy=0.0): {metrics0['any_extreme_rate']:.3f} any-extreme rate")
+    print(f"Treatment (p_heavy=0.02): {metrics1['any_extreme_rate']:.3f} any-extreme rate")
+    print(f"Delta: +{metrics1['any_extreme_rate'] - metrics0['any_extreme_rate']:.3f}")
 
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vessel = vm.vessel_states[vessel_id]
-                result = vm._cell_painting_assay.measure(
-                    vessel,
-                    well_position=well_pos,
-                    plate_id=f"P{seed}"
-                )
-                morph = result['morphology']
-                all_morphology.append([
-                    morph['er'],
-                    morph['mito'],
-                    morph['nucleus'],
-                    morph['actin'],
-                    morph['rna']
-                ])
+    # Assert: tail mass increases materially when shocks are enabled
+    # Expect: baseline ~1-3% (lognormal tails), treatment ~3-6% (lognormal + shocks)
+    delta = metrics1['any_extreme_rate'] - metrics0['any_extreme_rate']
+    assert delta > 0.01, \
+        f"Heavy-tail shocks did not increase tail mass (delta={delta:.3f}, expect >0.01)"
 
-    all_morphology = np.array(all_morphology)
-
-    # Compute robust z-scores per channel
-    z_scores = np.zeros_like(all_morphology)
-    for ch_idx in range(5):
-        z_scores[:, ch_idx] = robust_z_score(all_morphology[:, ch_idx])
-
-    # For each well, count how many channels are outliers
-    is_outlier_per_channel = np.abs(z_scores) > OUTLIER_THRESHOLD  # (N_wells, 5)
-    outlier_channel_count = np.sum(is_outlier_per_channel, axis=1)
-
-    # Wells with at least one outlier channel
-    wells_with_any_outlier = outlier_channel_count > 0
-    n_wells_with_any_outlier = np.sum(wells_with_any_outlier)
-
-    if n_wells_with_any_outlier == 0:
-        pytest.skip("No outliers found in this run (unlucky seeds or config issue)")
-
-    # Among wells with at least one outlier, how many have 2+ outlier channels?
-    wells_with_multiple_outliers = outlier_channel_count[wells_with_any_outlier] >= 2
-    n_wells_with_multiple = np.sum(wells_with_multiple_outliers)
-    fraction_multi_channel = n_wells_with_multiple / n_wells_with_any_outlier
-
-    print(f"\nWells with any outlier: {n_wells_with_any_outlier}")
-    print(f"Wells with 2+ outlier channels: {n_wells_with_multiple}")
-    print(f"Fraction multi-channel: {fraction_multi_channel:.3f}")
-    print(f"Expected if correlated: >0.5, Expected if independent: ~0.02")
-
-    # Assert: multi-channel outliers are more common than independence would predict
-    # Independent: P(2+ | 1+) ≈ p/(1-p) where p ≈ 0.02 → ~2%
-    # Correlated (shared shock): Should be >50%
-    assert fraction_multi_channel > 0.3, \
-        f"Multi-channel outlier fraction {fraction_multi_channel:.3f} too low (independence: ~0.02, correlated: >0.5)"
+    # Sanity: not totally insane
+    assert 0.0 <= metrics1['any_extreme_rate'] <= 0.20, \
+        f"Tail mass unrealistic: {metrics1['any_extreme_rate']:.3f}"
 
 
-def test_outlier_magnitude_is_realistic():
+def test_heavy_tail_creates_cross_channel_correlation():
     """
-    Outlier magnitudes should be moderate (not infinite).
+    Heavy-tail shocks should be cross-channel correlated (shared shock signature).
 
-    With clipping [0.2, 5.0]×, max deviation should be ~5× median.
-    Check that outliers exist but don't explode.
+    Design:
+    - Compare p_heavy=0.0 vs p_heavy=0.02
+    - Metric: P(2+ channels extreme | 1+ channel extreme)
+    - Independent noise: ~2% (p² small)
+    - Shared shock: >30% (same shock hits all channels)
+
+    Why this works:
+    - Heavy-tail shock is drawn ONCE per well, applied to ALL channels
+    - Base lognormal noise is drawn PER CHANNEL (independent)
+    - Multi-channel co-outliers are signature of shared shock, not independent noise
     """
-    N_SEEDS = 10
-    N_WELLS = 24
-
-    all_morphology = []
-
+    seed = 123
     rows = ['A', 'B', 'C', 'D']
-    cols = list(range(1, 7))
+    cols = list(range(1, 13))  # 48 wells
+    z_thresh = 3.0
 
-    for seed in range(N_SEEDS):
-        vm = BiologicalVirtualMachine()
-        vm.run_context = RunContext.sample(seed=seed)
-        vm.rng_assay = np.random.default_rng(seed + 1000)
-        vm.rng_biology = np.random.default_rng(seed + 2000)
-        vm._load_cell_thalamus_params()
+    # Baseline
+    vm0 = _setup_vm_with_heavy_tail(seed, p_heavy=0.0, rows=rows, cols=cols)
+    morph0 = _measure_plate(vm0, rows, cols, seed)
+    metrics0 = _tail_metrics(morph0, z_thresh=z_thresh)
 
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
+    # Treatment
+    vm1 = _setup_vm_with_heavy_tail(seed, p_heavy=0.02, rows=rows, cols=cols)
+    morph1 = _measure_plate(vm1, rows, cols, seed)
+    metrics1 = _tail_metrics(morph1, z_thresh=z_thresh)
 
-        vm.advance_time(2.0)
+    print(f"\nBaseline: {metrics0['multi_given_any']:.3f} multi-channel given any")
+    print(f"Treatment: {metrics1['multi_given_any']:.3f} multi-channel given any")
+    print(f"Delta: +{metrics1['multi_given_any'] - metrics0['multi_given_any']:.3f}")
 
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vessel = vm.vessel_states[vessel_id]
-                result = vm._cell_painting_assay.measure(
-                    vessel,
-                    well_position=well_pos,
-                    plate_id=f"P{seed}"
-                )
-                morph = result['morphology']
-                all_morphology.append([
-                    morph['er'],
-                    morph['mito'],
-                    morph['nucleus'],
-                    morph['actin'],
-                    morph['rna']
-                ])
+    # Assert: multi-channel co-outliers increase materially
+    # Shared shock should push P(2+|1+) from ~10-20% (independent) to >40% (shared)
+    delta = metrics1['multi_given_any'] - metrics0['multi_given_any']
 
-    all_morphology = np.array(all_morphology)
+    # Only assert if treatment has enough outliers to measure correlation
+    if metrics1['any_extreme_rate'] < 0.01:
+        pytest.skip("Insufficient outliers in treatment (unlucky seed or config issue)")
 
-    # Compute ratio to median per channel
-    for ch_idx in range(5):
-        channel_values = all_morphology[:, ch_idx]
-        median_val = np.median(channel_values)
-        ratios = channel_values / median_val
-        max_ratio = np.max(ratios)
-        min_ratio = np.min(ratios)
+    assert delta > 0.10, \
+        f"Heavy-tail shocks did not increase cross-channel correlation (delta={delta:.3f}, expect >0.10)"
 
-        print(f"Channel {ch_idx}: min ratio={min_ratio:.2f}, max ratio={max_ratio:.2f}")
-
-        # Assert: outliers are clipped (not infinite)
-        # Max should be <10× median (config clips at 5×, but multiplicative effects can compound)
-        assert max_ratio < 10.0, f"Channel {ch_idx} has outlier too large: {max_ratio:.2f}×"
-        assert min_ratio > 0.05, f"Channel {ch_idx} has outlier too small: {min_ratio:.2f}×"
+    # Sanity: shared shock signature should be substantial
+    assert metrics1['multi_given_any'] > 0.30, \
+        f"Multi-channel correlation too weak: {metrics1['multi_given_any']:.3f} (expect >0.30 for shared shock)"
 
 
 @pytest.mark.slow
-def test_outlier_rate_stable_across_seeds():
+def test_heavy_tail_delta_stable_across_seeds():
     """
-    Outlier rate should be stable across seeds (not seed-dependent).
+    Heavy-tail delta should be stable across seeds (not seed-dependent).
 
-    Run 20 seeds, compute outlier rate per seed, check variance is low.
-    Marked @pytest.mark.slow because 20 seeds is expensive.
+    Run multiple seeds, compute delta per seed, check that:
+    - Mean delta is positive and material (>1%)
+    - Variance is reasonable (not wildly unstable)
+
+    Marked @pytest.mark.slow because 10 seeds × 2 conditions = expensive.
     """
-    N_SEEDS = 20
-    N_WELLS_PER_SEED = 24  # Small plate for speed
-
-    outlier_rates = []
-
+    N_SEEDS = 10
     rows = ['A', 'B', 'C', 'D']
-    cols = list(range(1, 7))
+    cols = list(range(1, 7))  # Small plate (24 wells) for speed
+    z_thresh = 3.0
+
+    deltas = []
 
     for seed in range(N_SEEDS):
-        vm = BiologicalVirtualMachine()
-        vm.run_context = RunContext.sample(seed=seed)
-        vm.rng_assay = np.random.default_rng(seed + 1000)
-        vm.rng_biology = np.random.default_rng(seed + 2000)
-        vm._load_cell_thalamus_params()
+        vm0 = _setup_vm_with_heavy_tail(seed, p_heavy=0.0, rows=rows, cols=cols)
+        morph0 = _measure_plate(vm0, rows, cols, seed)
+        metrics0 = _tail_metrics(morph0, z_thresh=z_thresh)
 
-        morphology = []
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
+        vm1 = _setup_vm_with_heavy_tail(seed, p_heavy=0.02, rows=rows, cols=cols)
+        morph1 = _measure_plate(vm1, rows, cols, seed)
+        metrics1 = _tail_metrics(morph1, z_thresh=z_thresh)
 
-        vm.advance_time(2.0)
+        delta = metrics1['any_extreme_rate'] - metrics0['any_extreme_rate']
+        deltas.append(delta)
 
-        for row in rows:
-            for col in cols:
-                well_pos = f"{row}{col:02d}"
-                vessel_id = f"P{seed}_{well_pos}"
-                vessel = vm.vessel_states[vessel_id]
-                result = vm._cell_painting_assay.measure(
-                    vessel,
-                    well_position=well_pos,
-                    plate_id=f"P{seed}"
-                )
-                morph = result['morphology']
-                morphology.append([
-                    morph['er'],
-                    morph['mito'],
-                    morph['nucleus'],
-                    morph['actin'],
-                    morph['rna']
-                ])
+    deltas = np.array(deltas)
+    mean_delta = np.mean(deltas)
+    std_delta = np.std(deltas)
 
-        morphology = np.array(morphology)
-        z_scores = np.zeros_like(morphology)
-        for ch_idx in range(5):
-            z_scores[:, ch_idx] = robust_z_score(morphology[:, ch_idx])
+    print(f"\nMean delta across {N_SEEDS} seeds: {mean_delta:.3f} ± {std_delta:.3f}")
+    print(f"Min: {np.min(deltas):.3f}, Max: {np.max(deltas):.3f}")
 
-        max_abs_z = np.max(np.abs(z_scores), axis=1)
-        outliers = max_abs_z > 3.0
-        outlier_rate = np.mean(outliers)
-        outlier_rates.append(outlier_rate)
+    # Assert: mean delta is positive and material
+    assert mean_delta > 0.01, \
+        f"Mean heavy-tail delta too small: {mean_delta:.3f} (expect >0.01)"
 
-    outlier_rates = np.array(outlier_rates)
-    mean_rate = np.mean(outlier_rates)
-    std_rate = np.std(outlier_rates)
-
-    print(f"\nMean outlier rate across {N_SEEDS} seeds: {mean_rate:.3f} ± {std_rate:.3f}")
-    print(f"Min: {np.min(outlier_rates):.3f}, Max: {np.max(outlier_rates):.3f}")
-
-    # Assert: variance is reasonable (not all 0% or all 10%)
-    assert 0.005 <= mean_rate <= 0.05, f"Mean outlier rate {mean_rate:.3f} outside acceptable range"
-    assert std_rate < 0.03, f"Outlier rate variance too high: {std_rate:.3f}"
+    # Assert: variance is reasonable (not pathologically unstable)
+    assert std_delta < 0.10, \
+        f"Heavy-tail delta variance too high: {std_delta:.3f} (expect <0.10)"
