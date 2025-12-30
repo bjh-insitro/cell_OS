@@ -1,0 +1,228 @@
+================================================================================
+CELL_OS IMPORT DEPENDENCY ANALYSIS
+================================================================================
+
+## SUMMARY
+Total modules analyzed: 347
+Total unique dependencies: 274
+Total dependency edges: 576
+
+## TOP 10 MOST IMPORTED MODULES (Dependency Hotspots)
+--------------------------------------------------------------------------------
+ 51 imports | cell_os.hardware.constants
+     Used by 8 modules
+ 43 imports | cell_os.hardware.injections.base
+     Used by 15 modules
+ 35 imports | cell_os.posh_lv_moi
+     Used by 9 modules
+ 31 imports | cell_os.unit_ops.base
+     Used by 24 modules
+ 30 imports | cell_os.hardware.biological_virtual
+     Used by 29 modules
+ 25 imports | cell_os.epistemic_agent.schemas
+     Used by 12 modules
+ 23 imports | cell_os.inventory
+     Used by 20 modules
+ 19 imports | cell_os.hardware._impl
+     Used by 8 modules
+ 17 imports | cell_os.unit_ops
+     Used by 6 modules
+ 16 imports | cell_os.workflows
+     Used by 11 modules
+
+## CIRCULAR DEPENDENCIES
+--------------------------------------------------------------------------------
+Found 6 circular dependency cycles:
+
+Cycle 1:
+  cell_os.titration_loop
+    -> imports
+  cell_os.titration_lab
+    -> imports
+  cell_os.budget_manager
+    -> imports
+  cell_os.titration_loop (completes cycle)
+
+Cycle 2:
+  cell_os.upstream
+    -> imports
+  cell_os.guide_design_v2
+    -> imports
+  cell_os.upstream (completes cycle)
+
+Cycle 3:
+  cell_os.hardware.biological_virtual
+    -> imports
+  cell_os.hardware.detector_stack
+    -> imports
+  cell_os.hardware.biological_virtual (completes cycle)
+
+Cycle 4:
+  cell_os.hardware.beam_search
+    -> imports
+  cell_os.hardware.beam_search (completes cycle)
+
+Cycle 5:
+  cell_os.core.experiment
+    -> imports
+  cell_os.core.temporal_causality
+    -> imports
+  cell_os.core.experiment (completes cycle)
+
+Cycle 6:
+  cell_os.cell_thalamus.boundary_detection
+    -> imports
+  cell_os.cell_thalamus.boundary_detection (completes cycle)
+
+
+## MODULES WITH EXCESSIVE IMPORTS (>20 imports)
+--------------------------------------------------------------------------------
+ 63 imports | cell_os.hardware.biological_virtual
+     Cell_OS dependencies: 18
+ 49 imports | cell_os.epistemic_agent.loop
+     Cell_OS dependencies: 17
+ 45 imports | cell_os.hardware.assays.cell_painting
+     Cell_OS dependencies: 9
+ 30 imports | cell_os.epistemic_agent.observation_aggregator
+     Cell_OS dependencies: 8
+ 29 imports | cell_os.hardware.beam_search.search
+     Cell_OS dependencies: 6
+ 26 imports | cell_os.autonomous_executor
+     Cell_OS dependencies: 4
+ 26 imports | cell_os.lab_world_model
+     Cell_OS dependencies: 10
+ 26 imports | cell_os.api.routes.analysis
+     Cell_OS dependencies: 5
+ 25 imports | cell_os.phase0
+     Cell_OS dependencies: 5
+ 25 imports | cell_os.epistemic_agent.beliefs.state
+     Cell_OS dependencies: 3
+ 24 imports | cell_os.epistemic_agent.world
+     Cell_OS dependencies: 6
+ 23 imports | cell_os.mcb_crash
+     Cell_OS dependencies: 7
+ 22 imports | cell_os.plate_executor_v2_parallel
+ 22 imports | cell_os.wcb_crash
+     Cell_OS dependencies: 7
+ 22 imports | cell_os.epistemic_agent.agent.policy_rules
+     Cell_OS dependencies: 6
+ 21 imports | cell_os.simulation
+     Cell_OS dependencies: 4
+ 21 imports | cell_os.simulation.posh_screen_wrapper
+     Cell_OS dependencies: 5
+
+## IMPORT STYLE INCONSISTENCIES (Mixed relative/absolute)
+--------------------------------------------------------------------------------
+Found 111 modules mixing relative and absolute imports:
+
+  cell_os.database.base
+  cell_os.workflow_execution.repository
+  cell_os.workflow_execution.executor
+  cell_os.hardware.optical_materials
+  cell_os.hardware.confidence_calibrator
+  cell_os.hardware.virtual
+  cell_os.hardware.episode
+  cell_os.hardware.epistemic_policies
+  cell_os.hardware.carryover_effects
+  cell_os.hardware.tecan
+  cell_os.hardware.biological_virtual
+  cell_os.hardware.aspiration_effects
+  cell_os.hardware.material_assignments
+  cell_os.hardware.detector_stack
+  cell_os.hardware.run_context
+  cell_os.hardware.hamilton
+  cell_os.hardware.evaporation_effects
+  cell_os.hardware.stochastic_biology
+  cell_os.core.observation
+  cell_os.core.experiment
+
+## LONG DEPENDENCY CHAINS (5+ levels)
+--------------------------------------------------------------------------------
+Found 2095 long dependency chains:
+
+Chain 1 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.recipe_optimizer -> cell_os.unit_ops.base
+
+Chain 2 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.recipe_optimizer -> cell_os.unit_ops.parametric
+
+Chain 3 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.posh_lv_moi -> cell_os.lab_world_model
+
+Chain 4 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.posh_lv_moi -> cell_os.posh_scenario
+
+Chain 5 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.posh_lv_moi -> cell_os.posh_library_design
+
+Chain 6 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.unit_ops.parametric -> cell_os.unit_ops.operations.transfection
+
+Chain 7 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.unit_ops.parametric -> cell_os.unit_ops.operations.vessel_ops
+
+Chain 8 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.unit_ops.parametric -> cell_os.unit_ops.liquid_handling
+
+Chain 9 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.unit_ops.parametric -> cell_os.unit_ops.analysis
+
+Chain 10 (5 levels):
+  cell_os.titration_loop -> cell_os.titration_lab -> cell_os.budget_manager -> cell_os.unit_ops.parametric -> cell_os.unit_ops.imaging
+
+
+## HIGH COUPLING ANALYSIS
+--------------------------------------------------------------------------------
+Top modules by total coupling (imports + imported by):
+
+ 47 total | 18 out | 29 in  | cell_os.hardware.biological_virtual
+ 25 total |  1 out | 24 in  | cell_os.unit_ops.base
+ 23 total | 11 out | 12 in  | cell_os.unit_ops.parametric
+ 17 total | 17 out |  0 in  | cell_os.epistemic_agent.loop
+ 15 total | 10 out |  5 in  | cell_os.lab_world_model
+ 15 total | 15 out |  0 in  | cell_os.hardware.injections
+ 14 total |  3 out | 11 in  | cell_os.workflows
+ 12 total |  3 out |  9 in  | cell_os.posh_lv_moi
+ 11 total |  3 out |  8 in  | cell_os.core.observation
+
+## REFACTORING RECOMMENDATIONS
+--------------------------------------------------------------------------------
+
+1. CRITICAL: Resolve circular dependencies
+   - Circular imports can cause initialization issues
+   - Consider dependency injection or interface extraction
+
+2. REDUCE MODULE COMPLEXITY
+   - 17 modules have >20 imports
+   - Consider splitting large modules
+   - Extract interfaces or create facades
+
+3. DECOUPLE HIGH-COUPLING MODULES
+   - 'cell_os.hardware.biological_virtual' has coupling score of 47
+   - Consider introducing abstractions or mediators
+
+4. STANDARDIZE IMPORT STYLE
+   - 111 modules mix relative/absolute imports
+   - Establish and enforce a consistent import convention
+
+## DEPENDENCY HOTSPOTS (Most Critical Modules)
+--------------------------------------------------------------------------------
+These modules are imported most frequently and should be:
+- Well-tested and stable
+- Have clear, minimal interfaces
+- Documented thoroughly
+
+  • cell_os.hardware.constants (51 imports)
+    Depends on: 0 modules | Imported by: 8 modules
+  • cell_os.hardware.injections.base (43 imports)
+    Depends on: 0 modules | Imported by: 15 modules
+  • cell_os.posh_lv_moi (35 imports)
+    Depends on: 3 modules | Imported by: 9 modules
+  • cell_os.unit_ops.base (31 imports)
+    Depends on: 1 modules | Imported by: 24 modules
+  • cell_os.hardware.biological_virtual (30 imports)
+    Depends on: 18 modules | Imported by: 29 modules
+
+================================================================================
+END OF REPORT
+================================================================================

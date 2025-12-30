@@ -1,0 +1,148 @@
+================================================================================
+POTENTIALLY UNUSED IMPORTS ANALYSIS
+================================================================================
+
+Found 46 files with potentially unused imports
+
+Total potentially unused imports: 74
+
+## TOP 20 FILES WITH MOST UNUSED IMPORTS
+--------------------------------------------------------------------------------
+
+wcb_crash.py
+  7 unused out of 22 total imports
+  Unused imports:
+    Line   9: base64 (from base64)
+    Line  13: io (from io)
+    Line  18: BiologicalVirtualMachine (from cell_os.hardware.biological_virtual)
+    Line  19: WorkflowExecutor (from cell_os.workflow_executor)
+    Line  20: ParametricOps (from cell_os.unit_ops.parametric)
+    Line  21: VesselLibrary (from cell_os.unit_ops.base)
+    Line  22: FailureModeSimulator (from cell_os.simulation.failure_modes)
+
+mcb_crash.py
+  5 unused out of 23 total imports
+  Unused imports:
+    Line  22: BiologicalVirtualMachine (from cell_os.hardware.biological_virtual)
+    Line  23: WorkflowExecutor (from cell_os.workflow_executor)
+    Line  24: ParametricOps (from cell_os.unit_ops.parametric)
+    Line  25: VesselLibrary (from cell_os.unit_ops.base)
+    Line  26: FailureModeSimulator (from cell_os.simulation.failure_modes)
+
+simulation/posh_screen_wrapper.py
+  5 unused out of 21 total imports
+  Unused imports:
+    Line  12: List (from typing)
+    Line  17: ParametricOps (from cell_os.unit_ops.parametric)
+    Line  18: VesselLibrary (from cell_os.unit_ops.base)
+    Line  19: Inventory (from cell_os.inventory)
+    Line  20: get_posh_cellpaint_panel (from cell_os.cellpaint_panels)
+
+unit_ops/protocols.py
+  3 unused out of 10 total imports
+  Unused imports:
+    Line   8: List (from typing)
+    Line   9: UnitOp (from base)
+    Line  17: get_cell_line_profile (from cell_os.cell_line_database)
+
+epistemic_agent/world.py
+  3 unused out of 23 total imports
+  Unused imports:
+    Line  13: uuid (from uuid)
+    Line  18: defaultdict (from collections)
+    Line  19: dataclass (from dataclasses)
+
+plate_executor_parallel.py
+  2 unused out of 18 total imports
+  Unused imports:
+    Line  12: dataclass (from dataclasses)
+    Line  16: AssayType (from src.cell_os.core.assay)
+
+autonomous_executor.py
+  2 unused out of 23 total imports
+  Unused imports:
+    Line  20: Path (from pathlib)
+    Line  21: json (from json)
+
+plate_executor_v2.py
+  2 unused out of 20 total imports
+  Unused imports:
+    Line  26: WellSpec (from src.cell_os.epistemic_agent.schemas)
+    Line  28: AssayType (from src.cell_os.core.assay)
+
+budget_manager.py
+  2 unused out of 15 total imports
+  Unused imports:
+    Line  12: ScreenConfig (from cell_os.posh_lv_moi)
+    Line  40: json (from json)
+
+hardware/confidence_calibrator.py
+  2 unused out of 16 total imports
+  Unused imports:
+    Line  21: Path (from pathlib)
+    Line  24: StratifiedKFold (from sklearn.model_selection)
+
+calibration/identifiability_inference.py
+  2 unused out of 7 total imports
+  Unused imports:
+    Line  13: stats (from scipy)
+    Line  14: minimize (from scipy.optimize)
+
+calibration/bead_plate_calibration.py
+  2 unused out of 16 total imports
+  Unused imports:
+    Line   7: dataclass (from dataclasses)
+    Line 641: Counter (from collections)
+
+unit_ops/parametric.py
+  2 unused out of 14 total imports
+  Unused imports:
+    Line  11: ImagingOps (from imaging)
+    Line  12: AnalysisOps (from analysis)
+
+cell_thalamus/predictive_modeling.py
+  2 unused out of 19 total imports
+  Unused imports:
+    Line  17: Path (from pathlib)
+    Line  21: cross_val_score (from sklearn.model_selection)
+
+hardware/beam_search/search.py
+  2 unused out of 26 total imports
+  Unused imports:
+    Line  12: BiologicalVirtualMachine (from biological_virtual)
+    Line  22: Phase5EpisodeRunner (from runner)
+
+titration_loop.py
+  1 unused out of 19 total imports
+  Unused imports:
+    Line   6: dataclass (from dataclasses)
+
+dino_analysis.py
+  1 unused out of 13 total imports
+  Unused imports:
+    Line  10: Path (from pathlib)
+
+simulated_perturbation_executor.py
+  1 unused out of 6 total imports
+  Unused imports:
+    Line  10: Dict (from typing)
+
+posh_screen_designer.py
+  1 unused out of 4 total imports
+  Unused imports:
+    Line   9: Optional (from typing)
+
+html_reporter.py
+  1 unused out of 12 total imports
+  Unused imports:
+    Line   7: List (from typing)
+
+================================================================================
+NOTE: This is a heuristic analysis and may include false positives.
+Examples of false positives:
+  - Imports used only in type hints or string annotations
+  - Imports used via getattr() or eval()
+  - Imports that define module-level behavior on import
+  - Imports required for side effects
+Manual review recommended before removing any imports.
+================================================================================

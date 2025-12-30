@@ -1,0 +1,92 @@
+================================================================================
+DETAILED CIRCULAR DEPENDENCY ANALYSIS
+================================================================================
+
+Found 2 circular dependency cycles
+
+================================================================================
+CYCLE #1: 1-node cycle
+================================================================================
+
+Cycle path:
+  [1] cell_os.budget_manager
+      ↓ imports
+  [2] cell_os.budget_manager (completes cycle)
+
+Import details:
+
+  cell_os.budget_manager
+    → imports from: cell_os.budget_manager
+    (indirect dependency)
+
+RECOMMENDED RESOLUTION:
+--------------------------------------------------------------------------------
+Strategy: Identify and Break Weakest Link
+Difficulty: Medium
+Description: Find the edge with fewest imports and break it
+
+Steps:
+  1. Count imports on each edge of the cycle
+  2. Choose the edge with the fewest/simplest imports
+  3. Apply one of the simple strategies to that edge
+  4. Consider if the long chain indicates poor architecture
+
+ALTERNATIVE STRATEGIES:
+--------------------------------------------------------------------------------
+
+Architectural Refactoring (Difficulty: Hard)
+  Long cycles often indicate architectural issues
+
+
+================================================================================
+CYCLE #2: 1-node cycle
+================================================================================
+
+Cycle path:
+  [1] cell_os.guide_design_v2
+      ↓ imports
+  [2] cell_os.guide_design_v2 (completes cycle)
+
+Import details:
+
+  cell_os.guide_design_v2
+    → imports from: cell_os.guide_design_v2
+    (indirect dependency)
+
+RECOMMENDED RESOLUTION:
+--------------------------------------------------------------------------------
+Strategy: Identify and Break Weakest Link
+Difficulty: Medium
+Description: Find the edge with fewest imports and break it
+
+Steps:
+  1. Count imports on each edge of the cycle
+  2. Choose the edge with the fewest/simplest imports
+  3. Apply one of the simple strategies to that edge
+  4. Consider if the long chain indicates poor architecture
+
+ALTERNATIVE STRATEGIES:
+--------------------------------------------------------------------------------
+
+Architectural Refactoring (Difficulty: Hard)
+  Long cycles often indicate architectural issues
+
+
+================================================================================
+OVERALL RECOMMENDATIONS
+================================================================================
+
+Priority Order:
+
+1. Fix Cycle #1 (1 nodes)
+   → Requires architectural review
+
+2. Fix Cycle #2 (1 nodes)
+   → Requires architectural review
+
+General Guidelines:
+  • Always prefer TYPE_CHECKING for type-only imports
+  • Consider if circular deps indicate wrong module boundaries
+  • Use dependency injection for runtime dependencies
+  • Create interface modules for shared types
+  • Apply dependency inversion principle
