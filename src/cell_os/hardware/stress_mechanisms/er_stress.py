@@ -48,60 +48,55 @@ class ERStressMechanism(StressMechanism):
         contact_pressure = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
         contact_stress_rate = 0.02 * contact_pressure
 
+        # Phase 2: Vessel-level ER stress (no subpops)
+        S = vessel.er_stress
+
         if not vessel.compounds:
             # No compounds, but contact pressure can still induce ER stress
-            for subpop in vessel.subpopulations.values():
-                S = subpop['er_stress']
-                dS_dt = -ER_STRESS_K_OFF * S + contact_stress_rate * (1.0 - S)
-                subpop['er_stress'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-
-            vessel.er_stress = vessel.er_stress_mixture
+            dS_dt = -ER_STRESS_K_OFF * S + contact_stress_rate * (1.0 - S)
+            vessel.er_stress = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
             return
 
-        # Update each subpopulation with shifted IC50
-        for subpop in vessel.subpopulations.values():
-            ic50_shift = subpop['ic50_shift']
+        # Compute induction term from all ER-stress compounds
+        induction_total = 0.0
+        for compound, dose_uM in vessel.compounds.items():
+            if dose_uM <= 0:
+                continue
 
-            # Compute induction term from all ER-stress compounds
-            induction_total = 0.0
-            for compound, dose_uM in vessel.compounds.items():
-                if dose_uM <= 0:
-                    continue
+            meta = vessel.compound_meta.get(compound)
+            if not meta:
+                continue
 
-                meta = vessel.compound_meta.get(compound)
-                if not meta:
-                    continue
+            stress_axis = meta['stress_axis']
+            ic50_uM = meta['ic50_uM']
+            potency_scalar = meta.get('potency_scalar', 1.0)
 
-                stress_axis = meta['stress_axis']
-                ic50_uM = meta['ic50_uM']
-                potency_scalar = meta.get('potency_scalar', 1.0)
+            # Only ER-stress and proteostasis axes induce ER stress
+            if stress_axis not in ["er_stress", "proteostasis"]:
+                continue
 
-                # Only ER-stress and proteostasis axes induce ER stress
-                if stress_axis not in ["er_stress", "proteostasis"]:
-                    continue
+            # Phase 3: Apply IC50 shift (continuous heterogeneity via bio_random_effects)
+            bio_re = getattr(vessel, "bio_random_effects", None) or {}
+            ic50_shift_mult = float(bio_re.get("ic50_shift_mult", 1.0))
+            ic50_shifted = max(1e-12, float(ic50_uM) * ic50_shift_mult)
 
-                # Apply IC50 shift
-                ic50_shifted = ic50_uM * ic50_shift
-                f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
-                induction_total += f_axis
+            f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
+            induction_total += f_axis
 
-            induction_total = float(min(1.0, induction_total))
+        induction_total = float(min(1.0, induction_total))
 
-            # Apply run context stress sensitivity
-            bio_mods = self.vm.run_context.get_biology_modifiers()
-            k_on_effective = ER_STRESS_K_ON * bio_mods['stress_sensitivity']
+        # Apply run context stress sensitivity
+        bio_mods = self.vm.run_context.get_biology_modifiers()
+        k_on_effective = ER_STRESS_K_ON * bio_mods['stress_sensitivity']
 
-            # Phase 1: Apply intrinsic biology random effect (persistent per-vessel)
-            if vessel.bio_random_effects:
-                k_on_effective *= vessel.bio_random_effects['stress_sensitivity_mult']
+        # Phase 1: Apply intrinsic biology random effect (persistent per-vessel)
+        bio_re = getattr(vessel, "bio_random_effects", None) or {}
+        stress_sens_mult = float(bio_re.get('stress_sensitivity_mult', 1.0))
+        k_on_effective *= stress_sens_mult
 
-            # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S + contact_stress * (1-S)
-            S = subpop['er_stress']
-            dS_dt = k_on_effective * induction_total * (1.0 - S) - ER_STRESS_K_OFF * S + contact_stress_rate * (1.0 - S)
-            subpop['er_stress'] = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-
-        # Update scalar for backward compatibility
-        vessel.er_stress = vessel.er_stress_mixture
+        # Dynamics: dS/dt = k_on * f * (1-S) - k_off * S + contact_stress * (1-S)
+        dS_dt = k_on_effective * induction_total * (1.0 - S) - ER_STRESS_K_OFF * S + contact_stress_rate * (1.0 - S)
+        vessel.er_stress = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
 
         # Phase 2A.1: Check for stochastic death commitment event
         # Phase 2A.3: Refactored to use shared commitment helper
@@ -113,29 +108,21 @@ class ERStressMechanism(StressMechanism):
             dt_h=hours
         )
 
-        # Propose vessel-level death hazard from weighted per-subpop hazards
-        hazard_er_total = 0.0
+        # Phase 2: Vessel-level death hazard (no subpop aggregation)
+        S = vessel.er_stress
 
-        for subpop in vessel.subpopulations.values():
-            threshold_shift = subpop['stress_threshold_shift']
-            S = subpop['er_stress']
+        # Phase 2: No threshold shift (continuous heterogeneity via bio_random_effects)
+        theta = ER_STRESS_DEATH_THETA
+        width = ER_STRESS_DEATH_WIDTH
 
-            # Shifted threshold: sensitive (shift < 1.0) die at lower stress
-            theta_shifted = ER_STRESS_DEATH_THETA * threshold_shift
-            width_shifted = ER_STRESS_DEATH_WIDTH * threshold_shift
+        if S > theta:
+            x = (S - theta) / width
+            sigmoid = float(1.0 / (1.0 + np.exp(-x)))
+            hazard_er = ER_STRESS_H_MAX * sigmoid
 
-            if S > theta_shifted:
-                x = (S - theta_shifted) / width_shifted
-                sigmoid = float(1.0 / (1.0 + np.exp(-x)))
-                hazard_subpop = ER_STRESS_H_MAX * sigmoid * subpop['fraction']
-                hazard_er_total += hazard_subpop
-
-        # Phase 1: Apply intrinsic biology hazard scale multiplier (persistent per-vessel)
-        if vessel.bio_random_effects and hazard_er_total > 0:
-            hazard_er_total *= vessel.bio_random_effects['hazard_scale_mult']
-
-        if hazard_er_total > 0:
-            self._propose_hazard(vessel, hazard_er_total, "death_er_stress")
+            # Note: hazard_scale_mult is applied in _commit_step_death, not here
+            # This keeps RAW hazard proposals separate from vessel-level scaling
+            self._propose_hazard(vessel, hazard_er, "death_er_stress")
 
         # Phase 2A.1: Add committed death hazard (separate channel for provenance)
         # Phase 2A.3: Check for committed hazard using shared helper
