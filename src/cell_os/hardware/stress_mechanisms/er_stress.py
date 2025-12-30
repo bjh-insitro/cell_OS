@@ -17,6 +17,7 @@ from ..constants import (
     ER_DAMAGE_K_ACCUM,
     ER_DAMAGE_K_REPAIR,
     ER_DAMAGE_BOOST,
+    ER_DAMAGE_RECOVERY_SLOW,
     INTERNAL_STRESS_TIMESTEP_H,
 )
 
@@ -117,11 +118,16 @@ class ERStressMechanism(StressMechanism):
             dD_dt = ER_DAMAGE_K_ACCUM * S - ER_DAMAGE_K_REPAIR * D
             vessel.er_damage = float(np.clip(D + dD_dt * dt, 0.0, 1.0))
 
-            # Apply damage boost to induction (damaged cells stress faster)
-            k_on_boosted = k_on_effective * (1.0 + ER_DAMAGE_BOOST * vessel.er_damage)
+            # CONVEX damage boost (FIX: D² makes damage mechanistically compulsory)
+            # At D=0.5: 2.25× induction boost (vs 1.375× with linear)
+            D_current = vessel.er_damage
+            k_on_boosted = k_on_effective * (1.0 + ER_DAMAGE_BOOST * D_current * D_current)
 
-            # Update stress (using boosted induction rate)
-            dS_dt = k_on_boosted * induction_total * (1.0 - S) - ER_STRESS_K_OFF * S + contact_stress_rate * (1.0 - S)
+            # Recovery slowdown (FIX: damage visible in trajectory slopes, not just rechallenge)
+            k_off_effective = ER_STRESS_K_OFF / (1.0 + ER_DAMAGE_RECOVERY_SLOW * D_current)
+
+            # Update stress (using boosted induction and slowed recovery)
+            dS_dt = k_on_boosted * induction_total * (1.0 - S) - k_off_effective * S + contact_stress_rate * (1.0 - S)
             vessel.er_stress = float(np.clip(S + dS_dt * dt, 0.0, 1.0))
 
         # --- Hazard proposal and commitment (once per update, using final stress) ---

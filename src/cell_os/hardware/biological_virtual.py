@@ -121,6 +121,7 @@ from .constants import (
     ENABLE_FEEDING_COSTS,
     ENABLE_INTERVENTION_COSTS,
     ENABLE_CONTINUOUS_SUBTHRESHOLD_COST,
+    ENABLE_SYNERGISTIC_COUPLING,
     # Core parameters (used directly by VM)
     DEFAULT_MEDIA_GLUCOSE_mM,
     DEFAULT_MEDIA_GLUTAMINE_mM,
@@ -131,6 +132,8 @@ from .constants import (
     WASHOUT_TIME_COST_H,
     WASHOUT_CONTAMINATION_RISK,
     WASHOUT_INTENSITY_RECOVERY_H,
+    SYNERGY_GATE_S0,
+    SYNERGY_K_HAZARD,
     # Death accounting
     DEATH_EPS,
     TRACKED_DEATH_FIELDS,
@@ -1028,6 +1031,23 @@ class BiologicalVirtualMachine(VirtualMachine):
             contam_hazard = get_contamination_death_hazard(vessel, self.contamination_config)
             if contam_hazard > 0.0:
                 self._propose_hazard(vessel, contam_hazard, 'death_contamination')
+
+        # Synergistic coupling (pedagogy: combinations are risky)
+        if ENABLE_SYNERGISTIC_COUPLING:
+            # Gate function: suppress noise below threshold, scale above it
+            def gate(x):
+                return float(max(0.0, (x - SYNERGY_GATE_S0) / (1.0 - SYNERGY_GATE_S0)))
+
+            S_er = float(np.clip(getattr(vessel, "er_stress", 0.0), 0.0, 1.0))
+            S_mito = float(np.clip(getattr(vessel, "mito_dysfunction", 0.0), 0.0, 1.0))
+
+            # Synergy signal: multiplicative coupling (not additive)
+            syn = gate(S_er) * gate(S_mito)
+
+            if syn > 0.0:
+                synergy_hazard = SYNERGY_K_HAZARD * syn
+                # Credit to death_compound (synergy is about combined treatment risk)
+                self._propose_hazard(vessel, synergy_hazard, 'death_compound')
 
         # 3) Commit death once (combined survival + proportional allocation)
         self._commit_step_death(vessel, hours)

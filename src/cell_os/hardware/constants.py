@@ -64,9 +64,11 @@ ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
 # ER damage memory dynamics (adaptive history trace)
 # Damage accumulates from stress and repairs slowly, creating persistent memory
 # that makes rechallenge responses history-dependent (prevents "washout resets everything")
-ER_DAMAGE_K_ACCUM = 0.02  # Accumulation rate (per hour): dD/dt += k_accum * S
+# FIX: Increased K_ACCUM 3× for reachability, convex boost (D²) for compulsory tracking
+ER_DAMAGE_K_ACCUM = 0.06  # Accumulation rate (per hour): dD/dt += k_accum * S
 ER_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
-ER_DAMAGE_BOOST = 0.75  # Induction boost: k_on *= (1 + boost * D), at D=1 → 1.75× faster stress
+ER_DAMAGE_BOOST = 5.0  # Convex induction boost: k_on *= (1 + boost * D²), makes damage mechanistically compulsory
+ER_DAMAGE_RECOVERY_SLOW = 1.0  # Recovery slowdown: k_off /= (1 + slow * D), damage visible in trajectory slopes
 
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
 MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
@@ -87,6 +89,13 @@ ENABLE_TRANSPORT_MITO_COUPLING = True
 TRANSPORT_MITO_COUPLING_DELAY_H = 18.0  # Delay before coupling activates
 TRANSPORT_MITO_COUPLING_THRESHOLD = 0.6  # Transport dysfunction must exceed this
 TRANSPORT_MITO_COUPLING_RATE = 0.02  # Mito dysfunction induction rate (per hour)
+
+# Synergistic coupling (pedagogy: combinations are risky)
+# Multiplicative hazard interaction when multiple stress axes are elevated
+# Teaches "multi-target interventions create synergy, not just additive badness"
+ENABLE_SYNERGISTIC_COUPLING = True
+SYNERGY_GATE_S0 = 0.2  # Stress threshold below which synergy doesn't activate (suppresses noise)
+SYNERGY_K_HAZARD = 0.035  # Synergy hazard coefficient (per hour): h = k * gate(S_er) * gate(S_mito)
 
 # Death accounting epsilon (for conservation law enforcement)
 DEATH_EPS = 1e-9
