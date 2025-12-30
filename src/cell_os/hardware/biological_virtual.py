@@ -993,6 +993,13 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Check all exposures to see if any have non-negligible effective dose
         exposures = vessel.compound_meta.get('exposures', {})
+
+        # FIX: If there are NO exposures at all, stress decays naturally via k_off
+        # Recovery is ONLY for "post-washout" acceleration, not baseline decay
+        # Applying recovery when exposures={} creates operator splitting with k_off
+        if not exposures:
+            return  # No exposures → use natural k_off decay only
+
         max_effective_dose = 0.0
 
         for compound in exposures.keys():
