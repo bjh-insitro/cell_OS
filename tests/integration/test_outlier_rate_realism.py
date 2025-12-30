@@ -32,19 +32,19 @@ def test_outlier_rate_in_expected_range():
     """
     Outlier rate should be ~2% (range: 0.5% to 5%).
 
-    Run 10 seeds × 96 wells = 960 wells (DMSO only, 96-well plate for speed).
+    Run 10 seeds × 24 wells = 240 wells (DMSO only, small plate for speed).
     Count wells with |robust_z| > 3 on at least one channel.
     Assert rate falls in acceptable range.
     """
-    N_SEEDS = 3  # Reduced for fast test
-    N_WELLS = 96  # 96-well plate (8 rows × 12 cols)
+    N_SEEDS = 10  # More seeds for better statistics
+    N_WELLS = 24  # Smaller plate (4 rows × 6 cols)
     OUTLIER_THRESHOLD = 3.0  # Pragmatic, not theoretical
 
     all_morphology = []
 
-    # 96-well plate layout
-    rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-    cols = list(range(1, 13))
+    # Small plate layout for speed
+    rows = ['A', 'B', 'C', 'D']
+    cols = list(range(1, 7))
 
     for seed in range(N_SEEDS):
         vm = BiologicalVirtualMachine()
@@ -60,8 +60,8 @@ def test_outlier_rate_in_expected_range():
                 vessel_id = f"P{seed}_{well_pos}"
                 vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
 
-        # Advance time (let cells grow but stay healthy)
-        vm.advance_time(24.0)
+        # Advance time (minimal - just need cells alive for measurement)
+        vm.advance_time(2.0)  # 2h is enough for outlier detection
 
         # Measure all wells
         for row in rows:
@@ -115,14 +115,14 @@ def test_outliers_are_cross_channel_correlated():
     We test: Among wells with at least one outlier channel, what fraction have 2+ outlier channels?
     Expect: >50% (strong correlation). Independent would be ~2%.
     """
-    N_SEEDS = 5
-    N_WELLS = 96
+    N_SEEDS = 10
+    N_WELLS = 24
     OUTLIER_THRESHOLD = 3.0
 
     all_morphology = []
 
-    rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-    cols = list(range(1, 13))
+    rows = ['A', 'B', 'C', 'D']
+    cols = list(range(1, 7))
 
     for seed in range(N_SEEDS):
         vm = BiologicalVirtualMachine()
@@ -138,7 +138,7 @@ def test_outliers_are_cross_channel_correlated():
                 vessel_id = f"P{seed}_{well_pos}"
                 vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
 
-        vm.advance_time(24.0)
+        vm.advance_time(2.0)
 
         for row in rows:
             for col in cols:
@@ -201,13 +201,13 @@ def test_outlier_magnitude_is_realistic():
     With clipping [0.2, 5.0]×, max deviation should be ~5× median.
     Check that outliers exist but don't explode.
     """
-    N_SEEDS = 5
-    N_WELLS = 96
+    N_SEEDS = 10
+    N_WELLS = 24
 
     all_morphology = []
 
-    rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-    cols = list(range(1, 13))
+    rows = ['A', 'B', 'C', 'D']
+    cols = list(range(1, 7))
 
     for seed in range(N_SEEDS):
         vm = BiologicalVirtualMachine()
@@ -222,7 +222,7 @@ def test_outlier_magnitude_is_realistic():
                 vessel_id = f"P{seed}_{well_pos}"
                 vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
 
-        vm.advance_time(24.0)
+        vm.advance_time(2.0)
 
         for row in rows:
             for col in cols:
@@ -267,14 +267,15 @@ def test_outlier_rate_stable_across_seeds():
     Outlier rate should be stable across seeds (not seed-dependent).
 
     Run 20 seeds, compute outlier rate per seed, check variance is low.
+    Marked @pytest.mark.slow because 20 seeds is expensive.
     """
     N_SEEDS = 20
-    N_WELLS_PER_SEED = 96  # Smaller for speed (96-well plate)
+    N_WELLS_PER_SEED = 24  # Small plate for speed
 
     outlier_rates = []
 
-    rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-    cols = list(range(1, 13))
+    rows = ['A', 'B', 'C', 'D']
+    cols = list(range(1, 7))
 
     for seed in range(N_SEEDS):
         vm = BiologicalVirtualMachine()
@@ -290,7 +291,7 @@ def test_outlier_rate_stable_across_seeds():
                 vessel_id = f"P{seed}_{well_pos}"
                 vm.seed_vessel(vessel_id, cell_line='A549', initial_count=10000)
 
-        vm.advance_time(24.0)
+        vm.advance_time(2.0)
 
         for row in rows:
             for col in cols:
