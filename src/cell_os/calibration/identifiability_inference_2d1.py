@@ -400,7 +400,14 @@ def learn_type_prototypes(
 
         # Extract morphology after onset
         onset_idx = np.searchsorted(times, onset_h)
-        morph_post = observations[v_idx, onset_idx:, MORPH_FEATURES]
+        # Split indexing to avoid NumPy advanced indexing footgun
+        morph_post = observations[v_idx, onset_idx:, :]  # (T, F_total)
+        morph_post = morph_post[:, MORPH_FEATURES]  # (T, F_selected)
+
+        # Assert shape to catch regressions
+        assert morph_post.ndim == 2, f"Expected (T, F), got {morph_post.shape}"
+        assert morph_post.shape[1] == len(MORPH_FEATURES), \
+            f"Expected {len(MORPH_FEATURES)} features, got {morph_post.shape[1]}"
 
         # Average valid samples
         valid_mask = np.all(np.isfinite(morph_post) & (morph_post > 0), axis=1)

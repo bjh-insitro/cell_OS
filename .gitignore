@@ -20,6 +20,9 @@ __pycache__/
 *.pyd
 .Python
 
+# macOS metadata
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 *.py[cod]
 *$py.class
@@ -40,3 +43,6 @@ results/epistemic_agent/*.json
 results/epistemic_agent/*.jsonl
 results/epistemic_agent/*.log
 results/epistemic_agent/runs_manifest.json
+
+# Generated output directories
+output/
