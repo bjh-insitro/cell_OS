@@ -82,6 +82,11 @@ TRANSPORT_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair 
 TRANSPORT_DAMAGE_BOOST = 3.0  # Convex induction boost: k_on *= (1 + boost * D²)
 TRANSPORT_DAMAGE_RECOVERY_SLOW = 0.6  # Recovery slowdown: k_off /= (1 + slow * D)
 
+# Phase6a: State-dependent measurement noise (damage-driven heteroskedasticity)
+# Cell Painting assay noise increases with accumulated damage to teach agents uncertainty is path-dependent
+CELL_PAINTING_DAMAGE_CV_SCALE = 0.35  # Scaling: variance rises sharply with damage (pedagogical signal)
+CELL_PAINTING_DAMAGE_CV_CAP = 0.60  # Soft cap: prevents CV > 1.0 at max damage (keeps assay usable)
+
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
 MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
 MITO_DYSFUNCTION_K_OFF = 0.05  # Decay rate constant (per hour)
