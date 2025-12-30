@@ -124,6 +124,13 @@ class StochasticBiologyHelper:
         self.stress_cv = config.get('stress_sensitivity_cv', 0.0)
         self.hazard_cv = config.get('hazard_scale_cv', 0.0)
 
+        # Phase 3.0: IC50 heterogeneity (bugfix - was always 1.0)
+        self.ic50_cv = config.get('ic50_cv', 0.20)  # 20% CV for induction sensitivity
+
+        # Phase 3.1: Death threshold heterogeneity (correlated with IC50)
+        self.death_threshold_cv = config.get('death_threshold_cv', 0.25)  # 25% CV for apoptotic priming
+        self.sensitivity_correlation = config.get('sensitivity_correlation', 0.5)  # ρ = 0.5 (moderate)
+
         # Variance split
         self.plate_fraction = config.get('plate_level_fraction', 0.3)
 
@@ -150,6 +157,8 @@ class StochasticBiologyHelper:
             'growth': 'growth_rate_mult',
             'stress': 'stress_sensitivity_mult',
             'hazard': 'hazard_scale_mult',
+            'ic50': 'ic50_shift_mult',  # Phase 3.0: IC50 heterogeneity (induction sensitivity)
+            'death_theta': 'death_threshold_shift_mult',  # Phase 3.1: Death threshold heterogeneity
         }
 
     def _make_substream_seed(self, offset: int, key: str) -> int:
@@ -178,27 +187,54 @@ class StochasticBiologyHelper:
         Uses deterministic RNG substreams for both plate and lineage,
         making REs independent of instantiation order.
 
+        Phase 3.1: IC50 and death threshold are correlated (ρ ≈ 0.5).
+        - Shared latent component: vessels sensitive to induction are also fragile
+        - Independent noise: correlation is moderate, not synonymous
+        - Applied at both plate and vessel levels
+
         Args:
             lineage_id: Stable vessel lineage identifier
             plate_id: Plate identifier for shared plate-level effects
 
         Returns:
-            Dict with keys: growth_rate_mult, stress_sensitivity_mult, hazard_scale_mult
+            Dict with keys: growth_rate_mult, stress_sensitivity_mult, hazard_scale_mult,
+                           ic50_shift_mult, death_threshold_shift_mult
         """
         # Create per-plate RNG substream (deterministic from plate_id)
         rng_plate = np.random.default_rng(self._make_substream_seed(1, plate_id))
+
+        # Phase 3.1: Sample shared latent for IC50/death_theta correlation
+        z_plate_shared = float(rng_plate.standard_normal())  # Shared fragility component
+        z_plate_theta_indep = float(rng_plate.standard_normal())  # Death threshold-specific noise
+
+        # Construct correlated latents with unit marginal variance:
+        #   z_ic50 = z_shared (variance = 1)
+        #   z_theta = ρ*z_shared + sqrt(1-ρ²)*z_indep (variance = ρ² + (1-ρ²) = 1)
+        #   Corr(z_ic50, z_theta) = ρ
+        rho = self.sensitivity_correlation
+        sqrt_1_minus_rho_sq = np.sqrt(1.0 - rho * rho)
+
         plate_latents = {
             'growth': float(rng_plate.standard_normal()),
             'stress': float(rng_plate.standard_normal()),
             'hazard': float(rng_plate.standard_normal()),
+            'ic50': z_plate_shared,  # Phase 3.0: IC50 heterogeneity
+            'death_theta': rho * z_plate_shared + sqrt_1_minus_rho_sq * z_plate_theta_indep,  # Phase 3.1
         }
 
         # Create per-lineage RNG substream (deterministic from lineage_id)
         rng_lineage = np.random.default_rng(self._make_substream_seed(2, lineage_id))
+
+        # Phase 3.1: Sample shared latent at vessel level too
+        z_vessel_shared = float(rng_lineage.standard_normal())
+        z_vessel_theta_indep = float(rng_lineage.standard_normal())
+
         vessel_latents = {
             'growth': float(rng_lineage.standard_normal()),
             'stress': float(rng_lineage.standard_normal()),
             'hazard': float(rng_lineage.standard_normal()),
+            'ic50': z_vessel_shared,  # Phase 3.0: IC50 heterogeneity
+            'death_theta': rho * z_vessel_shared + sqrt_1_minus_rho_sq * z_vessel_theta_indep,  # Phase 3.1
         }
 
         # Combine hierarchically with proper CV→sigma conversion
@@ -209,8 +245,14 @@ class StochasticBiologyHelper:
                 total_cv = self.growth_cv
             elif short_key == 'stress':
                 total_cv = self.stress_cv
-            else:  # hazard
+            elif short_key == 'hazard':
                 total_cv = self.hazard_cv
+            elif short_key == 'ic50':
+                total_cv = self.ic50_cv
+            elif short_key == 'death_theta':
+                total_cv = self.death_threshold_cv
+            else:
+                total_cv = 0.0  # Unknown key, disable
 
             if self.enabled and total_cv > 0:
                 # Convert CV to log-space sigma (proper lognormal parameterization)

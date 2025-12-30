@@ -120,10 +120,12 @@ from .constants import (
     ENABLE_TRANSPORT_DYSFUNCTION,
     ENABLE_FEEDING_COSTS,
     ENABLE_INTERVENTION_COSTS,
+    ENABLE_CONTINUOUS_SUBTHRESHOLD_COST,
     # Core parameters (used directly by VM)
     DEFAULT_MEDIA_GLUCOSE_mM,
     DEFAULT_MEDIA_GLUTAMINE_mM,
     DEFAULT_DOUBLING_TIME_H,
+    SUBTHRESHOLD_STRESS_GROWTH_PENALTY,
     FEEDING_TIME_COST_H,
     FEEDING_CONTAMINATION_RISK,
     WASHOUT_TIME_COST_H,
@@ -163,6 +165,7 @@ class VesselState:
         self.max_volume_ml = None      # Maximum safe volume for this vessel type
         self.vessel_type = None         # Vessel type identifier (e.g., "384-well", "T75")
         self.total_evaporated_ml = 0.0  # Cumulative evaporation (for tracking)
+        self._evaporation_warning_emitted = False  # Throttle: warn once per vessel
 
         # Compound exposure tracking
         self.compounds = {}  # compound -> dose_uM
@@ -221,6 +224,7 @@ class VesselState:
 
         # Latent stress states (morphology-first, death-later)
         self.er_stress = 0.0  # ER stress level (0-1)
+        self.er_damage = 0.0  # Accumulated ER damage (0-1, persistent memory trace)
         self.er_stress_mixture = 0.0  # Mixed ER stress (for multi-compound interactions)
         self.mito_dysfunction = 0.0  # Mito dysfunction level (0-1)
         self.mito_dysfunction_mixture = 0.0  # Mixed mito dysfunction
@@ -427,7 +431,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_operations = ValidatedRNG(
             np.random.default_rng(seed + 4),
             stream_name="operations",
-            allowed_patterns={"feed", "washout", "_contamination", "_add_media"},
+            allowed_patterns={"feed", "washout", "washout_compound", "_contamination", "_add_media"},
             enforce=True
         )
 
@@ -1120,8 +1124,27 @@ class BiologicalVirtualMachine(VirtualMachine):
             from .operational_events import get_contamination_growth_multiplier
             contamination_growth_multiplier = get_contamination_growth_multiplier(vessel, self.contamination_config)
 
+        # --- 6. Continuous Subthreshold Cost (Pedagogy: prevents threshold surfing) ---
+        # Stress reduces growth rate BEFORE death threshold
+        # Prevents agents from camping at cliff edges where stress is high but death hasn't started
+        stress_penalty_factor = 1.0
+        if ENABLE_CONTINUOUS_SUBTHRESHOLD_COST:
+            # Aggregate stress across all axes (use max, not sum, to avoid double-counting)
+            max_stress = max(
+                float(getattr(vessel, "er_stress", 0.0)),
+                float(getattr(vessel, "mito_dysfunction", 0.0)),
+                float(getattr(vessel, "transport_dysfunction", 0.0))
+            )
+            max_stress = float(np.clip(max_stress, 0.0, 1.0))
+
+            # Linear penalty: 1.0 at S=0, (1 - penalty_coeff) at S=1.0
+            # At S=0.65 (high subthreshold): 67.5% growth
+            # At S=0.3 (mild stress): 85% growth
+            stress_penalty_factor = 1.0 - (SUBTHRESHOLD_STRESS_GROWTH_PENALTY * max_stress)
+            stress_penalty_factor = float(max(0.0, stress_penalty_factor))  # Floor at 0 (full arrest)
+
         # Apply factors (NO viability_factor - death already updated cell_count)
-        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty) * context_growth_modifier * contact_inhibition_factor * contamination_growth_multiplier
+        effective_growth_rate = growth_rate * lag_factor * (1.0 - edge_penalty) * context_growth_modifier * contact_inhibition_factor * contamination_growth_multiplier * stress_penalty_factor
 
         # --- 5. Confluence Saturation (Interval-Integrated) ---
         # Use predictor-corrector to approximate interval-average saturation
@@ -2868,15 +2891,21 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel.current_volume_ml = max(min_volume, vessel.current_volume_ml - evap_ml)
         vessel.total_evaporated_ml += evap_ml
 
-        # Warn if significant evaporation (>20% loss)
+        # Warn if significant evaporation (>20% loss) - throttled to once per vessel
         if vessel.working_volume_ml is not None:
-            volume_loss_fraction = 1.0 - (vessel.current_volume_ml / vessel.working_volume_ml)
-            if volume_loss_fraction > 0.20:
-                logger.warning(
-                    f"Vessel {vessel.vessel_id} has lost {volume_loss_fraction*100:.1f}% volume to evaporation. "
-                    f"Current: {vessel.current_volume_ml*1000:.1f}µL, "
-                    f"Working: {vessel.working_volume_ml*1000:.1f}µL"
-                )
+            # Defensive: ensure flag exists (for old vessels created before this field)
+            if not hasattr(vessel, '_evaporation_warning_emitted'):
+                vessel._evaporation_warning_emitted = False
+
+            if not vessel._evaporation_warning_emitted:
+                volume_loss_fraction = 1.0 - (vessel.current_volume_ml / vessel.working_volume_ml)
+                if volume_loss_fraction > 0.20:
+                    logger.warning(
+                        f"Vessel {vessel.vessel_id} has lost {volume_loss_fraction*100:.1f}% volume to evaporation. "
+                        f"Current: {vessel.current_volume_ml*1000:.1f}µL, "
+                        f"Working: {vessel.working_volume_ml*1000:.1f}µL"
+                    )
+                    vessel._evaporation_warning_emitted = True
 
     def _update_contact_pressure(self, vessel: VesselState, dt_h: float):
         """

@@ -13,6 +13,9 @@ ENABLE_ER_STRESS = True
 ENABLE_MITO_DYSFUNCTION = True
 ENABLE_TRANSPORT_DYSFUNCTION = True
 
+# Pedagogy flag: Continuous subthreshold cost (prevents threshold surfing)
+ENABLE_CONTINUOUS_SUBTHRESHOLD_COST = True
+
 # Nutrient defaults (DMEM-ish, intentionally coarse)
 DEFAULT_MEDIA_GLUCOSE_mM = 25.0
 DEFAULT_MEDIA_GLUTAMINE_mM = 4.0
@@ -26,6 +29,17 @@ MAX_STARVATION_RATE_PER_H = 0.05
 
 # Mitosis model
 DEFAULT_DOUBLING_TIME_H = 24.0
+
+# Subthreshold cost parameter (growth mode)
+# Growth penalty at full stress (S=1.0): 1.0 - SUBTHRESHOLD_STRESS_GROWTH_PENALTY = 50% growth at S=1.0
+# At S=0.65 (high subthreshold): ~67.5% growth rate
+# At S=0.3 (mild): ~85% growth rate
+SUBTHRESHOLD_STRESS_GROWTH_PENALTY = 0.50  # 50% growth reduction at S=1.0
+
+# Stress dynamics numerical stability (dt-independence)
+# Stress mechanisms substep internally to avoid forward Euler integration errors
+# This prevents "coarse actions change physics" exploit after stress→growth coupling
+INTERNAL_STRESS_TIMESTEP_H = 1.0  # Internal timestep for stress ODEs (hours)
 
 # Feeding costs (prevents "feed every hour" dominant strategy)
 ENABLE_FEEDING_COSTS = True
@@ -46,6 +60,13 @@ ER_STRESS_DEATH_THETA = 0.7  # Stress level for death onset
 ER_STRESS_DEATH_WIDTH = 0.08  # Sigmoid width for death transition
 ER_STRESS_H_MAX = 0.03  # Max death hazard (per hour) at full stress
 ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
+
+# ER damage memory dynamics (adaptive history trace)
+# Damage accumulates from stress and repairs slowly, creating persistent memory
+# that makes rechallenge responses history-dependent (prevents "washout resets everything")
+ER_DAMAGE_K_ACCUM = 0.02  # Accumulation rate (per hour): dD/dt += k_accum * S
+ER_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
+ER_DAMAGE_BOOST = 0.75  # Induction boost: k_on *= (1 + boost * D), at D=1 → 1.75× faster stress
 
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
 MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)

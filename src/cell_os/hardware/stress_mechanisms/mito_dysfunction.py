@@ -127,8 +127,10 @@ class MitoDysfunctionMechanism(StressMechanism):
         # Phase 2: Vessel-level death hazard (no subpop aggregation)
         S = vessel.mito_dysfunction
 
-        # Phase 2: No threshold shift (continuous heterogeneity via bio_random_effects)
-        theta = MITO_DYSFUNCTION_DEATH_THETA
+        # Phase 3.1: Apply death threshold shift (correlated with IC50 sensitivity)
+        bio_re = getattr(vessel, "bio_random_effects", None) or {}
+        theta_shift_mult = float(bio_re.get("death_threshold_shift_mult", 1.0))
+        theta = MITO_DYSFUNCTION_DEATH_THETA * theta_shift_mult
         width = MITO_DYSFUNCTION_DEATH_WIDTH
 
         if S > theta:
