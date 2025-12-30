@@ -102,6 +102,13 @@ TRANSPORT_MITO_COUPLING_DELAY_H = 18.0  # Delay before coupling activates
 TRANSPORT_MITO_COUPLING_THRESHOLD = 0.6  # Transport dysfunction must exceed this
 TRANSPORT_MITO_COUPLING_RATE = 0.02  # Mito dysfunction induction rate (per hour)
 
+# ER → Mito susceptibility coupling (damage-driven vulnerability)
+# ER damage amplifies mito induction rate (makes cells more susceptible to mito stress)
+ENABLE_ER_MITO_COUPLING = True
+ER_MITO_COUPLING_K = 3.0  # Max amplification at er_damage=1: k_on *= (1 + K*sigmoid)
+ER_MITO_COUPLING_D0 = 0.3  # Sigmoid midpoint: coupling activates around D≈0.3
+ER_MITO_COUPLING_SLOPE = 8.0  # Sigmoid steepness
+
 # Synergistic coupling (pedagogy: combinations are risky)
 # Multiplicative hazard interaction when multiple stress axes are elevated
 # Teaches "multi-target interventions create synergy, not just additive badness"
