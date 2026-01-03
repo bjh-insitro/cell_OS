@@ -24,7 +24,8 @@ def get_hardware_bias(
     seed: int,
     tech_noise: Dict,
     cell_line: str = None,
-    cell_line_params: Dict = None
+    cell_line_params: Dict = None,
+    run_context = None
 ) -> Dict[str, float]:
     """
     Calculate deterministic hardware bias for a specific well.
@@ -142,8 +143,14 @@ def get_hardware_bias(
         roughness_pin = min(1.0, lognormal_multiplier(roughness_rng_pin, roughness_cv))
 
         # Well-specific uncoupled roughness (breaks perfect correlation)
-        # Uses plate_id + well_position so it's deterministic but independent of volume
-        roughness_seed_well = stable_u32(f"roughness_well_{instrument}_{plate_id}_{well_position}")
+        # EXCHANGEABLE SAMPLING FIX (Attack 2): Use well_uid, not well_position
+        # This makes roughness deterministic but not geometry-coded
+        if run_context:
+            well_uid = run_context.get_well_uid(plate_id, well_position)
+            roughness_seed_well = stable_u32(f"roughness_well_{instrument}_{well_uid}")
+        else:
+            # Fallback for tests that don't provide run_context
+            roughness_seed_well = stable_u32(f"roughness_well_{instrument}_{plate_id}_{well_position}")
         roughness_rng_well = np.random.default_rng(roughness_seed_well)
         roughness_uncoupled = min(1.0, lognormal_multiplier(roughness_rng_well, roughness_cv * 0.25))  # 25% of CV for uncoupled
 

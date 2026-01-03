@@ -7,6 +7,11 @@
 # Data directory contents
 src/data/
 
+# macOS
+.DS_Store
+
+# Generated outputs
+output/
 
 # Python cache
 __pycache__/
@@ -14,6 +19,9 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+
+# macOS metadata
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 *.py[cod]
@@ -35,3 +43,13 @@ results/epistemic_agent/*.json
 results/epistemic_agent/*.jsonl
 results/epistemic_agent/*.log
 results/epistemic_agent/runs_manifest.json
+
+# Generated output directories
+output/
+
+# Generated run outputs / identifiability artifacts
+data/identifiability_*/
+data/**/observations.csv
+runs/
+output/
+results/

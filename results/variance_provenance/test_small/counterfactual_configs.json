@@ -1,0 +1,42 @@
+{
+  "bio": {
+    "position_row_bias_pct": 0.0,
+    "position_col_bias_pct": 0.0,
+    "edge_mean_shift_pct": 0.0,
+    "edge_noise_multiplier": 1.0,
+    "outlier_rate": 0.0,
+    "batch_effect_strength": 1.0
+  },
+  "geo": {
+    "position_row_bias_pct": 2.0,
+    "position_col_bias_pct": 2.0,
+    "edge_mean_shift_pct": -5.0,
+    "edge_noise_multiplier": 1.0,
+    "outlier_rate": 0.0,
+    "batch_effect_strength": 1.0
+  },
+  "noise": {
+    "position_row_bias_pct": 0.0,
+    "position_col_bias_pct": 0.0,
+    "edge_mean_shift_pct": 0.0,
+    "edge_noise_multiplier": 2.0,
+    "outlier_rate": 0.0,
+    "batch_effect_strength": 1.0
+  },
+  "path": {
+    "position_row_bias_pct": 0.0,
+    "position_col_bias_pct": 0.0,
+    "edge_mean_shift_pct": 0.0,
+    "edge_noise_multiplier": 1.0,
+    "outlier_rate": 0.01,
+    "batch_effect_strength": 1.0
+  },
+  "obs": {
+    "position_row_bias_pct": 2.0,
+    "position_col_bias_pct": 2.0,
+    "edge_mean_shift_pct": -5.0,
+    "edge_noise_multiplier": 2.0,
+    "outlier_rate": 0.01,
+    "batch_effect_strength": 1.0
+  }
+}

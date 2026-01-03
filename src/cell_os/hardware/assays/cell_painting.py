@@ -538,8 +538,9 @@ class CellPaintingAssay(AssaySimulator):
         # v7 realism: position effects, edge noise inflation, outliers
         from ..detector_stack import apply_detector_stack
 
-        # Get realism config from run context
-        realism_config = self.vm.run_context.get_realism_config()
+        # Get realism config from run context (or override for counterfactual analysis)
+        realism_config = kwargs.get('realism_config_override') or self.vm.run_context.get_realism_config()
+        realism_config_source = "override" if 'realism_config_override' in kwargs else "run_context"
 
         # Get well position (parse from vessel_id or kwargs)
         well_position = kwargs.get('well_position', vessel.vessel_id)
@@ -590,7 +591,12 @@ class CellPaintingAssay(AssaySimulator):
             )
         # else: skip pipeline_transform (no-op)
 
-        # Assemble detector metadata (v7: includes edge_distance, qc_flags)
+        # Compute realism config hash for auditability
+        import json
+        realism_config_str = json.dumps(realism_config, sort_keys=True)
+        realism_config_hash = hashlib.blake2s(realism_config_str.encode(), digest_size=4).hexdigest()
+
+        # Assemble detector metadata (v7: includes edge_distance, qc_flags, realism provenance)
         detector_metadata = {
             'is_saturated': is_saturated,
             'is_quantized': is_quantized,
@@ -599,6 +605,8 @@ class CellPaintingAssay(AssaySimulator):
             'exposure_multiplier': exposure_multiplier,  # Agent-controlled instrument setting
             'edge_distance': edge_distance,  # v7: continuous edge distance (0 = center, 1 = edge)
             'qc_flags': qc_flags,  # v7: outlier flags (is_outlier, pathology_type, affected_channel)
+            'realism_config_source': realism_config_source,  # v7: "run_context" or "override" (for provenance)
+            'realism_config_hash': realism_config_hash,  # v7: short hash for auditability
         }
 
         return morph, detector_metadata
@@ -679,12 +687,55 @@ class CellPaintingAssay(AssaySimulator):
 
         return washout_multiplier
 
+    def _compute_damage_noise_multiplier(self, vessel: "VesselState") -> float:
+        """
+        Compute noise inflation factor from accumulated cellular damage.
+
+        Damage-driven heteroskedasticity: As cells accumulate scars from stress,
+        measurement variance increases even after stress is removed. This creates
+        path-dependent uncertainty that makes agents learn damage matters.
+
+        Args:
+            vessel: Vessel state with damage fields
+
+        Returns:
+            Noise multiplier in [1.0, 5.0]:
+            - D=0: mult=1.0 (clean cells, baseline noise)
+            - D=0.5: mult~2.05 (moderate damage, ~2× variance)
+            - D=1.0: mult~4.0 (severe damage, ~4× variance)
+        """
+        # Extract damage from all three stress axes
+        er_damage = float(getattr(vessel, 'er_damage', 0.0))
+        mito_damage = float(getattr(vessel, 'mito_damage', 0.0))
+        transport_damage = float(getattr(vessel, 'transport_damage', 0.0))
+
+        # Use max damage (any axis can drive noise inflation)
+        D = max(er_damage, mito_damage, transport_damage)
+        D = np.clip(D, 0.0, 1.0)
+
+        # Smooth monotone functional form with convex curvature:
+        # noise_mult = 1 + a*D + b*D²
+        # Calibration:
+        # - D=0: 1.0
+        # - D=0.5: 1.0 + 1.2*0.5 + 1.8*0.25 = 2.05
+        # - D=1.0: 1.0 + 1.2 + 1.8 = 4.0
+        a = 1.2
+        b = 1.8
+
+        noise_mult = 1.0 + a * D + b * (D ** 2)
+
+        # Bounded to prevent runaway (cap at 5.0)
+        noise_mult = float(np.clip(noise_mult, 1.0, 5.0))
+
+        return noise_mult
+
     def _add_biological_noise(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
         """
         Structured biology:
         - Per-well baseline shifts already applied (in _apply_well_biology_baseline)
         - Stress susceptibility as gain on stress-induced morphology
         - Small residual biological noise (do NOT crank this into amplitude mush)
+        - STATE-DEPENDENT NOISE: Damage inflates outlier probability (heteroskedasticity)
         """
         bio_cfg = self.vm.thalamus_params.get("biological_noise", {})
         base_residual_cv = float(bio_cfg.get("cell_line_cv", 0.04))  # keep modest
@@ -720,7 +771,15 @@ class CellPaintingAssay(AssaySimulator):
 
             # Draw heavy-tail shock once (shared across all channels)
             tech_noise = self.vm.thalamus_params.get('technical_noise', {})
-            p_heavy = tech_noise.get('heavy_tail_frequency', 0.0)
+            p_heavy_base = tech_noise.get('heavy_tail_frequency', 0.0)
+
+            # STATE-DEPENDENT OUTLIERS: Damage increases heavy-tail frequency
+            # More damaged cells show more outlier behavior (irregular morphology, heterogeneity)
+            # Coupling: p_heavy increases monotonically with damage, bounded
+            damage_noise_mult = self._compute_damage_noise_multiplier(vessel)
+            # Scale p_heavy by sqrt(damage_noise_mult) to avoid over-amplification
+            # (p_heavy is probability, not variance - use conservative scaling)
+            p_heavy = float(np.clip(p_heavy_base * np.sqrt(damage_noise_mult), 0.0, 0.25))
 
             if p_heavy > 0:
                 # Heavy-tail shock enabled: overlay on base lognormal
@@ -802,13 +861,15 @@ class CellPaintingAssay(AssaySimulator):
             operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
 
         # Per-channel well factor (breaks global multiplier dominance)
-        # Use per-channel deterministic seeding for transparency and persistence
+        # EXCHANGEABLE SAMPLING FIX (Attack 2): Use well_uid, not well_position
         well_cv = tech_noise['well_cv']
         well_factors_per_channel = {}
         if well_cv > 0:
+            # Get exchangeable well UID from RunContext
+            well_uid = self.vm.run_context.get_well_uid(plate_id, well_position)
             for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
-                # Deterministic per-channel: key to plate + well + channel
-                channel_seed = stable_u32(f"well_factor_{plate_id}_{well_position}_{channel}")
+                # Deterministic per-channel: key to well_uid + channel (NOT position)
+                channel_seed = stable_u32(f"well_factor_{well_uid}_{channel}")
                 channel_rng = np.random.default_rng(channel_seed)
                 well_factors_per_channel[channel] = lognormal_multiplier(channel_rng, well_cv)
         else:
@@ -842,6 +903,22 @@ class CellPaintingAssay(AssaySimulator):
         stain_factor = self._get_plate_stain_factor(plate_id, batch_id, stain_cv) if stain_cv > 0 else 1.0
         focus_factor = self._get_tile_focus_factor(plate_id, batch_id, well_position, focus_cv) if focus_cv > 0 else 1.0
 
+        # STATE-DEPENDENT NOISE: Add per-measurement multiplicative noise scaled by damage
+        # Damaged cells show higher measurement-to-measurement variance (irregular uptake, heterogeneous morphology)
+        # This is applied PER MEASUREMENT (not batch-level), so it creates detectable variance differences
+        damage_noise_mult = self._compute_damage_noise_multiplier(vessel)
+        # Convert noise multiplier to CV: mult=2 → cv~0.35, mult=4 → cv~1.05
+        # Use strong scaling to make damage-dependent variance detectable against baseline noise
+        # Aggressive scaling needed because base Cell Painting noise (biological + technical) dilutes signal
+        damage_cv = 0.35 * (damage_noise_mult - 1.0)  # D=0 → cv=0, D=0.8 → cv~0.74, D=1.0 → cv~1.05
+        # ALWAYS draw from RNG to keep streams synchronized (draw from N(0,1) scaled by cv)
+        if damage_cv > 0:
+            damage_noise_factor = lognormal_multiplier(self.vm.rng_assay, damage_cv)
+        else:
+            # Draw from RNG but don't apply noise (keeps RNG synchronized)
+            _ = self.vm.rng_assay.normal(0, 1)  # Consume RNG state
+            damage_noise_factor = 1.0
+
         # Focus should also inflate variance on structure channels (nucleus/actin).
         # Translate focus_factor into a "focus badness" scalar.
         focus_badness = abs(float(np.log(focus_factor))) if focus_factor > 0 else 0.0
@@ -864,7 +941,8 @@ class CellPaintingAssay(AssaySimulator):
                 seed=self.vm.run_context.seed,
                 tech_noise=tech_noise,
                 cell_line=vessel.cell_line,
-                cell_line_params=hardware_sensitivity
+                cell_line_params=hardware_sensitivity,
+                run_context=self.vm.run_context
             )
 
             hardware_factor = hardware_bias['combined_factor']
@@ -900,8 +978,8 @@ class CellPaintingAssay(AssaySimulator):
             else:
                 coupled *= focus_factor ** 0.2
 
-            # Apply: shared factors × per-channel well factor × channel bias × coupled factors
-            morph[channel] *= shared_tech_factor * well_factor * channel_bias * coupled
+            # Apply: shared factors × per-channel well factor × channel bias × coupled factors × damage noise
+            morph[channel] *= shared_tech_factor * well_factor * channel_bias * coupled * damage_noise_factor
 
             # Focus-induced variance inflation for structure channels (fingerprint)
             if channel in ("nucleus", "actin") and focus_badness > 0:

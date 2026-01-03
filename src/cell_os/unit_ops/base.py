@@ -16,7 +16,7 @@ class Vessel:
     working_volume_ml: float
     coating_volume_ml: float
     max_volume_ml: float
-    consumable_id: Optional[str] = None  # Links to pricing in master_pricing.yaml
+    consumable_id: Optional[str] = None  # Links to pricing in pricing.yaml
 
 class VesselLibrary:
     def __init__(self, yaml_path: str = "data/raw/vessels.yaml"):

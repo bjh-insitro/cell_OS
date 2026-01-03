@@ -1,0 +1,60 @@
+{
+  "profile": "hostile",
+  "design": "dmso_only",
+  "design_is_uniform": true,
+  "n_wells": 96,
+  "n_edge_wells": 13,
+  "n_center_wells": 5,
+  "batch_id": "batch_0000002a",
+  "context_id": "ctx_0000002a",
+  "edge_sensitivity_per_channel": {
+    "er": -0.35258718021580165,
+    "mito": -0.29970551417069885,
+    "nucleus": -0.48596939904939207,
+    "actin": -0.5103239465395593,
+    "rna": -0.34479582268611864
+  },
+  "edge_variance_ratio_per_channel": {
+    "er": 2.247551883628148,
+    "mito": 1.3327508911181143,
+    "nucleus": 1.1055674924463863,
+    "actin": 0.7719218994004784,
+    "rna": 13.210358672357476
+  },
+  "channel_means_center": {
+    "er": 97.77077312984434,
+    "mito": 135.31902521212785,
+    "nucleus": 202.5163288834667,
+    "actin": 120.8025108477653,
+    "rna": 143.01130463445924
+  },
+  "channel_means_edge": {
+    "er": 86.80037353160188,
+    "mito": 120.14124177211967,
+    "nucleus": 168.2928897847767,
+    "actin": 95.02209017309977,
+    "rna": 135.2765737612381
+  },
+  "channel_std_center": {
+    "er": 5.677881094804778,
+    "mito": 13.671787985005231,
+    "nucleus": 17.363919267094786,
+    "actin": 11.62472524910615,
+    "rna": 3.058071040554355
+  },
+  "channel_std_edge": {
+    "er": 8.512187009962288,
+    "mito": 15.783372478640016,
+    "nucleus": 18.257461275054258,
+    "actin": 10.213377354702425,
+    "rna": 11.11488246776908
+  },
+  "outlier_rate_observed": 0.020833333333333332,
+  "outlier_counts_by_pathology": {
+    "noise_spike": 1,
+    "focus_miss": 1
+  },
+  "edge_threshold": 0.8,
+  "center_threshold": 0.2,
+  "seed": 42
+}

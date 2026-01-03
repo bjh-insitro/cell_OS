@@ -129,6 +129,13 @@ compounds:
     ec50_uM: 1.0
     hill_slope: 2.3
 
+  rotenone:
+    name: "Rotenone"
+    stress_axis: "mitochondrial"
+    intensity: 1.2  # High morphology effect (complex I inhibition)
+    ec50_uM: 1.0    # Potent at low µM range
+    hill_slope: 2.2  # Moderate steepness
+
   two_deoxy_d_glucose:
     name: "2-Deoxy-D-Glucose"
     stress_axis: "mitochondrial"
@@ -321,9 +328,9 @@ technical_noise:
                                      # See presets above for alternative calibrations
   # Heavy-tail noise: Rare lab outliers (focus drift, contamination, bubbles)
   # Models fat-tailed deviations beyond lognormal (Student-t on log-scale)
-  # Default DORMANT (frequency=0.0) to preserve golden files and existing tests
-  # Enable explicitly for realism runs by setting heavy_tail_frequency > 0
-  heavy_tail_frequency: 0.0      # Frequency of heavy-tail shocks (0.0=dormant, 0.01=1%, 0.02=2%)
+  # Realism default: 2% outlier rate (typical for real Cell Painting)
+  # These outliers are cross-channel correlated (not independent per channel)
+  heavy_tail_frequency: 0.02     # Frequency of heavy-tail shocks (2% of wells show outlier behavior)
   heavy_tail_nu: 4.0             # Student-t degrees of freedom (lower=heavier tails, recommend 4)
   heavy_tail_log_scale: 0.35     # Scale on log-space (NOT cv, recommend 0.35 for ~2× typical shock)
   heavy_tail_min_multiplier: 0.2 # Hard floor: max 5× attenuation (prevents signal dropout)
@@ -442,6 +449,7 @@ cell_line_ic50_modifiers:
     thapsigargin: 1.0  # Baseline
     CCCP: 1.0          # Baseline mitochondrial stress
     oligomycin: 1.0    # Baseline
+    rotenone: 1.0      # Baseline mitochondrial stress (complex I inhibitor)
     etoposide: 1.0     # Baseline DNA damage
     MG132: 1.0         # Baseline proteasome
     nocodazole: 0.7    # More sensitive (fast cycling)
@@ -498,3 +506,56 @@ cell_line_ic50_modifiers:
     MG132: 0.6         # Sensitive (high protein turnover, cytokine production)
     nocodazole: 1.1    # Slightly resistant (dividing but not fast)
     paclitaxel: 1.2    # Slightly resistant
+
+# Phase 2D: Operational Events (rare, discrete failures)
+# Separate from intrinsic biology - models instrument, contamination, operator errors
+operational_events:
+  enabled: false  # Master switch (default off to preserve behavior)
+
+  contamination:
+    enabled: false  # Contamination events disabled by default
+
+    # Baseline rate: 0.005 per vessel-day = 0.5% per day
+    # Over 7 days: ~3.5% contamination rate (realistic lab baseline)
+    baseline_rate_per_vessel_day: 0.005
+
+    # Stress multipliers for calibration regimes (identifiability testing)
+    # Multiply baseline rate to generate sufficient events for parameter recovery
+    stress_multiplier_5x: 5.0   # 2.5% per day → ~17% over 7 days
+    stress_multiplier_10x: 10.0  # 5.0% per day → ~30% over 7 days
+
+    # Type mixture (multinomial draw when event triggers)
+    type_probs:
+      bacterial: 0.50    # 50% bacterial (fast, aggressive)
+      fungal: 0.20       # 20% fungal (medium, visible)
+      mycoplasma: 0.30   # 30% mycoplasma (slow, cryptic)
+
+    # Severity distribution (lognormal, mean=1.0)
+    severity_lognormal_cv: 0.50  # CV on lognormal severity multiplier
+    min_severity: 0.25           # Min severity (hard floor)
+    max_severity: 3.0            # Max severity (hard ceiling)
+
+    # Phase timing (hours), type-specific
+    # Each type has three phases: latent (no effect) → arrest (growth stops) → death (progressive kill)
+    phase_params:
+      bacterial:
+        latent_h: 6              # Latent period (no detectable effect)
+        arrest_h: 6              # Arrest period (growth stops but no death yet)
+        death_rate_per_h: 0.40   # Death hazard during death phase (per hour)
+      fungal:
+        latent_h: 12
+        arrest_h: 12
+        death_rate_per_h: 0.20
+      mycoplasma:
+        latent_h: 24
+        arrest_h: 48
+        death_rate_per_h: 0.05
+
+    # Growth arrest effect (multiplier on growth rate during arrest/death phases)
+    # 0.05 = 95% growth reduction (cells essentially stop dividing)
+    growth_arrest_multiplier: 0.05
+
+    # Detectable morphology signature strength (observer-side artifact)
+    # Controls magnitude of morphology shifts during contamination
+    # 1.0 = baseline (detectable but not overwhelming)
+    morphology_signature_strength: 1.0

@@ -13,6 +13,9 @@ ENABLE_ER_STRESS = True
 ENABLE_MITO_DYSFUNCTION = True
 ENABLE_TRANSPORT_DYSFUNCTION = True
 
+# Pedagogy flag: Continuous subthreshold cost (prevents threshold surfing)
+ENABLE_CONTINUOUS_SUBTHRESHOLD_COST = True
+
 # Nutrient defaults (DMEM-ish, intentionally coarse)
 DEFAULT_MEDIA_GLUCOSE_mM = 25.0
 DEFAULT_MEDIA_GLUTAMINE_mM = 4.0
@@ -26,6 +29,17 @@ MAX_STARVATION_RATE_PER_H = 0.05
 
 # Mitosis model
 DEFAULT_DOUBLING_TIME_H = 24.0
+
+# Subthreshold cost parameter (growth mode)
+# Growth penalty at full stress (S=1.0): 1.0 - SUBTHRESHOLD_STRESS_GROWTH_PENALTY = 50% growth at S=1.0
+# At S=0.65 (high subthreshold): ~67.5% growth rate
+# At S=0.3 (mild): ~85% growth rate
+SUBTHRESHOLD_STRESS_GROWTH_PENALTY = 0.50  # 50% growth reduction at S=1.0
+
+# Stress dynamics numerical stability (dt-independence)
+# Stress mechanisms substep internally to avoid forward Euler integration errors
+# This prevents "coarse actions change physics" exploit after stress→growth coupling
+INTERNAL_STRESS_TIMESTEP_H = 1.0  # Internal timestep for stress ODEs (hours)
 
 # Feeding costs (prevents "feed every hour" dominant strategy)
 ENABLE_FEEDING_COSTS = True
@@ -47,6 +61,27 @@ ER_STRESS_DEATH_WIDTH = 0.08  # Sigmoid width for death transition
 ER_STRESS_H_MAX = 0.03  # Max death hazard (per hour) at full stress
 ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
 
+# ER damage memory dynamics (adaptive history trace)
+# Damage accumulates from stress and repairs slowly, creating persistent memory
+# that makes rechallenge responses history-dependent (prevents "washout resets everything")
+# FIX: Increased K_ACCUM 3× for reachability, convex boost (D²) for compulsory tracking
+ER_DAMAGE_K_ACCUM = 0.06  # Accumulation rate (per hour): dD/dt += k_accum * S
+ER_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
+ER_DAMAGE_BOOST = 5.0  # Convex induction boost: k_on *= (1 + boost * D²), makes damage mechanistically compulsory
+ER_DAMAGE_RECOVERY_SLOW = 1.0  # Recovery slowdown: k_off /= (1 + slow * D), damage visible in trajectory slopes
+
+# Phase: Scars - Mito damage accumulation (persistent memory, matches ER pattern)
+MITO_DAMAGE_K_ACCUM = 0.05  # Accumulation rate (per hour): dD/dt += k_accum * S
+MITO_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
+MITO_DAMAGE_BOOST = 4.0  # Convex induction boost: k_on *= (1 + boost * D²)
+MITO_DAMAGE_RECOVERY_SLOW = 0.8  # Recovery slowdown: k_off /= (1 + slow * D)
+
+# Phase: Scars - Transport damage accumulation (persistent memory, matches ER pattern)
+TRANSPORT_DAMAGE_K_ACCUM = 0.04  # Accumulation rate (per hour): dD/dt += k_accum * S
+TRANSPORT_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
+TRANSPORT_DAMAGE_BOOST = 3.0  # Convex induction boost: k_on *= (1 + boost * D²)
+TRANSPORT_DAMAGE_RECOVERY_SLOW = 0.6  # Recovery slowdown: k_off /= (1 + slow * D)
+
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
 MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
 MITO_DYSFUNCTION_K_OFF = 0.05  # Decay rate constant (per hour)
@@ -67,20 +102,30 @@ TRANSPORT_MITO_COUPLING_DELAY_H = 18.0  # Delay before coupling activates
 TRANSPORT_MITO_COUPLING_THRESHOLD = 0.6  # Transport dysfunction must exceed this
 TRANSPORT_MITO_COUPLING_RATE = 0.02  # Mito dysfunction induction rate (per hour)
 
+# Synergistic coupling (pedagogy: combinations are risky)
+# Multiplicative hazard interaction when multiple stress axes are elevated
+# Teaches "multi-target interventions create synergy, not just additive badness"
+ENABLE_SYNERGISTIC_COUPLING = True
+SYNERGY_GATE_S0 = 0.2  # Stress threshold below which synergy doesn't activate (suppresses noise)
+SYNERGY_K_HAZARD = 0.035  # Synergy hazard coefficient (per hour): h = k * gate(S_er) * gate(S_mito)
+
 # Death accounting epsilon (for conservation law enforcement)
 DEATH_EPS = 1e-9
 
 # Tracked death fields (allowlist for _propose_hazard validation)
 # These are the ONLY fields that contribute to death accounting
 # Any typo or new field must be explicitly added here AND to conservation checks
-TRACKED_DEATH_FIELDS = {
+TRACKED_DEATH_FIELDS = frozenset({
     "death_compound",
     "death_starvation",
     "death_mitotic_catastrophe",
     "death_er_stress",
     "death_mito_dysfunction",
     "death_confluence",
-    "death_unknown",  # Known unknowns (seeding stress, contamination)
+    "death_contamination",  # Phase 2D.1: Operational events (bacterial/fungal contamination)
+    "death_unknown",  # Known unknowns (seeding stress, handling mishaps)
+    "death_committed_er",  # Phase 2A.1: Stochastic ER commitment (post-commitment hazard)
+    "death_committed_mito",  # Phase 2A.2: Stochastic mito commitment (post-commitment hazard)
     # death_unattributed is NOT in this list (it's computed, not proposed)
     # death_transport_dysfunction is NOT in this list (Phase 2 stub, no hazard in v1)
-}
+})

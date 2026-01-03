@@ -36,6 +36,11 @@ CELL_PAINTING_CONTRACT = MeasurementContract(
         "state.mito_dysfunction",
         "state.transport_dysfunction",
 
+        # Damage state (persistent scars, for state-dependent noise)
+        "state.er_damage",
+        "state.mito_damage",
+        "state.transport_damage",
+
         # Contact pressure (measurement confounder)
         "state.contact_pressure",
 
