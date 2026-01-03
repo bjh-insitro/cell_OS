@@ -9,18 +9,15 @@ The world executes experiments and returns only what a real experimentalist woul
 Aggregation happens in a separate layer (observation_aggregator.py).
 """
 
-import sys
 import uuid
 import hashlib
 import numpy as np
-from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass
 
 # Import standalone simulator components
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-import standalone_cell_thalamus as sim
+from cell_os.sim import standalone_cell_thalamus as sim
 
 # Import canonical types from core
 from ..core.observation import RawWellResult
