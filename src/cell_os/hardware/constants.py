@@ -82,6 +82,11 @@ TRANSPORT_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair 
 TRANSPORT_DAMAGE_BOOST = 3.0  # Convex induction boost: k_on *= (1 + boost * D²)
 TRANSPORT_DAMAGE_RECOVERY_SLOW = 0.6  # Recovery slowdown: k_off /= (1 + slow * D)
 
+# Phase6a: State-dependent measurement noise (damage-driven heteroskedasticity)
+# Cell Painting assay noise increases with accumulated damage to teach agents uncertainty is path-dependent
+CELL_PAINTING_DAMAGE_CV_SCALE = 0.35  # Scaling: variance rises sharply with damage (pedagogical signal)
+CELL_PAINTING_DAMAGE_CV_CAP = 0.60  # Soft cap: prevents CV > 1.0 at max damage (keeps assay usable)
+
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
 MITO_DYSFUNCTION_K_ON = 0.25  # Induction rate constant (per hour)
 MITO_DYSFUNCTION_K_OFF = 0.05  # Decay rate constant (per hour)
@@ -101,6 +106,13 @@ ENABLE_TRANSPORT_MITO_COUPLING = True
 TRANSPORT_MITO_COUPLING_DELAY_H = 18.0  # Delay before coupling activates
 TRANSPORT_MITO_COUPLING_THRESHOLD = 0.6  # Transport dysfunction must exceed this
 TRANSPORT_MITO_COUPLING_RATE = 0.02  # Mito dysfunction induction rate (per hour)
+
+# ER → Mito susceptibility coupling (damage-driven vulnerability)
+# ER damage amplifies mito induction rate (makes cells more susceptible to mito stress)
+ENABLE_ER_MITO_COUPLING = True
+ER_MITO_COUPLING_K = 3.0  # Max amplification at er_damage=1: k_on *= (1 + K*sigmoid)
+ER_MITO_COUPLING_D0 = 0.3  # Sigmoid midpoint: coupling activates around D≈0.3
+ER_MITO_COUPLING_SLOPE = 8.0  # Sigmoid steepness
 
 # Synergistic coupling (pedagogy: combinations are risky)
 # Multiplicative hazard interaction when multiple stress axes are elevated

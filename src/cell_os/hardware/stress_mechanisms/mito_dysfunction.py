@@ -13,6 +13,10 @@ from ..constants import (
     TRANSPORT_MITO_COUPLING_DELAY_H,
     TRANSPORT_MITO_COUPLING_THRESHOLD,
     TRANSPORT_MITO_COUPLING_RATE,
+    ENABLE_ER_MITO_COUPLING,
+    ER_MITO_COUPLING_K,
+    ER_MITO_COUPLING_D0,
+    ER_MITO_COUPLING_SLOPE,
     MITO_DYSFUNCTION_K_ON,
     MITO_DYSFUNCTION_K_OFF,
     MITO_DYSFUNCTION_DEATH_THETA,
@@ -119,6 +123,15 @@ class MitoDysfunctionMechanism(StressMechanism):
         bio_re = getattr(vessel, "bio_random_effects", None) or {}
         stress_sens_mult = float(bio_re.get('stress_sensitivity_mult', 1.0))
         k_on_effective *= stress_sens_mult
+
+        # ER → Mito susceptibility coupling: ER damage amplifies mito induction
+        if ENABLE_ER_MITO_COUPLING:
+            er_damage = float(getattr(vessel, 'er_damage', 0.0))
+            # Sigmoid: 1/(1+exp(-slope*(D-D0)))
+            sigmoid = 1.0 / (1.0 + np.exp(-ER_MITO_COUPLING_SLOPE * (er_damage - ER_MITO_COUPLING_D0)))
+            # Amplification: 1 + K*sigmoid, clamped at 1+K
+            er_mito_amp = min(1.0 + ER_MITO_COUPLING_K * sigmoid, 1.0 + ER_MITO_COUPLING_K)
+            k_on_effective *= er_mito_amp
 
         # Phase: Scars - Damage boosts induction (convex: D² makes damage compulsory)
         D_current = vessel.mito_damage
