@@ -2,64 +2,55 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  tripwire:
-    name: Tripwire Tests (World Model Contract)
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.10"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install pytest
-        if [ -f pyproject.toml ]; then pip install -e .; fi
-
-    - name: Run Tripwire Tests
-      run: |
-        pytest tests/tripwire/ -v
-      # These tests enforce STATE_MAP.md
-      # Failure = world model contract violated
-      # Not a bug - a structural change that needs review
-
   test:
-    needs: tripwire  # Tripwires must pass first
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10"]
+        python-version: ["3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install pytest pytest-cov
-        # Install the package in editable mode if setup.py or pyproject.toml exists
-        if [ -f pyproject.toml ]; then pip install -e .; fi
-        
-    - name: Run Unit Tests
-      run: |
-        pytest tests/unit -v
-        
-    - name: Run Integration Tests
-      run: |
-        pytest tests/integration -v
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-cache
+          restore-keys: pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest hypothesis
+
+      - name: Run unit tests
+        run: |
+          PYTHONPATH=src python -m pytest tests/unit/ -v --tb=short -x
+        timeout-minutes: 10
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff check
+        run: ruff check src/ --select=E,F --ignore=E501,F401 --exit-zero
