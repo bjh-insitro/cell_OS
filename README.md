@@ -284,7 +284,7 @@ The repository has **10,000+ lines of tests** enforcing epistemic invariants, no
 
 ### Weakly Tested or Untested
 
-1. **Epistemic debt consequences** - Debt tracked but not enforced (integration incomplete)
+1. ~~**Epistemic debt consequences**~~ - Now tested: `tests/integration/test_epistemic_debt_enforcement.py` (13 tests)
 2. **Design quality refusals** - Refusal logic exists but no test verifies `refusals.jsonl`
 3. **Mechanism classification accuracy** - No ECE validation on held-out set
 4. **Multi-cycle gate recovery** - Tests check earning, not losing and re-earning
@@ -520,7 +520,7 @@ cell_OS/
 - Beam search with COMMIT gating (≥0.75 confidence threshold)
 - Fixed semantic bugs (death accounting, conservation violations)
 
-**NOT delivered**: Debt enforcement (tracked but doesn't block execution yet)
+**Delivered**: Debt enforcement with hard block at 2.0 bits threshold (see `tests/integration/test_epistemic_debt_enforcement.py`)
 
 ---
 
