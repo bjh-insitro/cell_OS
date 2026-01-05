@@ -375,12 +375,17 @@ class RunContext:
             uint32 unique ID for this well (deterministic under run seed)
         """
         # Normalize well_position to 2-digit format (A1 → A01)
-        if len(well_position) >= 2 and well_position[1].isdigit():
-            row = well_position[0]
+        # Only normalize if it looks like a standard well position (letter + integer digits)
+        well_position_normalized = well_position
+        if len(well_position) >= 2 and well_position[0].isalpha():
             col_str = well_position[1:]
-            well_position_normalized = f"{row}{int(col_str):02d}"
-        else:
-            well_position_normalized = well_position
+            # Only normalize if column part is pure digits (no decimals like "14.1")
+            if col_str.isdigit():
+                try:
+                    col_num = int(col_str)
+                    well_position_normalized = f"{well_position[0]}{col_num:02d}"
+                except ValueError:
+                    pass  # Keep original
 
         key = (plate_id, well_position_normalized)
         if key not in self._well_uid_map:
