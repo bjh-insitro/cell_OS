@@ -1426,7 +1426,7 @@ class EpistemicLoop:
             summary.instrument_health.noise_rel_width.append(beliefs.noise_rel_width)
 
         # ============ COMPUTE AGGREGATE METRICS ============
-        summary.compute_aggregate_metrics()
+        summary.compute_aggregate_metrics(total_budget=self.budget)
 
         # ============ WRITE SUMMARY ============
         summary_file = self.log_dir / f"{self.run_id}_episode_summary.json"

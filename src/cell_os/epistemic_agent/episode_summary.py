@@ -119,8 +119,18 @@ class EpisodeSummary:
     health_balance: Optional[float] = None  # repaid - accumulated
     exploration_ratio: Optional[float] = None  # exploration_wells / total_wells
 
-    def compute_aggregate_metrics(self):
-        """Compute derived metrics from ledger sections."""
+    # Honesty tax metrics - quantify the cost of epistemic integrity
+    calibration_overhead_ratio: Optional[float] = None  # calibration_wells / total_wells
+    exploration_bits_per_plate: Optional[float] = None  # bits from exploration only
+    honesty_tax_wells: Optional[int] = None  # wells "spent" on calibration + mitigation + refusals
+    effective_budget_utilization: Optional[float] = None  # exploration_wells / budget
+
+    def compute_aggregate_metrics(self, total_budget: int = 0):
+        """Compute derived metrics from ledger sections.
+
+        Args:
+            total_budget: Original budget (for utilization calculation)
+        """
         # Efficiency: information gained per resource spent
         if self.spending.total_plates > 0 and self.learning.total_gain_bits > 0:
             self.efficiency_bits_per_plate = self.learning.total_gain_bits / self.spending.total_plates
@@ -135,6 +145,34 @@ class EpisodeSummary:
             self.exploration_ratio = self.spending.exploration_wells / self.spending.total_wells
         else:
             self.exploration_ratio = 0.0
+
+        # === HONESTY TAX METRICS ===
+        # These quantify the cost of maintaining epistemic integrity
+
+        # Calibration overhead: fraction of budget spent on calibration
+        if self.spending.total_wells > 0:
+            self.calibration_overhead_ratio = self.spending.calibration_wells / self.spending.total_wells
+        else:
+            self.calibration_overhead_ratio = 0.0
+
+        # Exploration bits per plate: learning efficiency from science only
+        exploration_plates = self.spending.exploration_wells / 96.0 if self.spending.exploration_wells > 0 else 0.0
+        if exploration_plates > 0 and self.learning.total_gain_bits > 0:
+            self.exploration_bits_per_plate = self.learning.total_gain_bits / exploration_plates
+        else:
+            self.exploration_bits_per_plate = None
+
+        # Honesty tax in wells: calibration + mitigation overhead
+        mitigation_wells = sum(
+            e.cost_wells for e in self.mitigation_timeline if e.cost_wells > 0
+        )
+        self.honesty_tax_wells = self.spending.calibration_wells + mitigation_wells
+
+        # Effective budget utilization: what fraction of budget went to exploration
+        if total_budget > 0:
+            self.effective_budget_utilization = self.spending.exploration_wells / total_budget
+        else:
+            self.effective_budget_utilization = None
 
     def to_dict(self) -> dict:
         """Serialize to JSON for persistence."""
@@ -196,6 +234,11 @@ class EpisodeSummary:
             "efficiency_bits_per_plate": self.efficiency_bits_per_plate,
             "health_balance": self.health_balance,
             "exploration_ratio": self.exploration_ratio,
+            # Honesty tax metrics
+            "calibration_overhead_ratio": self.calibration_overhead_ratio,
+            "exploration_bits_per_plate": self.exploration_bits_per_plate,
+            "honesty_tax_wells": self.honesty_tax_wells,
+            "effective_budget_utilization": self.effective_budget_utilization,
         }
 
     def summary_text(self) -> str:
@@ -243,6 +286,11 @@ class EpisodeSummary:
             "EFFICIENCY:",
             f"  Bits per plate: {self.efficiency_bits_per_plate:.3f}" if self.efficiency_bits_per_plate else "  Bits per plate: N/A",
             f"  Exploration ratio: {self.exploration_ratio:.1%}" if self.exploration_ratio else "  Exploration ratio: N/A",
+            "",
+            "HONESTY TAX:",
+            f"  Calibration overhead: {self.calibration_overhead_ratio:.1%}" if self.calibration_overhead_ratio is not None else "  Calibration overhead: N/A",
+            f"  Honesty tax wells: {self.honesty_tax_wells}" if self.honesty_tax_wells is not None else "  Honesty tax wells: N/A",
+            f"  Effective budget utilization: {self.effective_budget_utilization:.1%}" if self.effective_budget_utilization is not None else "  Effective budget utilization: N/A",
             "",
         ])
 
