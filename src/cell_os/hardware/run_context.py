@@ -399,13 +399,22 @@ class RunContext:
             plate_id: Plate identifier
             first_well_position: First well seen (used to infer format)
         """
-        # Check if this is a legacy/test format (e.g., "1", "test", "well")
+        # Check if this is a legacy/test format (e.g., "1", "test", "well", "ctrl")
         # Legacy formats get a single UID for the exact position requested
-        is_legacy_format = (
-            len(first_well_position) == 0 or
-            first_well_position[0].isdigit() or
-            first_well_position.lower() in ('test', 'well', 'source', 'dest')
-        )
+        # Standard format: starts with A-P, followed by digits (e.g., A1, B12, P24)
+        def is_standard_well_format(pos: str) -> bool:
+            if not pos or len(pos) < 2:
+                return False
+            row = pos[0].upper()
+            if row < 'A' or row > 'P':  # Valid row letters A-P
+                return False
+            try:
+                col = int(pos[1:])
+                return 1 <= col <= 24  # Valid column numbers 1-24
+            except ValueError:
+                return False
+
+        is_legacy_format = not is_standard_well_format(first_well_position)
 
         if is_legacy_format:
             # Legacy mode: just assign a UID to this specific (plate, position) pair

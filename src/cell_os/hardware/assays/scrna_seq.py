@@ -83,20 +83,13 @@ class ScRNASeqAssay(AssaySimulator):
             "contact_inhibition": float(getattr(vessel, "contact_pressure", 0.0)),
         }
 
-        # Phase 6: Generate per-cell heterogeneity (continuous, not discrete subpops)
-        # No privileged subpop fractions - heterogeneity is emergent from per-cell factors
-        per_cell_stress_factors = self.vm.rng_assay.lognormal(
-            mean=0.0,
-            sigma=0.3,  # 30% CV in stress response
-            size=n_cells
-        )
-
         # Couple to RunContext for correlated batch drift
         run_context_latent = None
         if hasattr(self.vm, "run_context") and self.vm.run_context is not None:
             run_context_latent = float(hash(self.vm.run_context.context_id) % 1000) / 1000.0 - 0.5
 
         # Use assay RNG for observer independence
+        # Note: per_cell_factors removed until simulate_scrna_counts supports it
         result = simulate_scrna_counts(
             cell_line=cell_line,
             vessel_latents=vessel_latents,
@@ -105,7 +98,6 @@ class ScRNASeqAssay(AssaySimulator):
             rng=self.vm.rng_assay,
             params_path=str(params_path),
             batch_id=batch_id if batch_id is not None else "default",
-            per_cell_factors=per_cell_stress_factors,  # Continuous heterogeneity
             run_context_latent=run_context_latent,
         )
 

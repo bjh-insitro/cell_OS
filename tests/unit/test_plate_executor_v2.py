@@ -20,6 +20,14 @@ from src.cell_os.plate_executor_v2 import (
     compute_initial_cells
 )
 from src.cell_os.hardware.run_context import RunContext
+from src.cell_os.hardware.biological_virtual import BiologicalVirtualMachine
+
+
+def create_test_vm(seed: int = 42) -> BiologicalVirtualMachine:
+    """Create a VM for testing with proper initialization."""
+    run_context = RunContext.sample(seed=seed)
+    vm = BiologicalVirtualMachine(seed=seed, run_context=run_context, use_database=False)
+    return vm
 
 
 # ============================================================================
@@ -67,8 +75,9 @@ def test_time_bug_regression():
 
     # Execute with same base seed
     run_context = RunContext.sample(seed=42)
-    result1 = execute_well(well1, base_seed=42, run_context=run_context)
-    result2 = execute_well(well2, base_seed=42, run_context=run_context)
+    vm = BiologicalVirtualMachine(seed=42, run_context=run_context, use_database=False)
+    result1 = execute_well(well1, vm, base_seed=42, run_context=run_context)
+    result2 = execute_well(well2, vm, base_seed=42, run_context=run_context)
 
     # Both wells should be measured at t=24h, not t=24h and t=48h
     # Viability should be very similar (not identical due to per-well RNG)
@@ -124,8 +133,9 @@ def test_stain_scale_affects_morphology():
     )
 
     run_context = RunContext.sample(seed=42)
-    result_base = execute_well(base_well, base_seed=42, run_context=run_context)
-    result_high = execute_well(high_stain_well, base_seed=42, run_context=run_context)
+    vm = BiologicalVirtualMachine(seed=42, run_context=run_context, use_database=False)
+    result_base = execute_well(base_well, vm, base_seed=42, run_context=run_context)
+    result_high = execute_well(high_stain_well, vm, base_seed=42, run_context=run_context)
 
     # High stain should increase measured intensity
     # (This test will initially fail until we implement stain_scale in BiologicalVirtualMachine)
@@ -175,8 +185,9 @@ def test_focus_offset_affects_morphology():
     )
 
     run_context = RunContext.sample(seed=42)
-    result_base = execute_well(base_well, base_seed=42, run_context=run_context)
-    result_defocus = execute_well(defocus_well, base_seed=42, run_context=run_context)
+    vm = BiologicalVirtualMachine(seed=42, run_context=run_context, use_database=False)
+    result_base = execute_well(base_well, vm, base_seed=42, run_context=run_context)
+    result_defocus = execute_well(defocus_well, vm, base_seed=42, run_context=run_context)
 
     # Check that focus offset is recorded
     assert result_base['focus_offset_um'] == 0.0
@@ -211,7 +222,8 @@ def test_background_wells_not_all_zeros():
     )
 
     run_context = RunContext.sample(seed=42)
-    result = execute_well(background_well, base_seed=42, run_context=run_context)
+    vm = BiologicalVirtualMachine(seed=42, run_context=run_context, use_database=False)
+    result = execute_well(background_well, vm, base_seed=42, run_context=run_context)
 
     # Background should NOT be all zeros
     morphology = result['morphology']
@@ -260,8 +272,9 @@ def test_background_varies_with_stain_scale():
     )
 
     run_context = RunContext.sample(seed=42)
-    result_base = execute_well(base_bg, base_seed=42, run_context=run_context)
-    result_high = execute_well(high_stain_bg, base_seed=42, run_context=run_context)
+    vm = BiologicalVirtualMachine(seed=42, run_context=run_context, use_database=False)
+    result_base = execute_well(base_bg, vm, base_seed=42, run_context=run_context)
+    result_high = execute_well(high_stain_bg, vm, base_seed=42, run_context=run_context)
 
     # High stain background should be higher
     base_er = result_base['morphology']['er']
@@ -308,11 +321,25 @@ def test_stable_hash_seed_deterministic():
 
 
 def test_compute_initial_cells():
-    """Test cell count computation."""
-    assert compute_initial_cells("LOW") == 700_000
-    assert compute_initial_cells("NOMINAL") == 1_000_000
-    assert compute_initial_cells("HIGH") == 1_300_000
-    assert compute_initial_cells("NONE") == 0
+    """Test cell count computation from database lookup."""
+    # API changed to require cell_line, vessel_type, cell_density
+    # Using 384-well format as that's what the plate executor uses
+
+    # NONE density always returns 0 regardless of cell line
+    assert compute_initial_cells("A549", "384-well", "NONE") == 0
+
+    # NOMINAL density for A549 in 384-well should return ~3000 (from database)
+    nominal = compute_initial_cells("A549", "384-well", "NOMINAL")
+    assert nominal > 0  # Should have cells
+    assert nominal < 100_000  # 384-well can't hold millions of cells
+
+    # LOW density should be less than NOMINAL
+    low = compute_initial_cells("A549", "384-well", "LOW")
+    assert low < nominal
+
+    # HIGH density should be more than NOMINAL
+    high = compute_initial_cells("A549", "384-well", "HIGH")
+    assert high > nominal
 
 
 def test_generate_background_morphology():

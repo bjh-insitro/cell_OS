@@ -13,9 +13,8 @@ the design artifact pipeline.
 
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-import standalone_cell_thalamus as sim
+
+from cell_os.sim import standalone_cell_thalamus as sim
 
 from .schemas import Proposal, Observation
 from .design_bridge import (
