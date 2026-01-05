@@ -30,10 +30,22 @@ def _parse_well_position(well_position: str) -> Tuple[int, int]:
         well_position: Well ID like 'A1', 'H12'
 
     Returns:
-        (row, col) as 0-indexed integers
+        (row, col) as 0-indexed integers, or (7, 7) for non-standard positions
     """
-    row = ord(well_position[0].upper()) - ord('A')
-    col = int(well_position[1:]) - 1
+    # Handle non-standard positions (e.g., "test", "ctrl", numeric IDs)
+    if not well_position or len(well_position) < 2:
+        return 7, 7  # Default to center-ish position
+
+    first_char = well_position[0].upper()
+    if not first_char.isalpha() or first_char < 'A' or first_char > 'P':
+        return 7, 7  # Not a valid row letter
+
+    col_str = well_position[1:]
+    if not col_str.isdigit():
+        return 7, 7  # Not a valid column number
+
+    row = ord(first_char) - ord('A')
+    col = int(col_str) - 1
     return row, col
 
 
