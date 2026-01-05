@@ -8,8 +8,22 @@ luck-based low-variance samples. Gate must be statistically earned with:
 3. Bounded false-earn risk
 """
 
+from dataclasses import dataclass
+from typing import List
 from cell_os.epistemic_agent.beliefs.state import BeliefState
 from cell_os.epistemic_agent.schemas import ConditionSummary
+
+
+@dataclass
+class MockObservation:
+    """Mock observation for testing."""
+    conditions: List[ConditionSummary]
+
+
+def update_noise_beliefs(beliefs: BeliefState, conditions: List[ConditionSummary], diagnostics: list):
+    """Helper to update beliefs with conditions, using new API."""
+    observation = MockObservation(conditions=conditions)
+    beliefs.update(observation, cycle=0)
 
 
 def test_gate_requires_minimum_n():
@@ -39,7 +53,7 @@ def test_gate_requires_minimum_n():
         n_outliers=0,
     )
 
-    beliefs._update_noise_beliefs([perfect_condition], diagnostics)
+    update_noise_beliefs(beliefs, [perfect_condition], diagnostics)
 
     # Gate should NOT be stable yet - not enough samples
     assert not beliefs.noise_sigma_stable, \
@@ -73,7 +87,7 @@ def test_gate_requires_sequential_stability():
         n_outliers=0,
     )
 
-    beliefs._update_noise_beliefs([batch1], diagnostics)
+    update_noise_beliefs(beliefs, [batch1], diagnostics)
     cycle1_df = beliefs.noise_df_total
     cycle1_rel_width = beliefs.noise_rel_width
     cycle1_stable = beliefs.noise_sigma_stable
@@ -100,7 +114,7 @@ def test_gate_requires_sequential_stability():
         n_outliers=0,
     )
 
-    beliefs._update_noise_beliefs([batch2_lucky], diagnostics)
+    update_noise_beliefs(beliefs, [batch2_lucky], diagnostics)
     cycle2_df = beliefs.noise_df_total
     cycle2_rel_width = beliefs.noise_rel_width
     cycle2_stable = beliefs.noise_sigma_stable
@@ -142,22 +156,22 @@ def test_gate_earns_with_sustained_stability():
         n_failed=0,
         n_outliers=0,
     )
-    beliefs._update_noise_beliefs([stable_batch_large], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch_large], diagnostics)
     assert not beliefs.noise_sigma_stable, "Not stable yet (df < 40)"
     assert beliefs.noise_gate_streak == 0, "Streak should be 0 (not enough data)"
 
     # Batch 2: Another 25 replicates - now df=48 >= 40, start counting streak
-    beliefs._update_noise_beliefs([stable_batch_large], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch_large], diagnostics)
     assert not beliefs.noise_sigma_stable, "Not stable yet (streak=1, need 3)"
     assert beliefs.noise_gate_streak == 1, f"Streak should be 1, got {beliefs.noise_gate_streak}"
 
     # Batch 3: Another 25 replicates - streak=2
-    beliefs._update_noise_beliefs([stable_batch_large], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch_large], diagnostics)
     assert not beliefs.noise_sigma_stable, "Not stable yet (streak=2, need 3)"
     assert beliefs.noise_gate_streak == 2, f"Streak should be 2, got {beliefs.noise_gate_streak}"
 
     # Batch 4: Another 25 replicates - streak=3, gate earned!
-    beliefs._update_noise_beliefs([stable_batch_large], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch_large], diagnostics)
     assert beliefs.noise_sigma_stable, \
         f"Gate should be earned after K=3 consecutive stable observations! " \
         f"df={beliefs.noise_df_total}, rel_width={beliefs.noise_rel_width:.4f}, streak={beliefs.noise_gate_streak}"
@@ -200,7 +214,7 @@ def test_gate_revokes_on_instability():
     # Need more batches with smaller n_wells to cross df_min and earn gate
     # 15 wells → df=14 per batch. Need 3 batches to get df=42, then 3 more for streak
     for i in range(6):
-        beliefs._update_noise_beliefs([stable_batch], diagnostics)
+        update_noise_beliefs(beliefs, [stable_batch], diagnostics)
 
     assert beliefs.noise_sigma_stable, f"Gate should be earned, streak={beliefs.noise_gate_streak}"
 
@@ -228,7 +242,7 @@ def test_gate_revokes_on_instability():
 
     # Add multiple high-variance batches to degrade confidence
     for _ in range(4):
-        beliefs._update_noise_beliefs([unstable_batch], diagnostics)
+        update_noise_beliefs(beliefs, [unstable_batch], diagnostics)
         if not beliefs.noise_sigma_stable:
             break  # Gate revoked
 
@@ -263,7 +277,7 @@ def test_gate_streak_resets_on_instability():
         n_failed=0,
         n_outliers=0,
     )
-    beliefs._update_noise_beliefs([stable_batch], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch], diagnostics)
 
     # Batch 2: unstable (high variance)
     unstable_batch = ConditionSummary(
@@ -285,20 +299,20 @@ def test_gate_streak_resets_on_instability():
         n_failed=0,
         n_outliers=0,
     )
-    beliefs._update_noise_beliefs([unstable_batch], diagnostics)
+    update_noise_beliefs(beliefs, [unstable_batch], diagnostics)
 
     assert not beliefs.noise_sigma_stable, "Not stable yet"
 
     # Batch 3: stable again
-    beliefs._update_noise_beliefs([stable_batch], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch], diagnostics)
     assert not beliefs.noise_sigma_stable, "Still not stable (streak was reset)"
 
     # Batch 4: stable again
-    beliefs._update_noise_beliefs([stable_batch], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch], diagnostics)
     assert not beliefs.noise_sigma_stable, "Still not stable (need one more)"
 
     # Batch 5: stable again (3rd consecutive)
-    beliefs._update_noise_beliefs([stable_batch], diagnostics)
+    update_noise_beliefs(beliefs, [stable_batch], diagnostics)
     assert beliefs.noise_sigma_stable, \
         "NOW stable after 3 consecutive stable batches (streak reset counted correctly)"
 
