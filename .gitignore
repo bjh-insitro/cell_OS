@@ -53,3 +53,4 @@ data/**/observations.csv
 runs/
 output/
 results/
+.hypothesis/
