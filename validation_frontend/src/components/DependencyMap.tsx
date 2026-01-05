@@ -81,18 +81,39 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
     };
 
     const isDone = data.status === 'ready' || data.status === 'done';
+    const isBlocked = data.status === 'blocked' || (data.computedBlockers && data.computedBlockers.length > 0);
 
     return (
         <div className={`group relative ${data.dimmed ? 'opacity-20 grayscale transition-all duration-300' : 'opacity-100 transition-all duration-300'} hover:z-[100]`}>
-            <div className={`${isDone ? 'bg-white dark:bg-slate-800' : 'bg-red-50 dark:bg-red-900/20'} rounded-lg shadow-md border border-slate-200 dark:border-slate-700 overflow-hidden w-[250px]`}>
+            <div className={`${
+                isBlocked
+                    ? 'bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 animate-pulse shadow-lg shadow-red-500/50'
+                    : isDone
+                        ? 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+            } rounded-lg shadow-md overflow-hidden w-[250px]`}>
                 <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
                 <div className={`h-2 ${getHeaderColor(data.kind, data.status)}`} />
                 <div className="p-3">
                     <div className="flex justify-between items-start mb-1">
                         <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">{data.subLabel}</div>
                         {isDone && <CheckIcon />}
+                        {isBlocked && <span className="text-red-500 text-lg">⛔</span>}
                     </div>
                     <div className="text-sm font-bold text-slate-900 dark:text-white">{data.label}</div>
+
+                    {/* Inline blocker warning */}
+                    {isBlocked && data.computedBlockers && data.computedBlockers.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-red-300 dark:border-red-700">
+                            <div className="text-xs font-bold text-red-600 dark:text-red-400 mb-1">BLOCKED:</div>
+                            <div className="text-xs text-red-700 dark:text-red-300">
+                                {data.computedBlockers[0]}
+                                {data.computedBlockers.length > 1 && (
+                                    <span className="ml-1 text-red-500">+{data.computedBlockers.length - 1} more</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <Handle type="source" position={Position.Right} className="!bg-slate-400 !w-2 !h-2" />
             </div>
@@ -147,7 +168,7 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
 
             // 1. Explicit blockers
             if (axis.blockers) {
-                computedBlockers.push(axis.blockers);
+                computedBlockers.push(...axis.blockers);
             }
 
             // 2. Upstream dependencies not complete

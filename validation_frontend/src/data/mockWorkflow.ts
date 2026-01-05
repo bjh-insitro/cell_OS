@@ -67,12 +67,12 @@ export const mockWorkflow: Workflow = {
             id: "axis_obtain_tbhp",
             kind: "stressor",
             name: "Obtain tBHP",
-            status: "not_started",
+            status: "blocked",
             owner: "Roey",
             definitionOfDone: "Compound acquired, QC'd, and stored properly.",
             inputsRequired: "Vendor quote, budget approval",
             outputsPromised: "tBHP stock",
-            blockers: undefined,
+            blockers: ["Waiting for budget approval from Finance", "Vendor quote expired, need new quote"],
             visible: false,
             tasks: [
                 { id: "t_order", title: "Place order", status: "not_started" },
@@ -158,7 +158,7 @@ export const mockWorkflow: Workflow = {
             definitionOfDone: "Library virus produced with >10^8 TU/mL and NGS verified.",
             inputsRequired: "Oligo pool design, HEK293T packaging cells",
             outputsPromised: "Concentrated virus library, NGS QC report",
-            blockers: "Oligo synthesis delayed by vendor",
+            blockers: ["Oligo synthesis delayed by vendor"],
             dependencies: [
                 { id: "d_lv", label: "Synthesis, Cloning & LV Production", status: "not_started", linkedAxisId: "axis_synthesis_cloning_lv" },
             ],
@@ -214,7 +214,7 @@ export const mockWorkflow: Workflow = {
             visible: true,
             inputsRequired: "Cas9+ A549s, WG LV Library",
             outputsPromised: "Transduced cell pool",
-            blockers: "Waiting for viral library QC",
+            blockers: ["Waiting for viral library QC"],
             dependencies: [
                 { id: "d_cas9_wcb", label: "Generate Cas9+ A549s WCB", status: "not_started", linkedAxisId: "axis_cas9_wcb" },
                 { id: "d_wg_lib", label: "Whole Genome LV Library", status: "blocked", linkedAxisId: "axis_perturbation" },
@@ -324,7 +324,7 @@ export const mockWorkflow: Workflow = {
             definitionOfDone: "Imaging protocol locked with >3 Z-prime.",
             inputsRequired: "A549 cells, CellRox reagent",
             outputsPromised: "SOP for high-content imaging",
-            blockers: "Need to reserve microscope time",
+            blockers: ["Need to reserve microscope time"],
             visible: false,
             dependencies: [
                 { id: "d_dye", label: "Obtain CellRox Dye", status: "ready", linkedAxisId: "axis_obtain_cellrox" },

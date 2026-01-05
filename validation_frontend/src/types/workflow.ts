@@ -28,7 +28,7 @@ export interface WorkflowAxis {
     definitionOfDone: string;
     inputsRequired: string;
     outputsPromised: string;
-    blockers?: string;
+    blockers?: string[];
     benchlingEntityId?: string;
     tasks: AxisTask[];
     dependencies?: Dependency[];

@@ -14,7 +14,7 @@ v0.4.2: Evidence ledgers (evidence.jsonl, decisions.jsonl, diagnostics.jsonl)
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -663,6 +663,58 @@ class EpistemicLoop:
         self._finalize_episode_summary(initial_calibration_entropy, initial_noise_rel_width)
 
         self._log_summary()
+        self._update_runs_manifest()
+
+    def _update_runs_manifest(self) -> None:
+        """
+        Append/update this run in runs_manifest.json for UI discovery.
+
+        Writes atomically and dedupes by run_id.
+        """
+        manifest_path = self.log_dir / "runs_manifest.json"
+
+        # Load existing
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text())
+            except Exception:
+                manifest = {"runs": []}
+        else:
+            manifest = {"runs": []}
+
+        runs = manifest.get("runs", [])
+        by_id = {r.get("run_id"): r for r in runs if isinstance(r, dict) and r.get("run_id")}
+
+        # Parse timestamp from run_id (format: run_YYYYMMDD_HHMMSS)
+        ts = None
+        try:
+            raw = self.run_id.replace("run_", "")
+            dt = datetime.strptime(raw, "%Y%m%d_%H%M%S").replace(tzinfo=timezone.utc)
+            ts = dt.isoformat()
+        except Exception:
+            ts = datetime.now(timezone.utc).isoformat()
+
+        record = {
+            "run_id": self.run_id,
+            "timestamp": ts,
+            "budget": getattr(self, "budget", None) or getattr(self, "budget_wells", None),
+            "max_cycles": self.max_cycles,
+            "cycles_completed": self.cycle if hasattr(self, 'cycle') else 0,
+            "seed": self.seed,
+        }
+
+        by_id[self.run_id] = record
+        manifest["runs"] = list(by_id.values())
+
+        # Sort by timestamp
+        def _key(r):
+            return r.get("timestamp") or ""
+        manifest["runs"].sort(key=_key)
+
+        # Atomic write
+        tmp = manifest_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(manifest, indent=2))
+        tmp.replace(manifest_path)
 
     def _log(self, message: str):
         """Write to both stdout and log file."""

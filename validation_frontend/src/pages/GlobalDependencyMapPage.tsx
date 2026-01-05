@@ -25,6 +25,19 @@ const GlobalDependencyMapPage: React.FC = () => {
 
     const selectedAxis = selectedAxisId ? mockWorkflow.axes.find(a => a.id === selectedAxisId) : null;
 
+    // Extract all blocked axes with their blockers
+    const blockedAxes = mockWorkflow.axes.filter(axis => {
+        const hasBlockers = axis.blockers && axis.blockers.length > 0;
+        const hasDependencyBlockers = axis.dependencies?.some(dep => dep.status !== 'ready' && dep.status !== 'done');
+        return hasBlockers || hasDependencyBlockers || axis.status === 'blocked';
+    }).map(axis => ({
+        id: axis.id,
+        name: axis.name,
+        owner: axis.owner,
+        blockers: axis.blockers || [],
+        dependencyBlockers: axis.dependencies?.filter(dep => dep.status !== 'ready' && dep.status !== 'done') || []
+    }));
+
     const kinds: { value: string; label: string; color: string }[] = [
         { value: 'cell_line', label: 'Biobanking', color: 'bg-violet-500' },
         { value: 'stressor', label: 'Cell Models', color: 'bg-pink-500' },
@@ -69,6 +82,30 @@ const GlobalDependencyMapPage: React.FC = () => {
                     </Link>
                 </div>
             </div>
+
+            {/* Global Blockers Panel - Compact */}
+            {blockedAxes.length > 0 && (
+                <div className="bg-red-50 dark:bg-red-900/20 border-b-2 border-red-500 dark:border-red-400 px-6 py-2">
+                    <div className="flex items-center gap-3">
+                        <span className="text-xl">⛔</span>
+                        <div className="flex-1 flex items-center gap-4 flex-wrap">
+                            <div className="font-bold text-red-700 dark:text-red-300">
+                                {blockedAxes.length} {blockedAxes.length === 1 ? 'Blocker' : 'Blockers'}:
+                            </div>
+                            {blockedAxes.map(axis => (
+                                <button
+                                    key={axis.id}
+                                    onClick={() => setSelectedAxisId(axis.id)}
+                                    className="text-sm font-medium text-slate-900 dark:text-white hover:text-red-600 dark:hover:text-red-400 underline"
+                                >
+                                    {axis.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex-grow h-full w-full relative flex">
                 <div className="flex-grow h-full">
                     <DependencyMap

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
 import { Moon, Sun, Zap } from 'lucide-react';
 import PlateDesignCatalog from '../components/PlateDesignCatalog';
@@ -246,6 +246,102 @@ function detectKeyMoments(events: EpisodeEvent[]): KeyMoment[] {
   return moments;
 }
 
+function cycleIcon(cycleEvents: EpisodeEvent[]): string {
+  const decision = cycleEvents.find(e => e.source === "decisions");
+  const rationale = decision?.payload?.rationale ?? decision?.payload?.selected_candidate ?? {};
+  const forced = rationale.forced || rationale.regime === "pre_gate";
+  const template = String(decision?.payload?.chosen_template ?? decision?.payload?.selected ?? "").toLowerCase();
+
+  if (forced) return "⚠️";
+  if (template.includes("calibration") || template.includes("baseline")) return "🔬";
+  if (template.includes("dose") || template.includes("ladder")) return "🧪";
+  return "📍";
+}
+
+function getGateMap(events: EpisodeEvent[]): Record<string, string> {
+  const decision = events.find(e => e.source === "decisions");
+  const rationale = decision?.payload?.rationale ?? decision?.payload?.selected_candidate ?? {};
+  return rationale.gate_state ?? {};
+}
+
+function gateClass(status: string, changed: boolean, isDarkMode: boolean): string {
+  const s = (status || "").toLowerCase();
+
+  // Unknown or not learned yet: grey, calm
+  if (s === "unknown" || s === "unlearned" || s === "" || s === "lost") {
+    return isDarkMode
+      ? "text-slate-400 bg-slate-800/30 border-slate-700"
+      : "text-zinc-600 bg-zinc-100 border-zinc-200";
+  }
+
+  // Changed: yellow highlight (regardless of direction)
+  if (changed) {
+    return isDarkMode
+      ? "text-yellow-200 bg-yellow-900/30 border-yellow-700 font-bold"
+      : "text-yellow-900 bg-yellow-100 border-yellow-300 font-bold";
+  }
+
+  // Acquired / ok: green
+  if (s === "earned" || s === "acquired" || s === "ok" || s === "confident") {
+    return isDarkMode
+      ? "text-green-200 bg-green-900/20 border-green-700"
+      : "text-green-900 bg-green-100 border-green-300";
+  }
+
+  // Fallback
+  return isDarkMode
+    ? "text-slate-400 bg-slate-800/30 border-slate-700"
+    : "text-zinc-600 bg-zinc-100 border-zinc-200";
+}
+
+function generateInlineCommentary(cycleEvents: EpisodeEvent[], cycle: number, budgetRemaining: number): string | null {
+  const decision = cycleEvents.find(e => e.source === "decisions");
+  const evidenceEvents = cycleEvents.filter(e => e.source === "evidence");
+  const diagnosticEvents = cycleEvents.filter(e => e.source === "diagnostics");
+
+  if (!decision) return null;
+
+  const rationale = decision.payload?.rationale ?? decision.payload?.selected_candidate ?? {};
+  const chosenKwargs = decision.payload?.chosen_kwargs ?? {};
+  const regime = rationale.regime ?? '';
+  const forced = rationale.forced ?? false;
+  const trigger = decision.payload?.selected_candidate?.trigger ?? chosenKwargs?.purpose ?? '';
+  const isCycle0 = trigger === 'cycle0_required' || chosenKwargs?.purpose === 'instrument_shape_learning' || cycle === 0;
+
+  // Check for refusal
+  const refusalDiag = diagnosticEvents.find(e => e.payload?.event_type === 'epistemic_debt_status' && !e.payload?.action_allowed);
+  if (refusalDiag) {
+    const isDeadlocked = refusalDiag.payload?.is_deadlocked ?? false;
+    if (isDeadlocked) {
+      return "Terminal failure. The agent refuses to continue when honest operation is impossible.";
+    }
+    return "Overclaiming blocks you. Underclaiming doesn't.";
+  }
+
+  // Check for gates
+  const noiseStable = evidenceEvents.some(e => e.payload?.belief === 'noise_sigma_stable' && e.payload?.new === true);
+  if (noiseStable) {
+    return "Permission slip earned. Batch sizes will shrink.";
+  }
+
+  // Cycle 0
+  if (isCycle0) {
+    return "Calibration precedes interpretation. Cost: 96 wells.";
+  }
+
+  // Forced calibration
+  if (regime === 'pre_gate' || forced) {
+    return "Measurement precision unknown. The agent refuses to guess.";
+  }
+
+  // Normal science - silence unless noteworthy
+  if (regime === 'in_gate') {
+    return null; // Let the data speak
+  }
+
+  return null;
+}
+
 function generateCycleNarrator(cycleEvents: EpisodeEvent[]): string {
   // Check what happened in this cycle
   const hasRefusal = cycleEvents.some(e =>
@@ -416,9 +512,11 @@ interface CycleDetailProps {
   cycle: number;
   events: EpisodeEvent[];
   isDarkMode: boolean;
+  prevEvents?: EpisodeEvent[];
 }
 
-function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
+function CycleDetailView({ cycle, events, isDarkMode, prevEvents }: CycleDetailProps) {
+  const [expandedRules, setExpandedRules] = useState(false);
   // Extract decision and evidence events
   const decision = events.find(e => e.source === "decisions");
   const evidenceEvents = events.filter(e => e.source === "evidence");
@@ -428,6 +526,7 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
   const rationale = decision.payload.rationale ?? decision.payload.selected_candidate ?? {};
   const chosenKwargs = decision.payload.chosen_kwargs ?? {};
   const gateState = rationale.gate_state ?? {};
+  const prevGateState = prevEvents ? getGateMap(prevEvents) : {};
   const metrics = rationale.metrics ?? {};
   const calibrationPlan = rationale.calibration_plan;
   const batchSizing = chosenKwargs.batch_sizing;
@@ -445,19 +544,22 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
           <div className={`font-bold ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
             Gate Status:
           </div>
-          <div className="grid grid-cols-2 gap-2 pl-3">
-            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>
-              Noise: <span className={gateState.noise_sigma === "earned" ? "text-green-400 font-bold" : "text-yellow-400"}>{gateState.noise_sigma || "unknown"}</span>
-            </div>
-            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>
-              Edge: <span className={gateState.edge_effect === "confident" ? "text-green-400 font-bold" : "text-yellow-400"}>{gateState.edge_effect || "unknown"}</span>
-            </div>
-            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>
-              LDH: <span className={gateState.ldh === "earned" ? "text-green-400 font-bold" : "text-yellow-400"}>{gateState.ldh || "lost"}</span>
-            </div>
-            <div className={isDarkMode ? 'text-slate-400' : 'text-zinc-600'}>
-              Cell Paint: <span className={gateState.cell_paint === "earned" ? "text-green-400 font-bold" : "text-yellow-400"}>{gateState.cell_paint || "lost"}</span>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(gateState).map(([key, value]) => {
+              const prev = prevGateState[key];
+              const changed = prev !== undefined && String(prev) !== String(value);
+              return (
+                <span
+                  key={key}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs ${gateClass(String(value), changed, isDarkMode)}`}
+                  title={changed ? `Changed: ${prev} → ${value}` : String(value)}
+                >
+                  <span className="font-medium">{key.replace(/_/g, ' ')}:</span>
+                  <span className="opacity-90">{String(value)}</span>
+                  {changed && <span className="opacity-80">✱</span>}
+                </span>
+              );
+            })}
           </div>
 
           {/* Metrics */}
@@ -484,7 +586,7 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
       </div>
 
       {/* Decision: Why This Action */}
-      <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-white border border-zinc-200'}`}>
+      <div className={`p-4 rounded-lg relative ${isDarkMode ? 'bg-slate-800/50 border border-slate-700' : 'bg-white border border-zinc-200'}`}>
         <div className={`font-bold text-sm mb-3 ${isDarkMode ? 'text-green-300' : 'text-green-900'}`}>
           🎯 Decision: {decision.payload.chosen_template || decision.payload.selected}
         </div>
@@ -522,22 +624,54 @@ function CycleDetailView({ cycle, events, isDarkMode }: CycleDetailProps) {
               </div>
             </div>
           )}
-
-          {rationale.rules_fired && rationale.rules_fired.length > 0 && (
-            <div className="pt-2">
-              <div className={`text-xs font-bold ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
-                Rules Fired:
-              </div>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {rationale.rules_fired.map((rule: string, i: number) => (
-                  <span key={i} className={`text-xs px-2 py-0.5 rounded ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-zinc-200 text-zinc-700'}`}>
-                    {rule}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Rules - bottom-right as metadata */}
+        {Array.isArray(rationale.rules_fired) && rationale.rules_fired.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-slate-700/50 flex justify-end">
+            <button
+              onClick={() => setExpandedRules(!expandedRules)}
+              className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md opacity-60 hover:opacity-100 transition-opacity ${
+                isDarkMode
+                  ? "text-slate-400 hover:text-slate-300"
+                  : "text-zinc-500 hover:text-zinc-700"
+              }`}
+            >
+              <span className="text-[10px] uppercase tracking-wide">Rules</span>
+              <span className={`px-1 py-0.5 rounded-full text-[10px] ${
+                isDarkMode ? "bg-slate-700/50" : "bg-zinc-200/50"
+              }`}>
+                {rationale.rules_fired.length}
+              </span>
+              <span className="text-[10px]">
+                {expandedRules ? "▲" : "▼"}
+              </span>
+            </button>
+
+            {expandedRules && (
+              <div className="absolute right-4 bottom-full mb-2 max-w-md">
+                <div className={`flex flex-wrap gap-1.5 p-2 rounded-md shadow-lg ${
+                  isDarkMode
+                    ? "bg-slate-800 border border-slate-700"
+                    : "bg-white border border-zinc-200"
+                }`}>
+                  {rationale.rules_fired.map((rule: string, i: number) => (
+                    <span
+                      key={i}
+                      className={`text-xs px-2 py-1 rounded ${
+                        isDarkMode
+                          ? "bg-slate-700 text-slate-300"
+                          : "bg-zinc-100 text-zinc-700"
+                      }`}
+                    >
+                      {rule}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Plate Map */}
@@ -814,13 +948,29 @@ export default function EpistemicDocumentaryPage() {
   const [copiedCommand, setCopiedCommand] = useState(false);
   const [plateData, setPlateData] = useState<any>(null);
 
-  const RUN_BASE = "/demo_results/epistemic_agent/run_20251221_212354";
+  // Run selection
+  const [availableRuns, setAvailableRuns] = useState<string[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string>("");
+
+  const RUN_BASE = selectedRunId
+    ? `/demo_results/epistemic_agent/${selectedRunId}`
+    : "";
 
   const [events, setEvents] = useState<EpisodeEvent[]>([]);
   const [selected, setSelected] = useState<EpisodeEvent | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [speed, setSpeed] = useState(2);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const lastSizesRef = useRef({ evidence: 0, decisions: 0, diagnostics: 0 });
+  const [expandedCycles, setExpandedCycles] = useState<Set<number>>(new Set());
+  const [showWelcome, setShowWelcome] = useState(() => {
+    // Only show if never played before
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem('documentary_played');
+    }
+    return true;
+  });
 
   const generateJHCommand = (plateId: string, seed: number = 42) => {
     const platePath = `validation_frontend/public/plate_designs/${plateId}.json`;
@@ -838,16 +988,39 @@ export default function EpistemicDocumentaryPage() {
     setShowSimulateModal(true);
   };
 
+  // Load available runs from manifest
   useEffect(() => {
+    async function loadRuns() {
+      try {
+        const resp = await fetch("/demo_results/epistemic_agent/runs_manifest.json", { cache: "no-store" });
+        const data = await resp.json();
+        const rawRuns = Array.isArray(data?.runs) ? data.runs : [];
+        const runs = rawRuns.map((r: any) => r?.run_id).filter(Boolean);
+        setAvailableRuns(runs);
+
+        // Default to latest (manifest is sorted ascending)
+        if (runs.length > 0) setSelectedRunId(runs[runs.length - 1]);
+      } catch (e) {
+        console.warn("runs_manifest.json not found; falling back to hardcoded run");
+        setSelectedRunId("run_20251221_212354");
+      }
+    }
+    loadRuns();
+  }, []);
+
+  // Load events when run changes
+  useEffect(() => {
+    if (!RUN_BASE) return;
+
     async function load() {
       const [evidenceText, decisionsText] = await Promise.all([
-        fetch(`${RUN_BASE}_evidence.jsonl`).then(r => r.text()),
-        fetch(`${RUN_BASE}_decisions.jsonl`).then(r => r.text()),
+        fetch(`${RUN_BASE}_evidence.jsonl`, { cache: "no-store" }).then(r => r.text()),
+        fetch(`${RUN_BASE}_decisions.jsonl`, { cache: "no-store" }).then(r => r.text()),
       ]);
 
       let diagnosticsText = "";
       try {
-        diagnosticsText = await fetch(`${RUN_BASE}_diagnostics.jsonl`).then(r => r.ok ? r.text() : "");
+        diagnosticsText = await fetch(`${RUN_BASE}_diagnostics.jsonl`, { cache: "no-store" }).then(r => r.ok ? r.text() : "");
       } catch { diagnosticsText = ""; }
 
       const evidenceRows = parseJsonl(evidenceText);
@@ -877,7 +1050,7 @@ export default function EpistemicDocumentaryPage() {
       setIsPlaying(false);
     }
     load();
-  }, []);
+  }, [RUN_BASE]);
 
   // Playback
   useEffect(() => {
@@ -891,6 +1064,81 @@ export default function EpistemicDocumentaryPage() {
 
     return () => window.clearInterval(id);
   }, [isPlaying, cursor, events.length, speed]);
+
+  // Live mode polling
+  useEffect(() => {
+    if (!isLiveMode) return;
+    if (!RUN_BASE) return;
+
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const [evidenceText, decisionsText, diagnosticsText] = await Promise.all([
+          fetch(`${RUN_BASE}_evidence.jsonl`, { cache: "no-store" }).then((r) => r.text()),
+          fetch(`${RUN_BASE}_decisions.jsonl`, { cache: "no-store" }).then((r) => r.text()),
+          fetch(`${RUN_BASE}_diagnostics.jsonl`, { cache: "no-store" }).then((r) => r.text()).catch(() => ""),
+        ]);
+
+        if (cancelled) return;
+
+        const nextSizes = {
+          evidence: evidenceText.length,
+          decisions: decisionsText.length,
+          diagnostics: diagnosticsText.length,
+        };
+
+        const prev = lastSizesRef.current;
+        const grew =
+          nextSizes.evidence > prev.evidence ||
+          nextSizes.decisions > prev.decisions ||
+          nextSizes.diagnostics > prev.diagnostics;
+
+        if (!grew) return;
+
+        lastSizesRef.current = nextSizes;
+
+        const evidenceRows = parseJsonl(evidenceText);
+        const decisionRows = parseJsonl(decisionsText);
+        const diagnosticRows = diagnosticsText ? parseJsonl(diagnosticsText) : [];
+
+        let ev = [
+          ...toEpisodeEvents(evidenceRows, "evidence"),
+          ...toEpisodeEvents(decisionRows, "decisions"),
+          ...toEpisodeEvents(diagnosticRows, "diagnostics"),
+        ];
+
+        ev.sort((a, b) => {
+          const ac = Number.isFinite(a.cycle) ? a.cycle : 1e9;
+          const bc = Number.isFinite(b.cycle) ? b.cycle : 1e9;
+          if (ac !== bc) return ac - bc;
+          if (a.priority !== b.priority) return a.priority - b.priority;
+          return a.t - b.t;
+        });
+
+        ev = ev.map((x, i) => ({ ...x, t: i }));
+
+        setEvents(ev);
+        setCursor(ev.length - 1);
+      } catch (e) {
+        console.error("Live fetch failed:", e);
+      }
+    };
+
+    const interval = window.setInterval(tick, 1000);
+    tick(); // Immediate first fetch
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isLiveMode, RUN_BASE]);
+
+  // Disable live mode and reset ref when switching runs
+  useEffect(() => {
+    setIsLiveMode(false);
+    lastSizesRef.current = { evidence: 0, decisions: 0, diagnostics: 0 };
+  }, [RUN_BASE]);
 
   const visibleEvents = useMemo(() => events.slice(0, cursor + 1), [events, cursor]);
   const keyMoments = useMemo(() => detectKeyMoments(events), [events]);
@@ -925,14 +1173,14 @@ export default function EpistemicDocumentaryPage() {
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDarkMode
-      ? 'bg-gradient-to-b from-slate-900 to-slate-800'
+      ? 'bg-black'
       : 'bg-gradient-to-b from-zinc-50 to-white'
       }`}>
       {/* Header */}
       <div className={`backdrop-blur-sm border-b sticky top-0 z-50 transition-colors duration-300 ${isDarkMode
-        ? 'bg-slate-800/80 border-slate-700'
+        ? 'bg-black/80 border-cyan-500/30'
         : 'bg-white/80 border-zinc-200'
-        }`}>
+        }`} style={isDarkMode ? { boxShadow: '0 1px 0 0 rgba(6, 182, 212, 0.3)' } : {}}>
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
@@ -954,6 +1202,24 @@ export default function EpistemicDocumentaryPage() {
                 Watch an agent learn to do science
               </p>
             </div>
+
+            {/* Run selector */}
+            <select
+              value={selectedRunId}
+              onChange={(e) => setSelectedRunId(e.target.value)}
+              disabled={availableRuns.length === 0}
+              className={`px-3 py-2 rounded-lg text-sm border mr-2 ${
+                isDarkMode
+                  ? 'bg-slate-700 text-white border-slate-600'
+                  : 'bg-white text-zinc-900 border-zinc-300'
+              }`}
+            >
+              {availableRuns.map((run) => (
+                <option key={run} value={run}>
+                  {run}
+                </option>
+              ))}
+            </select>
 
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
@@ -1081,68 +1347,108 @@ export default function EpistemicDocumentaryPage() {
         ) : (
           <>
             {/* Simple Progress Bar */}
-            <div className={`mb-4 p-3 rounded-lg flex items-center gap-4 ${isDarkMode
-              ? 'bg-slate-800/50 border border-slate-700'
-              : 'bg-white border border-zinc-200'
+            <div className={`mb-4 p-3 flex items-center gap-4 ${isDarkMode
+              ? 'border-b border-cyan-500/20'
+              : 'bg-white border border-zinc-200 rounded-lg'
               }`}>
-              <div className={`font-bold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>
+              <div className={`font-bold ${isDarkMode ? 'text-cyan-300' : 'text-zinc-900'}`}>
                 Cycle {current?.cycle ?? 0} / 20
               </div>
               <div className="flex-1">
-                <div className={`h-2 rounded-full ${isDarkMode ? 'bg-slate-700' : 'bg-zinc-200'}`}>
+                <div className={`h-1 ${isDarkMode ? 'bg-cyan-950/50' : 'bg-zinc-200 rounded-full'}`}>
                   <div
-                    className="h-full rounded-full bg-indigo-500 transition-all"
-                    style={{ width: `${((current?.cycle ?? 0) / 20) * 100}%` }}
+                    className={`h-full transition-all ${isDarkMode ? 'bg-cyan-500' : 'bg-indigo-500 rounded-full'}`}
+                    style={isDarkMode ? {
+                      width: `${((current?.cycle ?? 0) / 20) * 100}%`,
+                      boxShadow: '0 0 8px rgba(6, 182, 212, 0.6)'
+                    } : { width: `${((current?.cycle ?? 0) / 20) * 100}%` }}
                   />
                 </div>
               </div>
-              <div className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-zinc-600'}`}>
+              <div className={`text-sm ${isDarkMode ? 'text-cyan-600' : 'text-zinc-600'}`}>
                 {visibleEvents.filter(e => e.source === 'decisions').length} decisions made
               </div>
             </div>
 
+        {/* Welcome instruction - appears only once */}
+        {showWelcome && (
+          <div className={`mb-4 text-center transition-opacity duration-500 ${
+            isDarkMode ? 'text-cyan-400/80' : 'text-zinc-500'
+          }`}>
+            <p className="text-sm">
+              This is a recording. Press Play and observe.
+            </p>
+          </div>
+        )}
+
         {/* Playback Controls */}
-        <div className={`flex items-center gap-3 mb-4 p-4 rounded-lg ${isDarkMode ? 'bg-slate-800/50' : 'bg-white'
+        <div className={`flex items-center gap-3 mb-4 p-4 ${isDarkMode ? '' : 'bg-white rounded-lg'
           }`}>
           <button
-            onClick={() => setIsPlaying(p => !p)}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${isDarkMode
-              ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
-              : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+            onClick={() => {
+              setIsPlaying(p => !p);
+              if (showWelcome && !isPlaying) {
+                setShowWelcome(false);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('documentary_played', 'true');
+                }
+              }
+            }}
+            className={`px-4 py-2 font-medium transition-all ${isDarkMode
+              ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+              : 'bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg'
               }`}
+            style={isDarkMode ? { boxShadow: '0 0 12px rgba(6, 182, 212, 0.3)' } : {}}
           >
             {isPlaying ? "⏸ Pause" : "▶ Play"}
           </button>
           <button
             onClick={() => setCursor(c => Math.max(0, c - 1))}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${isDarkMode
-              ? 'bg-slate-700 hover:bg-slate-600 text-white'
-              : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+            className={`px-4 py-2 font-medium transition-all ${isDarkMode
+              ? 'text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-500/50'
+              : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900 rounded-lg'
               }`}
           >
             ⏮ Back
           </button>
           <button
             onClick={() => setCursor(c => Math.min(events.length - 1, c + 1))}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${isDarkMode
-              ? 'bg-slate-700 hover:bg-slate-600 text-white'
-              : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+            className={`px-4 py-2 font-medium transition-all ${isDarkMode
+              ? 'text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-500/50'
+              : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900 rounded-lg'
               }`}
           >
             Forward ⏭
           </button>
           <button
             onClick={() => { setCursor(0); setIsPlaying(false); }}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${isDarkMode
-              ? 'bg-slate-700 hover:bg-slate-600 text-white'
-              : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+            className={`px-4 py-2 font-medium transition-all ${isDarkMode
+              ? 'text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-500/50'
+              : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900 rounded-lg'
               }`}
           >
             ⏪ Reset
           </button>
 
+          <button
+            onClick={() => setIsLiveMode((v) => !v)}
+            disabled={!RUN_BASE}
+            className={`px-4 py-2 font-medium transition-all ${
+              isLiveMode
+                ? isDarkMode
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                  : 'bg-red-600 hover:bg-red-500 text-white rounded-lg'
+                : isDarkMode
+                  ? 'text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50'
+                  : 'bg-green-500 hover:bg-green-600 text-white rounded-lg'
+            }`}
+            style={isDarkMode && isLiveMode ? { boxShadow: '0 0 12px rgba(239, 68, 68, 0.4)' } : {}}
+          >
+            {isLiveMode ? '🔴 LIVE' : '▶ Watch Live'}
+          </button>
+
           <label className="flex items-center gap-2 ml-4">
-            <span className={isDarkMode ? 'text-slate-300' : 'text-zinc-700'}>Speed</span>
+            <span className={isDarkMode ? 'text-cyan-400' : 'text-zinc-700'}>Speed</span>
             <input
               type="range"
               min={0.5}
@@ -1152,40 +1458,228 @@ export default function EpistemicDocumentaryPage() {
               onChange={(e) => setSpeed(Number(e.target.value))}
               className="w-24"
             />
-            <span className={`min-w-[3rem] ${isDarkMode ? 'text-slate-300' : 'text-zinc-700'}`}>
+            <span className={`min-w-[3rem] ${isDarkMode ? 'text-cyan-400' : 'text-zinc-700'}`}>
               {speed.toFixed(1)}x
             </span>
           </label>
         </div>
 
-        {/* Cycle-by-Cycle Detail View */}
-        <div className={`rounded-lg p-6 max-h-[75vh] overflow-auto ${isDarkMode
-          ? 'bg-slate-800/50 border border-slate-700'
-          : 'bg-white border border-zinc-200'
-          }`}>
-          {cycles.map(group => (
-            <div key={group.cycle} className="mb-10 last:mb-0">
-              <div className="mb-4">
-                <div className={`font-bold text-2xl ${isDarkMode ? 'text-white' : 'text-zinc-900'
-                  }`}>
-                  {group.cycle >= 0 ? `Cycle ${group.cycle}` : "Uncycled"}
-                </div>
-                <div className={`text-sm italic mt-1 ${isDarkMode ? 'text-slate-400' : 'text-zinc-500'
-                  }`}>
-                  {group.narrator}
-                </div>
-              </div>
-
-              <CycleDetailView
-                cycle={group.cycle}
-                events={group.events}
-                isDarkMode={isDarkMode}
-              />
+        {/* Key Moments Timeline - only show after cycle 2 */}
+        {current?.cycle >= 2 && keyMoments.length > 0 && (
+          <div className={`mb-4 p-4 ${isDarkMode ? 'border-b border-cyan-500/20' : 'bg-white border border-zinc-200 rounded-lg'}`}>
+            <div className={`font-bold text-sm mb-3 ${isDarkMode ? 'text-cyan-400' : 'text-indigo-900'}`}>
+              🎯 Key Moments
             </div>
-          ))}
-        </div>
-          </>
+            <div className="flex flex-wrap gap-2">
+              {keyMoments.slice(0, 10).map((moment, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCursor(moment.index)}
+                  className={`px-3 py-1.5 text-sm transition-all ${
+                    cursor >= moment.index
+                      ? isDarkMode
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                        : 'bg-indigo-500 text-white rounded-lg'
+                      : isDarkMode
+                        ? 'text-cyan-600 hover:text-cyan-400 border border-cyan-500/30 hover:border-cyan-500/50'
+                        : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 rounded-lg'
+                  }`}
+                  style={isDarkMode && cursor >= moment.index ? { boxShadow: '0 0 8px rgba(6, 182, 212, 0.3)' } : {}}
+                  title={moment.summary}
+                >
+                  {moment.kind === 'refusal' && '⛔'}
+                  {moment.kind === 'gate' && '🎯'}
+                  {moment.kind === 'noise' && '📊'}
+                  {moment.kind === 'stall' && '⏸'}
+                  {moment.kind === 'regime_change' && '🔄'}
+                  {' '}C{moment.cycle}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
+
+        {/* Cycle-by-Cycle Detail View */}
+        <div className={`p-6 max-h-[75vh] overflow-auto ${isDarkMode
+          ? ''
+          : 'bg-white border border-zinc-200 rounded-lg'
+          }`}>
+          {cycles.map((group, idx) => {
+            const decision = group.events.find(e => e.source === "decisions");
+            const rationale = decision?.payload?.rationale ?? decision?.payload?.selected_candidate ?? {};
+            const forced = rationale.forced || rationale.regime === "pre_gate";
+            const regime = rationale.regime ?? '';
+
+            const isExpanded = expandedCycles.has(group.cycle);
+
+            const toggleExpanded = () => {
+              setExpandedCycles(prev => {
+                const next = new Set(prev);
+                if (next.has(group.cycle)) {
+                  next.delete(group.cycle);
+                } else {
+                  next.add(group.cycle);
+                }
+                return next;
+              });
+            };
+
+            // INTERLUDE: Forced calibration cycles have different posture
+            const isInterlude = forced || regime === 'pre_gate';
+
+            return (
+              <div key={group.cycle} className={`mb-20 last:mb-0 ${
+                isInterlude && !isExpanded
+                  ? isDarkMode ? 'opacity-70' : 'opacity-80'
+                  : ''
+              }`}>
+                {/* HERO: The Narrative - This is what happened */}
+                <div className={`pb-6 ${
+                  isInterlude
+                    ? isDarkMode ? 'border-b border-cyan-500/20' : 'border-b border-zinc-200'
+                    : isDarkMode
+                      ? 'border-b border-cyan-500/50'
+                      : `border-b-2 ${forced ? 'border-red-200' : 'border-zinc-200'}`
+                }`} style={isDarkMode && !isInterlude ? { boxShadow: '0 1px 8px 0 rgba(6, 182, 212, 0.3)' } : {}}>
+                  <div className={`text-xs uppercase tracking-wider mb-3 font-medium ${
+                    isInterlude
+                      ? isDarkMode ? 'text-cyan-700' : 'text-zinc-400'
+                      : isDarkMode ? 'text-cyan-500' : 'text-zinc-500'
+                  }`}>
+                    {isInterlude && !isExpanded ? '⏸ ' : ''}Cycle {group.cycle >= 0 ? group.cycle : '?'}
+                  </div>
+
+                  <div className={`flex items-start gap-4 ${
+                    isInterlude
+                      ? isDarkMode ? 'text-cyan-300/60' : 'text-zinc-600'
+                      : isDarkMode ? 'text-cyan-50' : 'text-zinc-900'
+                  }`}>
+                    <div className={`${isInterlude ? 'text-2xl' : 'text-4xl'} mt-1 ${forced ? 'animate-pulse' : ''}`}>
+                      {cycleIcon(group.events)}
+                    </div>
+                    <div className="flex-1">
+                      <div className={`${isInterlude ? 'text-xl' : 'text-3xl md:text-4xl'} font-bold leading-tight`}>
+                        {group.narrator}
+                      </div>
+
+                      {/* Inline Commentary - Caption style */}
+                      {(() => {
+                        const observation = group.events.find(e => e.payload?.budget_remaining !== undefined);
+                        const budgetRemaining = observation?.payload?.budget_remaining ?? 0;
+                        const commentary = generateInlineCommentary(group.events, group.cycle, budgetRemaining);
+
+                        if (!commentary) return null;
+
+                        return (
+                          <div className={`mt-3 max-w-2xl text-sm leading-relaxed ${
+                            isDarkMode ? 'text-cyan-400/70' : 'text-zinc-500'
+                          }`}>
+                            {commentary}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* INTERLUDE AFFORDANCES: Show what's available without demanding attention */}
+                {isInterlude && !isExpanded && (
+                  <div className="flex items-center justify-center gap-6 py-12">
+                    <button
+                      onClick={toggleExpanded}
+                      className={`text-xs font-medium flex items-center gap-2 transition-all hover:underline underline-offset-2 ${
+                        isDarkMode
+                          ? 'text-cyan-600 hover:text-cyan-400 hover:opacity-100 opacity-90'
+                          : 'text-zinc-400 hover:text-zinc-500 hover:opacity-100 opacity-90'
+                      }`}
+                    >
+                      ▸ View evidence from this cycle
+                    </button>
+                    <span className={isDarkMode ? 'text-cyan-900/50' : 'text-zinc-200'}>|</span>
+                    <button
+                      onClick={toggleExpanded}
+                      className={`text-xs font-medium flex items-center gap-2 transition-all hover:underline underline-offset-2 ${
+                        isDarkMode
+                          ? 'text-cyan-600 hover:text-cyan-400 hover:opacity-100 opacity-90'
+                          : 'text-zinc-400 hover:text-zinc-500 hover:opacity-100 opacity-90'
+                      }`}
+                    >
+                      ▸ Why was this forced?
+                    </button>
+                  </div>
+                )}
+
+                {/* NARRATIVE CYCLES: Give the moment space */}
+                {!isInterlude && !isExpanded && (
+                  <>
+                    <div className="h-80" />
+                    <div
+                      className={`border-t mb-8 ${isDarkMode ? 'border-cyan-500/30' : 'border-zinc-100'}`}
+                      style={isDarkMode ? { boxShadow: '0 1px 4px 0 rgba(6, 182, 212, 0.2)' } : {}}
+                    />
+                    <div className="text-center">
+                      <button
+                        onClick={toggleExpanded}
+                        className={`text-xs uppercase tracking-wider font-medium flex items-center gap-2 mx-auto transition-colors ${
+                          isDarkMode ? 'text-cyan-600 hover:text-cyan-400' : 'text-zinc-400 hover:text-zinc-600'
+                        }`}
+                      >
+                        ▶ Evidence & Diagnostics
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* EXPANDED EVIDENCE: Forensic detail on request */}
+                {isExpanded && (
+                  <>
+                    {!isInterlude && <div className="h-20" />}
+                    <div
+                      className={`border-t mt-8 mb-8 ${isDarkMode ? 'border-cyan-500/30' : 'border-zinc-100'}`}
+                      style={isDarkMode ? { boxShadow: '0 1px 4px 0 rgba(6, 182, 212, 0.2)' } : {}}
+                    />
+                    <button
+                      onClick={toggleExpanded}
+                      className={`text-xs uppercase tracking-wider font-medium mb-4 flex items-center gap-2 transition-colors ${
+                        isDarkMode ? 'text-cyan-600 hover:text-cyan-400' : 'text-zinc-400 hover:text-zinc-600'
+                      }`}
+                    >
+                      ▼ Collapse evidence
+                    </button>
+                    <div className="opacity-90">
+                      <CycleDetailView
+                        cycle={group.cycle}
+                        events={group.events}
+                        isDarkMode={isDarkMode}
+                        prevEvents={idx > 0 ? cycles[idx - 1]?.events : undefined}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Cost Tracker - only after first non-forced decision */}
+        {(() => {
+          const hasNonForcedDecision = cycles.some(c => {
+            const decision = c.events.find(e => e.source === "decisions");
+            const rationale = decision?.payload?.rationale ?? decision?.payload?.selected_candidate ?? {};
+            const forced = rationale.forced || rationale.regime === "pre_gate";
+            return !forced;
+          });
+
+          if (!hasNonForcedDecision) return null;
+
+          return (
+            <div className="mt-8">
+              <CostTracker visibleEvents={visibleEvents} isDarkMode={isDarkMode} />
+            </div>
+          );
+        })()}
+        </>
+      )}
       </div>
 
       {/* Simulate Modal */}
