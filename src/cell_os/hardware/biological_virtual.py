@@ -436,7 +436,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_operations = ValidatedRNG(
             np.random.default_rng(seed + 4),
             stream_name="operations",
-            allowed_patterns={"feed", "washout", "washout_compound", "_contamination", "_add_media"},
+            allowed_patterns={"feed", "feed_vessel", "washout", "washout_compound", "_contamination", "_add_media"},
             enforce=True
         )
 

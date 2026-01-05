@@ -151,7 +151,7 @@ class ParsedWell:
     fixation_timing_offset_min: float
     imaging_focus_offset_um: float
     timepoint_hours: float
-    exposure_multiplier: float  # Agent-controlled signal scaling (default 1.0)
+    exposure_multiplier: float = 1.0  # Agent-controlled signal scaling (default 1.0)
     # Phase 2: Material measurement support
     mode: str = "biological"  # "biological" or "optical_material"
     material_assignment: Optional[str] = None  # "DARK", "FLATFIELD_DYE_LOW", etc.

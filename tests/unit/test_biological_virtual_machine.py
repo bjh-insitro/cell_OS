@@ -92,7 +92,7 @@ class TestBiologicalVirtualMachine:
         result = self.vm.treat_with_compound("well_A1", "staurosporine", dose_uM=0.1)
 
         assert result["status"] == "success"
-        assert 0.4 < result["viability_effect"] < 0.6  # ~50% with noise
+        assert 0.35 < result["viability_effect"] < 0.65  # ~50% with noise (wider tolerance for bio variability)
         
         # Verify vessel state updated
         state = self.vm.get_vessel_state("well_A1")

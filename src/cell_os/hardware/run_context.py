@@ -399,6 +399,21 @@ class RunContext:
             plate_id: Plate identifier
             first_well_position: First well seen (used to infer format)
         """
+        # Check if this is a legacy/test format (e.g., "1", "test", "well")
+        # Legacy formats get a single UID for the exact position requested
+        is_legacy_format = (
+            len(first_well_position) == 0 or
+            first_well_position[0].isdigit() or
+            first_well_position.lower() in ('test', 'well', 'source', 'dest')
+        )
+
+        if is_legacy_format:
+            # Legacy mode: just assign a UID to this specific (plate, position) pair
+            key = (plate_id, first_well_position)
+            uid = self._rng_well_uids.integers(0, 2**32, dtype=np.uint32)
+            self._well_uid_map[key] = int(uid)
+            return
+
         # Infer plate format (96-well, 384-well, etc.)
         # Heuristic: if well has 2-digit column, it's 96-well (max col 12)
         # If 3-digit or col > 12, assume 384-well (max col 24)
