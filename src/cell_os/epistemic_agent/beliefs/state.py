@@ -177,6 +177,11 @@ class BeliefState:
     health_debt: float = 0.0  # Accumulated quality debt (unitless, ~0-10 range)
     health_debt_history: List[float] = field(default_factory=list)  # Per-cycle tracking
 
+    # Gain estimation aggressiveness (1.0 = conservative default, >1.0 = optimistic, <1.0 = pessimistic)
+    # Higher values will overclaim expected gain, triggering debt enforcement
+    # Useful for testing debt enforcement and simulating aggressive agents
+    gain_estimate_multiplier: float = 1.0
+
     # Calibration uncertainty tracking (epistemic maintenance)
     # Measures ignorance about measurement quality (distinct from health debt = damage)
     # Increases with time since calibration and drift signals
@@ -1394,7 +1399,9 @@ class BeliefState:
         if expected_gain < 0.05:
             expected_gain = 0.05
 
-        return expected_gain
+        # Apply aggressiveness multiplier (for testing debt enforcement)
+        # 1.0 = default (conservative), >1.0 = overclaim (aggressive)
+        return expected_gain * self.gain_estimate_multiplier
 
     def accumulate_health_debt(
         self,

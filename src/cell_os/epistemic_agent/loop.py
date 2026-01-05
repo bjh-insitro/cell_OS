@@ -46,7 +46,8 @@ class EpistemicLoop:
         log_dir: Optional[Path] = None,
         seed: int = 0,
         strict_quality: bool = True,
-        strict_provenance: bool = True
+        strict_provenance: bool = True,
+        gain_aggressiveness: float = 1.0  # >1.0 = overclaim (triggers debt enforcement)
     ):
         self.budget = budget
         self.max_cycles = max_cycles
@@ -76,6 +77,11 @@ class EpistemicLoop:
         # Initialize world and agent
         self.world = ExperimentalWorld(budget_wells=budget, seed=seed)
         self.agent = RuleBasedPolicy(budget=budget, seed=seed)
+
+        # Apply gain aggressiveness (>1.0 causes overclaiming, triggers debt)
+        self.gain_aggressiveness = gain_aggressiveness
+        if gain_aggressiveness != 1.0:
+            self.agent.beliefs.gain_estimate_multiplier = gain_aggressiveness
 
         # v0.5.1: Epistemic integration (Task 3 - real epistemic claims)
         self.epistemic = EpistemicIntegration(enable=True)
