@@ -10,5 +10,7 @@
 # - posh_complete_workflow.py: POSH complete workflow (unused)
 # - posh_viz.py: POSH visualization (unused)
 # - imaging_world_model.py: Imaging world model (unused)
+# - beam_search_new_methods.py: Draft methods for BeamSearch COMMIT gating (never integrated)
+# - assay_governance.py: scRNA-seq cost gating logic (never integrated)
 #
 # If you need to resurrect any of these, move them back to the parent directory.
