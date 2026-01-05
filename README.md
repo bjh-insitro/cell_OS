@@ -2,7 +2,8 @@
 
 **Epistemic Control Research Testbed for Autonomous Experimentation**
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue)]()
+[![Python](https://img.shields.io/badge/python-3.11+-blue)]()
+[![CI](https://github.com/brighart/cell_OS/actions/workflows/ci.yml/badge.svg)](https://github.com/brighart/cell_OS/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 
 ---
@@ -187,9 +188,11 @@ graph TB
 - **Tracks epistemic debt**: `debt += max(0, claimed_gain - actual_gain)`
 - **Inflates costs**: Future experiments cost more if agent overclaimed
 - **Asymmetric penalties**: Overclaiming hurts, underclaiming doesn't
-- **Currently**: Tracks debt but doesn't block execution (integration incomplete)
+- **Hard block at 2.0 bits**: Non-calibration actions blocked when debt exceeds threshold
+- **Debt repayment**: Calibration actions can reduce accumulated debt
 
-**Research hypothesis**: Agents with debt tracking will learn to be conservative in information gain claims.
+**Enforcement verified by**: `tests/integration/test_epistemic_debt_enforcement.py` (13 tests)
+`tests/adversarial_agents/test_overclaiming_agent.py` (5 stress tests)
 
 ---
 
@@ -461,7 +464,8 @@ cell_OS/
 │   └── phase6a/                      # Conservation laws, honesty, confluence
 ├── scripts/
 │   ├── run_epistemic_agent.py        # Main agent entry point
-│   └── analysis/                     # Analysis utilities
+│   └── analysis/
+│       └── debt_completion_correlation.py  # Multi-seed debt vs outcome analysis
 ├── auto_pull.sh                      # 🆕 Auto-sync results from GitHub
 └── docs/
     ├── PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md
