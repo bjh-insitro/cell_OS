@@ -54,3 +54,12 @@ runs/
 output/
 results/
 .hypothesis/
+
+# Secret files - never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+secrets.yaml
