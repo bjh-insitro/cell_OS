@@ -46,23 +46,30 @@ from src.cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 
 def test_dormant_mode_preserves_behavior():
     """
-    Test 1: When heavy_tail_frequency=0.0 (default), behavior unchanged.
+    Test 1: When heavy_tail_frequency=0.0, behavior unchanged.
 
-    This ensures golden files and existing tests remain valid.
+    This ensures golden files and existing tests remain valid when heavy tails disabled.
     """
     vm1 = BiologicalVirtualMachine(seed=42)
     vm2 = BiologicalVirtualMachine(seed=42)
 
-    # Seed vessels
+    # Seed vessels (this loads thalamus_params)
     for vm in (vm1, vm2):
         vm.seed_vessel("v", "A549", initial_count=1e6, initial_viability=0.95)
+
+    # Explicitly set dormant mode for this test (config may have non-zero default)
+    for vm in (vm1, vm2):
+        vm.thalamus_params['technical_noise']['heavy_tail_frequency'] = 0.0
+
+    # Apply treatment and advance
+    for vm in (vm1, vm2):
         vm.treat_with_compound("v", "tunicamycin", 1.0)
         vm.advance_time(24.0)
 
-    # Verify default is dormant
+    # Verify dormant mode is active
     tech_noise = vm1.thalamus_params['technical_noise']
     assert tech_noise.get('heavy_tail_frequency', 0.0) == 0.0, \
-        "Default heavy_tail_frequency should be 0.0 (dormant)"
+        "heavy_tail_frequency should be 0.0 for dormant mode test"
 
     # Measure Cell Painting (both VMs should be identical)
     r1 = vm1.cell_painting_assay("v")

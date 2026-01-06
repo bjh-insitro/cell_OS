@@ -12,7 +12,12 @@ This enables the agent to leverage all available measurements
 """
 
 import numpy as np
-import standalone_cell_thalamus as sim
+import pytest
+
+try:
+    import standalone_cell_thalamus as sim
+except ImportError:
+    pytest.skip("standalone_cell_thalamus not available", allow_module_level=True)
 from src.cell_os.hardware.mechanism_posterior_v2 import (
     compute_mechanism_posterior_v2,
     NuisanceModel,

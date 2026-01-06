@@ -60,8 +60,8 @@ def test_ec50_manipulation():
         print("\n✗ cell_line_sensitivity does NOT exist (but code expects it!)")
 
     # Seed identical wells
-    vm_baseline.seed_vessel("A1", "A549", 2000, "96-well")
-    vm_shifted.seed_vessel("A1", "A549", 2000, "96-well")
+    vm_baseline.seed_vessel("A1", "A549", initial_count=2000, capacity=1e7, vessel_type="96-well")
+    vm_shifted.seed_vessel("A1", "A549", initial_count=2000, capacity=1e7, vessel_type="96-well")
 
     # Apply same dose
     dose_uM = 30.0  # Nominal EC50
