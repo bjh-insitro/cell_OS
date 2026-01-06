@@ -1,10 +1,10 @@
 """
-Complete Injection Integration Test: All 13 Injections Affecting Biology
+Complete Injection Integration Test: All 11 Injections Affecting Biology
 
 This test demonstrates the full epistemic control system:
 - Seeds cells in a well
 - Applies compound treatment
-- Runs simulation WITH all 13 injections
+- Runs simulation WITH all 11 injections
 - Runs simulation WITHOUT injections (control)
 - Compares outcomes to show impact of realism
 
@@ -23,14 +23,13 @@ from cell_os.hardware.injections import (
     CoatingQualityInjection,
     PipettingVarianceInjection,
     MixingGradientsInjection,
-    # F-K: Measurement and biology
+    # F-J: Measurement and biology
     MeasurementBackActionInjection,
     StressMemoryInjection,
     LumpyTimeInjection,
     DeathModesInjection,
     AssayDeceptionInjection,
-    CoalitionDynamicsInjection,
-    # L-M: Epistemic limits
+    # K-L: Epistemic limits
     IdentifiabilityLimitsInjection,
     CursedPlateInjection,
     # Base
@@ -70,12 +69,12 @@ class CompleteBiologySimulator:
 
         Args:
             seed: Random seed
-            use_injections: If True, apply all 13 injections
+            use_injections: If True, apply all 11 injections
         """
         self.rng = np.random.default_rng(seed)
         self.use_injections = use_injections
 
-        # Initialize all 13 injections
+        # Initialize all 11 injections
         if use_injections:
             self.injections = [
                 VolumeEvaporationInjection(),
@@ -87,9 +86,8 @@ class CompleteBiologySimulator:
                 LumpyTimeInjection(seed=seed+6),
                 DeathModesInjection(seed=seed+7),
                 AssayDeceptionInjection(seed=seed+8),
-                CoalitionDynamicsInjection(seed=seed+9),
-                IdentifiabilityLimitsInjection(seed=seed+10),
-                CursedPlateInjection(seed=seed+11, enable_curses=False),  # Disable random curses for reproducibility
+                IdentifiabilityLimitsInjection(seed=seed+9),
+                CursedPlateInjection(seed=seed+10, enable_curses=False),  # Disable random curses for reproducibility
             ]
             self.injection_states = []
         else:
@@ -316,14 +314,14 @@ class CompleteBiologySimulator:
 
 def test_complete_integration_comparison():
     """
-    Compare simulations WITH and WITHOUT all 13 injections.
+    Compare simulations WITH and WITHOUT all 11 injections.
 
     Demonstrates the impact of the complete epistemic control system.
     """
     print("\n" + "="*80)
     print("COMPLETE INJECTION INTEGRATION TEST")
     print("="*80)
-    print("\nComparing biology WITH vs WITHOUT all 13 reality injections")
+    print("\nComparing biology WITH vs WITHOUT all 11 reality injections")
 
     # Simulation parameters
     vessel_id = "plate1_well_B03"
@@ -350,9 +348,9 @@ def test_complete_integration_comparison():
         current_time = metrics['time_h']
         step_num += 1
 
-    # Run WITH all 13 injections (reality)
+    # Run WITH all 11 injections (reality)
     print("\n" + "-"*80)
-    print("REALITY: With All 13 Injections")
+    print("REALITY: With All 11 Injections")
     print("-"*80)
     print("(Triggering imaging every 12h for measurement back-action)")
 
@@ -403,7 +401,7 @@ def test_complete_integration_comparison():
     print(f"  ATP level: {bio_control.atp_level:.3f}")
     print(f"  Visible viability: {final_control['visible_viability']:.3f}")
 
-    print(f"\nReality (With All 13 Injections):")
+    print(f"\nReality (With All 11 Injections):")
     print(f"  Cell count: {final_reality['cell_count']:.0f}")
     print(f"  Viability: {final_reality['viability']:.3f} ({final_reality['viability']*100:.1f}%)")
     print(f"  ATP level: {bio_reality.atp_level:.3f}")
@@ -437,7 +435,7 @@ def test_complete_integration_comparison():
     print("KEY INSIGHTS")
     print("="*80)
 
-    print(f"\n1. INJECTION SYSTEM: All 12 injections are active and modifying biology")
+    print(f"\n1. INJECTION SYSTEM: All 11 injections are active and modifying biology")
     print(f"   → Total biology modifiers: {sum(e['biology_modifiers'] for e in inj_summary['effects'].values())}")
     print(f"   → Total measurement modifiers: {sum(e['measurement_modifiers'] for e in inj_summary['effects'].values())}")
 
@@ -464,12 +462,12 @@ def test_complete_integration_comparison():
     # Note: With sophisticated injections, effects can be subtle or compensatory
     # The key is that injections ARE affecting biology, even if net effect is small
     assert inj_summary['injections_active'], "Injections should be active"
-    assert len(inj_summary['effects']) == 12, "Should have 12 active injections"
+    assert len(inj_summary['effects']) == 11, "Should have 11 active injections"
 
     print("\n" + "="*80)
     print("✅ COMPLETE INTEGRATION TEST PASSED")
     print("="*80)
-    print("\nAll 13 injections successfully affect biology simulation.")
+    print("\nAll 11 injections successfully affect biology simulation.")
     print("Reality enforced: uncertainty, deception, limits, and failures.")
 
 
@@ -519,7 +517,7 @@ def test_injection_ablation_study():
     print(f"  Final viability: {baseline_viability:.3f}")
     print(f"  Final cells: {baseline_cells:.0f}")
 
-    print(f"\nFull System (All 13 Injections):")
+    print(f"\nFull System (All 11 Injections):")
     print(f"  Final viability: {full_viability:.3f} ({(full_viability-baseline_viability)*100:+.1f} pp)")
     print(f"  Final cells: {full_cells:.0f} ({(full_cells-baseline_cells)/baseline_cells*100:+.1f}%)")
 
@@ -534,7 +532,7 @@ if __name__ == "__main__":
     print("="*80)
     print("COMPLETE INJECTION SYSTEM INTEGRATION TESTS")
     print("="*80)
-    print("\nDemonstrating all 13 reality injections affecting biological simulation")
+    print("\nDemonstrating all 11 reality injections affecting biological simulation")
 
     test_complete_integration_comparison()
     test_injection_ablation_study()
@@ -542,7 +540,7 @@ if __name__ == "__main__":
     print("\n" + "="*80)
     print("🎉 ALL INTEGRATION TESTS PASSED 🎉")
     print("="*80)
-    print("\nThe complete epistemic control system (13 injections) successfully")
+    print("\nThe complete epistemic control system (11 injections) successfully")
     print("enforces realism: uncertainty, measurement deception, structural limits,")
     print("and rare failures. Biology simulations now match real-world lab variability.")
     print("\n" + "="*80)

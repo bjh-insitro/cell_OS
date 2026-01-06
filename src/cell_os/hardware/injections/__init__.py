@@ -27,7 +27,6 @@ from .stress_memory import StressMemoryInjection
 from .lumpy_time import LumpyTimeInjection
 from .death_modes import DeathModesInjection
 from .assay_deception import AssayDeceptionInjection
-from .coalition_dynamics import CoalitionDynamicsInjection
 from .identifiability_limits import IdentifiabilityLimitsInjection
 from .cursed_plate import CursedPlateInjection
 from .segmentation_failure import SegmentationFailureInjection
@@ -46,7 +45,6 @@ __all__ = [
     'LumpyTimeInjection',
     'DeathModesInjection',
     'AssayDeceptionInjection',
-    'CoalitionDynamicsInjection',
     'IdentifiabilityLimitsInjection',
     'CursedPlateInjection',
     'SegmentationFailureInjection',

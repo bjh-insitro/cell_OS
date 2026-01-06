@@ -299,7 +299,7 @@ def test_curse_detection():
 def test_all_injections_final():
     """Smoke test: ensure all injections work together."""
     print("\n" + "="*60)
-    print("Test: All 13 Injections Together")
+    print("Test: All 11 Injections Together")
     print("="*60)
 
     from cell_os.hardware.injections import (
@@ -312,7 +312,6 @@ def test_all_injections_final():
         LumpyTimeInjection,
         DeathModesInjection,
         AssayDeceptionInjection,
-        CoalitionDynamicsInjection,
     )
 
     injections = [
@@ -325,9 +324,8 @@ def test_all_injections_final():
         LumpyTimeInjection(seed=7),
         DeathModesInjection(seed=8),
         AssayDeceptionInjection(seed=9),
-        CoalitionDynamicsInjection(seed=10),
-        IdentifiabilityLimitsInjection(seed=11),
-        CursedPlateInjection(seed=12, enable_curses=False),  # Disable random curses
+        IdentifiabilityLimitsInjection(seed=10),
+        CursedPlateInjection(seed=11, enable_curses=False),  # Disable random curses
     ]
 
     context = InjectionContext(
@@ -354,7 +352,7 @@ def test_all_injections_final():
     for inj, state in zip(injections, states):
         inj.apply_time_step(state, 24.0, context)
 
-    print(f"\n✓ All 13 injections work together!")
+    print(f"\n✓ All 11 injections work together!")
 
     print("\n✓ All injections final: PASS")
 
@@ -390,20 +388,20 @@ if __name__ == "__main__":
     print("="*60)
 
     print("\n" + "="*60)
-    print("COMPLETE INJECTION SUITE (13 of 13)")
+    print("COMPLETE INJECTION SUITE (11 of 11)")
     print("="*60)
-    print("\nIdentifiability Limits (L):")
+    print("\nIdentifiability Limits (K):")
     print("  - Growth vs death confounding (only net observable)")
     print("  - Cytostatic vs cytotoxic ambiguity")
     print("  - Permanent ambiguity (more data doesn't help)")
     print("  - Structural confounding (not measurement noise)")
-    print("\nCursed Plate (M):")
+    print("\nCursed Plate (L):")
     print("  - Contamination (bacteria/fungi ruin plate)")
     print("  - Instrument failure (systematic errors)")
     print("  - Curse progression (gets worse over time)")
     print("  - Rare tail events (probability has fat tails)")
     print("\n" + "="*60)
-    print("🎉 ALL 8 PRIORITIES COMPLETE! 🎉")
+    print("🎉 ALL PRIORITIES COMPLETE! 🎉")
     print("="*60)
     print("\nFull injection stack:")
     print("  A. Volume Evaporation")
@@ -416,7 +414,6 @@ if __name__ == "__main__":
     print("  H. Lumpy Time")
     print("  I. Death Modes")
     print("  J. Assay Deception")
-    print("  K. Coalition Dynamics")
-    print("  L. Identifiability Limits")
-    print("  M. Cursed Plate")
+    print("  K. Identifiability Limits")
+    print("  L. Cursed Plate")
     print("\nThe system now enforces REALITY.")
