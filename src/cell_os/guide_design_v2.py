@@ -11,6 +11,7 @@ from typing import List, Dict, Optional, Any
 import tempfile
 import yaml
 import pandas as pd
+import os
 
 from cell_os.upstream import GuideRNA, GeneTarget
 
@@ -186,13 +187,14 @@ class GuideLibraryAdapter:
 def create_default_repositories_yaml(output_path: str) -> None:
     """
     Create a template sgRNA repositories config file.
-    
+
     Args:
         output_path: Where to save the YAML file
     """
+    posh_bucket = os.environ.get("CELL_OS_POSH_S3_BUCKET", "insitro-posh-production")
     template = {
-        'vbc': 's3://insitro-posh-production/guide_repository/tech-dev/vbc_rs3_scored_w_location.csv',
-        'crispick': 's3://insitro-posh-production/guide_repository/tech-dev/crispick_rs3_scored_w_location.csv',
+        'vbc': f's3://{posh_bucket}/guide_repository/tech-dev/vbc_rs3_scored_w_location.csv',
+        'crispick': f's3://{posh_bucket}/guide_repository/tech-dev/crispick_rs3_scored_w_location.csv',
     }
     
     with open(output_path, 'w') as f:

@@ -8,9 +8,9 @@ import boto3
 import os
 from pathlib import Path
 
-# Configuration
-S3_BUCKET = "insitro-user"
-S3_KEY = "brig/cell_thalamus_results.db"
+# Configuration (override via environment variables)
+S3_BUCKET = os.environ.get("CELL_OS_S3_BUCKET", "insitro-user")
+S3_KEY = os.environ.get("CELL_OS_S3_KEY", "brig/cell_thalamus_results.db")
 LOCAL_DB_PATH = "cell_thalamus_results.db"
 
 def upload_to_s3():

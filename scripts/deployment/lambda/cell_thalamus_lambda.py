@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from standalone_cell_thalamus import run_parallel_simulation
 
 s3_client = boto3.client('s3')
-S3_BUCKET = 'insitro-user'
-S3_KEY = 'brig/cell_thalamus_results.db'
+S3_BUCKET = os.environ.get("CELL_OS_S3_BUCKET", "insitro-user")
+S3_KEY = os.environ.get("CELL_OS_S3_KEY", "brig/cell_thalamus_results.db")
 
 
 def lambda_handler(event, context):

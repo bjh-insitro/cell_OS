@@ -244,8 +244,8 @@ Results: cell_thalamus_results.db
         try:
             import boto3
             import os
-            S3_BUCKET = 'insitro-user'
-            S3_KEY = 'brig/cell_thalamus_results.db'
+            S3_BUCKET = os.environ.get("CELL_OS_S3_BUCKET", "insitro-user")
+            S3_KEY = os.environ.get("CELL_OS_S3_KEY", "brig/cell_thalamus_results.db")
             LOCAL_DB = 'cell_thalamus_results.db'
 
             print(f"\n📤 Auto-uploading to S3...")
@@ -293,7 +293,7 @@ Results: cell_thalamus_results.db
             print(f"   Results saved to: cell_thalamus_results.db")
         except Exception as e:
             print(f"\n⚠️  S3 upload failed: {e}")
-            print(f"   Manual upload: aws s3 cp cell_thalamus_results.db s3://insitro-user/brig/cell_thalamus_results.db")
+            print(f"   Manual upload: aws s3 cp cell_thalamus_results.db s3://{S3_BUCKET}/{S3_KEY}")
 
         return design_id
 

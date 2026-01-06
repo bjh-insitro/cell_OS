@@ -1816,8 +1816,8 @@ Examples:
     # Auto-upload to S3 if running on JupyterHub/AWS
     try:
         import boto3
-        S3_BUCKET = 'insitro-user'
-        S3_KEY = 'brig/cell_thalamus_results.db'
+        S3_BUCKET = os.environ.get("CELL_OS_S3_BUCKET", "insitro-user")
+        S3_KEY = os.environ.get("CELL_OS_S3_KEY", "brig/cell_thalamus_results.db")
 
         print(f"\n📤 Auto-uploading to S3...")
         s3 = boto3.client('s3')
@@ -1832,7 +1832,7 @@ Examples:
         print(f"2. Select this run to visualize results across all tabs")
     except Exception as e:
         print(f"\n⚠️  S3 upload failed: {e}")
-        print(f"   Manual upload: aws s3 cp {args.db_path} s3://insitro-user/brig/cell_thalamus_results.db")
+        print(f"   Manual upload: aws s3 cp {args.db_path} s3://{S3_BUCKET}/{S3_KEY}")
 
 
 if __name__ == "__main__":
