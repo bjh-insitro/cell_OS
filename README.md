@@ -55,7 +55,7 @@ The simulator provides a **controlled adversarial environment** where agents can
 
 ```bash
 # Clone and install
-git clone https://github.com/your-org/cell_OS.git
+git clone https://github.com/brighart/cell_OS.git
 cd cell_OS
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
