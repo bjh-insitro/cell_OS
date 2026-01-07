@@ -41,5 +41,6 @@ markers = [
     "slow: marks tests as slow (deselected by default, use -m slow to run)",
     "manual: marks tests for manual execution only (skipped in CI, use -m manual to run)",
     "realism: statistical property checks (not default CI, use -m realism to run)",
+    "integration: marks integration tests",
 ]
 addopts = "-m 'not manual'"
