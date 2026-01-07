@@ -625,14 +625,14 @@ class CellPaintingAssay(AssaySimulator):
         from ...sim.imaging_artifacts_core import compute_background_noise_multiplier
 
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
-        initial_cells = float(getattr(vessel, 'initial_cells', 1.0))
+        adherent_cells = float(max(1.0, getattr(vessel, 'cell_count', 1.0)))
 
-        if debris_cells == 0 or initial_cells == 0:
+        if debris_cells == 0 or adherent_cells == 0:
             return 1.0  # No debris or no baseline → no inflation
 
         multiplier = compute_background_noise_multiplier(
             debris_cells=debris_cells,
-            initial_cells=initial_cells,
+            adherent_cells=adherent_cells,
             base_multiplier=1.0,
             debris_coefficient=0.05,  # 5% inflation per 100% debris
             max_multiplier=1.25  # Cap at 25% inflation

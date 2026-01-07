@@ -46,7 +46,7 @@ import hashlib
 
 def compute_background_noise_multiplier(
     debris_cells: float,
-    initial_cells: float,
+    adherent_cells: float,
     base_multiplier: float = 1.0,
     debris_coefficient: float = 0.05,
     max_multiplier: float = 1.25
@@ -58,12 +58,12 @@ def compute_background_noise_multiplier(
     measurement noise. This is a multiplicative noise inflation term.
 
     Formula:
-        multiplier = base + debris_coefficient * (debris_cells / initial_cells)
+        multiplier = base + debris_coefficient * (debris_cells / adherent_cells)
         clamped to [base, max_multiplier]
 
     Args:
         debris_cells: Debris cell count (accumulated from wash/fixation)
-        initial_cells: Initial cell count at seeding (normalization anchor)
+        adherent_cells: Current adherent cell count (normalization anchor)
         base_multiplier: Baseline multiplier (default 1.0 = no inflation)
         debris_coefficient: Sensitivity to debris (default 0.05 = 5% inflation per 100% debris)
         max_multiplier: Maximum multiplier (default 1.25 = cap at 25% inflation)
@@ -72,25 +72,25 @@ def compute_background_noise_multiplier(
         Noise multiplier in [base_multiplier, max_multiplier]
 
     Example:
-        Initial cells: 3000
-        Debris: 600 (20% of initial)
-        → multiplier = 1.0 + 0.05 * (600/3000) = 1.01 (1% inflation)
+        Current cells: 10000
+        Debris: 600 (6% of current)
+        → multiplier = 1.0 + 0.05 * (600/10000) = 1.003 (0.3% inflation)
 
         Trashed well:
-        Debris: 3000 (100% of initial)
-        → multiplier = 1.0 + 0.05 * (3000/3000) = 1.05 (5% inflation)
+        Debris: 3000 (30% of current cells)
+        → multiplier = 1.0 + 0.05 * (3000/10000) = 1.015 (1.5% inflation)
 
     Invariants:
         - multiplier >= base_multiplier (debris never improves signal)
         - multiplier <= max_multiplier (bounded, no light sources)
         - More debris → higher multiplier (monotonic)
     """
-    # Guard against zero initial_cells (shouldn't happen, but defensive)
-    if initial_cells <= 0:
+    # Guard against zero adherent_cells (shouldn't happen, but defensive)
+    if adherent_cells <= 0:
         return float(base_multiplier)
 
-    # Debris fraction (normalized to initial cell count)
-    debris_fraction = float(debris_cells) / float(initial_cells)
+    # Debris fraction (normalized to current adherent cell count)
+    debris_fraction = float(debris_cells) / float(adherent_cells)
 
     # Linear inflation with debris fraction
     multiplier = base_multiplier + debris_coefficient * debris_fraction
@@ -205,10 +205,10 @@ def compute_imaging_artifact_modifiers(
     initial_cells = float(getattr(vessel_state, 'initial_cells', 1.0))  # Guard against zero
     adherent_cells = float(max(1.0, getattr(vessel_state, 'cell_count', 1.0)))  # Current adherent
 
-    # Compute background noise multiplier
+    # Compute background noise multiplier (normalized to current adherent cells, not initial)
     bg_multiplier = compute_background_noise_multiplier(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=adherent_cells,
         base_multiplier=base_params.get('bg_base_multiplier', 1.0),
         debris_coefficient=base_params.get('bg_debris_coefficient', 0.05),
         max_multiplier=base_params.get('bg_max_multiplier', 1.25)
@@ -367,7 +367,7 @@ def compute_segmentation_failure_modes(
 
 def compute_background_multipliers_by_channel(
     debris_cells: float,
-    initial_cells: float,
+    adherent_cells: float,
     channel_weights: Optional[Dict[str, float]] = None,
     base_multiplier: float = 1.0,
     debris_coefficient: float = 0.05,
@@ -384,7 +384,7 @@ def compute_background_multipliers_by_channel(
     This is backward compatible: if channel_weights is None, returns scalar.
 
     Formula:
-        base_mult = compute_background_noise_multiplier(debris_cells, initial_cells, ...)
+        base_mult = compute_background_noise_multiplier(debris_cells, adherent_cells, ...)
 
         If channel_weights is None:
             return {"__global__": base_mult}
@@ -397,7 +397,7 @@ def compute_background_multipliers_by_channel(
 
     Args:
         debris_cells: Debris cell count (accumulated from wash/fixation)
-        initial_cells: Initial cell count at seeding
+        adherent_cells: Current adherent cell count (normalization anchor)
         channel_weights: Optional per-channel sensitivity weights
             Example: {'rna': 1.5, 'actin': 1.3, 'nucleus': 1.0, 'er': 0.8, 'mito': 0.8}
             Default weight is 1.0 for channels not specified
@@ -414,13 +414,13 @@ def compute_background_multipliers_by_channel(
     Example:
         # Backward compatible (scalar)
         result = compute_background_multipliers_by_channel(
-            debris_cells=600, initial_cells=3000, channel_weights=None
+            debris_cells=600, adherent_cells=3000, channel_weights=None
         )
         # → {"__global__": 1.01}
 
         # Per-channel (structured)
         result = compute_background_multipliers_by_channel(
-            debris_cells=600, initial_cells=3000,
+            debris_cells=600, adherent_cells=3000,
             channel_weights={'rna': 1.5, 'actin': 1.3, 'nucleus': 1.0, 'er': 0.8, 'mito': 0.8}
         )
         # → {'rna': 1.015, 'actin': 1.013, 'nucleus': 1.01, 'er': 1.008, 'mito': 1.008}
@@ -434,7 +434,7 @@ def compute_background_multipliers_by_channel(
     # Compute base global multiplier
     base_mult = compute_background_noise_multiplier(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=adherent_cells,
         base_multiplier=base_multiplier,
         debris_coefficient=debris_coefficient,
         max_multiplier=max_multiplier
@@ -467,7 +467,7 @@ def compute_background_multipliers_by_channel(
 
 def compute_debris_field_modifiers(
     debris_cells: float,
-    initial_cells: float,
+    adherent_cells: float,
     is_edge: bool,
     well_id: str,
     experiment_seed: int,
@@ -484,7 +484,7 @@ def compute_debris_field_modifiers(
     for this well in this plate instance.
 
     Formula:
-        field_strength = clip(debris_cells / initial_cells, 0.0, 1.0)
+        field_strength = clip(debris_cells / adherent_cells, 0.0, 1.0)
 
         # Deterministic hash for spatial pattern
         hash_input = f"{experiment_seed}_{well_id}_{is_edge}"
@@ -506,7 +506,7 @@ def compute_debris_field_modifiers(
 
     Args:
         debris_cells: Debris cell count
-        initial_cells: Initial cell count at seeding
+        adherent_cells: Current adherent cell count (normalization anchor)
         is_edge: Whether well is on plate edge (amplifies heterogeneity)
         well_id: Well identifier like "B03" (for deterministic pattern)
         experiment_seed: Plate instance seed (NOT per-measurement seed)
@@ -523,7 +523,7 @@ def compute_debris_field_modifiers(
     Example:
         # Interior well, low debris
         result = compute_debris_field_modifiers(
-            debris_cells=100, initial_cells=3000, is_edge=False,
+            debris_cells=100, adherent_cells=3000, is_edge=False,
             well_id="B03", experiment_seed=42
         )
         # → field_strength=0.033, spatial_pattern=[[0.98, 1.02, 0.99], ...],
@@ -531,7 +531,7 @@ def compute_debris_field_modifiers(
 
         # Edge well, high debris
         result = compute_debris_field_modifiers(
-            debris_cells=1000, initial_cells=3000, is_edge=True,
+            debris_cells=1000, adherent_cells=3000, is_edge=True,
             well_id="A01", experiment_seed=42
         )
         # → field_strength=0.333, spatial_pattern=[[0.85, 1.15, 0.95], ...],
@@ -545,8 +545,8 @@ def compute_debris_field_modifiers(
         - edge_amplification in [1.0, 1.4] (edge only)
         - Deterministic: same inputs → same pattern
     """
-    # Guard against zero initial_cells
-    if initial_cells <= 0:
+    # Guard against zero adherent_cells
+    if adherent_cells <= 0:
         return {
             'field_strength': 0.0,
             'spatial_pattern': np.ones((field_resolution, field_resolution), dtype=np.float64),
@@ -555,7 +555,7 @@ def compute_debris_field_modifiers(
         }
 
     # Debris fraction → field strength [0, 1]
-    field_strength = float(np.clip(debris_cells / initial_cells, 0.0, 1.0))
+    field_strength = float(np.clip(debris_cells / adherent_cells, 0.0, 1.0))
 
     # Deterministic hash for spatial pattern
     hash_input = f"{experiment_seed}_{well_id}_{is_edge}"

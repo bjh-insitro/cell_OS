@@ -17,7 +17,7 @@ from src.cell_os.sim.imaging_artifacts_core import (
 
 def test_background_noise_multiplier_monotonic():
     """More debris → higher multiplier (never improves signal)."""
-    initial_cells = 3000.0
+    adherent_cells = 3000.0
 
     # Test sequence with increasing debris
     debris_levels = [0.0, 300.0, 600.0, 1200.0, 2400.0, 3000.0]
@@ -26,7 +26,7 @@ def test_background_noise_multiplier_monotonic():
     for debris in debris_levels:
         mult = compute_background_noise_multiplier(
             debris_cells=debris,
-            initial_cells=initial_cells
+            adherent_cells=adherent_cells
         )
         multipliers.append(mult)
 
@@ -39,12 +39,12 @@ def test_background_noise_multiplier_monotonic():
 
 def test_background_noise_multiplier_bounds():
     """Background noise multiplier always in [base, max]."""
-    initial_cells = 3000.0
+    adherent_cells = 3000.0
 
     # Zero debris → base multiplier
     mult_zero = compute_background_noise_multiplier(
         debris_cells=0.0,
-        initial_cells=initial_cells,
+        adherent_cells=adherent_cells,
         base_multiplier=1.0,
         max_multiplier=1.25
     )
@@ -52,8 +52,8 @@ def test_background_noise_multiplier_bounds():
 
     # Normal debris → between base and max
     mult_normal = compute_background_noise_multiplier(
-        debris_cells=600.0,  # 20% of initial
-        initial_cells=initial_cells,
+        debris_cells=600.0,  # 20% of adherent
+        adherent_cells=adherent_cells,
         base_multiplier=1.0,
         max_multiplier=1.25
     )
@@ -61,19 +61,19 @@ def test_background_noise_multiplier_bounds():
 
     # Extreme debris → clamped at max
     mult_extreme = compute_background_noise_multiplier(
-        debris_cells=30000.0,  # 10× initial (should never happen, but guard)
-        initial_cells=initial_cells,
+        debris_cells=30000.0,  # 10× adherent (should never happen, but guard)
+        adherent_cells=adherent_cells,
         base_multiplier=1.0,
         max_multiplier=1.25
     )
     assert mult_extreme == 1.25  # Clamped
 
 
-def test_background_noise_multiplier_zero_initial_cells():
-    """Zero initial_cells → graceful fallback to base multiplier."""
+def test_background_noise_multiplier_zero_adherent_cells():
+    """Zero adherent_cells → graceful fallback to base multiplier."""
     mult = compute_background_noise_multiplier(
         debris_cells=100.0,
-        initial_cells=0.0,  # Shouldn't happen, but guard
+        adherent_cells=0.0,  # Shouldn't happen, but guard
         base_multiplier=1.0
     )
     assert mult == 1.0  # Safe fallback
@@ -172,7 +172,7 @@ def test_parameter_customization():
     # Custom background noise parameters
     mult = compute_background_noise_multiplier(
         debris_cells=1000.0,
-        initial_cells=1000.0,  # 100% debris ratio
+        adherent_cells=1000.0,  # 100% debris ratio
         base_multiplier=1.5,   # Different base
         debris_coefficient=0.1,  # 2× default sensitivity
         max_multiplier=2.0     # Higher ceiling
@@ -196,32 +196,32 @@ def test_parameter_customization():
 
 def test_background_noise_typical_values():
     """Typical Cell Painting workflow produces reasonable multipliers."""
-    initial_cells = 3000.0
+    adherent_cells = 3000.0
 
     # Gentle workflow: ~3% loss, 20% becomes debris
-    cells_lost_gentle = initial_cells * 0.03  # 90 cells
+    cells_lost_gentle = adherent_cells * 0.03  # 90 cells
     debris_gentle = cells_lost_gentle * 0.20  # 18 debris
     mult_gentle = compute_background_noise_multiplier(
         debris_cells=debris_gentle,
-        initial_cells=initial_cells
+        adherent_cells=adherent_cells
     )
     # 18/3000 * 0.05 = 0.0003, so mult = 1.0003 (negligible)
     assert 1.0 <= mult_gentle <= 1.001
 
     # Standard workflow: ~19% loss (from demo)
-    debris_standard = initial_cells * 0.19 * 0.20  # 19% loss, 20% debris = 114 debris
+    debris_standard = adherent_cells * 0.19 * 0.20  # 19% loss, 20% debris = 114 debris
     mult_standard = compute_background_noise_multiplier(
         debris_cells=debris_standard,
-        initial_cells=initial_cells
+        adherent_cells=adherent_cells
     )
     # 114/3000 * 0.05 = 0.0019, so mult ≈ 1.002 (small)
     assert 1.001 <= mult_standard <= 1.005
 
     # Rough workflow: ~30% loss
-    debris_rough = initial_cells * 0.30 * 0.20  # 180 debris
+    debris_rough = adherent_cells * 0.30 * 0.20  # 180 debris
     mult_rough = compute_background_noise_multiplier(
         debris_cells=debris_rough,
-        initial_cells=initial_cells
+        adherent_cells=adherent_cells
     )
     # 180/3000 * 0.05 = 0.003, so mult ≈ 1.003
     assert 1.002 <= mult_rough <= 1.01

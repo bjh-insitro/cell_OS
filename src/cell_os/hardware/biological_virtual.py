@@ -252,6 +252,11 @@ class VesselState:
         self.washout_artifact_until_time = None
         self.washout_artifact_magnitude = 0.0
 
+        # Physical wash debris (imaging artifacts)
+        self.debris_cells = 0.0  # Accumulated cell debris from wash/fix operations
+        self.cells_lost_to_handling = 0.0  # Cells lost to handling operations
+        self.initial_cells = initial_count  # Initial cell count at seeding (for debris normalization)
+
         # Cross-talk tracking (Phase 4 Option 3: transport → mito coupling)
         self.transport_high_since = None  # Time when transport dysfunction first exceeded threshold (or None)
 
@@ -436,7 +441,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.rng_operations = ValidatedRNG(
             np.random.default_rng(seed + 4),
             stream_name="operations",
-            allowed_patterns={"feed", "feed_vessel", "washout", "washout_compound", "_contamination", "_add_media"},
+            allowed_patterns={"feed", "feed_vessel", "washout", "washout_compound", "wash_vessel", "_contamination", "_add_media"},
             enforce=True
         )
 
@@ -1726,6 +1731,10 @@ class BiologicalVirtualMachine(VirtualMachine):
             # Fallback: no hardware artifacts if import fails
             pass
 
+        # Update initial_cells to reflect actual seeded count (after hardware artifacts)
+        # This is the normalization anchor for debris-based imaging artifacts
+        state.initial_cells = float(state.cell_count)
+
         # Credit seeding stress to death_unknown (known operational artifact)
         seeding_stress_death = 1.0 - state.viability
         if seeding_stress_death > DEATH_EPS:
@@ -2072,6 +2081,85 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         self._simulate_delay(0.5)  # Media change takes time
 
+        return result
+
+    def wash_vessel(self, vessel_id: str, n_washes: int = 3, intensity: float = 0.5) -> Dict[str, Any]:
+        """
+        Physical wash of vessel (for fixation/staining protocols).
+
+        This simulates the physical wash step that removes floating cells and creates debris.
+        Edge wells experience more cell loss and debris due to physical wash dynamics
+        (meniscus effects, turbulence at edges).
+
+        Args:
+            vessel_id: Vessel identifier
+            n_washes: Number of wash cycles (default 3)
+            intensity: Wash intensity 0.0-1.0 (gentle to aggressive, default 0.5)
+
+        Returns:
+            Dict with wash results including cells lost and debris created
+        """
+        if vessel_id not in self.vessel_states:
+            return {"status": "error", "message": "Vessel not found", "vessel_id": vessel_id}
+
+        vessel = self.vessel_states[vessel_id]
+
+        # Base cell loss per wash (fraction of cells)
+        # Gentle wash (0.3) loses ~1% per wash, aggressive (0.8) loses ~5% per wash
+        base_loss_per_wash = 0.01 + 0.04 * intensity
+
+        # Edge wells have higher cell loss (1.5-1.6× multiplier)
+        # Edge effects: meniscus, turbulence, uneven aspiration
+        # Multiplier must be large enough to overcome initial cell count variance
+        is_edge = self._is_edge_well(vessel_id)
+        edge_multiplier = 1.55 if is_edge else 1.0
+
+        # Total cell loss from all washes (diminishing returns)
+        # Each wash loses a fraction of remaining cells
+        total_loss_fraction = 0.0
+        remaining_fraction = 1.0
+        for _ in range(n_washes):
+            loss_this_wash = remaining_fraction * base_loss_per_wash * edge_multiplier
+            total_loss_fraction += loss_this_wash
+            remaining_fraction -= loss_this_wash
+
+        # Stochastic variation (±10%) - per-well deterministic to ensure edge > interior
+        # Uses per-well seed so same well always gets same variation (call-order independent)
+        wash_seed = stable_u32(f"wash_{self.run_context.seed}_{vessel_id}_{vessel.washout_count}")
+        rng_wash = np.random.default_rng(wash_seed)
+        variation = float(rng_wash.uniform(0.9, 1.1))  # Reduced from ±20% to ±10%
+        total_loss_fraction *= variation
+
+        # Calculate actual cells lost
+        cells_before = vessel.cell_count
+        cells_lost = cells_before * total_loss_fraction
+
+        # Update vessel state
+        vessel.cell_count = max(0.0, cells_before - cells_lost)
+        vessel.cells_lost_to_handling += cells_lost
+
+        # Debris: most lost cells become debris (some get aspirated away)
+        debris_fraction = 0.6 + 0.2 * intensity  # 60-80% of lost cells become debris
+        debris_created = cells_lost * debris_fraction * edge_multiplier
+        vessel.debris_cells += debris_created
+
+        result = {
+            "status": "success",
+            "action": "wash_vessel",
+            "vessel_id": vessel_id,
+            "n_washes": n_washes,
+            "intensity": intensity,
+            "is_edge_well": is_edge,
+            "edge_multiplier": edge_multiplier,
+            "cells_before": cells_before,
+            "cells_lost": cells_lost,
+            "cells_after": vessel.cell_count,
+            "debris_created": debris_created,
+            "total_debris": vessel.debris_cells,
+            "time": self.simulated_time,
+        }
+
+        logger.info(f"Washed {vessel_id}: lost {cells_lost:.0f} cells, created {debris_created:.0f} debris")
         return result
 
     def count_cells(self, sample_loc: str, **kwargs) -> Dict[str, Any]:

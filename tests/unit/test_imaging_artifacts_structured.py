@@ -179,7 +179,7 @@ def test_background_multipliers_backward_compatible():
     # No weights → scalar
     result = compute_background_multipliers_by_channel(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         channel_weights=None
     )
 
@@ -191,7 +191,7 @@ def test_background_multipliers_backward_compatible():
     from cell_os.sim.imaging_artifacts_core import compute_background_noise_multiplier
     expected = compute_background_noise_multiplier(
         debris_cells=debris_cells,
-        initial_cells=initial_cells
+        adherent_cells=initial_cells  # For backward compat test, use initial_cells as adherent
     )
 
     assert abs(result["__global__"] - expected) < 1e-9, \
@@ -218,7 +218,7 @@ def test_background_multipliers_per_channel_ordering():
 
     result = compute_background_multipliers_by_channel(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         channel_weights=weights
     )
 
@@ -258,7 +258,7 @@ def test_background_multipliers_bounds():
 
     result = compute_background_multipliers_by_channel(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         channel_weights=weights,
         max_multiplier=max_mult
     )
@@ -290,7 +290,7 @@ def test_debris_field_determinism():
     # Compute twice with same inputs
     result1 = compute_debris_field_modifiers(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=is_edge,
         well_id=well_id,
         experiment_seed=experiment_seed
@@ -298,7 +298,7 @@ def test_debris_field_determinism():
 
     result2 = compute_debris_field_modifiers(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=is_edge,
         well_id=well_id,
         experiment_seed=experiment_seed
@@ -325,7 +325,7 @@ def test_debris_field_edge_variance():
     # Interior well
     result_interior = compute_debris_field_modifiers(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=False,
         well_id=well_id,
         experiment_seed=experiment_seed
@@ -334,7 +334,7 @@ def test_debris_field_edge_variance():
     # Edge well (same debris, different is_edge)
     result_edge = compute_debris_field_modifiers(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=True,
         well_id=well_id,
         experiment_seed=experiment_seed
@@ -376,7 +376,7 @@ def test_debris_field_strength_monotonic():
     for debris in debris_levels:
         result = compute_debris_field_modifiers(
             debris_cells=debris,
-            initial_cells=initial_cells,
+            adherent_cells=initial_cells,
             is_edge=is_edge,
             well_id=well_id,
             experiment_seed=experiment_seed
@@ -409,7 +409,7 @@ def test_debris_field_spatial_pattern_invariants():
     """
     result = compute_debris_field_modifiers(
         debris_cells=1000.0,
-        initial_cells=3000.0,
+        adherent_cells=3000.0,
         is_edge=True,
         well_id="A01",
         experiment_seed=123
