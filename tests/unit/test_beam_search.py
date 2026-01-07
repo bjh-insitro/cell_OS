@@ -12,8 +12,23 @@ from cell_os.hardware.epistemic_policies import run_smart_policy
 
 
 @pytest.mark.slow  # ~5 min per compound, run with: pytest -m slow
-@pytest.mark.skip(reason="Beam search death pruning too aggressive - all paths pruned at t=6. "
-                         "Requires recalibration of death tolerance vs exploration strategy.")
+@pytest.mark.skip(reason="""
+Beam search death pruning too aggressive - all paths pruned at t=6.
+
+Root cause analysis:
+- Smart policy uses 0.5× dose and achieves 7.3% death
+- Beam search explores all dose levels (0, 0.25, 0.5, 1.0) × interventions
+- With death_tolerance=0.20 and beam_width=10, pruning eliminates all paths by step 6
+- The biological model's death dynamics require gentler exploration
+
+Potential fixes (requires investigation):
+1. Increase death_tolerance during search (e.g., 0.35), enforce at end
+2. Increase beam_width (currently 10) to preserve good paths
+3. Improve heuristics to favor lower-death paths earlier
+4. Add "best-so-far" preservation to avoid losing good paths
+
+See: src/cell_os/hardware/beam_search/search.py lines 400-410 for pruning logic
+""")
 def test_beam_search_matches_or_beats_smart_policy_phase5_library():
     """
     The brutal test: beam search must match or beat smart policy on all Phase5 compounds.
