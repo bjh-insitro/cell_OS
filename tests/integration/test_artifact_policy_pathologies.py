@@ -19,7 +19,7 @@ import pytest
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 
 
-@pytest.mark.skip(reason="wash_vessel not implemented")
+@pytest.mark.skip(reason="Cross-modal confluence proxy underestimates adherent cells in 384-well - both hit max_multiplier cap")
 def test_break_the_microscope_exploit():
     """
     Agent cannot improve reliability by increasing debris.

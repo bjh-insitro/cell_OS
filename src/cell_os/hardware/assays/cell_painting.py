@@ -131,14 +131,14 @@ class CellPaintingAssay(AssaySimulator):
             }
             bg_mults = compute_background_multipliers_by_channel(
                 debris_cells=debris_cells,
-                initial_cells=initial_cells,
+                adherent_cells=adherent_cells,
                 channel_weights=channel_weights
             )
         else:
             # Scalar (backward compatible)
             bg_mults = compute_background_multipliers_by_channel(
                 debris_cells=debris_cells,
-                initial_cells=initial_cells,
+                adherent_cells=adherent_cells,
                 channel_weights=None
             )
 
@@ -162,7 +162,7 @@ class CellPaintingAssay(AssaySimulator):
         if enable_spatial_field:
             spatial_result = compute_debris_field_modifiers(
                 debris_cells=debris_cells,
-                initial_cells=initial_cells,
+                adherent_cells=adherent_cells,
                 is_edge=is_edge,
                 well_id=well_position,
                 experiment_seed=experiment_seed
