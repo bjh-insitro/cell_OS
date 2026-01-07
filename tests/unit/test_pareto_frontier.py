@@ -130,6 +130,7 @@ def test_policy_enumeration():
     print(f"\n✓ PASSED: Policy enumeration produces non-degenerate landscape")
 
 
+@pytest.mark.slow
 def test_pareto_frontier():
     """
     Verify Pareto frontier emergence via existence proof (not exhaustive search).

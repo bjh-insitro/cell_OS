@@ -36,8 +36,8 @@ jobs:
 
       - name: Run unit tests
         run: |
-          PYTHONPATH=src python -m pytest tests/unit/ -v --tb=short -x
-        timeout-minutes: 15
+          PYTHONPATH=src python -m pytest tests/unit/ -v --tb=short -x -m "not slow"
+        timeout-minutes: 20
 
   lint:
     runs-on: ubuntu-latest

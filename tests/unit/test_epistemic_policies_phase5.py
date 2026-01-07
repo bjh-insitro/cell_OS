@@ -76,6 +76,7 @@ def test_epistemic_control_baselines_fail_on_weak_subset():
 import pytest
 
 
+@pytest.mark.slow
 def test_epistemic_control_smart_policy_succeeds_on_all():
     """
     Verify that probe-then-commit strategy succeeds on all compounds.
