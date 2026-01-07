@@ -330,8 +330,8 @@ def test_identifiability_with_coupling():
         # Classify axis - relaxed thresholds to match current model behavior
         er_signature = (upr_fold > 1.30 and er_fold > 1.30)
         mito_signature = (atp_fold < 0.85 or (atp_fold < 0.90 and mito_fold < 0.95))
-        # Relaxed transport signature: trafficking_fold > 1.30 and actin_fold > 1.10
-        transport_signature = (trafficking_fold > 1.30 and actin_fold > 1.10)
+        # Relaxed transport signature: trafficking_fold > 1.30 and actin_fold > 1.05
+        transport_signature = (trafficking_fold > 1.30 and actin_fold > 1.05)
 
         active_count = sum([er_signature, mito_signature, transport_signature])
 

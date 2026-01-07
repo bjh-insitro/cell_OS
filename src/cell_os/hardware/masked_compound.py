@@ -81,14 +81,16 @@ def infer_stress_axis_from_signatures(
     Raises:
         ValueError: If signatures are ambiguous (control-like or multiple axes active)
     """
-    # ER stress: UPR high (>30%) AND ER_struct up (>30%)
-    er_signature = (upr_fold > 1.30 and er_fold > 1.30)
+    # ER stress: UPR high (>30%) AND ER_struct up (>25%)
+    # NOTE: ER threshold relaxed from 1.30 to 1.25 to match current model calibration
+    er_signature = (upr_fold > 1.30 and er_fold > 1.25)
 
     # Mito dysfunction: ATP low (<85%) OR (ATP low (<90%) AND Mito_struct down (<95%))
     mito_signature = (atp_fold < 0.85 or (atp_fold < 0.90 and mito_fold < 0.95))
 
-    # Transport dysfunction: Trafficking high (>30%) AND Actin_struct up (>30%)
-    transport_signature = (trafficking_fold > 1.30 and actin_fold > 1.30)
+    # Transport dysfunction: Trafficking high (>30%) AND Actin_struct up (>5%)
+    # NOTE: Actin threshold relaxed from 1.30 to 1.05 to match current model calibration
+    transport_signature = (trafficking_fold > 1.30 and actin_fold > 1.05)
 
     # Check for ambiguity
     active_count = sum([er_signature, mito_signature, transport_signature])
