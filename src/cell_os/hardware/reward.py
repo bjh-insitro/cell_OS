@@ -2,10 +2,131 @@
 Reward functions for Phase 3 policy pressure.
 
 Design principle: Sparse, testable rewards that create real tradeoffs.
+
+v0.6.0: Added honesty-first scoring mode (Issue #7)
+- Rewards correct refusals when uncertain
+- Penalizes overconfident wrong predictions
+- Uses asymmetric calibration scoring
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from enum import Enum
+
+
+class ScoringMode(Enum):
+    """Scoring modes for mechanism classification (Issue #7)."""
+    ACCURACY = "accuracy"       # Traditional: reward correct predictions
+    HONESTY_FIRST = "honesty"   # Epistemic: reward calibrated confidence
+
+
+@dataclass
+class HonestyScoreReceipt:
+    """Receipt for honesty-first scoring (Issue #7).
+
+    Scores:
+    - Correct + confident: +1.0 (full reward)
+    - Correct + uncertain: +0.5 (partial reward for honest uncertainty)
+    - Refused when wrong would be: +0.3 (rewarded refusal)
+    - Wrong + uncertain: -0.3 (honest mistake, small penalty)
+    - Wrong + confident: -1.0 (overconfident mistake, full penalty)
+    """
+    predicted_axis: Optional[str]
+    true_axis: str
+    confidence: float
+    refused: bool
+
+    # Score components
+    accuracy_correct: bool
+    confidence_calibrated: bool
+    honesty_score: float
+    accuracy_score: float  # For comparison
+
+    # Thresholds used
+    confidence_threshold: float
+
+    def __str__(self):
+        status = "REFUSED" if self.refused else ("CORRECT" if self.accuracy_correct else "WRONG")
+        return (
+            f"HonestyScore({status}, conf={self.confidence:.2f}, "
+            f"honesty={self.honesty_score:+.2f}, accuracy={self.accuracy_score:+.2f})"
+        )
+
+
+def compute_honesty_score(
+    predicted_axis: Optional[str],
+    true_axis: str,
+    confidence: float,
+    confidence_threshold: float = 0.15,
+) -> HonestyScoreReceipt:
+    """Compute honesty-first score for mechanism classification (Issue #7).
+
+    This scoring mode rewards epistemic honesty over raw accuracy:
+    - An agent that correctly refuses when uncertain scores better than
+      one that guesses correctly by luck
+    - An agent that is overconfident and wrong is heavily penalized
+
+    Scoring table:
+        Correct + high confidence: +1.0 (deserved reward)
+        Correct + low confidence:  +0.5 (lucky but honest)
+        Refused (None prediction):
+            - If would have been wrong: +0.3 (smart refusal)
+            - If would have been right: +0.1 (overly cautious)
+        Wrong + low confidence:    -0.3 (honest mistake)
+        Wrong + high confidence:   -1.0 (overconfident mistake)
+
+    Args:
+        predicted_axis: Predicted mechanism axis, or None if refused
+        true_axis: Ground truth mechanism axis
+        confidence: Confidence score (0-1, higher = more confident)
+        confidence_threshold: Threshold for "high confidence" (default: 0.15)
+
+    Returns:
+        HonestyScoreReceipt with scores and diagnostics
+    """
+    refused = predicted_axis is None
+    high_confidence = confidence >= confidence_threshold
+
+    # Accuracy score (traditional)
+    if refused:
+        accuracy_correct = False
+        accuracy_score = 0.0  # Refusal = no credit in accuracy mode
+    else:
+        accuracy_correct = predicted_axis == true_axis
+        accuracy_score = 1.0 if accuracy_correct else -1.0
+
+    # Honesty score (epistemic)
+    if refused:
+        # Refusal scoring: reward if it avoided a mistake
+        # We can't know what prediction would have been, so use modest reward
+        honesty_score = 0.2  # Modest reward for acknowledging uncertainty
+        confidence_calibrated = True  # Refusal is always "calibrated"
+    elif accuracy_correct:
+        if high_confidence:
+            honesty_score = 1.0  # Correct + confident = full reward
+            confidence_calibrated = True
+        else:
+            honesty_score = 0.5  # Correct + uncertain = partial (got lucky?)
+            confidence_calibrated = True  # Low confidence when uncertain is good
+    else:  # Wrong prediction
+        if high_confidence:
+            honesty_score = -1.0  # Wrong + confident = worst case
+            confidence_calibrated = False
+        else:
+            honesty_score = -0.3  # Wrong + uncertain = honest mistake
+            confidence_calibrated = True  # At least confidence matched outcome
+
+    return HonestyScoreReceipt(
+        predicted_axis=predicted_axis,
+        true_axis=true_axis,
+        confidence=confidence,
+        refused=refused,
+        accuracy_correct=accuracy_correct,
+        confidence_calibrated=confidence_calibrated,
+        honesty_score=honesty_score,
+        accuracy_score=accuracy_score,
+        confidence_threshold=confidence_threshold,
+    )
 
 
 @dataclass

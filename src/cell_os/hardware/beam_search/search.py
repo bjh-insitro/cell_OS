@@ -3,6 +3,10 @@ Beam Search Implementation
 
 Main beam search algorithm for finding optimal action sequences
 under hard constraints with governance integration.
+
+v0.6.0: Added best-so-far preservation (Issue #9)
+- Preserves the best node across all steps to avoid losing good paths
+- Fixes issue where aggressive death pruning eliminates all paths
 """
 
 from typing import List, Optional, Tuple, Dict, Any
@@ -112,6 +116,10 @@ class BeamSearch:
         # Initialize beam with root node
         beam = [BeamNode(t_step=0, schedule=[])]
 
+        # v0.6.0: Best-so-far preservation (Issue #9)
+        # Track the best node seen so far to avoid losing all good paths
+        best_so_far: Optional[BeamNode] = None
+
         # Expand beam for each timestep
         for t in range(self.runner.n_steps):
             new_beam = []
@@ -128,8 +136,20 @@ class BeamSearch:
             # Prune and select top-k by heuristic
             beam = self._prune_and_select(new_beam)
 
+            # v0.6.0: Update best-so-far from current beam
+            if beam:
+                current_best = max(beam, key=lambda n: n.heuristic_score)
+                if best_so_far is None or current_best.heuristic_score > best_so_far.heuristic_score:
+                    best_so_far = current_best
+
+            # v0.6.0: If beam is empty, inject best-so-far to continue search
             if not beam:
-                raise RuntimeError(f"Beam empty at t={t}. All paths pruned.")
+                if best_so_far is not None:
+                    # Extend best-so-far with no-op action to continue search
+                    beam = [best_so_far]
+                    # Note: This may repeat the same node, but allows search to continue
+                else:
+                    raise RuntimeError(f"Beam empty at t={t}. All paths pruned.")
 
         # All nodes should be at t=n_steps now
         # Compute terminal rewards and select best

@@ -3,14 +3,22 @@ Noise Belief Updater
 
 Updates noise model beliefs using pooled variance + chi-square CI.
 Tracks calibration quality and gate status with drift detection.
+
+v0.6.0: Added CalibrationProvenance accumulation (Issue #1)
+- Tracks position_counts (edge vs center wells used for calibration)
+- Tracks plate_ids contributing to calibration
+- Tracks channel_baselines from calibration
+- Enables Issue #2: position-coverage matching enforcement
 """
 
 from typing import List, Optional
+from collections import Counter
 import math
 import numpy as np
 
 from .base import BaseBeliefUpdater
 from ..ledger import cond_key, NoiseDiagnosticEvent
+from ..state import CalibrationProvenance
 
 
 # Gate thresholds (shared constants)
@@ -67,6 +75,9 @@ class NoiseBeliefUpdater(BaseBeliefUpdater):
 
             # Evaluate gate status with hysteresis
             self._update_noise_gate_status(rel_width, drift_metric, condition_key)
+
+            # v0.6.0: Accumulate calibration provenance (Issue #1)
+            self._accumulate_calibration_provenance(cond, condition_key)
 
             # Emit diagnostic event
             self._emit_noise_diagnostic(cond, condition_key, diagnostics_out)
@@ -312,4 +323,82 @@ class NoiseBeliefUpdater(BaseBeliefUpdater):
                 df_min=DF_MIN_SANITY,
                 drift_threshold=DRIFT_THRESHOLD,
             )
+        )
+
+    def _accumulate_calibration_provenance(self, cond, condition_key: str) -> None:
+        """Accumulate calibration provenance from this condition (Issue #1).
+
+        Tracks:
+        - Position distribution (edge vs center wells)
+        - Plate IDs contributing to calibration
+        - Per-channel baseline means
+
+        This enables position-coverage matching enforcement (Issue #2):
+        - If agent calibrates on center wells but runs biology on edge wells,
+          the provenance reveals the mismatch.
+
+        Args:
+            cond: ConditionSummary with calibration data
+            condition_key: Unique key for this condition
+        """
+        n_wells = cond.n_wells
+        position_tag = getattr(cond, 'position_tag', 'center')  # Default to center
+
+        # Get current provenance (mutable update)
+        prov = self.beliefs.calibration_provenance
+
+        # Update position counts
+        new_position_counts = dict(prov.position_counts)
+        new_position_counts[position_tag] = new_position_counts.get(position_tag, 0) + n_wells
+
+        # Update total wells
+        new_total_wells = prov.total_wells + n_wells
+
+        # Update plate_ids (if available on condition)
+        # Note: plate_id may come from design bridge; condition doesn't always have it
+        new_plate_ids = set(prov.plate_ids)
+        # Try to extract plate_id from condition key or attributes
+        # condition_key format: "cell_line/compound@dose/time/assay/position"
+        # We don't have direct plate_id here, but we can derive a pseudo-ID from cycle
+        pseudo_plate_id = f"calibration_cycle_{self.beliefs._cycle}"
+        new_plate_ids.add(pseudo_plate_id)
+
+        # Update channel baselines (running mean)
+        new_channel_baselines = dict(prov.channel_baselines)
+        if cond.feature_means:
+            for ch, mean_val in cond.feature_means.items():
+                if ch in new_channel_baselines:
+                    # Running average weighted by wells
+                    old_wells = prov.total_wells
+                    old_mean = new_channel_baselines[ch]
+                    new_channel_baselines[ch] = (old_mean * old_wells + mean_val * n_wells) / new_total_wells
+                else:
+                    new_channel_baselines[ch] = float(mean_val)
+
+        # Build new provenance
+        new_prov = CalibrationProvenance(
+            position_counts=new_position_counts,
+            plate_ids=new_plate_ids,
+            channel_baselines=new_channel_baselines,
+            total_wells=new_total_wells,
+            last_update_cycle=self.beliefs._cycle,
+        )
+
+        # Record update with evidence via _set
+        self.beliefs._set(
+            "calibration_provenance",
+            new_prov,
+            evidence={
+                "wells_added": n_wells,
+                "position_tag": position_tag,
+                "position_counts": new_position_counts,
+                "total_wells": new_total_wells,
+                "center_fraction": new_prov.center_fraction(),
+                "edge_fraction": new_prov.edge_fraction(),
+            },
+            supporting_conditions=[condition_key],
+            note=(
+                f"Calibration provenance: +{n_wells} {position_tag} wells "
+                f"(total={new_total_wells}, center={new_prov.center_fraction():.1%})"
+            ),
         )

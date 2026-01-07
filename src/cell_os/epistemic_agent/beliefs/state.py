@@ -15,6 +15,7 @@ No Bayesian math, no LLM - just trackable heuristics with receipts.
 
 from typing import Dict, List, Set, Optional, Any, Tuple
 from dataclasses import dataclass, field
+from collections import Counter
 import math
 import numpy as np
 from .ledger import EvidenceEvent, cond_key
@@ -23,6 +24,71 @@ from ..exceptions import (
     ExecutionIntegrityState,
     IntegrityViolation,
 )
+
+
+@dataclass
+class CalibrationProvenance:
+    """Track HOW calibration was earned, not just WHETHER it was earned.
+
+    This enables detection of position mismatch attacks where an agent calibrates
+    on edge-heavy wells but then runs biology on center wells (or vice versa).
+
+    Fields:
+        position_counts: Distribution of calibration wells by position tag.
+            e.g., {"edge": 20, "center": 76} means calibration used 20 edge, 76 center.
+        plate_ids: Set of plate IDs that contributed calibration data.
+            Enables auditing which physical plates were used.
+        channel_baselines: Per-channel baseline means from calibration.
+            Optional for v1, enables drift detection if baselines shift.
+        total_wells: Total wells used for calibration (sum of position_counts).
+        last_update_cycle: Cycle when provenance was last updated.
+    """
+    position_counts: Dict[str, int] = field(default_factory=dict)
+    plate_ids: Set[str] = field(default_factory=set)
+    channel_baselines: Dict[str, float] = field(default_factory=dict)
+    total_wells: int = 0
+    last_update_cycle: Optional[int] = None
+
+    def center_fraction(self) -> float:
+        """Fraction of calibration wells that were center-positioned.
+
+        Returns:
+            Float in [0, 1], or 0.0 if no calibration data.
+        """
+        if self.total_wells == 0:
+            return 0.0
+        return self.position_counts.get("center", 0) / self.total_wells
+
+    def edge_fraction(self) -> float:
+        """Fraction of calibration wells that were edge-positioned.
+
+        Returns:
+            Float in [0, 1], or 0.0 if no calibration data.
+        """
+        if self.total_wells == 0:
+            return 0.0
+        return self.position_counts.get("edge", 0) / self.total_wells
+
+    def to_dict(self) -> dict:
+        """Serialize to dict for JSON persistence."""
+        return {
+            "position_counts": dict(self.position_counts),
+            "plate_ids": sorted(list(self.plate_ids)),
+            "channel_baselines": dict(self.channel_baselines),
+            "total_wells": self.total_wells,
+            "last_update_cycle": self.last_update_cycle,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CalibrationProvenance":
+        """Deserialize from dict."""
+        return cls(
+            position_counts=dict(d.get("position_counts", {})),
+            plate_ids=set(d.get("plate_ids", [])),
+            channel_baselines=dict(d.get("channel_baselines", {})),
+            total_wells=d.get("total_wells", 0),
+            last_update_cycle=d.get("last_update_cycle"),
+        )
 
 
 def _inv_norm_cdf(p: float) -> float:
@@ -140,6 +206,10 @@ class BeliefState:
     instrument_shape: Optional[Any] = None  # InstrumentShapeSummary (use Any to avoid circular import)
     instrument_shape_learned: bool = False  # True after Cycle 0 calibration plate
     calibration_plate_run: bool = False     # True if canonical calibration plate executed
+
+    # Calibration provenance: track HOW calibration was earned (Issue #1)
+    # This enables position-coverage matching enforcement (Issue #2)
+    calibration_provenance: CalibrationProvenance = field(default_factory=CalibrationProvenance)
 
     baseline_cv_scalar: Optional[float] = None
     baseline_cv_by_channel: Dict[str, float] = field(default_factory=dict)
@@ -675,6 +745,8 @@ class BeliefState:
             'scrna_rel_width': self.scrna_rel_width,
             'scrna_sigma_stable': self.scrna_sigma_stable,
             'scrna_metric_source': self.scrna_metric_source,
+            # Calibration provenance (Issue #1)
+            'calibration_provenance': self.calibration_provenance.to_dict(),
             # Legacy fields
             'baseline_cv_scalar': self.baseline_cv_scalar,
             'baseline_cv_by_channel': dict(self.baseline_cv_by_channel),

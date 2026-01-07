@@ -1,6 +1,11 @@
 """
 Template chooser with pay-for-calibration regime and measurement ladder.
 
+v0.6.0: Calibration-coverage match enforcement (Issue #2).
+- Before biology, check that calibration covers experiment's position distribution
+- If calibration was center-only but biology uses edge wells, warn or force calibration
+- Uses CalibrationProvenance from BeliefState
+
 v0.5.0: Assay-specific gates with ladder constraints.
 - LDH, Cell Painting, scRNA gates enforced independently
 - Ladder rule: scRNA requires CP gate earned first
@@ -11,7 +16,7 @@ v0.4.2: Baseline noise gate implementation.
 """
 
 from typing import Tuple, Optional, Any, Dict, List
-from ..beliefs.state import BeliefState
+from ..beliefs.state import BeliefState, CalibrationProvenance
 from ..beliefs.ledger import DecisionEvent
 from ..exceptions import DecisionReceiptInvariantError
 from cell_os.core import Decision, DecisionRationale
@@ -27,6 +32,115 @@ class TemplateChooser:
 
     # Required fields for all decision receipts (Covenant 6)
     REQUIRED_DECISION_FIELDS = {"template", "forced", "trigger", "regime", "gate_state"}
+
+    # v0.6.0: Position coverage thresholds (Issue #2)
+    # Minimum fraction of calibration wells in each position type
+    # to claim coverage for that position
+    COVERAGE_MIN_FRACTION = 0.10  # At least 10% of calibration wells in position
+    COVERAGE_MIN_WELLS = 8        # At least 8 wells in position
+
+    def _check_calibration_coverage(
+        self,
+        beliefs: BeliefState,
+        template_name: str,
+        template_kwargs: dict
+    ) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+        """Check if calibration covers the experiment's position distribution (Issue #2).
+
+        Before running biology, verify that calibration provenance covers the positions
+        the experiment will use. This prevents position mismatch attacks where agent
+        calibrates on edge wells but runs biology on center wells.
+
+        Args:
+            beliefs: Current belief state with calibration_provenance
+            template_name: Template to be executed
+            template_kwargs: Template parameters (may include position hints)
+
+        Returns:
+            (is_covered, gap_reason, coverage_details): Tuple of:
+                - is_covered: True if calibration covers experiment positions
+                - gap_reason: Human-readable explanation if coverage gap found
+                - coverage_details: Dict with coverage metrics for provenance
+        """
+        prov = beliefs.calibration_provenance
+
+        # If no calibration data yet, coverage is trivially OK (handled by gate checks)
+        if prov.total_wells == 0:
+            return (True, None, {"status": "no_calibration_yet"})
+
+        # Extract position requirements from template
+        # Most biology templates use center wells by default
+        # TODO: Make this template-specific when position-aware designs are added
+        experiment_positions = self._infer_experiment_positions(template_name, template_kwargs)
+
+        coverage_details = {
+            "calibration_total_wells": prov.total_wells,
+            "calibration_center_wells": prov.position_counts.get("center", 0),
+            "calibration_edge_wells": prov.position_counts.get("edge", 0),
+            "calibration_center_fraction": prov.center_fraction(),
+            "calibration_edge_fraction": prov.edge_fraction(),
+            "experiment_positions": experiment_positions,
+        }
+
+        gaps = []
+
+        # Check if experiment uses center wells and calibration covers them
+        if "center" in experiment_positions:
+            center_wells = prov.position_counts.get("center", 0)
+            if center_wells < self.COVERAGE_MIN_WELLS:
+                gaps.append(f"center (only {center_wells} cal wells, need ≥{self.COVERAGE_MIN_WELLS})")
+            elif prov.center_fraction() < self.COVERAGE_MIN_FRACTION:
+                gaps.append(f"center (only {prov.center_fraction():.0%} of cal, need ≥{self.COVERAGE_MIN_FRACTION:.0%})")
+
+        # Check if experiment uses edge wells and calibration covers them
+        if "edge" in experiment_positions:
+            edge_wells = prov.position_counts.get("edge", 0)
+            if edge_wells < self.COVERAGE_MIN_WELLS:
+                gaps.append(f"edge (only {edge_wells} cal wells, need ≥{self.COVERAGE_MIN_WELLS})")
+            elif prov.edge_fraction() < self.COVERAGE_MIN_FRACTION:
+                gaps.append(f"edge (only {prov.edge_fraction():.0%} of cal, need ≥{self.COVERAGE_MIN_FRACTION:.0%})")
+
+        coverage_details["coverage_gaps"] = gaps
+
+        if gaps:
+            gap_reason = f"Calibration coverage gaps: {', '.join(gaps)}"
+            return (False, gap_reason, coverage_details)
+
+        return (True, None, coverage_details)
+
+    def _infer_experiment_positions(
+        self,
+        template_name: str,
+        template_kwargs: dict
+    ) -> set:
+        """Infer which well positions an experiment template will use.
+
+        Args:
+            template_name: Template being executed
+            template_kwargs: Template parameters
+
+        Returns:
+            Set of position tags the experiment will use ("center", "edge", or both)
+        """
+        # Edge tests explicitly use both
+        if template_name == "edge_center_test":
+            return {"center", "edge"}
+
+        # Calibration templates use center by default (or as specified)
+        if template_name in ["baseline_replicates", "calibrate_ldh_baseline",
+                              "calibrate_cell_paint_baseline", "calibrate_scrna_baseline"]:
+            coverage_strategy = template_kwargs.get("coverage_strategy", "center_only")
+            if coverage_strategy == "full_spatial":
+                return {"center", "edge"}
+            return {"center"}
+
+        # Biology templates: check for explicit position specification
+        explicit_positions = template_kwargs.get("position_tags")
+        if explicit_positions:
+            return set(explicit_positions)
+
+        # Default: biology uses center wells (safest assumption)
+        return {"center"}
 
     def _assert_decision_receipt(self) -> None:
         """Enforce Covenant 6: Every Decision Must Have a Receipt.
@@ -1040,16 +1154,51 @@ class TemplateChooser:
     ) -> Decision:
         """Select biology template now that gates are earned.
 
+        v0.6.0: Added calibration-coverage match check (Issue #2).
+        Before allowing biology, verify calibration covers experiment positions.
+
         Always returns a Decision (fallback to calibration maintenance).
         """
         # Simple exploration: dose-response for untested compounds
         tested = beliefs.tested_compounds - {'DMSO'}
         if not tested or len(tested) < 5:
-            reason = "Explore compounds with dose-response"
+            template_name = "dose_ladder_coarse"
+            template_kwargs = {"reason": "Explore compounds with dose-response"}
+
+            # v0.6.0: Check calibration-coverage match (Issue #2)
+            is_covered, gap_reason, coverage_details = self._check_calibration_coverage(
+                beliefs, template_name, template_kwargs
+            )
+            if not is_covered:
+                # Coverage gap detected: force additional calibration
+                reason = f"Fill calibration coverage gap before biology: {gap_reason}"
+                return self._set_last_decision(
+                    cycle=cycle,
+                    selected="baseline_replicates",
+                    selected_score=1.0,
+                    reason=reason,
+                    selected_candidate={
+                        "template": "baseline_replicates",
+                        "forced": True,
+                        "trigger": "coverage_gap",
+                        "regime": "coverage_repair",
+                        "enforcement_layer": "global_pre_biology",
+                        "gate_state": self._get_gate_state(beliefs),
+                        "blocked_template": template_name,
+                        "coverage_details": coverage_details,
+                        "n_reps": 12,
+                        "coverage_strategy": "full_spatial"  # Include edge wells
+                    },
+                    beliefs=beliefs,
+                    kwargs={"reason": reason, "n_reps": 12, "coverage_strategy": "full_spatial"}
+                )
+
+            # Coverage OK: proceed with biology
+            reason = template_kwargs["reason"]
             return self._finalize_selection(
                 beliefs=beliefs,
-                template_name="dose_ladder_coarse",
-                template_kwargs={"reason": reason},
+                template_name=template_name,
+                template_kwargs=template_kwargs,
                 remaining_wells=remaining_wells,
                 cycle=cycle,
                 allow_expensive_calibration=allow_expensive_calibration,
@@ -1057,7 +1206,8 @@ class TemplateChooser:
                 reason=reason,
                 forced=False,
                 trigger="scoring",
-                regime="in_gate"
+                regime="in_gate",
+                additional_candidate_fields={"coverage_details": coverage_details}
             )
 
         # Final fallback: calibration maintenance
