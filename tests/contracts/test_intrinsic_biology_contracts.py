@@ -217,7 +217,6 @@ def test_backward_compatibility_disabled_mode():
     print("✅ Backward compatibility: Disabled mode produces no biological effect (RE=1.0)")
 
 
-@pytest.mark.skip(reason="ic50_shift_mult not respecting CV=0 - needs investigation")
 def test_cv_zero_produces_unit_multipliers():
     """
     Setting CV=0 produces multipliers of 1.0 (no variability).
@@ -232,11 +231,13 @@ def test_cv_zero_produces_unit_multipliers():
         'growth_cv': 0.0,  # Zero CV = no variability
         'stress_sensitivity_cv': 0.0,
         'hazard_scale_cv': 0.0,
+        'ic50_cv': 0.0,  # Must also set these to 0
+        'death_threshold_cv': 0.0,
     }
 
     vm = BiologicalVirtualMachine(seed=seed, bio_noise_config=bio_noise_config)
-    vm.seed_vessel("Plate1_A01", "A549", 50000, 50.0, 0.0)
-    vm.seed_vessel("Plate1_B02", "A549", 50000, 50.0, 0.0)
+    vm.seed_vessel("Plate1_A01", "A549", initial_count=50000)
+    vm.seed_vessel("Plate1_B02", "A549", initial_count=50000)
 
     re_1 = vm.vessel_states["Plate1_A01"].bio_random_effects
     re_2 = vm.vessel_states["Plate1_B02"].bio_random_effects

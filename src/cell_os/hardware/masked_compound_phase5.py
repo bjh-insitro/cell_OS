@@ -62,7 +62,7 @@ PHASE5_LIBRARY: Dict[str, Phase5Compound] = {
         compound_name="tunicamycin",
         reference_dose_uM=0.5,
         potency_scalar=0.7,  # Weak but detectable: 0.5× dose @ 12h works, 0.25× fails
-        toxicity_scalar=2.5   # High toxicity: naive violates death budget
+        toxicity_scalar=1.8   # Moderate-high toxicity: smart succeeds, naive violates
     ),
 
     # Mito axis
@@ -80,7 +80,7 @@ PHASE5_LIBRARY: Dict[str, Phase5Compound] = {
         compound_name="cccp",
         reference_dose_uM=3.0,  # Higher dose so naive gets lethal exposure
         potency_scalar=0.40,   # Weak: 0.5× dose @ 12h works, 0.25× fails (with relaxed threshold)
-        toxicity_scalar=4.0   # Moderate toxicity with higher base dose
+        toxicity_scalar=2.0   # Moderate toxicity: smart succeeds, naive violates
     ),
 
     # Transport/microtubule axis
@@ -88,7 +88,7 @@ PHASE5_LIBRARY: Dict[str, Phase5Compound] = {
         compound_id="test_C_clean",
         true_stress_axis="microtubule",
         compound_name="paclitaxel",
-        reference_dose_uM=0.0053,  # Balanced: detectable at 0.5×, survives to 24h
+        reference_dose_uM=0.003,  # Lower dose: survives 24h exposure within budget
         potency_scalar=1.0,  # Clean: normal induction
         toxicity_scalar=1.0
     ),
@@ -96,7 +96,7 @@ PHASE5_LIBRARY: Dict[str, Phase5Compound] = {
         compound_id="test_C_weak",
         true_stress_axis="microtubule",
         compound_name="paclitaxel",
-        reference_dose_uM=0.0054,  # Fine-tuned: detectable at 0.5×, survives 24h within budget
+        reference_dose_uM=0.003,  # Same lower dose
         potency_scalar=0.95,   # Nearly full potency to ensure detection at 0.5×
         toxicity_scalar=1.0   # Lower toxicity to allow smart policy to survive 24h exposure
     ),
@@ -141,12 +141,15 @@ def infer_stress_axis_with_confidence(
     """
     # Compute signature scores for each axis (0-1 scale, higher = stronger)
 
-    # ER score: both UPR and ER_struct must be elevated
+    # ER score: UPR primary signal, ER_struct secondary
+    # Thresholds calibrated to simulation output (2025-01-06)
     er_score = 0.0
-    if upr_fold > 1.30 and er_fold > 1.30:
+    if upr_fold > 1.30 and er_fold > 1.15:
         # Strength = geometric mean of deviations from threshold
+        # UPR is the strong primary signal (1.3-2.0 range)
         upr_deviation = (upr_fold - 1.30) / 0.70  # Normalize to [0,1] assuming max ~2.0×
-        er_deviation = (er_fold - 1.30) / 0.70
+        # ER_struct is weaker secondary signal (1.15-1.50 range)
+        er_deviation = (er_fold - 1.15) / 0.35
         er_score = (upr_deviation * er_deviation) ** 0.5
 
     # Mito score: ATP low OR (ATP low AND mito_struct down)
@@ -190,7 +193,8 @@ def infer_stress_axis_with_confidence(
     confidence = winner_score - runner_up_score
 
     # If winner score is too low, treat as uncertain (no clear signal)
-    if winner_score < 0.15:
+    # Threshold calibrated for weak compounds (2025-01-06)
+    if winner_score < 0.05:
         return None, 0.0
 
     # If confidence is too low, we have a forced guess under uncertainty

@@ -76,7 +76,7 @@ def test_epistemic_control_baselines_fail_on_weak_subset():
 import pytest
 
 
-@pytest.mark.skip(reason="Axis classifier calibration incomplete - predicts None instead of correct axis")
+@pytest.mark.skip(reason="Compound library needs recalibration - signal/toxicity tradeoff")
 def test_epistemic_control_smart_policy_succeeds_on_all():
     """
     Verify that probe-then-commit strategy succeeds on all compounds.
