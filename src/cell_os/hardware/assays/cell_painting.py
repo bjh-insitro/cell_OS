@@ -699,7 +699,8 @@ class CellPaintingAssay(AssaySimulator):
         from ...sim.imaging_artifacts_core import compute_background_noise_multiplier
 
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
-        adherent_cells = float(max(1.0, getattr(vessel, 'cell_count', 1.0)))
+        # Use confluence-based proxy (cross-modal independence)
+        adherent_cells = float(max(1.0, _cell_count_proxy_from_confluence(vessel.confluence)))
 
         if debris_cells == 0 or adherent_cells == 0:
             return 1.0  # No debris or no baseline → no inflation

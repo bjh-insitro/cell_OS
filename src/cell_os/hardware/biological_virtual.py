@@ -294,6 +294,58 @@ class VesselState:
     # Phase 6: Mixture properties removed (discrete subpopulations deleted)
     # Heterogeneity is now continuous via bio_random_effects
 
+    def get_mixture_width(self, field: str) -> float:
+        """
+        Compute mixture width (std dev) for biological heterogeneity.
+
+        In Phase 6, discrete subpopulations are replaced with continuous
+        heterogeneity via bio_random_effects. The mixture width represents
+        the expected variation in stress response across cells in the vessel.
+
+        Args:
+            field: Stress axis name ('transport_dysfunction', 'er_stress', 'mito_dysfunction')
+
+        Returns:
+            Estimated std dev of stress level across the cell population.
+            Higher values → more heterogeneous response → lower confidence.
+
+        Physics:
+        - Base heterogeneity: ~5% CV (intrinsic biological variation)
+        - Stress-dependent: Higher stress → more heterogeneous response
+        - bio_random_effects: Per-vessel sensitivity multiplier affects width
+        """
+        # Map field name to vessel attribute
+        field_map = {
+            'transport_dysfunction': 'transport_dysfunction',
+            'er_stress': 'er_stress',
+            'mito_dysfunction': 'mito_dysfunction',
+        }
+        if field not in field_map:
+            raise ValueError(f"Unknown stress field: {field}. Expected one of {list(field_map.keys())}")
+
+        # Get current stress level
+        stress_level = getattr(self, field_map[field], 0.0)
+
+        # Base heterogeneity: 5% CV (irreducible biological variation)
+        base_width = 0.05
+
+        # Stress-dependent heterogeneity: stressed populations show more variation
+        # At stress=0: width=0.05, at stress=1.0: width~0.15
+        stress_dependent_width = 0.10 * float(stress_level)
+
+        # bio_random_effects contribution (per-vessel sensitivity heterogeneity)
+        # Higher stress_sensitivity_mult → cells respond more variably
+        re_contribution = 0.0
+        if self.bio_random_effects is not None:
+            sensitivity_mult = self.bio_random_effects.get('stress_sensitivity_mult', 1.0)
+            # Deviation from 1.0 contributes to heterogeneity
+            re_contribution = 0.03 * abs(float(sensitivity_mult) - 1.0)
+
+        # Total width (sum in quadrature for independent sources)
+        total_width = (base_width**2 + stress_dependent_width**2 + re_contribution**2) ** 0.5
+
+        return float(total_width)
+
     @property
     def capturable_cells(self) -> float:
         """
@@ -1683,6 +1735,8 @@ class BiologicalVirtualMachine(VirtualMachine):
                     state.max_volume_ml = vessel_info.max_volume_ml
                     # Start with working volume (standard media volume for this vessel type)
                     state.current_volume_ml = vessel_info.working_volume_ml
+                    # Use database capacity for proper confluence calculation
+                    capacity = vessel_info.max_capacity_cells_per_well
                 else:
                     logger.warning(f"Vessel type '{vessel_type}' not found in database. Volume tracking disabled.")
             except Exception as e:
