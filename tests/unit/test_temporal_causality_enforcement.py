@@ -50,7 +50,6 @@ def test_well_rejects_negative_observation_time():
     assert raised, "Should raise TemporalCausalityError for negative observation_time_h"
     assert "negative" in str(exc).lower()
     assert "-1.0" in str(exc)
-    return True
 
 
 def test_well_rejects_negative_treatment_start_time():
@@ -66,7 +65,6 @@ def test_well_rejects_negative_treatment_start_time():
     assert raised, "Should raise TemporalCausalityError for negative treatment_start_time_h"
     assert "negative" in str(exc).lower()
     assert "-5.0" in str(exc)
-    return True
 
 
 def test_well_rejects_observation_before_treatment():
@@ -83,7 +81,6 @@ def test_well_rejects_observation_before_treatment():
     assert "before treatment" in str(exc).lower()
     assert "10.0" in str(exc)
     assert "24.0" in str(exc)
-    return True
 
 
 def test_well_rejects_exact_negative_boundary():
@@ -96,7 +93,6 @@ def test_well_rejects_exact_negative_boundary():
     ))
 
     assert raised, "Should raise TemporalCausalityError for tiny negative observation_time_h"
-    return True
 
 
 def test_well_rejects_observation_before_treatment_by_epsilon():
@@ -110,7 +106,6 @@ def test_well_rejects_observation_before_treatment_by_epsilon():
     ))
 
     assert raised, "Should raise TemporalCausalityError for tiny causality violation"
-    return True
 
 
 # ============================================================================
@@ -127,7 +122,6 @@ def test_well_accepts_zero_observation_time():
         treatment_start_time_h=0.0,
     )
     assert well.observation_time_h == 0.0
-    return True
 
 
 def test_well_accepts_observation_equals_treatment_start():
@@ -141,7 +135,6 @@ def test_well_accepts_observation_equals_treatment_start():
     )
     assert well.observation_time_h == 24.0
     assert well.treatment_start_time_h == 24.0
-    return True
 
 
 def test_well_accepts_observation_after_treatment():
@@ -155,7 +148,6 @@ def test_well_accepts_observation_after_treatment():
     )
     assert well.observation_time_h == 48.0
     assert well.treatment_start_time_h == 24.0
-    return True
 
 
 def test_well_defaults_treatment_start_to_zero():
@@ -169,7 +161,6 @@ def test_well_defaults_treatment_start_to_zero():
     )
     assert well.treatment_start_time_h == 0.0
     assert well.observation_time_h == 24.0
-    return True
 
 
 # ============================================================================
@@ -190,7 +181,6 @@ def test_raw_well_result_rejects_negative_observation_time():
     assert raised, "Should raise TemporalCausalityError for negative observation_time_h"
     assert "negative" in str(exc).lower()
     assert "-2.0" in str(exc)
-    return True
 
 
 def test_raw_well_result_accepts_valid_time():
@@ -204,7 +194,6 @@ def test_raw_well_result_accepts_valid_time():
         readouts={"viability": 0.95},
     )
     assert result.observation_time_h == 24.0
-    return True
 
 
 # ============================================================================
@@ -234,7 +223,6 @@ def test_legacy_adapter_does_not_bypass_negative_time_validation():
 
     assert raised, "Legacy adapter should not bypass temporal validation"
     assert "negative" in str(exc).lower()
-    return True
 
 
 def test_legacy_adapter_accepts_valid_time():
@@ -244,7 +232,6 @@ def test_legacy_adapter_accepts_valid_time():
 
     assert well.observation_time_h == 24.0
     assert well.treatment_start_time_h == 0.0  # Default
-    return True
 
 
 # ============================================================================
@@ -263,7 +250,6 @@ def test_error_message_includes_observation_time():
     assert raised, "Should raise TemporalCausalityError"
     msg = str(exc)
     assert "observation_time_h=-3.5" in msg or "-3.5" in msg
-    return True
 
 
 def test_error_message_includes_treatment_compound():
@@ -278,7 +264,6 @@ def test_error_message_includes_treatment_compound():
     assert raised, "Should raise TemporalCausalityError"
     msg = str(exc)
     assert "tunicamycin" in msg
-    return True
 
 
 def test_error_message_includes_both_times_for_causality_violation():
@@ -296,7 +281,6 @@ def test_error_message_includes_both_times_for_causality_violation():
     # Must show both times for debugging
     assert ("10.0" in msg or "observation_time_h=10.0" in msg)
     assert ("20.0" in msg or "treatment_start_time_h=20.0" in msg)
-    return True
 
 
 # ============================================================================
@@ -307,13 +291,11 @@ def test_temporal_causality_module_exists():
     """Temporal causality module must exist and be importable."""
     from cell_os.core import temporal_causality
     assert temporal_causality is not None
-    return True
 
 
 def test_temporal_causality_error_is_exception():
     """TemporalCausalityError must be an Exception subclass."""
     assert issubclass(TemporalCausalityError, Exception)
-    return True
 
 
 def test_well_docstring_documents_temporal_invariants():
@@ -322,7 +304,6 @@ def test_well_docstring_documents_temporal_invariants():
     assert "treatment_start_time_h" in doc
     assert "observation_time_h" in doc
     assert "invariant" in doc or "causality" in doc
-    return True
 
 
 # ============================================================================

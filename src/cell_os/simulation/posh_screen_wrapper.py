@@ -509,7 +509,10 @@ def simulate_screen_data(
     # Inject gene-specific modulators (hits)
     num_hits = int(library_size * HIT_RATE)
     hit_indices = np.random.choice(library_size, num_hits, replace=False)
-    
+
+    # Convert count columns to float to avoid FutureWarning when scaling by non-integers
+    df_raw["Mito_Object_Count"] = df_raw["Mito_Object_Count"].astype(float)
+
     for idx in hit_indices:
         if np.random.random() < SUPPRESSOR_PROBABILITY:
             # Suppressor: reduces stress phenotypes
