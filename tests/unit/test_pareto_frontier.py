@@ -217,8 +217,9 @@ def test_pareto_frontier():
 
     plt.tight_layout()
 
-    # Save plot
-    output_dir = Path("/Users/bjh/cell_OS/tests/unit/figures")
+    # Save plot to temp directory (works in CI and locally)
+    import tempfile
+    output_dir = Path(tempfile.gettempdir()) / "cell_os_test_figures"
     output_dir.mkdir(exist_ok=True)
     output_path = output_dir / "pareto_frontier.png"
     plt.savefig(output_path, dpi=150)
