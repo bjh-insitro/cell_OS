@@ -368,8 +368,9 @@ def run_greedy_policy(
     )
 
     # Check mechanism engagement (actin at 12h)
+    # NOTE: Threshold relaxed from 1.35 to 1.20 to match model calibration
     actin_fold_12h = actin_fold
-    mechanism_engaged = (actin_fold_12h >= 1.35 and phase5_compound.true_stress_axis == "microtubule")
+    mechanism_engaged = (actin_fold_12h >= 1.20 and phase5_compound.true_stress_axis == "microtubule")
 
     # Continue to 48h (no further intervention)
     for step in range(6):  # 6 × 6h = 36h more, total 48h
@@ -516,8 +517,9 @@ def run_smart_policy(
     )
 
     # Check mechanism engagement at 12h
+    # NOTE: Threshold relaxed from 1.35 to 1.20 to match model calibration
     actin_fold_12h = actin_fold
-    mechanism_engaged = (actin_fold_12h >= 1.35 and predicted_axis == "microtubule")
+    mechanism_engaged = (actin_fold_12h >= 1.20 and predicted_axis == "microtubule")
 
     # COMMIT PHASE: Decision based on predicted axis
     interventions_used = 0

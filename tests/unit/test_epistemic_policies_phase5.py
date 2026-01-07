@@ -76,7 +76,6 @@ def test_epistemic_control_baselines_fail_on_weak_subset():
 import pytest
 
 
-@pytest.mark.skip(reason="Compound library needs recalibration - signal/toxicity tradeoff")
 def test_epistemic_control_smart_policy_succeeds_on_all():
     """
     Verify that probe-then-commit strategy succeeds on all compounds.
@@ -136,7 +135,7 @@ def test_epistemic_control_smart_policy_succeeds_on_all():
         if compound.true_stress_axis == "microtubule":
             assert smart_result.mechanism_engaged, (
                 f"Smart should engage mechanism for microtubule compound {compound_id}: "
-                f"actin_fold_12h={smart_result.actin_fold_12h:.2f}× (should be ≥1.35×)"
+                f"actin_fold_12h={smart_result.actin_fold_12h:.2f}× (should be ≥1.20×)"
             )
 
         results[compound_id] = smart_result

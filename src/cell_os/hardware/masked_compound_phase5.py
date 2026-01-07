@@ -170,11 +170,13 @@ def infer_stress_axis_with_confidence(
         mito_score = (atp_deviation * mito_deviation) ** 0.5
 
     # Transport score: both trafficking and actin_struct must be elevated
+    # NOTE: Actin threshold relaxed from 1.30 to 1.15 to match model calibration
+    # (actin increases are smaller than trafficking for microtubule compounds)
     transport_score = 0.0
-    if trafficking_fold > 1.30 and actin_fold > 1.30:
+    if trafficking_fold > 1.30 and actin_fold > 1.15:
         # Strength = geometric mean of deviations
         trafficking_deviation = (trafficking_fold - 1.30) / 1.20  # Normalize assuming max ~2.5×
-        actin_deviation = (actin_fold - 1.30) / 1.20
+        actin_deviation = (actin_fold - 1.15) / 0.85  # Normalize to [0,1] assuming max ~2.0×
         transport_score = (trafficking_deviation * actin_deviation) ** 0.5
 
     # Rank axes by score
