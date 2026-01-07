@@ -223,7 +223,7 @@ def test_epistemic_action_switching():
     assert len(expand_actions) > 0, "No EXPAND actions were taken despite low uncertainty"
 
 
-@pytest.mark.skip(reason="Optional benchmark test - resource intensive")
+@pytest.mark.slow  # Resource intensive benchmark, run with: pytest -m slow
 def test_epistemic_confounding_adversary():
     """
     OPTIONAL: Test epistemic action effectiveness against confounding.

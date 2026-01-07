@@ -132,7 +132,7 @@ def test_position_effects_visible_in_realistic():
         assert delta_pct > 1.0, f"Edge effect not visible in {ch}: {delta_pct:.2f}% (expected >1%)"
 
 
-@pytest.mark.skip(reason="Slow test: seeds 250 wells total. Run manually with pytest -k outlier_rate")
+@pytest.mark.slow  # Seeds 250 wells, run with: pytest -m slow -k outlier_rate
 def test_outlier_rate_matches_profile():
     """
     CONTRACT: Outlier rate should approximately match profile specification.
@@ -250,7 +250,7 @@ def test_edge_distance_computation():
     assert dist_h12 > 0.9, f"H12 should be near edge, got {dist_h12}"
 
 
-@pytest.mark.skip(reason="Slow test: runs full plate simulations. Run manually with pytest -k edge_sensitivity")
+@pytest.mark.slow  # Full plate simulations, run with: pytest -m slow -k edge_sensitivity
 def test_edge_sensitivity_metrics_contract():
     """
     CONTRACT: Edge sensitivity metrics must reflect profile strength.
