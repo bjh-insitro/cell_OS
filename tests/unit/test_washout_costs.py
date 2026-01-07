@@ -9,15 +9,14 @@ This test verifies that washout:
 
 This is the physics lock before defining rewards.
 
-NOTE: This test is skipped pending calibration of washout intensity penalty.
-The current simulation doesn't apply sufficient penalty (0.009% vs expected >1%).
+NOTE: Recalibrated 2025-01-06 with Model B acute+chronic components.
+Washout intensity penalty now correctly applied via washout_intensity_factor.
 """
 
 import pytest
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 
 
-@pytest.mark.skip(reason="Washout intensity penalty needs calibration (0.009% vs expected >1%)")
 def test_washout_has_cost_but_no_structural_effect():
     """
     Washout should apply intervention costs but NOT affect structural biology.

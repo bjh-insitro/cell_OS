@@ -129,6 +129,14 @@ class ScRNASeqAssay(AssaySimulator):
         # Assert measurement purity
         self._assert_measurement_purity(vessel, state_before)
 
+        # Filter out ground truth from meta (latents and program_activation are internal)
+        # Keep: cell_line, batch_id, cell_subpop, library_size, viability, cycling_score
+        # Remove: latents, program_activation (these expose er_stress, mito_dysfunction, etc.)
+        agent_safe_meta = {
+            k: v for k, v in result.meta.items()
+            if k not in ('latents', 'program_activation')
+        }
+
         return {
             "status": "success",
             "action": "scrna_seq",
@@ -137,7 +145,7 @@ class ScRNASeqAssay(AssaySimulator):
             "gene_names": result.gene_names,
             "cell_ids": result.cell_ids,
             "counts": result.counts,  # numpy array (n_cells, n_genes), int32
-            "meta": result.meta,
+            "meta": agent_safe_meta,
             "n_cells": len(result.cell_ids),
             "n_genes": len(result.gene_names),
             "timestamp": datetime.now().isoformat(),

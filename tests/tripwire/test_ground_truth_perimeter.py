@@ -107,7 +107,6 @@ def test_ldh_viability_debug_truth_gate_works(make_vm_and_vessel):
     assert "death_mode" in debug_truth, "death_mode missing from _debug_truth"
 
 
-@pytest.mark.skip(reason="scRNA assay has API mismatch (per_cell_factors param), fix in separate PR")
 def test_scrna_seq_no_ground_truth_leakage(make_vm_and_vessel):
     """
     scRNA-seq measurement must not leak ground truth.
@@ -124,8 +123,8 @@ def test_scrna_seq_no_ground_truth_leakage(make_vm_and_vessel):
     vessel.mito_dysfunction = 0.2
     vessel.death_mode = "er_stress"
 
-    # scRNA-seq measurement
-    result = vm.scrna_seq_assay.measure(vessel, well_position='B03', plate_id='P1')
+    # scRNA-seq measurement (use internal accessor, no well_position/plate_id needed)
+    result = vm._scrna_seq_assay.measure(vessel, n_cells=100)
 
     # Assert: no ground truth patterns anywhere in result tree
     assert_no_ground_truth(
