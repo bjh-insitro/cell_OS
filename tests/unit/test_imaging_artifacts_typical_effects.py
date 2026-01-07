@@ -36,7 +36,7 @@ def test_low_debris_typical_effects():
     channel_weights = {'rna': 1.5, 'actin': 1.3, 'nucleus': 1.0, 'er': 0.8, 'mito': 0.8}
     bg = compute_background_multipliers_by_channel(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         channel_weights=channel_weights
     )
 
@@ -75,7 +75,7 @@ def test_moderate_debris_typical_effects():
     channel_weights = {'rna': 1.5, 'actin': 1.3, 'nucleus': 1.0, 'er': 0.8, 'mito': 0.8}
     bg = compute_background_multipliers_by_channel(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         channel_weights=channel_weights
     )
 
@@ -114,7 +114,7 @@ def test_high_debris_typical_effects():
     channel_weights = {'rna': 1.5, 'actin': 1.3, 'nucleus': 1.0, 'er': 0.8, 'mito': 0.8}
     bg = compute_background_multipliers_by_channel(
         debris_cells=debris_cells,
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         channel_weights=channel_weights
     )
 
@@ -149,7 +149,7 @@ def test_spatial_field_texture_corruption():
     # Low debris
     result_low = compute_debris_field_modifiers(
         debris_cells=60.0,  # 2%
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=False,
         well_id="B03",
         experiment_seed=42
@@ -158,7 +158,7 @@ def test_spatial_field_texture_corruption():
     # Moderate debris
     result_mod = compute_debris_field_modifiers(
         debris_cells=150.0,  # 5%
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=False,
         well_id="B03",
         experiment_seed=42
@@ -167,7 +167,7 @@ def test_spatial_field_texture_corruption():
     # High debris
     result_high = compute_debris_field_modifiers(
         debris_cells=600.0,  # 20%
-        initial_cells=initial_cells,
+        adherent_cells=initial_cells,
         is_edge=True,
         well_id="A01",
         experiment_seed=42
