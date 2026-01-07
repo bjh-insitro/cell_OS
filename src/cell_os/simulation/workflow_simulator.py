@@ -238,11 +238,30 @@ class WorkflowSimulator:
             elif state["confluence"] < 0.1 and self.day > 5:
                 self.violations.append(f"Stagnation in {flask_id}")
             else:
-                # Only feed if cell line requires daily feeding (iPSC/hESC)
+                # Feed cells based on cell line and time since last feed:
+                # - iPSC/hESC: Daily feeding (high metabolic demand)
+                # - Fast-growing cancer (A549, HeLa): Feed every 2 days or >50% confluence
+                # - Slow-growing cancer (HepG2, MCF7): Feed every 3 days or >30% confluence
+                # Without feeding, cultures starve as nutrients deplete
+                needs_feed = False
                 if self.config.cell_line.lower() in ["ipsc", "hesc"]:
+                    # iPSC/hESC always need daily feeding
+                    needs_feed = True
+                elif self.config.cell_line.lower() in ["hepg2", "mcf7"]:
+                    # Slow-growing cells: lower confluence threshold or every 3 days
+                    if state["confluence"] > 0.30 or self.day % 3 == 0:
+                        needs_feed = True
+                elif state["confluence"] > 0.40 or self.day % 2 == 0:
+                    # Fast-growing cells: feed at 40% confluence or every 2 days
+                    needs_feed = True
+
+                if needs_feed:
+                    # Record feed operation for resource tracking
                     op = self.ops.op_feed(flask_id, cell_line=self.config.cell_line)
                     self._track_resources(op)
                     self.daily_ops.append(op)
+                    # Actually replenish nutrients in the VM
+                    self.vm.feed_vessel(flask_id)
         
         self.active_flasks = surviving_flasks
         
