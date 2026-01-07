@@ -41,31 +41,49 @@ class TestBioVMImprovements:
         assert growth_ratio_acc > 1.02 # Should be normal growth
         assert growth_ratio_fresh < 1.01 # Should be suppressed
 
-    @pytest.mark.skip(reason="Edge effects not producing expected center > edge count")
     def test_edge_effects(self):
-        """Test that edge wells grow slower."""
+        """Test that edge wells grow slower (comparing growth RATES, not counts).
+
+        Hardware artifacts during seeding can cause different initial cell counts,
+        so we must compare growth rates rather than final counts to test edge effects.
+        """
         # Seed center well vs edge well
         # Both acclimated to ignore lag phase
         self.vm.seed_vessel("Plate1_B06", "HEK293T", 1e5) # Center
         self.vm.seed_vessel("Plate1_A01", "HEK293T", 1e5) # Edge (Row A, Col 1)
-        
+
         # Skip lag phase
         self.vm.vessel_states["Plate1_B06"].seed_time = -24.0
         self.vm.vessel_states["Plate1_A01"].seed_time = -24.0
-        
+
+        # Record initial counts AFTER hardware artifacts applied during seeding
+        center_initial = self.vm.vessel_states["Plate1_B06"].cell_count
+        edge_initial = self.vm.vessel_states["Plate1_A01"].cell_count
+
         # Advance 24 hours
         self.vm.advance_time(24.0)
-        
-        center_count = self.vm.vessel_states["Plate1_B06"].cell_count
-        edge_count = self.vm.vessel_states["Plate1_A01"].cell_count
-        
-        # Edge should be lower due to penalty
-        assert center_count > edge_count
-        
-        # Default penalty is 0.15 (15% reduction in growth rate)
-        # Center doubles (approx)
-        # Edge grows at 85% rate
-        print(f"Center: {center_count:.0f}, Edge: {edge_count:.0f}")
+
+        center_final = self.vm.vessel_states["Plate1_B06"].cell_count
+        edge_final = self.vm.vessel_states["Plate1_A01"].cell_count
+
+        # Calculate growth multipliers (not raw counts)
+        center_growth = center_final / center_initial
+        edge_growth = edge_final / edge_initial
+
+        # Edge should grow SLOWER due to penalty (evaporation/temperature gradients)
+        assert edge_growth < center_growth, (
+            f"Edge well should grow slower than center: "
+            f"edge_growth={edge_growth:.3f}x vs center_growth={center_growth:.3f}x"
+        )
+
+        # Default edge penalty is 0.15 (15% reduction in growth rate)
+        # Verify edge grows noticeably slower (at least 10% less growth)
+        growth_ratio = (edge_growth - 1) / (center_growth - 1) if center_growth > 1 else 1
+        assert growth_ratio < 0.95, (
+            f"Edge penalty should reduce growth by at least 5%: "
+            f"growth_ratio={growth_ratio:.3f}"
+        )
+        print(f"Center growth: {center_growth:.3f}x, Edge growth: {edge_growth:.3f}x, Ratio: {growth_ratio:.3f}")
         
     def test_edge_detection(self):
         """Test the regex for edge detection."""
