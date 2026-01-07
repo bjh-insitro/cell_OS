@@ -1,4 +1,5 @@
 # dashboard_app/utils.py
+# Depends on cell_os.posh_viz (restored from archive 2026-01-06)
 
 import streamlit as st
 import pandas as pd
