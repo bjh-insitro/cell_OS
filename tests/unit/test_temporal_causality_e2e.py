@@ -71,7 +71,6 @@ def test_normal_24h_experiment():
     print("  ✓ Observation creation succeeded\n")
 
     print("✓ PASS: Normal 24h experiment works correctly")
-    return True
 
 
 def test_delayed_treatment_experiment():
@@ -95,7 +94,6 @@ def test_delayed_treatment_experiment():
     print("  ✓ Well creation succeeded\n")
 
     print("✓ PASS: Delayed treatment experiment works correctly")
-    return True
 
 
 def test_immediate_observation():
@@ -118,7 +116,6 @@ def test_immediate_observation():
     print("  ✓ Well creation succeeded\n")
 
     print("✓ PASS: Immediate observation works correctly")
-    return True
 
 
 def test_multi_well_experiment():
@@ -160,7 +157,6 @@ def test_multi_well_experiment():
     print("  ✓ Multi-well experiment creation succeeded\n")
 
     print("✓ PASS: Multi-well experiment works correctly")
-    return True
 
 
 def test_default_treatment_start_time():
@@ -182,7 +178,6 @@ def test_default_treatment_start_time():
     print("  ✓ Default treatment_start_time_h is 0.0\n")
 
     print("✓ PASS: Default treatment start time works correctly")
-    return True
 
 
 def run_all_tests():
