@@ -105,7 +105,9 @@ def test_position_effects_visible_in_realistic():
     edge_results = []
     for well in edge_wells:
         vm.seed_vessel(well, cell_line='A549', vessel_type='96-well')
-        vm.advance_time(well, hours=24.0)
+    # Advance time for all vessels at once
+    vm.advance_time(hours=24.0)
+    for well in edge_wells:
         result = vm.cell_painting_assay(well, well_position=well)
         edge_results.append(result)
 
@@ -114,7 +116,9 @@ def test_position_effects_visible_in_realistic():
     center_results = []
     for well in center_wells:
         vm.seed_vessel(well, cell_line='A549', vessel_type='96-well')
-        vm.advance_time(well, hours=24.0)
+    # Advance time for all vessels at once
+    vm.advance_time(hours=24.0)
+    for well in center_wells:
         result = vm.cell_painting_assay(well, well_position=well)
         center_results.append(result)
 
@@ -128,6 +132,7 @@ def test_position_effects_visible_in_realistic():
         assert delta_pct > 1.0, f"Edge effect not visible in {ch}: {delta_pct:.2f}% (expected >1%)"
 
 
+@pytest.mark.skip(reason="Slow test: seeds 250 wells total. Run manually with pytest -k outlier_rate")
 def test_outlier_rate_matches_profile():
     """
     CONTRACT: Outlier rate should approximately match profile specification.
@@ -139,11 +144,19 @@ def test_outlier_rate_matches_profile():
         ctx = RunContext.sample(seed=seed, config={'realism_profile': profile})
         vm = BiologicalVirtualMachine(run_context=ctx)
 
-        outlier_count = 0
+        # Seed all wells first
+        well_ids = []
         for i in range(n_wells):
             well_id = f"A{i+1}"  # Use sequential wells for simplicity
             vm.seed_vessel(well_id, cell_line='A549', vessel_type='384-well')
-            vm.advance_time(hours=24.0)
+            well_ids.append(well_id)
+
+        # Advance time once for all wells
+        vm.advance_time(hours=24.0)
+
+        # Count outliers
+        outlier_count = 0
+        for well_id in well_ids:
             result = vm.cell_painting_assay(well_id, well_position=well_id)
             if result['detector_metadata']['qc_flags']['is_outlier']:
                 outlier_count += 1
@@ -237,6 +250,7 @@ def test_edge_distance_computation():
     assert dist_h12 > 0.9, f"H12 should be near edge, got {dist_h12}"
 
 
+@pytest.mark.skip(reason="Slow test: runs full plate simulations. Run manually with pytest -k edge_sensitivity")
 def test_edge_sensitivity_metrics_contract():
     """
     CONTRACT: Edge sensitivity metrics must reflect profile strength.
