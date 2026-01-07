@@ -98,7 +98,7 @@ MITO_DYSFUNCTION_MORPH_ALPHA = 0.4  # Morphology scaling factor (40% loss at S=1
 # Transport dysfunction dynamics (morphology-first, no death hazard in v1)
 TRANSPORT_DYSFUNCTION_K_ON = 0.35  # Induction rate constant (per hour) - faster than ER/mito
 TRANSPORT_DYSFUNCTION_K_OFF = 0.08  # Decay rate constant (per hour) - faster recovery
-TRANSPORT_DYSFUNCTION_MORPH_ALPHA = 0.6  # Morphology scaling factor (60% increase at S=1)
+TRANSPORT_DYSFUNCTION_MORPH_ALPHA = 0.65  # Morphology scaling factor (65% increase at S=1)
 
 # Phase 4 Option 3: Cross-talk (transport → mito coupling)
 # Prolonged transport dysfunction induces secondary mito dysfunction

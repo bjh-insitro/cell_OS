@@ -26,6 +26,7 @@ from ..constants import (
     MITO_DAMAGE_K_REPAIR,
     MITO_DAMAGE_BOOST,
     MITO_DAMAGE_RECOVERY_SLOW,
+    INTERNAL_STRESS_TIMESTEP_H,
 )
 
 if TYPE_CHECKING:
@@ -48,10 +49,16 @@ class MitoDysfunctionMechanism(StressMechanism):
         """
         Update mito dysfunction latent state and propose death hazard if stressed.
 
+        Uses internal substepping to avoid dt-dependence in forward Euler integration.
+        This prevents "coarse actions change physics" exploits.
+
         Args:
             vessel: Vessel state to update
             hours: Time interval (hours)
         """
+        if hours <= 0:
+            return  # Zero time → zero update
+
         # Phase 4: Check for transport → mito coupling
         coupling_induction = 0.0
         if ENABLE_TRANSPORT_MITO_COUPLING:
@@ -70,46 +77,34 @@ class MitoDysfunctionMechanism(StressMechanism):
         contact_pressure = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
         contact_mito_rate = 0.015 * contact_pressure
 
-        # Phase 2: Vessel-level mito dysfunction (no subpops)
-        S = vessel.mito_dysfunction
-
-        # Phase: Scars - ALWAYS update damage accumulation (even without compounds)
-        # Damage accumulates from current stress and repairs slowly
-        D = vessel.mito_damage
-        dD_dt = MITO_DAMAGE_K_ACCUM * S - MITO_DAMAGE_K_REPAIR * D
-        vessel.mito_damage = float(np.clip(D + dD_dt * hours, 0.0, 1.0))
-
-        if not vessel.compounds and coupling_induction <= 0:
-            # No compounds, no coupling, but contact pressure can still induce dysfunction
-            dS_dt = -MITO_DYSFUNCTION_K_OFF * S + contact_mito_rate * (1.0 - S)
-            vessel.mito_dysfunction = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
-            return
+        # --- Compute "static" parameters (computed once, used in all substeps) ---
 
         # Compute induction term from all mitochondrial compounds
         induction_total = 0.0
-        for compound, dose_uM in vessel.compounds.items():
-            if dose_uM <= 0:
-                continue
+        if vessel.compounds:
+            for compound, dose_uM in vessel.compounds.items():
+                if dose_uM <= 0:
+                    continue
 
-            meta = vessel.compound_meta.get(compound)
-            if not meta:
-                continue
+                meta = vessel.compound_meta.get(compound)
+                if not meta:
+                    continue
 
-            stress_axis = meta['stress_axis']
-            ic50_uM = meta['ic50_uM']
-            potency_scalar = meta.get('potency_scalar', 1.0)
+                stress_axis = meta['stress_axis']
+                ic50_uM = meta['ic50_uM']
+                potency_scalar = meta.get('potency_scalar', 1.0)
 
-            # Only mitochondrial axis induces mito dysfunction
-            if stress_axis != "mitochondrial":
-                continue
+                # Only mitochondrial axis induces mito dysfunction
+                if stress_axis != "mitochondrial":
+                    continue
 
-            # Phase 3: Apply IC50 shift (continuous heterogeneity via bio_random_effects)
-            bio_re = getattr(vessel, "bio_random_effects", None) or {}
-            ic50_shift_mult = float(bio_re.get("ic50_shift_mult", 1.0))
-            ic50_shifted = max(1e-12, float(ic50_uM) * ic50_shift_mult)
+                # Phase 3: Apply IC50 shift (continuous heterogeneity via bio_random_effects)
+                bio_re = getattr(vessel, "bio_random_effects", None) or {}
+                ic50_shift_mult = float(bio_re.get("ic50_shift_mult", 1.0))
+                ic50_shifted = max(1e-12, float(ic50_uM) * ic50_shift_mult)
 
-            f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
-            induction_total += f_axis
+                f_axis = float(dose_uM / (dose_uM + ic50_shifted)) * potency_scalar
+                induction_total += f_axis
 
         # Add coupling induction
         induction_total += coupling_induction
@@ -133,16 +128,35 @@ class MitoDysfunctionMechanism(StressMechanism):
             er_mito_amp = min(1.0 + ER_MITO_COUPLING_K * sigmoid, 1.0 + ER_MITO_COUPLING_K)
             k_on_effective *= er_mito_amp
 
-        # Phase: Scars - Damage boosts induction (convex: D² makes damage compulsory)
-        D_current = vessel.mito_damage
-        k_on_boosted = k_on_effective * (1.0 + MITO_DAMAGE_BOOST * D_current * D_current)
+        # --- Internal substepping to avoid dt-dependence ---
+        # Dynamics:
+        #   dD/dt = k_accum * S - k_repair * D  (damage accumulates from stress, repairs slowly)
+        #   dS/dt = k_on * (1 + boost*D²) * f * (1-S) - k_off/(1+slow*D) * S + contact * (1-S)
 
-        # Phase: Scars - Damage slows recovery (visible in trajectory slopes)
-        k_off_effective = MITO_DYSFUNCTION_K_OFF / (1.0 + MITO_DAMAGE_RECOVERY_SLOW * D_current)
+        # Calculate number of substeps
+        dt_internal = INTERNAL_STRESS_TIMESTEP_H
+        n_substeps = max(1, int(np.ceil(hours / dt_internal)))
+        dt = hours / n_substeps  # Actual substep size (ensures total time matches exactly)
 
-        # Dynamics (using damage-modified rates)
-        dS_dt = k_on_boosted * induction_total * (1.0 - S) - k_off_effective * S + contact_mito_rate * (1.0 - S)
-        vessel.mito_dysfunction = float(np.clip(S + dS_dt * hours, 0.0, 1.0))
+        # Substep the coupled ODE integration (damage first, then stress)
+        for _ in range(n_substeps):
+            S = vessel.mito_dysfunction
+            D = vessel.mito_damage
+
+            # Update damage first (accumulates from current stress level)
+            dD_dt = MITO_DAMAGE_K_ACCUM * S - MITO_DAMAGE_K_REPAIR * D
+            vessel.mito_damage = float(np.clip(D + dD_dt * dt, 0.0, 1.0))
+
+            # Phase: Scars - CONVEX damage boost (D² makes damage mechanistically compulsory)
+            D_current = vessel.mito_damage
+            k_on_boosted = k_on_effective * (1.0 + MITO_DAMAGE_BOOST * D_current * D_current)
+
+            # Phase: Scars - Recovery slowdown (damage visible in trajectory slopes)
+            k_off_effective_sub = MITO_DYSFUNCTION_K_OFF / (1.0 + MITO_DAMAGE_RECOVERY_SLOW * D_current)
+
+            # Update stress (using boosted induction and slowed recovery)
+            dS_dt = k_on_boosted * induction_total * (1.0 - S) - k_off_effective_sub * S + contact_mito_rate * (1.0 - S)
+            vessel.mito_dysfunction = float(np.clip(S + dS_dt * dt, 0.0, 1.0))
 
         # Phase 2A.2: Check for stochastic death commitment event
         # Phase 2A.3: Refactored to use shared commitment helper

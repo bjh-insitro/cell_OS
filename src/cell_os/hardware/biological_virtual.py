@@ -978,13 +978,14 @@ class BiologicalVirtualMachine(VirtualMachine):
         v5 Diff 4: Apply stress axis recovery (decay) after washout.
 
         Contract:
-        - Stress axes decay when effective dose is low (near zero)
+        - Stress axes decay ONLY when ALL compounds have been washed out
+        - Active compound exposure (any dose > 0) prevents recovery
+        - This is for POST-WASHOUT acceleration, not baseline decay
         - Viability remains monotone down (no resurrection)
         - Recovery means "hazards stop increasing" not "death reverses"
 
         Engineering knobs:
         - tau_recovery_h: Time constant for stress decay (default 6h)
-        - epsilon_dose: Threshold below which recovery activates (default 0.01 µM)
 
         Args:
             vessel: Vessel state
@@ -994,9 +995,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             return  # No time → no recovery
 
         tau_recovery_h = 6.0  # Engineering knob: recovery time constant
-        epsilon_dose = 0.01  # µM threshold for "effectively zero"
 
-        # Check all exposures to see if any have non-negligible effective dose
+        # Check all exposures to see if any are NOT washed out
         exposures = vessel.compound_meta.get('exposures', {})
 
         # FIX: If there are NO exposures at all, stress decays naturally via k_off
@@ -1005,17 +1005,32 @@ class BiologicalVirtualMachine(VirtualMachine):
         if not exposures:
             return  # No exposures → use natural k_off decay only
 
-        max_effective_dose = 0.0
+        # FIX: Check if ANY compound is still active (not washed out)
+        # Active compound at ANY dose prevents recovery acceleration
+        # This prevents low-dose exposures from triggering recovery
+        any_active = False
+        for compound, exp in exposures.items():
+            if not exp.get('is_washed_out', False):
+                # Compound is still active (not washed out)
+                any_active = True
+                break
 
+        if any_active:
+            return  # Active compound present → no recovery acceleration
+
+        # All compounds washed out → check effective dose for post-washout decay
+        # Use epsilon to determine if intracellular burden has cleared
+        epsilon_dose = 0.001  # µM threshold for "effectively zero" (reduced from 0.01)
+        max_effective_dose = 0.0
         for compound in exposures.keys():
             effective_dose = self._get_effective_dose_uM(vessel, compound, self.simulated_time)
             max_effective_dose = max(max_effective_dose, effective_dose)
 
-        # If any compound has significant effective dose, no recovery
+        # If intracellular burden still significant, no recovery yet
         if max_effective_dose > epsilon_dose:
             return
 
-        # All compounds negligible → stress axes decay at vessel level
+        # All compounds cleared → stress axes decay at vessel level
         decay_factor = float(np.exp(-hours / tau_recovery_h))
 
         # Phase 2: Decay vessel-level stress axes
