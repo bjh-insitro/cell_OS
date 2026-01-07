@@ -17,14 +17,15 @@ Assertions (tight):
 3. Trafficking marker tracks latent, not compound
 4. Intensity penalty is transient
 
-NOTE: Test skipped - washout dynamics calibration incomplete.
-Actin does not drop immediately post-washout as expected.
+NOTE: Test calibrated with Model B acute+chronic components.
+Actin drops immediately post-washout (acute component removed).
 """
 
 import pytest
 
-# Skip until washout/recovery dynamics are calibrated
-pytestmark = pytest.mark.skip(reason="Washout/recovery dynamics calibration incomplete")
+# NOTE: Test calibrated with Model B acute+chronic components (2024-01-06)
+# - Acute effect: Direct compound presence (instant removal on washout)
+# - Chronic effect: Latent transport_dysfunction (decays via k_off)
 
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 

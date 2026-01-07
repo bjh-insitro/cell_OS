@@ -273,6 +273,11 @@ class CellPaintingAssay(AssaySimulator):
         plate_id = kwargs.get('plate_id', 'P1')
         batch_id = kwargs.get('batch_id', 'batch_default')
 
+        # Compute washout artifact for signal_intensity (separate from morphology effects)
+        # This represents the transient intensity penalty from handling stress during washout
+        t_measure = self.vm.simulated_time
+        washout_intensity_factor = self._compute_washout_multiplier(vessel, t_measure)
+
         result = {
             "status": "success",
             "action": "cell_painting",
@@ -285,7 +290,7 @@ class CellPaintingAssay(AssaySimulator):
             "signal_intensity": (
                 DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR
                 + (1 - DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR) * vessel.viability
-            ),  # ASSUMPTION: See assay_params.py and ASSUMPTIONS_AND_BOUNDARIES.md
+            ) * washout_intensity_factor,  # ASSUMPTION: See assay_params.py and ASSUMPTIONS_AND_BOUNDARIES.md
             "transport_dysfunction_score": transport_dysfunction_score,
             "timestamp": datetime.now().isoformat(),
             # Pipeline drift metadata for epistemic control
@@ -414,17 +419,86 @@ class CellPaintingAssay(AssaySimulator):
         return morph, has_microtubule_compound
 
     def _apply_latent_stress_effects(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
-        """Apply latent stress state effects (morphology-first mechanisms)."""
+        """
+        Apply latent stress state effects (morphology-first mechanisms).
+
+        Model B for microtubule compounds:
+        - Acute effect: Direct compound presence (instant removal on washout)
+        - Chronic effect: Latent transport_dysfunction (decays via k_off)
+
+        Total actin effect = (1 + acute) × (1 + chronic)
+        """
         if ENABLE_ER_STRESS and vessel.er_stress > 0:
             morph['er'] *= (1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress)
 
         if ENABLE_MITO_DYSFUNCTION and vessel.mito_dysfunction > 0:
             morph['mito'] *= max(0.1, 1.0 - MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction)
 
-        if ENABLE_TRANSPORT_DYSFUNCTION and vessel.transport_dysfunction > 0:
-            morph['actin'] *= (1.0 + TRANSPORT_DYSFUNCTION_MORPH_ALPHA * vessel.transport_dysfunction)
+        if ENABLE_TRANSPORT_DYSFUNCTION:
+            # --- Model B: Acute + Chronic for actin ---
+            # Acute effect: Direct compound presence (dose-dependent, instant removal on washout)
+            acute_effect = self._compute_acute_microtubule_effect(vessel)
+
+            # Chronic effect: Latent transport_dysfunction (decays via k_off after washout)
+            transport_dysfunction = float(getattr(vessel, "transport_dysfunction", 0.0) or 0.0)
+            chronic_effect = TRANSPORT_DYSFUNCTION_MORPH_ALPHA * transport_dysfunction
+
+            # Apply Model B: baseline × (1 + acute) × (1 + chronic)
+            morph['actin'] *= (1.0 + acute_effect) * (1.0 + chronic_effect)
 
         return morph
+
+    def _compute_acute_microtubule_effect(self, vessel: "VesselState") -> float:
+        """
+        Compute acute actin effect from microtubule compound presence.
+
+        This component is instant: present when compound is present, gone when washed out.
+        Separate from chronic transport_dysfunction which persists and decays via k_off.
+
+        NOTE: Uses base compound_params (not vessel.compound_meta) to maintain
+        treatment blinding contract. The acute effect is observationally equivalent
+        to "cells with high transport stress show acute morphology changes".
+
+        Returns:
+            Acute effect scalar (0.0 when no compound, ~0.10-0.15 at therapeutic dose)
+        """
+        # Read authoritative compound concentrations from InjectionManager
+        # (NOT vessel.compounds - that violates treatment blinding contract)
+        if self.vm.injection_mgr is not None and self.vm.injection_mgr.has_vessel(vessel.vessel_id):
+            compounds_snapshot = self.vm.injection_mgr.get_all_compounds_uM(vessel.vessel_id)
+        else:
+            # Fallback: no injection manager, no acute effect
+            return 0.0
+
+        # Check for microtubule compounds
+        acute_effect = 0.0
+        for compound_name, dose_uM in compounds_snapshot.items():
+            if dose_uM <= 0:
+                continue
+
+            # Look up compound params from thalamus (NOT vessel.compound_meta)
+            # This maintains treatment blinding - we only check if it's microtubule axis
+            compound_params = self.vm.thalamus_params['compounds'].get(compound_name, {})
+            if not compound_params:
+                continue
+
+            stress_axis = compound_params.get('stress_axis', '')
+            if stress_axis != 'microtubule':
+                continue
+
+            # Use base potency parameters (treatment blinding: don't read vessel metadata)
+            ic50 = float(compound_params.get('ec50_uM', 0.01))
+            hill_slope = float(compound_params.get('hill_slope', 1.5))
+
+            # Acute effect: Hill equation on dose (saturates at ~0.30)
+            # ACUTE_ALPHA = 0.30: ensures >5% acute effect at therapeutic doses
+            # Higher than chronic MORPH_ALPHA because this is instantaneous response
+            ACUTE_ALPHA = 0.30
+            if ic50 > 0 and dose_uM > 0:
+                dose_effect = (dose_uM ** hill_slope) / (ic50 ** hill_slope + dose_uM ** hill_slope)
+                acute_effect = max(acute_effect, ACUTE_ALPHA * dose_effect)
+
+        return float(acute_effect)
 
     def _apply_contact_pressure_bias(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
         """Apply contact pressure-dependent morphology bias (measurement confounder)."""
