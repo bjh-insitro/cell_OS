@@ -104,9 +104,18 @@ class CellThalamusDB:
         logger.info("Cell Thalamus schema created")
 
     def save_design(self, design_id: str, phase: int, cell_lines: List[str],
-                   compounds: List[str], metadata: Optional[Dict] = None):
+                   compounds: List[str], metadata: Optional[Dict] = None,
+                   doses: Optional[List[float]] = None,
+                   timepoints: Optional[List[float]] = None):
         """Save an experimental design."""
         cursor = self.conn.cursor()
+
+        # Merge doses and timepoints into metadata
+        full_metadata = metadata.copy() if metadata else {}
+        if doses is not None:
+            full_metadata['doses'] = doses
+        if timepoints is not None:
+            full_metadata['timepoints'] = timepoints
 
         cursor.execute("""
             INSERT OR REPLACE INTO thalamus_designs
@@ -118,7 +127,7 @@ class CellThalamusDB:
             json.dumps(cell_lines),
             json.dumps(compounds),
             datetime.now(PACIFIC_TZ).isoformat(),
-            json.dumps(metadata) if metadata else None
+            json.dumps(full_metadata) if full_metadata else None
         ))
 
         self.conn.commit()

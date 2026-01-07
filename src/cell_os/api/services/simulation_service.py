@@ -5,7 +5,7 @@ Background tasks for running Cell Thalamus simulations.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import numpy as np
 
 from cell_os.cell_thalamus import CellThalamusAgent

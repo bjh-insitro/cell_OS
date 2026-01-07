@@ -7,15 +7,10 @@ Tests:
 3. Normalization metadata is attached to observations
 4. Different cell lines get different normalization factors
 
-NOTE: Tests skipped - baseline values have been recalibrated.
-Expected HepG2 ER baseline 130.0 but actual is 95.0.
-Tests need updating to match new calibration.
+Test values updated to match current model baseline calibration (2024).
 """
 
 import pytest
-
-# Skip until baseline values are updated in tests
-pytestmark = pytest.mark.skip(reason="Cell line baselines recalibrated - test values need updating")
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, Any, List
@@ -68,10 +63,10 @@ def test_get_cell_line_baseline():
     assert baseline_a549['mito'] == 150.0
     assert baseline_a549['nucleus'] == 200.0
 
-    # HepG2 baseline (different)
+    # HepG2 baseline (different - updated to actual values)
     baseline_hepg2 = get_cell_line_baseline("HepG2")
-    assert baseline_hepg2['er'] == 130.0
-    assert baseline_hepg2['mito'] == 180.0
+    assert baseline_hepg2['er'] == 95.0
+    assert baseline_hepg2['mito'] == 140.0
 
     # Unknown cell line falls back to A549
     baseline_unknown = get_cell_line_baseline("UNKNOWN_CELL_LINE")
@@ -88,13 +83,13 @@ def test_normalize_channel_value_none():
 def test_normalize_channel_value_fold_change():
     """Test that fold_change normalization divides by baseline."""
     # A549 ER baseline = 100
-    # HepG2 ER baseline = 130
+    # HepG2 ER baseline = 95
 
     # A549 with ER=150 → 150/100 = 1.5
     assert normalize_channel_value(150.0, "A549", "er", "fold_change") == pytest.approx(1.5)
 
-    # HepG2 with ER=150 → 150/130 = 1.154
-    assert normalize_channel_value(150.0, "HepG2", "er", "fold_change") == pytest.approx(1.154, abs=0.001)
+    # HepG2 with ER=150 → 150/95 = 1.579
+    assert normalize_channel_value(150.0, "HepG2", "er", "fold_change") == pytest.approx(1.579, abs=0.001)
 
     # Same raw value, different normalization due to different baselines
     assert normalize_channel_value(150.0, "A549", "er", "fold_change") != \
@@ -122,7 +117,7 @@ def test_build_normalization_metadata():
     assert "A549" in metadata_fc['baselines_used']
     assert "HepG2" in metadata_fc['baselines_used']
     assert metadata_fc['baselines_used']['A549']['er'] == 100.0
-    assert metadata_fc['baselines_used']['HepG2']['er'] == 130.0
+    assert metadata_fc['baselines_used']['HepG2']['er'] == 95.0
 
 
 def test_aggregate_observation_with_normalization():
@@ -169,7 +164,8 @@ def test_aggregate_observation_with_normalization():
             observation_time_h=48.0,
             assay=AssayType.CELL_PAINTING,
             location=Location(well_id="B1", plate_id="P1", position_class="center"),
-            readouts={'morphology': {'er': 156.0, 'mito': 216.0, 'nucleus': 228.0, 'actin': 132.0, 'rna': 240.0}},
+            # HepG2 ER baseline=95, so 114/95 and 123.75/95 avg to ~1.25
+            readouts={'morphology': {'er': 114.0, 'mito': 168.0, 'nucleus': 228.0, 'actin': 132.0, 'rna': 240.0}},
             qc={'failed': False}
         ),
         RawWellResult(
@@ -178,7 +174,7 @@ def test_aggregate_observation_with_normalization():
             observation_time_h=48.0,
             assay=AssayType.CELL_PAINTING,
             location=Location(well_id="B2", plate_id="P1", position_class="center"),
-            readouts={'morphology': {'er': 169.0, 'mito': 234.0, 'nucleus': 247.0, 'actin': 143.0, 'rna': 260.0}},
+            readouts={'morphology': {'er': 123.5, 'mito': 182.0, 'nucleus': 247.0, 'actin': 143.0, 'rna': 260.0}},
             qc={'failed': False}
         ),
     ]
@@ -201,12 +197,12 @@ def test_aggregate_observation_with_normalization():
     cond_a549 = [c for c in obs_raw.conditions if c.cell_line == "A549"][0]
     cond_hepg2 = [c for c in obs_raw.conditions if c.cell_line == "HepG2"][0]
 
-    # Raw values: A549 ER mean = (120 + 130) / 2 = 125, HepG2 ER mean = (156 + 169) / 2 = 162.5
+    # Raw values: A549 ER mean = (120 + 130) / 2 = 125, HepG2 ER mean = (114 + 123.5) / 2 = 118.75
     assert cond_a549.feature_means['er'] == pytest.approx(125.0)
-    assert cond_hepg2.feature_means['er'] == pytest.approx(162.5)
+    assert cond_hepg2.feature_means['er'] == pytest.approx(118.75)
 
-    # WITHOUT normalization, HepG2 > A549 (because baseline is higher)
-    assert cond_hepg2.feature_means['er'] > cond_a549.feature_means['er']
+    # WITHOUT normalization, A549 > HepG2 in raw values
+    assert cond_a549.feature_means['er'] > cond_hepg2.feature_means['er']
 
     # Aggregate WITH fold-change normalization
     obs_norm = aggregate_observation(
@@ -264,7 +260,8 @@ def test_normalization_reduces_variance():
     # WITH normalization: all ~1.2, much smaller variance
 
     raw_results = []
-    for cell_line, er_baseline in [("A549", 100.0), ("HepG2", 130.0), ("U2OS", 95.0)]:
+    # Actual baselines: A549=100, HepG2=95, U2OS=105
+    for cell_line, er_baseline in [("A549", 100.0), ("HepG2", 95.0), ("U2OS", 105.0)]:
         for i in range(2):
             er_value = er_baseline * 1.2  # 20% increase
             raw_results.append(
@@ -306,7 +303,7 @@ def test_normalization_reduces_variance():
     variance_norm = np.var(er_means_norm)
 
     # Variance should be MUCH smaller with normalization
-    # Raw values: A549=120, HepG2=156, U2OS=114 → large variance
+    # Raw values: A549=120, HepG2=114, U2OS=126 → some variance
     # Normalized: all ~1.2 → near-zero variance
     assert variance_norm < variance_raw * 0.1  # At least 10× reduction
 
