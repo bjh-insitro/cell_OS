@@ -346,6 +346,59 @@ class VesselState:
 
         return float(total_width)
 
+    def get_artifact_inflated_mixture_width(self, field: str, current_time: float) -> float:
+        """
+        Compute mixture width including time-decaying plating artifacts.
+
+        Phase 5B Injection #2: Plating artifacts inflate mixture width early,
+        making confident classification impossible until artifacts decay.
+
+        Args:
+            field: Stress axis name ('transport_dysfunction', 'er_stress', 'mito_dysfunction')
+            current_time: Current simulation time (hours since t=0)
+
+        Returns:
+            Estimated std dev including artifact contribution.
+            Early timepoints (6-12h): high width → low confidence
+            Late timepoints (24-48h): decays to biological width
+
+        Physics:
+        - Post-dissociation stress: trypsinization creates transient stress
+        - Clumpiness: spatial heterogeneity from uneven cell distribution
+        - Both decay exponentially with tau_recovery_h (6-16h)
+        """
+        import math
+
+        # Get base biological mixture width
+        base_width = self.get_mixture_width(field)
+
+        # No plating context → return base width (backward compatibility)
+        if self.plating_context is None:
+            return base_width
+
+        # Calculate time since seeding
+        time_since_seed = current_time - self.seed_time
+        if time_since_seed <= 0:
+            time_since_seed = 0.0
+
+        # Get plating artifact parameters
+        post_dissociation = self.plating_context.get('post_dissociation_stress', 0.0)
+        clumpiness = self.plating_context.get('clumpiness', 0.0)
+        tau_recovery = self.plating_context.get('tau_recovery_h', 10.0)
+
+        # Artifact amplitude (both sources contribute to heterogeneity)
+        # Scale to reasonable width contribution (0.1-0.2 at peak)
+        artifact_amplitude = 0.15 * (post_dissociation + clumpiness)
+
+        # Exponential decay of artifact over time
+        decay_factor = math.exp(-time_since_seed / tau_recovery)
+        artifact_width = artifact_amplitude * decay_factor
+
+        # Total width (sum in quadrature - independent noise sources)
+        total_width = (base_width**2 + artifact_width**2) ** 0.5
+
+        return float(total_width)
+
     @property
     def capturable_cells(self) -> float:
         """

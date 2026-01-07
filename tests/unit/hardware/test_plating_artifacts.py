@@ -133,7 +133,6 @@ def test_late_low_variance():
     print("✓ Late low variance: PASS\n")
 
 
-@pytest.mark.skip(reason="VesselState.get_mixture_width not implemented")
 def test_mixture_width_inflation():
     """Verify mixture width is inflated early, decays to biological width."""
     vm = BiologicalVirtualMachine(seed=42)
@@ -178,7 +177,6 @@ def test_mixture_width_inflation():
     print("✓ Mixture width inflation: PASS\n")
 
 
-@pytest.mark.skip(reason="VesselState.get_artifact_inflated_mixture_width not implemented")
 def test_confidence_collapse_early():
     """Verify that artifact-inflated mixture width collapses confidence early."""
     vm = BiologicalVirtualMachine(seed=42)
