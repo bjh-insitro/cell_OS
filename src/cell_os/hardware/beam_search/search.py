@@ -145,9 +145,29 @@ class BeamSearch:
             # v0.6.0: If beam is empty, inject best-so-far to continue search
             if not beam:
                 if best_so_far is not None:
-                    # Extend best-so-far with no-op action to continue search
-                    beam = [best_so_far]
-                    # Note: This may repeat the same node, but allows search to continue
+                    # Extend best-so-far with no-op actions to reach current timestep
+                    # This fixes the bug where t_step mismatch caused nodes to be skipped
+                    extended_schedule = list(best_so_far.schedule)
+                    while len(extended_schedule) < t + 1:
+                        # Add no-op action (zero dose, no washout, no feed)
+                        from ..episode import Action
+                        extended_schedule.append(Action(dose_fraction=0.0, washout=False, feed=False))
+
+                    extended_node = BeamNode(
+                        t_step=t + 1,  # Will be expanded at next iteration
+                        schedule=extended_schedule,
+                        action_type="CONTINUE",
+                        is_terminal=False,
+                        washout_count=best_so_far.washout_count,
+                        feed_count=best_so_far.feed_count,
+                        heuristic_score=best_so_far.heuristic_score,
+                        terminal_reward=None,  # Will be computed later
+                        calibrated_confidence_current=best_so_far.calibrated_confidence_current,
+                        predicted_axis_current=best_so_far.predicted_axis_current,
+                        posterior_top_prob_current=best_so_far.posterior_top_prob_current,
+                        nuisance_frac_current=best_so_far.nuisance_frac_current,
+                    )
+                    beam = [extended_node]
                 else:
                     raise RuntimeError(f"Beam empty at t={t}. All paths pruned.")
 

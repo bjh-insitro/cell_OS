@@ -249,7 +249,8 @@ class RuleBasedPolicy:
     def _template_edge_center_test(
         self,
         cap: dict,
-        reason: str = "Test edge effects"
+        reason: str = "Test edge effects",
+        **kwargs  # Accept extra Documentary-only params
     ) -> Proposal:
         """Template: Compare edge vs center wells."""
         # Hash what defines the wells
@@ -316,7 +317,8 @@ class RuleBasedPolicy:
     def _template_dose_ladder_coarse(
         self,
         cap: dict,
-        reason: str = "Explore dose-response"
+        reason: str = "Explore dose-response",
+        **kwargs  # Accept extra fields like coverage_details
     ) -> Proposal:
         """Template: Coarse dose ladder for compound."""
         # Pick untested compound
@@ -366,7 +368,8 @@ class RuleBasedPolicy:
         cap: dict,
         n_reps: int = 12,
         assay: str = "ldh",
-        reason: str = "Calibrate LDH assay gate"
+        reason: str = "Calibrate LDH assay gate",
+        **kwargs  # Accept extra Documentary-only params
     ) -> Proposal:
         """Template: DMSO replicates for LDH assay calibration.
 
@@ -398,7 +401,8 @@ class RuleBasedPolicy:
         cap: dict,
         n_reps: int = 12,
         assay: str = "cell_paint",
-        reason: str = "Calibrate Cell Painting assay gate"
+        reason: str = "Calibrate Cell Painting assay gate",
+        **kwargs  # Accept extra Documentary-only params
     ) -> Proposal:
         """Template: DMSO replicates for Cell Painting assay calibration.
 
@@ -430,7 +434,8 @@ class RuleBasedPolicy:
         cap: dict,
         n_reps: int = 6,  # Smaller, expensive
         assay: str = "scrna",
-        reason: str = "Calibrate scRNA assay gate"
+        reason: str = "Calibrate scRNA assay gate",
+        **kwargs  # Accept extra Documentary-only params
     ) -> Proposal:
         """Template: DMSO replicates for scRNA assay calibration (placeholder).
 
@@ -460,7 +465,8 @@ class RuleBasedPolicy:
     def _template_cell_paint_screen(
         self,
         cap: dict,
-        reason: str = "Screen compounds with Cell Painting"
+        reason: str = "Screen compounds with Cell Painting",
+        **kwargs  # Accept extra Documentary-only params
     ) -> Proposal:
         """Template: Small Cell Painting screen across diverse compounds."""
         # Diverse compound panel
@@ -503,7 +509,8 @@ class RuleBasedPolicy:
         cap: dict,
         novelty_score: float = 0.0,
         ldh_viable: bool = True,
-        reason: str = "Upgrade to scRNA for mechanistic insight"
+        reason: str = "Upgrade to scRNA for mechanistic insight",
+        **kwargs  # Accept extra Documentary-only params
     ) -> Proposal:
         """Template: scRNA probe on selected conditions (upgrade from CP).
 
