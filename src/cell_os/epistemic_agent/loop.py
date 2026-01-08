@@ -37,6 +37,7 @@ from .episode_summary import (
 from .loop_timing import LoopTimer, LoopTimingStats
 from .data_engine import DataEngine, ObservationRecord
 from ..hardware.safety_constraints import SafetyConstraints
+from .automation_readiness import AutomationReadinessTracker
 
 
 class EpistemicLoop:
@@ -109,6 +110,9 @@ class EpistemicLoop:
 
         # Safety constraints (Feala: safety as first-class Pareto constraint)
         self.safety_constraints = SafetyConstraints()
+
+        # Automation readiness tracker (Feala: automate at the right time)
+        self.automation_tracker = AutomationReadinessTracker()
 
         # Epistemic action state (pending epistemic action consumes next integer cycle)
         self._pending_epistemic_action = None
@@ -724,6 +728,20 @@ class EpistemicLoop:
                 if ct:
                     self._log(f"\n  ⏱️  Cycle timing: {ct.total_cycle_time:.3f}s (bottleneck: {ct.bottleneck})")
 
+                    # Track automation readiness (Feala: automate at the right time)
+                    self.automation_tracker.record_execution(
+                        process_name="science_cycle",
+                        success=True,
+                        duration_sec=ct.total_cycle_time
+                    )
+                    # Track individual phases
+                    for phase, dur in ct.phase_times.items():
+                        self.automation_tracker.record_execution(
+                            process_name=f"phase_{phase}",
+                            success=True,
+                            duration_sec=dur
+                        )
+
                 # Save incremental JSON
                 self._save_json()
 
@@ -957,6 +975,19 @@ class EpistemicLoop:
         self._log(f"Compounds tested: {de_stats['unique_compounds']}")
         self._log(f"Compounds with mechanism: {de_stats['compounds_with_mechanism']}")
         self._log(f"Database: {self.data_engine.db_path}")
+
+        # Automation readiness summary (Feala: automate at the right time)
+        auto_summary = self.automation_tracker.summary()
+        if auto_summary['total_processes'] > 0:
+            self._log("\n" + "-"*60)
+            self._log("AUTOMATION READINESS (Process Maturity)")
+            self._log("-"*60)
+            self._log(f"Processes tracked: {auto_summary['total_processes']}")
+            self._log(f"Mean readiness: {auto_summary['mean_readiness']:.1%}")
+            self._log(f"Ready for automation: {auto_summary['ready_for_automation']}")
+            for name, score in self.automation_tracker.get_all_scores().items():
+                level = score.recommended_level.value
+                self._log(f"  {name}: {score.overall_score:.1%} → {level}")
 
         self._log(f"\nFull log: {self.log_file}")
         self._log(f"JSON data: {self.json_file}")
