@@ -35,6 +35,8 @@ from .episode_summary import (
     InstrumentHealthTimeSeries,
 )
 from .loop_timing import LoopTimer, LoopTimingStats
+from .data_engine import DataEngine, ObservationRecord
+from ..hardware.safety_constraints import SafetyConstraints
 
 
 class EpistemicLoop:
@@ -100,6 +102,13 @@ class EpistemicLoop:
 
         # Loop timing (Feala: shrink loop times by orders of magnitude)
         self.loop_timer = LoopTimer()
+
+        # Data engine (Feala: growing dataset as asset)
+        data_engine_path = self.log_dir / "data_engine.db"
+        self.data_engine = DataEngine(db_path=data_engine_path)
+
+        # Safety constraints (Feala: safety as first-class Pareto constraint)
+        self.safety_constraints = SafetyConstraints()
 
         # Epistemic action state (pending epistemic action consumes next integer cycle)
         self._pending_epistemic_action = None
@@ -421,6 +430,27 @@ class EpistemicLoop:
 
                 self._log_observation(observation, elapsed)
 
+                # Safety constraint check (Feala: safety as first-class constraint)
+                # Estimate death fraction from viability data
+                min_viability = min((c.mean for c in observation.conditions), default=1.0)
+                death_fraction = max(0.0, 1.0 - min_viability)
+
+                hard_violations = self.safety_constraints.check_hard_constraints(
+                    death_fraction=death_fraction,
+                    viability=min_viability
+                )
+                if hard_violations:
+                    self._log(f"\n  ⚠️  SAFETY VIOLATIONS:")
+                    for v in hard_violations:
+                        self._log(f"    [{v.level.value.upper()}] {v.description}")
+
+                soft_penalty, soft_violations = self.safety_constraints.compute_soft_penalty(
+                    death_fraction=death_fraction,
+                    viability=min_viability
+                )
+                if soft_penalty > 0:
+                    self._log(f"  📊 Safety penalty: {soft_penalty:.2f} (margin: {self.safety_constraints.safety_margin(death_fraction):.1%})")
+
                 # CYCLE 0 INTEGRATION: Instrument shape learning from calibration plate
                 # Check if this was a Cycle 0 calibration run
                 if self.agent.last_decision is not None:
@@ -572,6 +602,23 @@ class EpistemicLoop:
                     },
                     'elapsed_seconds': elapsed,
                 })
+
+                # Record to data engine (Feala: growing dataset)
+                for cond in observation.conditions:
+                    obs_record = ObservationRecord(
+                        run_id=self.run_id,
+                        cycle=cycle,
+                        timestamp=datetime.now().isoformat(),
+                        cell_line=cond.cell_line,
+                        compound=cond.compound,
+                        dose_um=cond.dose_uM,
+                        time_h=cond.time_h,
+                        viability=cond.mean,  # Use mean as primary metric
+                        morphology_mean=cond.mean,
+                        morphology_std=cond.std,
+                        n_wells=cond.n_wells
+                    )
+                    self.data_engine.record_observation(obs_record)
 
                 # Store last proposal for potential mitigation
                 self._last_proposal = proposal
@@ -782,6 +829,17 @@ class EpistemicLoop:
         self._log(f"Seed: {self.seed}")
         self._log(f"Log file: {self.log_file}")
 
+        # Log data engine stats (Feala: prior knowledge from growing dataset)
+        de_stats = self.data_engine.get_stats()
+        if de_stats['total_observations'] > 0:
+            self._log(f"\n" + "-"*60)
+            self._log("DATA ENGINE (Historical Knowledge)")
+            self._log("-"*60)
+            self._log(f"Prior observations: {de_stats['total_observations']}")
+            self._log(f"Prior runs: {de_stats['unique_runs']}")
+            self._log(f"Compounds with data: {de_stats['unique_compounds']}")
+            self._log(f"Compounds with mechanism: {de_stats['compounds_with_mechanism']}")
+
     def _log_capabilities(self, cap: dict):
         """Log what the agent knows at t=0."""
         self._log("\n" + "-"*60)
@@ -888,6 +946,17 @@ class EpistemicLoop:
         # Episode summary (system-level closure)
         if self.episode_summary is not None:
             self._log("\n" + self.episode_summary.summary_text())
+
+        # Data engine summary (Feala: growing dataset asset)
+        de_stats = self.data_engine.get_stats()
+        self._log("\n" + "-"*60)
+        self._log("DATA ENGINE (Accumulated Knowledge)")
+        self._log("-"*60)
+        self._log(f"Total observations: {de_stats['total_observations']}")
+        self._log(f"Total runs: {de_stats['unique_runs']}")
+        self._log(f"Compounds tested: {de_stats['unique_compounds']}")
+        self._log(f"Compounds with mechanism: {de_stats['compounds_with_mechanism']}")
+        self._log(f"Database: {self.data_engine.db_path}")
 
         self._log(f"\nFull log: {self.log_file}")
         self._log(f"JSON data: {self.json_file}")
