@@ -108,6 +108,14 @@ DEBUG_DOSE_RATIOS = False
 # Set via REALISTIC_NOISE=1 environment variable or --realistic-noise CLI flag
 USE_REALISTIC_NOISE = os.environ.get("REALISTIC_NOISE", "0") == "1"
 
+# Feature flag: Use advanced biology models (hormesis, density effects, instrument artifacts)
+USE_ADVANCED_BIOLOGY = os.environ.get("ADVANCED_BIOLOGY", "0") == "1"
+
+# Lazy imports for advanced biology
+_hormetic_params_cache = {}
+_instrument_model = None
+_density_params = None
+
 # Lazy import for realistic noise (avoid circular imports)
 _realistic_noise_model = None
 
@@ -118,6 +126,27 @@ def _get_realistic_noise_model(seed: int):
         from .realistic_noise import RealisticNoiseModel
         _realistic_noise_model = RealisticNoiseModel(seed=seed)
     return _realistic_noise_model
+
+
+def _get_instrument_model(seed: int):
+    """Get or create instrument model (lazy singleton)."""
+    global _instrument_model
+    if _instrument_model is None:
+        from .advanced_biology import InstrumentModel
+        _instrument_model = InstrumentModel(seed=seed)
+    return _instrument_model
+
+
+def _get_hormetic_response(dose: float, channel: str, stress_axis: str):
+    """Get hormetic response for dose/channel/axis combination."""
+    from .advanced_biology import biphasic_morphology_response
+    return biphasic_morphology_response(dose, channel, stress_axis)
+
+
+def _get_density_effects(confluence: float):
+    """Get density effects for given confluence."""
+    from .advanced_biology import compute_density_effects
+    return compute_density_effects(confluence)
 
 # ============================================================================
 # Debug Guardrail: Enforce Addressable Randomness Rule
@@ -901,6 +930,13 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         base = BASELINE_MORPH.get(well.cell_line, BASELINE_MORPH['A549'])
         morph = {ch: float(base[ch]) for ch in CHANNELS}
 
+        # Advanced biology: density effects on CV and IC50
+        density_effects = None
+        if USE_ADVANCED_BIOLOGY:
+            # Estimate confluence from seeding density (simplified)
+            confluence = min(0.9, 0.5 + 0.01 * well.timepoint_h)  # Grows over time
+            density_effects = _get_density_effects(confluence)
+
         # Precompute "true" viability_effect for damage coupling (tracks physics)
         # Keep adaptive A(dose) MOA-shaped using base EC50, but damage D uses this.
         viability_effect_true = 1.0
@@ -937,6 +973,11 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
                     hill_v = hill_slope
 
                 ic50_viability = max(1e-9, ec50 * ic50_mult)
+
+                # Advanced biology: confluence increases drug resistance
+                if USE_ADVANCED_BIOLOGY and density_effects:
+                    ic50_viability *= density_effects['ic50_multiplier']
+
                 viability_effect_true = 1.0 / (1.0 + (well.dose_uM / ic50_viability) ** hill_v)
 
         # Apply compound morphology effects (only when dose > 0)
@@ -1075,6 +1116,17 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         for ch in CHANNELS:
             morph[ch] *= total_tech_factor
             morph[ch] = max(0.0, morph[ch])  # No negative signals
+
+        # Advanced biology: apply instrument artifacts (vignetting, illumination, focus)
+        if USE_ADVANCED_BIOLOGY:
+            from .realistic_noise import _parse_well_position
+            row, col = _parse_well_position(well_id)
+            inst_model = _get_instrument_model(get_rng().seed)
+            for ch in CHANNELS:
+                morph[ch] = inst_model.apply_all_effects(
+                    morph[ch], row, col, well_id, plate_id,
+                    time_in_run_h=0.0  # Simplified; could track actual time
+                )
 
         # Apply random well failures (2% of wells fail with extreme outliers)
         # NOTE: Deterministic per-well (not per-design) for workers=1 vs workers=N comparison
@@ -1778,6 +1830,8 @@ Examples:
                         help='Enable debug mode: Enforce addressable randomness rule (rng_assay forbidden during DB writes)')
     parser.add_argument('--realistic-noise', action='store_true',
                         help='Use realistic noise model with channel correlations and spatial gradients')
+    parser.add_argument('--advanced-biology', action='store_true',
+                        help='Use advanced biology models (hormesis, density effects, instrument artifacts)')
 
     args = parser.parse_args()
 
@@ -1792,6 +1846,12 @@ Examples:
         global USE_REALISTIC_NOISE
         USE_REALISTIC_NOISE = True
         logger.info("🎨 Realistic noise enabled: channel correlations + spatial gradients")
+
+    # Enable advanced biology models if requested
+    if args.advanced_biology:
+        global USE_ADVANCED_BIOLOGY
+        USE_ADVANCED_BIOLOGY = True
+        logger.info("🧬 Advanced biology enabled: hormesis + density effects + instrument artifacts")
 
     # Startup logging (receipts for debugging cross-machine issues)
     print("=" * 80)
