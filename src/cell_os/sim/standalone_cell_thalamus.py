@@ -104,6 +104,21 @@ logger = logging.getLogger(__name__)
 # Debug flag: set to True to log dose ratios for sentinel compounds
 DEBUG_DOSE_RATIOS = False
 
+# Feature flag: Use realistic noise model with channel correlations and spatial gradients
+# Set via REALISTIC_NOISE=1 environment variable or --realistic-noise CLI flag
+USE_REALISTIC_NOISE = os.environ.get("REALISTIC_NOISE", "0") == "1"
+
+# Lazy import for realistic noise (avoid circular imports)
+_realistic_noise_model = None
+
+def _get_realistic_noise_model(seed: int):
+    """Get or create realistic noise model (lazy singleton)."""
+    global _realistic_noise_model
+    if _realistic_noise_model is None or _realistic_noise_model.seed != seed:
+        from .realistic_noise import RealisticNoiseModel
+        _realistic_noise_model = RealisticNoiseModel(seed=seed)
+    return _realistic_noise_model
+
 # ============================================================================
 # Debug Guardrail: Enforce Addressable Randomness Rule
 # ============================================================================
@@ -990,16 +1005,28 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
         # Note: Noise is added AFTER computing dysfunction to avoid measurement contamination
         # Stressed cells show higher variability (heterogeneous death timing)
         stress_level = 1.0 - float(viability_effect_true)  # 0 (healthy) to 1 (dead)
-        stress_multiplier = 2.0  # Stressed cells have 2× higher CV
-        effective_bio_cv = MORPH_CV['er'] * (1.0 + stress_level * (stress_multiplier - 1.0))
 
-        # CRITICAL: Use per-well deterministic RNG for measurement noise
-        # This ensures workers=1 equals workers=N (not dependent on shared stream consumption order)
-        # Observer independence still maintained (physics RNG streams unchanged)
-        if effective_bio_cv > 0:
-            rng_well_morph = assay_rng_for_well(design_id, well.plate_id, well.cell_line, well.well_id, "morph_bio")
-            for ch in CHANNELS:
-                morph[ch] *= rng_well_morph.normal(1.0, effective_bio_cv)
+        if USE_REALISTIC_NOISE:
+            # NEW: Realistic noise model with channel correlations and spatial gradients
+            noise_model = _get_realistic_noise_model(get_rng().seed)
+            morph = noise_model.apply_realistic_noise(
+                base_morphology=morph,
+                well_id=well.well_id,
+                plate_id=well.plate_id,
+                stress_level=stress_level
+            )
+        else:
+            # LEGACY: Independent noise per channel
+            stress_multiplier = 2.0  # Stressed cells have 2× higher CV
+            effective_bio_cv = MORPH_CV['er'] * (1.0 + stress_level * (stress_multiplier - 1.0))
+
+            # CRITICAL: Use per-well deterministic RNG for measurement noise
+            # This ensures workers=1 equals workers=N (not dependent on shared stream consumption order)
+            # Observer independence still maintained (physics RNG streams unchanged)
+            if effective_bio_cv > 0:
+                rng_well_morph = assay_rng_for_well(design_id, well.plate_id, well.cell_line, well.well_id, "morph_bio")
+                for ch in CHANNELS:
+                    morph[ch] *= rng_well_morph.normal(1.0, effective_bio_cv)
 
         # Technical noise (batch effects) - MATCHES MAIN CODEBASE EXACTLY
         # Extract batch information
@@ -1034,8 +1061,12 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
             well_factor = rng_well.normal(1.0, TECH_CV['well_cv'])
 
         # Edge effect: wells on plate edges show reduced signal
-        is_edge = _is_edge_well(well_id)
-        edge_factor = (1.0 - TECH_CV['edge_effect']) if is_edge else 1.0
+        # Skip if using realistic noise (it handles spatial effects internally)
+        if USE_REALISTIC_NOISE:
+            edge_factor = 1.0  # Already applied in realistic noise model
+        else:
+            is_edge = _is_edge_well(well_id)
+            edge_factor = (1.0 - TECH_CV['edge_effect']) if is_edge else 1.0
 
         # Combine all technical factors into one
         total_tech_factor = plate_factor * day_factor * operator_factor * well_factor * edge_factor
@@ -1745,6 +1776,8 @@ Examples:
                         help='Run stream isolation self-test and exit')
     parser.add_argument('--debug-rng', action='store_true',
                         help='Enable debug mode: Enforce addressable randomness rule (rng_assay forbidden during DB writes)')
+    parser.add_argument('--realistic-noise', action='store_true',
+                        help='Use realistic noise model with channel correlations and spatial gradients')
 
     args = parser.parse_args()
 
@@ -1753,6 +1786,12 @@ Examples:
         global _DEBUG_RNG_USAGE
         _DEBUG_RNG_USAGE = True
         logger.info("⚠️  Debug mode enabled: rng_assay access forbidden during DB writes")
+
+    # Enable realistic noise model if requested
+    if args.realistic_noise:
+        global USE_REALISTIC_NOISE
+        USE_REALISTIC_NOISE = True
+        logger.info("🎨 Realistic noise enabled: channel correlations + spatial gradients")
 
     # Startup logging (receipts for debugging cross-machine issues)
     print("=" * 80)
