@@ -77,7 +77,10 @@ class NoiseBeliefUpdater(BaseBeliefUpdater):
             self._update_noise_gate_status(rel_width, drift_metric, condition_key)
 
             # v0.6.0: Accumulate calibration provenance (Issue #1)
-            self._accumulate_calibration_provenance(cond, condition_key)
+            # IMPORTANT: Only accumulate provenance during cycle 0 (calibration phase)
+            # This prevents provenance inflation by running DMSO during biology cycles
+            if self.beliefs._cycle == 0:
+                self._accumulate_calibration_provenance(cond, condition_key)
 
             # Emit diagnostic event
             self._emit_noise_diagnostic(cond, condition_key, diagnostics_out)
@@ -327,6 +330,10 @@ class NoiseBeliefUpdater(BaseBeliefUpdater):
 
     def _accumulate_calibration_provenance(self, cond, condition_key: str) -> None:
         """Accumulate calibration provenance from this condition (Issue #1).
+
+        IMPORTANT: This method should ONLY be called during cycle 0 (calibration phase).
+        The caller gates this to prevent provenance inflation attacks where an agent
+        runs extra DMSO wells during biology cycles to fake coverage.
 
         Tracks:
         - Position distribution (edge vs center wells)

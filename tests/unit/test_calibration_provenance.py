@@ -220,6 +220,131 @@ class TestMockConditionProvenance:
         assert abs(beliefs.calibration_provenance.edge_fraction() - 20/96) < 1e-9
 
 
+class TestProvenanceInflationDefense:
+    """Test that provenance cannot be inflated after cycle 0.
+
+    This is the key defense against the provenance inflation attack:
+    - Agent could run DMSO wells during biology cycles to fake coverage
+    - With the cycle-0 gate, only calibration-phase DMSO earns provenance
+
+    Regression test for: "provenance inflation via non-calibration DMSO"
+    """
+
+    @dataclass
+    class MockCondition:
+        """Mock ConditionSummary for testing."""
+        compound: str = "DMSO"
+        position_tag: str = "center"
+        n_wells: int = 16
+        mean: float = 100.0
+        std: float = 10.0
+        cv: float = 0.1
+        feature_means: Optional[Dict[str, float]] = None
+        feature_stds: Optional[Dict[str, float]] = None
+        time_h: float = 48.0
+        cell_line: str = "A549"
+        dose_uM: float = 0.0
+        assay: str = "cell_painting"
+
+    def test_provenance_earned_during_cycle0(self):
+        """Provenance IS earned when DMSO runs during cycle 0 (calibration)."""
+        from cell_os.epistemic_agent.beliefs.updates.noise import NoiseBeliefUpdater
+
+        beliefs = BeliefState()
+        beliefs.begin_cycle(0)  # Calibration phase
+
+        updater = NoiseBeliefUpdater(beliefs)
+        cond = self.MockCondition(position_tag="center", n_wells=48)
+        diagnostics = []
+
+        updater.update([cond], diagnostics)
+
+        # Provenance SHOULD be earned during cycle 0
+        assert beliefs.calibration_provenance.total_wells == 48
+        assert beliefs.calibration_provenance.position_counts.get("center", 0) == 48
+
+    def test_provenance_not_earned_after_cycle0(self):
+        """Provenance is NOT earned when DMSO runs after cycle 0 (biology phase).
+
+        This is the key regression test: an agent cannot inflate provenance
+        by running DMSO wells during biology cycles.
+        """
+        from cell_os.epistemic_agent.beliefs.updates.noise import NoiseBeliefUpdater
+
+        beliefs = BeliefState()
+
+        # Cycle 0: Run calibration, earn provenance
+        beliefs.begin_cycle(0)
+        updater = NoiseBeliefUpdater(beliefs)
+        cal_cond = self.MockCondition(position_tag="center", n_wells=48)
+        diagnostics = []
+        updater.update([cal_cond], diagnostics)
+
+        provenance_after_cal = beliefs.calibration_provenance.total_wells
+        assert provenance_after_cal == 48, "Should earn provenance in cycle 0"
+
+        # Cycle 1: Run more DMSO (should NOT earn provenance)
+        beliefs.begin_cycle(1)
+        bio_cond = self.MockCondition(position_tag="center", n_wells=24)
+        diagnostics = []
+        updater.update([bio_cond], diagnostics)
+
+        provenance_after_bio = beliefs.calibration_provenance.total_wells
+        assert provenance_after_bio == provenance_after_cal, (
+            f"Provenance should NOT change after cycle 0. "
+            f"Was {provenance_after_cal}, now {provenance_after_bio}"
+        )
+
+    def test_provenance_not_earned_in_late_cycles(self):
+        """Provenance blocked even in late cycles (cycle 5, 10, etc)."""
+        from cell_os.epistemic_agent.beliefs.updates.noise import NoiseBeliefUpdater
+
+        beliefs = BeliefState()
+        beliefs.begin_cycle(0)
+
+        updater = NoiseBeliefUpdater(beliefs)
+
+        # Cycle 0: calibrate
+        updater.update([self.MockCondition(n_wells=48)], [])
+        initial_provenance = beliefs.calibration_provenance.total_wells
+
+        # Skip to cycle 5 and try to inflate
+        for cycle in [1, 2, 5, 10]:
+            beliefs.begin_cycle(cycle)
+            updater.update([self.MockCondition(n_wells=48)], [])
+
+            assert beliefs.calibration_provenance.total_wells == initial_provenance, (
+                f"Provenance inflated in cycle {cycle}"
+            )
+
+    def test_noise_estimates_still_update_after_cycle0(self):
+        """Noise estimates (sigma, CV) DO update after cycle 0, just not provenance.
+
+        DMSO during biology still contributes to noise tracking for drift detection.
+        Only provenance (position coverage) is locked to cycle 0.
+        """
+        from cell_os.epistemic_agent.beliefs.updates.noise import NoiseBeliefUpdater
+
+        beliefs = BeliefState()
+        beliefs.begin_cycle(0)
+
+        updater = NoiseBeliefUpdater(beliefs)
+        updater.update([self.MockCondition(n_wells=48)], [])
+
+        sigma_after_cal = beliefs.noise_sigma_hat
+        df_after_cal = beliefs.noise_df_total
+
+        # Cycle 1: more DMSO
+        beliefs.begin_cycle(1)
+        updater.update([self.MockCondition(n_wells=24)], [])
+
+        # Noise estimates SHOULD update (drift detection needs this)
+        assert beliefs.noise_df_total > df_after_cal, "DF should increase"
+
+        # But provenance should NOT change
+        assert beliefs.calibration_provenance.total_wells == 48
+
+
 class TestProvenanceAttackDetection:
     """Test that provenance enables position mismatch detection.
 

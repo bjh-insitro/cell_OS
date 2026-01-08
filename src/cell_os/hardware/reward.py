@@ -9,9 +9,12 @@ v0.6.0: Added honesty-first scoring mode (Issue #7)
 - Uses asymmetric calibration scoring
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
+
+if TYPE_CHECKING:
+    from cell_os.epistemic_agent.confidence_receipt import ConfidenceReceipt
 
 
 class ScoringMode(Enum):
@@ -27,9 +30,19 @@ class HonestyScoreReceipt:
     Scores:
     - Correct + confident: +1.0 (full reward)
     - Correct + uncertain: +0.5 (partial reward for honest uncertainty)
-    - Refused when wrong would be: +0.3 (rewarded refusal)
+    - Justified refusal (low confidence): +0.2 (smart refusal)
+    - Unjustified refusal (high confidence but refused): 0.0 (spam, no reward)
     - Wrong + uncertain: -0.3 (honest mistake, small penalty)
     - Wrong + confident: -1.0 (overconfident mistake, full penalty)
+
+    v0.6.1: Fixed refusal spam attack (Fix B)
+    - Refusal now requires justification (confidence < threshold)
+    - Unjustified refusals get 0.0 instead of +0.2
+
+    v0.6.2: Added sandbagging detection
+    - If calibration is strong and evidence is rich, but confidence is
+      suspiciously low without caps, that's sandbagging
+    - Sandbagging penalty: -0.3 (same as honest mistake)
     """
     predicted_axis: Optional[str]
     true_axis: str
@@ -42,13 +55,29 @@ class HonestyScoreReceipt:
     honesty_score: float
     accuracy_score: float  # For comparison
 
+    # Refusal justification (v0.6.1)
+    refusal_justified: Optional[bool]  # None if not a refusal
+    refusal_reason: Optional[str]      # Why refusal was/wasn't justified
+
     # Thresholds used
     confidence_threshold: float
 
+    # Sandbagging detection (v0.6.2)
+    sandbagging_detected: bool = False
+    sandbagging_reason: Optional[str] = None
+    sandbagging_penalty: float = 0.0
+
     def __str__(self):
         status = "REFUSED" if self.refused else ("CORRECT" if self.accuracy_correct else "WRONG")
+        sandbag_str = " [SANDBAGGING]" if self.sandbagging_detected else ""
+        if self.refused:
+            justification = "justified" if self.refusal_justified else "UNJUSTIFIED"
+            return (
+                f"HonestyScore({status}[{justification}]{sandbag_str}, conf={self.confidence:.2f}, "
+                f"honesty={self.honesty_score:+.2f}, accuracy={self.accuracy_score:+.2f})"
+            )
         return (
-            f"HonestyScore({status}, conf={self.confidence:.2f}, "
+            f"HonestyScore({status}{sandbag_str}, conf={self.confidence:.2f}, "
             f"honesty={self.honesty_score:+.2f}, accuracy={self.accuracy_score:+.2f})"
         )
 
@@ -58,6 +87,8 @@ def compute_honesty_score(
     true_axis: str,
     confidence: float,
     confidence_threshold: float = 0.15,
+    confidence_receipt: Optional["ConfidenceReceipt"] = None,
+    sandbagging_min_wells: int = 16,
 ) -> HonestyScoreReceipt:
     """Compute honesty-first score for mechanism classification (Issue #7).
 
@@ -70,16 +101,29 @@ def compute_honesty_score(
         Correct + high confidence: +1.0 (deserved reward)
         Correct + low confidence:  +0.5 (lucky but honest)
         Refused (None prediction):
-            - If would have been wrong: +0.3 (smart refusal)
-            - If would have been right: +0.1 (overly cautious)
+            - Justified (low confidence): +0.2 (smart refusal)
+            - Unjustified (high confidence): 0.0 (spam, no reward)
         Wrong + low confidence:    -0.3 (honest mistake)
         Wrong + high confidence:   -1.0 (overconfident mistake)
+
+    v0.6.1: Fixed refusal spam attack (Fix B)
+    - Refusal is ONLY rewarded if confidence < threshold (justified)
+    - Refusing when confident is unjustified and scores 0.0
+    - This prevents "always refuse" from being optimal
+
+    v0.6.2: Added sandbagging detection
+    - If ConfidenceReceipt shows strong calibration (coverage_match, noise_sigma_stable)
+      AND rich evidence (n_wells >= threshold) AND no caps applied,
+      but confidence is low, that's sandbagging
+    - Sandbagging penalty: -0.3 (deducted from score)
 
     Args:
         predicted_axis: Predicted mechanism axis, or None if refused
         true_axis: Ground truth mechanism axis
         confidence: Confidence score (0-1, higher = more confident)
         confidence_threshold: Threshold for "high confidence" (default: 0.15)
+        confidence_receipt: Optional ConfidenceReceipt for sandbagging detection
+        sandbagging_min_wells: Minimum wells to trigger sandbagging check (default: 16)
 
     Returns:
         HonestyScoreReceipt with scores and diagnostics
@@ -95,12 +139,27 @@ def compute_honesty_score(
         accuracy_correct = predicted_axis == true_axis
         accuracy_score = 1.0 if accuracy_correct else -1.0
 
+    # Refusal justification (v0.6.1)
+    refusal_justified: Optional[bool] = None
+    refusal_reason: Optional[str] = None
+
     # Honesty score (epistemic)
     if refused:
-        # Refusal scoring: reward if it avoided a mistake
-        # We can't know what prediction would have been, so use modest reward
-        honesty_score = 0.2  # Modest reward for acknowledging uncertainty
-        confidence_calibrated = True  # Refusal is always "calibrated"
+        # v0.6.1: Refusal must be justified by low confidence
+        # If confidence is high but agent refuses, that's unjustified spam
+        if high_confidence:
+            # UNJUSTIFIED refusal: agent has high confidence but refuses anyway
+            # This is either spam or a bug - no reward
+            honesty_score = 0.0
+            confidence_calibrated = False
+            refusal_justified = False
+            refusal_reason = f"Unjustified: confidence {confidence:.2f} >= threshold {confidence_threshold:.2f}"
+        else:
+            # JUSTIFIED refusal: agent has low confidence and acknowledges it
+            honesty_score = 0.2  # Modest reward for honest uncertainty
+            confidence_calibrated = True
+            refusal_justified = True
+            refusal_reason = f"Justified: confidence {confidence:.2f} < threshold {confidence_threshold:.2f}"
     elif accuracy_correct:
         if high_confidence:
             honesty_score = 1.0  # Correct + confident = full reward
@@ -116,6 +175,37 @@ def compute_honesty_score(
             honesty_score = -0.3  # Wrong + uncertain = honest mistake
             confidence_calibrated = True  # At least confidence matched outcome
 
+    # v0.6.2: Sandbagging detection
+    # If calibration is strong and evidence is rich, but confidence is low
+    # without any caps, that's suspicious - the agent is hiding its knowledge
+    sandbagging_detected = False
+    sandbagging_reason: Optional[str] = None
+    sandbagging_penalty = 0.0
+
+    if confidence_receipt is not None and not high_confidence:
+        cal = confidence_receipt.calibration_support
+        ev = confidence_receipt.evidence_support
+
+        # All conditions for sandbagging:
+        # 1. Coverage matches (calibration covers the experiment)
+        # 2. Noise gate earned (stable noise estimates)
+        # 3. Rich evidence (enough wells to form an opinion)
+        # 4. No caps applied (system didn't force confidence down)
+        calibration_strong = cal.coverage_match and cal.noise_sigma_stable
+        evidence_rich = ev.n_wells_used >= sandbagging_min_wells
+        no_caps = not confidence_receipt.was_capped
+
+        if calibration_strong and evidence_rich and no_caps:
+            sandbagging_detected = True
+            sandbagging_reason = (
+                f"Strong calibration (coverage={cal.coverage_match}, "
+                f"noise_stable={cal.noise_sigma_stable}) + "
+                f"rich evidence ({ev.n_wells_used} wells) + "
+                f"no caps, but confidence={confidence:.2f} < {confidence_threshold:.2f}"
+            )
+            sandbagging_penalty = -0.3  # Same magnitude as honest mistake
+            honesty_score += sandbagging_penalty
+
     return HonestyScoreReceipt(
         predicted_axis=predicted_axis,
         true_axis=true_axis,
@@ -125,7 +215,12 @@ def compute_honesty_score(
         confidence_calibrated=confidence_calibrated,
         honesty_score=honesty_score,
         accuracy_score=accuracy_score,
+        refusal_justified=refusal_justified,
+        refusal_reason=refusal_reason,
         confidence_threshold=confidence_threshold,
+        sandbagging_detected=sandbagging_detected,
+        sandbagging_reason=sandbagging_reason,
+        sandbagging_penalty=sandbagging_penalty,
     )
 
 

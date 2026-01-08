@@ -5,6 +5,39 @@ Provides utilities for writing tests that are robust to random variation:
 1. Multi-trial assertions that pass if K of N trials succeed
 2. Statistical range checks with confidence intervals
 3. Seed-diverse testing utilities
+
+USAGE GUIDE (for test authors):
+================================
+
+When to use these utilities:
+1. Tests with hardcoded success rates like `assert 0.8 <= rate <= 1.0`
+2. Tests that occasionally fail due to random variation
+3. Tests comparing variances or distributions across conditions
+4. Any test that might be seed-sensitive
+
+Example: Converting a brittle test to use multi-trial:
+
+BEFORE (brittle):
+    def test_classifier_accuracy():
+        result = classifier.predict(noisy_data)
+        assert result == expected  # Fails ~10% of time due to noise
+
+AFTER (robust):
+    from tests.helpers.statistical_tolerance import assert_passes_k_of_n
+
+    def test_classifier_accuracy():
+        result = assert_passes_k_of_n(
+            lambda: classifier.predict(noisy_data) == expected,
+            n_trials=10,
+            min_successes=8  # 80% success rate required
+        )
+        assert result.passed, str(result)
+
+Tests that SHOULD use these utilities (TODO for test authors):
+- tests/phase6a/test_state_dependent_noise.py - variance comparisons
+- tests/phase6a/test_multiplicative_noise.py - noise distribution tests
+- tests/phase6a/test_run_context_variability.py - seed sensitivity tests
+- Any test with `@pytest.mark.flaky` or similar annotations
 """
 
 import numpy as np

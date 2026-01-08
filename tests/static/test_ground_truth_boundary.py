@@ -9,6 +9,31 @@ The boundary is:
 - FORBIDDEN: cell_os.hardware.masked_compound (contains true_stress_axis)
 - FORBIDDEN: cell_os.hardware.masked_compound_phase5 (contains true_stress_axis)
 - FORBIDDEN: Direct access to Phase5Compound.true_stress_axis
+
+KNOWN BYPASS (v0.6.1 Gap D):
+=============================
+This static analysis catches IMPORTS but NOT runtime attribute access:
+
+    # CAUGHT by this test:
+    from cell_os.hardware.masked_compound_phase5 import true_stress_axis
+
+    # NOT CAUGHT (runtime bypass):
+    compound = get_current_compound()  # Returns Phase5Compound
+    axis = getattr(compound, "true_stress_axis")  # Sneaky!
+    axis = compound.__dict__["true_stress_axis"]  # Even sneakier!
+
+MITIGATION OPTIONS:
+1. Runtime guard: Override __getattribute__ on Phase5Compound during episodes
+   to raise if true_stress_axis is accessed (complex, may break tests)
+2. Proxy pattern: Wrap Phase5Compound in a proxy that hides ground truth
+   attributes during agent rollout
+3. Audit: Code review for getattr() calls in epistemic_agent directory
+
+Currently we rely on code review and trust. The static scanner catches
+the most obvious violations (direct imports). For a maximally adversarial
+agent, runtime guards would be needed.
+
+See: TestKnownBypassDocumentation for test documentation of this gap.
 """
 
 import ast
@@ -256,6 +281,254 @@ class TestGroundTruthPolicy:
         violations = validate_no_ground_truth(clean_data, ALWAYS_FORBIDDEN_PATTERNS)
 
         assert len(violations) == 0, f"Clean data should pass: {violations}"
+
+
+class TestKnownBypassDocumentation:
+    """Document known bypasses of the ground truth boundary (Gap D, v0.6.1).
+
+    These tests DOCUMENT (not prevent) ways the static scanner can be bypassed.
+    They serve as audit trails and motivation for future runtime guards.
+
+    IMPORTANT: These tests pass to document that bypasses EXIST.
+    The bypasses are BAD but we need to know they're possible.
+    """
+
+    def test_static_scanner_catches_direct_import(self):
+        """Static scanner DOES catch direct imports (good)."""
+        # This is what we catch
+        code = '''
+from cell_os.hardware.masked_compound_phase5 import PHASE5_LIBRARY
+axis = PHASE5_LIBRARY["test_A_strong"].true_stress_axis
+'''
+        tree = ast.parse(code)
+        visitor = ImportVisitor()
+        visitor.visit(tree)
+
+        # Should detect the forbidden import
+        forbidden_found = any(
+            "masked_compound_phase5" in mod
+            for mod, name, lineno in visitor.from_imports
+        )
+        assert forbidden_found, "Static scanner should catch this import"
+
+    def test_getattr_bypass_not_caught(self):
+        """KNOWN BYPASS: getattr() is NOT caught by static analysis.
+
+        This test documents that an adversarial agent could use:
+            axis = getattr(compound, "true_stress_axis")
+        and the static scanner would NOT detect it.
+
+        MITIGATION: Code review, runtime guards, or proxy pattern.
+        """
+        # This code bypasses the static scanner
+        code = '''
+def sneaky_get_ground_truth(compound):
+    # This is NOT caught by ImportVisitor
+    return getattr(compound, "true_stress_axis")
+'''
+        tree = ast.parse(code)
+        visitor = ImportVisitor()
+        visitor.visit(tree)
+
+        # Static scanner finds NO imports (bypass succeeds)
+        assert len(visitor.imports) == 0, "No imports detected"
+        assert len(visitor.from_imports) == 0, "No from-imports detected"
+
+        # This is a KNOWN GAP - document it
+        # A runtime guard would catch this, but we don't have one yet
+
+    def test_dict_access_bypass_not_caught(self):
+        """KNOWN BYPASS: __dict__ access is NOT caught.
+
+        Even sneakier:
+            axis = compound.__dict__["true_stress_axis"]
+        """
+        code = '''
+def even_sneakier(compound):
+    return compound.__dict__["true_stress_axis"]
+'''
+        tree = ast.parse(code)
+        visitor = ImportVisitor()
+        visitor.visit(tree)
+
+        # Static scanner finds nothing
+        assert len(visitor.imports) == 0
+        assert len(visitor.from_imports) == 0
+
+    def test_dynamic_getattr_bypass_not_caught(self):
+        """KNOWN BYPASS: Dynamic attribute name construction.
+
+        The sneakiest:
+            attr_name = "true_" + "stress_" + "axis"
+            axis = getattr(compound, attr_name)
+        """
+        code = '''
+def maximum_sneaky(compound):
+    # Construct the forbidden attribute name at runtime
+    parts = ["true", "stress", "axis"]
+    attr_name = "_".join(parts)
+    return getattr(compound, attr_name)
+'''
+        tree = ast.parse(code)
+        visitor = ImportVisitor()
+        visitor.visit(tree)
+
+        # Static scanner cannot possibly catch this
+        assert len(visitor.imports) == 0
+        assert len(visitor.from_imports) == 0
+
+
+class TestRuntimeObservationGuard:
+    """Test runtime observation payload guard (v0.6.1 Gap D).
+
+    The guard validates that observations returned to agents don't contain
+    forbidden ground truth keys. This complements static import scanning.
+    """
+
+    def test_guard_catches_leaked_stress_axis(self):
+        """Guard catches if true_stress_axis leaks into observation."""
+        from cell_os.contracts.ground_truth_policy import (
+            ALWAYS_FORBIDDEN_PATTERNS,
+            validate_no_ground_truth,
+        )
+
+        # Simulate an observation with leaked ground truth
+        leaked_obs = {
+            "design_id": "test_001",
+            "conditions": [
+                {
+                    "compound": "TunicamycinA",
+                    "dose_uM": 10.0,
+                    "true_stress_axis": "er_stress",  # LEAKED!
+                    "feature_means": {"er": 150.0},
+                }
+            ],
+        }
+
+        violations = validate_no_ground_truth(leaked_obs, ALWAYS_FORBIDDEN_PATTERNS)
+        assert len(violations) >= 1, "Guard should catch true_stress_axis"
+        assert any("true_stress_axis" in v[0] for v in violations)
+
+    def test_guard_catches_leaked_ic50(self):
+        """Guard catches if IC50_true leaks."""
+        from cell_os.contracts.ground_truth_policy import (
+            ALWAYS_FORBIDDEN_PATTERNS,
+            validate_no_ground_truth,
+        )
+
+        leaked_obs = {
+            "conditions": [
+                {
+                    "compound": "TestCompound",
+                    "IC50_true": 5.2,  # LEAKED!
+                }
+            ],
+        }
+
+        violations = validate_no_ground_truth(leaked_obs, ALWAYS_FORBIDDEN_PATTERNS)
+        assert len(violations) >= 1, "Guard should catch IC50_true"
+
+    def test_guard_allows_clean_observation(self):
+        """Guard passes clean observations without ground truth."""
+        from cell_os.contracts.ground_truth_policy import (
+            ALWAYS_FORBIDDEN_PATTERNS,
+            validate_no_ground_truth,
+        )
+
+        clean_obs = {
+            "design_id": "test_001",
+            "wells_spent": 96,
+            "conditions": [
+                {
+                    "compound": "TunicamycinA",
+                    "dose_uM": 10.0,
+                    "time_h": 48.0,
+                    "feature_means": {"er": 150.0, "mito": 85.0},
+                    "feature_stds": {"er": 12.0, "mito": 8.0},
+                    "mean": 117.5,
+                    "std": 10.0,
+                    "cv": 0.085,
+                }
+            ],
+        }
+
+        violations = validate_no_ground_truth(clean_obs, ALWAYS_FORBIDDEN_PATTERNS)
+        assert len(violations) == 0, f"Clean observation should pass: {violations}"
+
+    def test_guard_catches_nested_leakage(self):
+        """Guard catches ground truth nested in feature_means."""
+        from cell_os.contracts.ground_truth_policy import (
+            ALWAYS_FORBIDDEN_PATTERNS,
+            validate_no_ground_truth,
+        )
+
+        # Nested leakage attempt
+        sneaky_obs = {
+            "conditions": [
+                {
+                    "feature_means": {
+                        "er": 150.0,
+                        "er_stress": 0.8,  # LEAKED inside feature_means!
+                    }
+                }
+            ],
+        }
+
+        violations = validate_no_ground_truth(sneaky_obs, ALWAYS_FORBIDDEN_PATTERNS)
+        assert len(violations) >= 1, "Guard should catch nested er_stress"
+
+
+class TestRuntimeGuardProposal:
+    """Propose and document runtime guard implementation (Gap D, v0.6.1).
+
+    These tests document HOW runtime guards could work.
+    Implementation deferred until adversarial agent threat model justifies cost.
+    """
+
+    def test_proposed_runtime_guard_design(self):
+        """Document proposed runtime guard design.
+
+        To add runtime protection, Phase5Compound would override __getattribute__:
+
+        class Phase5Compound:
+            _EPISODE_MODE = False  # Set True during agent rollout
+
+            def __getattribute__(self, name):
+                if name == "true_stress_axis" and Phase5Compound._EPISODE_MODE:
+                    raise AttributeError(
+                        f"Ground truth access blocked during episode: {name}"
+                    )
+                return super().__getattribute__(name)
+
+        Usage:
+            Phase5Compound._EPISODE_MODE = True
+            try:
+                run_agent_episode(compound)
+            finally:
+                Phase5Compound._EPISODE_MODE = False
+
+        This test documents the design but does NOT implement it.
+        """
+        # This is documentation-only test
+        pass
+
+    def test_alternative_proxy_design(self):
+        """Document alternative proxy pattern.
+
+        Instead of modifying Phase5Compound, wrap it in a proxy:
+
+        class AgentFacingCompound:
+            def __init__(self, compound):
+                self._compound = compound
+
+            def __getattr__(self, name):
+                if name in FORBIDDEN_ATTRIBUTES:
+                    raise AttributeError(f"Forbidden: {name}")
+                return getattr(self._compound, name)
+
+        This is cleaner but requires changes to how compounds are passed to agents.
+        """
+        pass
 
 
 if __name__ == "__main__":

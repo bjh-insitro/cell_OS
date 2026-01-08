@@ -276,5 +276,156 @@ class TestAttackScenarios:
         assert gap_reason is None
 
 
+class TestPathologicalCycle0Layout:
+    """Test that pathological cycle 0 calibration layouts are blocked (v0.6.1).
+
+    Attack scenario:
+    - Agent calibrates in cycle 0 with pathological layout (edge-only or center-only)
+    - This earns provenance and sigma stability
+    - Agent then attempts biology in opposite-position wells
+    - System must BLOCK with coverage_gap trigger and auditable receipt
+
+    This ensures cycle 0 gate doesn't become "anything goes as long as it's early."
+    """
+
+    def test_edge_only_cycle0_blocks_center_biology(self):
+        """Edge-only calibration in cycle 0 should block center biology.
+
+        Full scenario:
+        1. Cycle 0: calibrate edge-only (96 wells, enough for sigma stability)
+        2. Cycle 1: attempt center biology
+        3. Must be blocked with coverage_gap trigger
+
+        Note: We use direct provenance setup because the NoiseBeliefUpdater
+        only accepts center wells for noise calibration. In a real system,
+        edge-only calibration would be achieved through a different template.
+        """
+        # Phase 1: Simulate edge-only calibration (directly set provenance)
+        beliefs = BeliefState()
+        beliefs.calibration_provenance = CalibrationProvenance(
+            position_counts={"edge": 96},
+            total_wells=96,
+            last_update_cycle=0,  # Earned in cycle 0
+        )
+
+        # Phase 2: Attempt center biology in cycle 1
+        beliefs.begin_cycle(1)
+        chooser = TemplateChooser()
+
+        # dose_ladder_coarse uses center by default
+        is_covered, gap_reason, details = chooser._check_calibration_coverage(
+            beliefs, "dose_ladder_coarse", {}
+        )
+
+        # MUST be blocked
+        assert is_covered is False, "Edge-only calibration should NOT cover center biology"
+        assert gap_reason is not None, "Must provide gap reason"
+        assert "center" in gap_reason.lower(), f"Gap reason should mention center: {gap_reason}"
+
+        # Verify auditable details
+        assert "calibration_center_wells" in details
+        assert details["calibration_center_wells"] == 0
+        assert details["calibration_edge_wells"] == 96
+
+    def test_center_only_cycle0_blocks_edge_biology(self):
+        """Center-only calibration in cycle 0 should block edge biology.
+
+        This is the most realistic pathological scenario: the default
+        noise calibration (center DMSO) doesn't cover edge positions.
+        """
+        # Phase 1: Simulate center-only calibration (directly set provenance)
+        beliefs = BeliefState()
+        beliefs.calibration_provenance = CalibrationProvenance(
+            position_counts={"center": 96},
+            total_wells=96,
+            last_update_cycle=0,  # Earned in cycle 0
+        )
+
+        # Verify provenance was earned
+        assert beliefs.calibration_provenance.total_wells == 96
+        assert beliefs.calibration_provenance.center_fraction() == 1.0
+
+        # Phase 2: Attempt edge biology in cycle 1
+        beliefs.begin_cycle(1)
+        chooser = TemplateChooser()
+
+        # edge_center_test requires edge coverage
+        is_covered, gap_reason, details = chooser._check_calibration_coverage(
+            beliefs, "edge_center_test", {}
+        )
+
+        # MUST be blocked
+        assert is_covered is False, "Center-only calibration should NOT cover edge biology"
+        assert "edge" in gap_reason.lower(), f"Gap reason should mention edge: {gap_reason}"
+
+    def test_balanced_cycle0_allows_any_biology(self):
+        """Balanced calibration in cycle 0 should allow any biology position.
+
+        Note: We use direct provenance setup because the NoiseBeliefUpdater
+        only accepts center wells for noise calibration. This test verifies
+        the coverage check logic, not the updater's filtering.
+        """
+        # Phase 1: Simulate balanced calibration (directly set provenance)
+        beliefs = BeliefState()
+        beliefs.calibration_provenance = CalibrationProvenance(
+            position_counts={"center": 48, "edge": 48},
+            total_wells=96,
+            last_update_cycle=0,  # Earned in cycle 0
+        )
+
+        # Verify balanced provenance
+        assert beliefs.calibration_provenance.total_wells == 96
+        assert abs(beliefs.calibration_provenance.center_fraction() - 0.5) < 0.01
+        assert abs(beliefs.calibration_provenance.edge_fraction() - 0.5) < 0.01
+
+        # Phase 2: Both center and edge biology should be allowed
+        beliefs.begin_cycle(1)
+        chooser = TemplateChooser()
+
+        # Center biology
+        is_covered_center, _, _ = chooser._check_calibration_coverage(
+            beliefs, "dose_ladder_coarse", {}
+        )
+        assert is_covered_center is True, "Balanced calibration should cover center biology"
+
+        # Edge biology
+        is_covered_edge, _, _ = chooser._check_calibration_coverage(
+            beliefs, "edge_center_test", {}
+        )
+        assert is_covered_edge is True, "Balanced calibration should cover edge biology"
+
+    def test_coverage_gap_receipt_is_auditable(self):
+        """Coverage gap must produce an auditable receipt with details."""
+        beliefs = BeliefState()
+        # Pathological: center-only calibration
+        beliefs.calibration_provenance = CalibrationProvenance(
+            position_counts={"center": 96},
+            total_wells=96,
+        )
+
+        chooser = TemplateChooser()
+
+        # Attempt edge biology
+        is_covered, gap_reason, details = chooser._check_calibration_coverage(
+            beliefs, "edge_center_test", {}
+        )
+
+        # Receipt must be auditable
+        assert is_covered is False
+        assert gap_reason is not None
+
+        # Required audit fields
+        assert "calibration_center_fraction" in details
+        assert "calibration_edge_fraction" in details
+        assert "calibration_center_wells" in details
+        assert "calibration_edge_wells" in details
+        assert "coverage_gaps" in details
+
+        # Coverage gaps should identify specific missing position
+        gaps = details["coverage_gaps"]
+        assert len(gaps) > 0, "Should identify coverage gaps"
+        assert any("edge" in str(g).lower() for g in gaps), "Should identify edge gap"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

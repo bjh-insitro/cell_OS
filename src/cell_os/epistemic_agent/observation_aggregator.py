@@ -442,6 +442,10 @@ def _aggregate_per_channel(
         execution_integrity=integrity_state,
     )
 
+    # v0.6.1 Gap D: Runtime observation payload guard
+    # Validates that no ground truth keys leaked into agent-facing observation
+    _validate_observation_no_ground_truth(observation)
+
     return observation
 
 
@@ -862,3 +866,78 @@ def _update_observation_from_dict(obs: Observation, filtered_dict: Dict[str, Any
         obs.qc_struct["snr_policy"] = filtered_dict["snr_policy_summary"]
 
     return obs
+
+
+# =============================================================================
+# Runtime Observation Guard (v0.6.1 Gap D)
+# =============================================================================
+
+def _validate_observation_no_ground_truth(obs: Observation) -> None:
+    """Validate that observation contains no ground truth keys.
+
+    This is a runtime guard that prevents truth leakage into agent-facing
+    observations. It complements the static import scanner by catching
+    cases where ground truth could sneak into observation payloads.
+
+    v0.6.1: Added as part of Gap D (ground-truth boundary hardening)
+
+    The guard checks:
+    - Condition summaries (feature_means, feature_stds, etc.)
+    - QC struct and flags
+    - Normalization metadata
+    - Any nested dicts within the observation
+
+    Raises:
+        AssertionError: If any forbidden keys are detected
+
+    Note:
+        This is intentionally an assertion, not a warning. Ground truth
+        leakage is a silent failure mode that can corrupt training and
+        evaluation. Loud failures are preferred.
+    """
+    from cell_os.contracts.ground_truth_policy import (
+        ALWAYS_FORBIDDEN_PATTERNS,
+        validate_no_ground_truth,
+        format_violations,
+    )
+
+    # Convert observation to dict for recursive validation
+    obs_dict = {
+        "design_id": obs.design_id,
+        "wells_spent": obs.wells_spent,
+        "budget_remaining": obs.budget_remaining,
+        "qc_flags": obs.qc_flags,
+        "qc_struct": obs.qc_struct,
+        "normalization_mode": obs.normalization_mode,
+        "normalization_metadata": obs.normalization_metadata,
+    }
+
+    # Add conditions (this is where truth would most likely leak)
+    if obs.conditions:
+        obs_dict["conditions"] = [
+            {
+                "compound": c.compound,
+                "cell_line": c.cell_line,
+                "dose_uM": c.dose_uM,
+                "time_h": c.time_h,
+                "assay": c.assay,
+                "position_tag": c.position_tag,
+                "n_wells": c.n_wells,
+                "mean": c.mean,
+                "std": c.std,
+                "cv": c.cv,
+                "feature_means": c.feature_means,
+                "feature_stds": c.feature_stds,
+            }
+            for c in obs.conditions
+        ]
+
+    violations = validate_no_ground_truth(obs_dict, ALWAYS_FORBIDDEN_PATTERNS)
+
+    if violations:
+        error_msg = (
+            "GROUND TRUTH LEAKED INTO OBSERVATION!\n"
+            f"This is a critical integrity violation.\n"
+            f"{format_violations(violations)}"
+        )
+        raise AssertionError(error_msg)

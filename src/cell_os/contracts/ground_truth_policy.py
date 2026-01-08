@@ -43,8 +43,15 @@ ALWAYS_FORBIDDEN_PATTERNS = [
     r"^ec50_uM$",
     r"^hill_slope$",
     r"^potency_scalar$",
+    r"^toxicity_scalar$",
     r"^compound_meta$",
     r"^.*_meta$",  # Catch compound_meta, stress_meta, etc.
+
+    # Phase5Compound ground truth (v0.6.1 - Gap D runtime guard)
+    r"^true_stress_axis$",
+    r"^true_mechanism$",
+    r"^IC50_true$",
+    r"^EC50_true$",
 
     # Internal exposure spine (use InjectionManager API instead)
     r"^compounds_uM$",  # Note: "compounds" dict at agent level might be OK
