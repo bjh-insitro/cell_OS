@@ -34,6 +34,7 @@ from .episode_summary import (
     MitigationEvent,
     InstrumentHealthTimeSeries,
 )
+from .loop_timing import LoopTimer, LoopTimingStats
 
 
 class EpistemicLoop:
@@ -97,6 +98,9 @@ class EpistemicLoop:
         self._pending_mitigation = None
         self._last_proposal = None
 
+        # Loop timing (Feala: shrink loop times by orders of magnitude)
+        self.loop_timer = LoopTimer()
+
         # Epistemic action state (pending epistemic action consumes next integer cycle)
         self._pending_epistemic_action = None
 
@@ -156,6 +160,9 @@ class EpistemicLoop:
             self._log(f"CYCLE {cycle}/{self.max_cycles}")
             self._log("="*60)
 
+            # Start cycle timing (Feala: measure to optimize)
+            self.loop_timer.start_cycle(cycle)
+
             # v0.4.2: Begin cycle for evidence tracking
             # Covenant 7: Snapshot beliefs before cycle for mutation tracking
             # GUARDRAIL: Ensure cycle is integer (prevent temporal provenance violations)
@@ -203,12 +210,13 @@ class EpistemicLoop:
                 self._pending_calibration = None
                 continue  # Calibration consumed this integer cycle
 
-            # Agent proposes experiment
+            # Agent proposes experiment (timed for bottleneck analysis)
             try:
-                proposal = self.agent.propose_next_experiment(
-                    capabilities,
-                    previous_observation=self.history[-1] if self.history else None
-                )
+                with self.loop_timer.phase('proposal'):
+                    proposal = self.agent.propose_next_experiment(
+                        capabilities,
+                        previous_observation=self.history[-1] if self.history else None
+                    )
 
                 # v0.5.0: Write canonical Decision (no side-channel, no hasattr checks)
                 if self.agent.last_decision is not None:
@@ -396,16 +404,18 @@ class EpistemicLoop:
             # World executes (no validation - world doesn't care about quality)
             start_time = time.time()
             try:
-                # World returns raw results (no aggregation)
-                raw_results = self.world.run_experiment(proposal)
+                # World execution (timed for bottleneck analysis)
+                with self.loop_timer.phase('execution'):
+                    raw_results = self.world.run_experiment(proposal)
 
-                # Aggregator converts raw results to Observation
-                observation = aggregate_observation(
-                    proposal=proposal,
-                    raw_results=raw_results,
-                    budget_remaining=self.world.budget_remaining,
-                    strategy="default_per_channel"
-                )
+                # Observation aggregation (timed separately)
+                with self.loop_timer.phase('observation'):
+                    observation = aggregate_observation(
+                        proposal=proposal,
+                        raw_results=raw_results,
+                        budget_remaining=self.world.budget_remaining,
+                        strategy="default_per_channel"
+                    )
 
                 elapsed = time.time() - start_time
 
@@ -465,8 +475,9 @@ class EpistemicLoop:
                             import traceback
                             self._log(traceback.format_exc())
 
-                # Agent updates beliefs (normal pathway)
-                self.agent.update_from_observation(observation)
+                # Agent updates beliefs (normal pathway, timed for bottleneck analysis)
+                with self.loop_timer.phase('belief_update'):
+                    self.agent.update_from_observation(observation)
 
                 # EPISTEMIC ACTION: Snapshot uncertainty AFTER belief update
                 # This is the post-update uncertainty for epistemic action decision
@@ -657,6 +668,15 @@ class EpistemicLoop:
                         self._log(f"  Next cycle will execute CALIBRATION")
                         self._log(f"  Rationale: {rationale}")
 
+                # End cycle timing (Feala: track iteration speed)
+                wells_this_cycle = observation.wells_spent if observation else 0
+                self.loop_timer.end_cycle(wells_processed=wells_this_cycle)
+
+                # Log cycle timing
+                ct = self.loop_timer.stats.cycle_timings[-1] if self.loop_timer.stats.cycle_timings else None
+                if ct:
+                    self._log(f"\n  ⏱️  Cycle timing: {ct.total_cycle_time:.3f}s (bottleneck: {ct.bottleneck})")
+
                 # Save incremental JSON
                 self._save_json()
 
@@ -667,6 +687,29 @@ class EpistemicLoop:
 
         # Finalize episode summary (system-level closure)
         self._finalize_episode_summary(initial_calibration_entropy, initial_noise_rel_width)
+
+        # Set bits learned for timing stats (Feala: bits/hour metric)
+        if self.episode_summary:
+            self.loop_timer.stats.set_bits_learned(
+                self.episode_summary.learning.total_gain_bits
+            )
+
+        # Log timing summary (Feala: shrink loop times)
+        self._log("\n" + "="*60)
+        self._log("LOOP TIMING ANALYSIS (Feala Metrics)")
+        self._log("="*60)
+        self._log(self.loop_timer.stats.format_summary())
+
+        # Write timing to file
+        timing_file = self.log_dir / f"{self.run_id}_timing.json"
+        try:
+            with open(timing_file, 'w') as f:
+                json.dump({
+                    'summary': self.loop_timer.stats.summary(),
+                    'cycles': [ct.to_dict() for ct in self.loop_timer.stats.cycle_timings]
+                }, f, indent=2)
+        except Exception:
+            pass  # Don't fail on timing write
 
         self._log_summary()
         self._update_runs_manifest()
