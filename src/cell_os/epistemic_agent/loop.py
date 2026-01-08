@@ -735,12 +735,19 @@ class EpistemicLoop:
                         duration_sec=ct.total_cycle_time
                     )
                     # Track individual phases
-                    for phase, dur in ct.phase_times.items():
-                        self.automation_tracker.record_execution(
-                            process_name=f"phase_{phase}",
-                            success=True,
-                            duration_sec=dur
-                        )
+                    phase_times = {
+                        'proposal': ct.proposal_time,
+                        'execution': ct.execution_time,
+                        'observation': ct.observation_time,
+                        'belief_update': ct.belief_update_time,
+                    }
+                    for phase, dur in phase_times.items():
+                        if dur > 0:
+                            self.automation_tracker.record_execution(
+                                process_name=f"phase_{phase}",
+                                success=True,
+                                duration_sec=dur
+                            )
 
                 # Save incremental JSON
                 self._save_json()
