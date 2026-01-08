@@ -5,6 +5,11 @@ Improvements over baseline simulator:
 1. Correlated channel noise (real Cell Painting has channel correlations)
 2. Enhanced spatial effects (gradients, neighbor correlations, Moran's I)
 3. State-dependent noise (stressed cells show higher variance)
+4. Row/column systematic effects (real plates have row and column biases)
+5. Batch drift over time (instrument calibration drifts during long runs)
+6. Well failure clustering (failures cluster due to pipette tip issues)
+7. Assay-specific noise (LDH and Cell Painting have different characteristics)
+8. Population heterogeneity (subpopulations with different sensitivities)
 
 Usage:
     from cell_os.sim.realistic_noise import RealisticNoiseModel
@@ -45,6 +50,55 @@ class SpatialEffectParams:
     gradient_strength: float = 0.05     # 5% max gradient across plate
     gradient_direction: str = 'radial'  # 'radial', 'left_right', 'top_bottom'
     neighbor_correlation: float = 0.3   # Correlation with adjacent wells
+    # Row/column systematic effects
+    row_effect_cv: float = 0.03         # 3% CV for row-to-row variation
+    col_effect_cv: float = 0.025        # 2.5% CV for column-to-column variation
+
+
+@dataclass
+class BatchDriftParams:
+    """Parameters for batch drift over time."""
+    drift_rate_per_hour: float = 0.002  # 0.2% drift per hour
+    drift_type: str = 'linear'          # 'linear', 'sinusoidal', 'random_walk'
+    recalibration_interval_h: float = 8.0  # Hours between recalibrations (resets drift)
+
+
+@dataclass
+class WellFailureParams:
+    """Parameters for well failure clustering."""
+    base_failure_rate: float = 0.02     # 2% base failure rate
+    cluster_probability: float = 0.4    # 40% chance failure spreads to adjacent
+    cluster_decay: float = 0.5          # Probability decays by 50% each step
+    failure_modes: Dict[str, float] = field(default_factory=lambda: {
+        'bubble': 0.40,           # Near-zero signal
+        'contamination': 0.25,    # 5-20x higher signal
+        'pipetting_error': 0.20,  # 5-30% of normal
+        'focus_issue': 0.15,      # Blurred, 50-80% signal with high variance
+    })
+
+
+@dataclass
+class AssayNoiseParams:
+    """Assay-specific noise parameters."""
+    # Cell Painting (morphology)
+    cell_painting_cv: float = 0.02      # 2% baseline CV
+    cell_painting_channel_specific: bool = True  # Use channel-specific CVs
+    # LDH cytotoxicity
+    ldh_cv: float = 0.15                # 15% baseline CV (higher than morphology)
+    ldh_dead_cell_cv: float = 0.25      # 25% CV for dying cells (more heterogeneous)
+    # ATP viability
+    atp_cv: float = 0.10                # 10% baseline CV
+
+
+@dataclass
+class PopulationParams:
+    """Parameters for population heterogeneity."""
+    n_subpopulations: int = 3           # Number of subpopulations
+    # Subpopulation sensitivities (relative to mean)
+    sensitivity_distribution: str = 'lognormal'  # 'lognormal', 'bimodal', 'uniform'
+    sensitivity_cv: float = 0.3         # 30% CV in drug sensitivity across subpops
+    # Fraction of cells in each subpopulation (will be normalized)
+    subpop_fractions: Optional[List[float]] = None
 
 
 @dataclass
@@ -56,6 +110,10 @@ class NoiseParams:
         default_factory=lambda: DEFAULT_CHANNEL_CORRELATION.copy()
     )
     spatial: SpatialEffectParams = field(default_factory=SpatialEffectParams)
+    batch_drift: BatchDriftParams = field(default_factory=BatchDriftParams)
+    well_failure: WellFailureParams = field(default_factory=WellFailureParams)
+    assay_noise: AssayNoiseParams = field(default_factory=AssayNoiseParams)
+    population: PopulationParams = field(default_factory=PopulationParams)
 
 
 def _stable_hash(s: str) -> int:
@@ -211,6 +269,259 @@ class RealisticNoiseModel:
         multiplier = 1.0 + stress_level * (self.params.stress_cv_multiplier - 1.0)
         return base_cv * multiplier
 
+    def compute_row_column_effects(
+        self,
+        well_id: str,
+        plate_id: str,
+        n_rows: int = 8,
+        n_cols: int = 12
+    ) -> float:
+        """
+        Compute row and column systematic effects.
+
+        Real plates have row-to-row and column-to-column biases from:
+        - Temperature gradients (rows near incubator door)
+        - Pipetting patterns (multi-channel pipette effects)
+        - Plate manufacturing variability
+
+        Returns multiplicative factor.
+        """
+        row, col = _parse_well_position(well_id)
+        params = self.params.spatial
+
+        # Row effect (consistent within plate)
+        row_rng = np.random.default_rng(_stable_hash(f"row_{plate_id}_{row}"))
+        row_effect = row_rng.lognormal(0, params.row_effect_cv)
+
+        # Column effect (consistent within plate)
+        col_rng = np.random.default_rng(_stable_hash(f"col_{plate_id}_{col}"))
+        col_effect = col_rng.lognormal(0, params.col_effect_cv)
+
+        return row_effect * col_effect
+
+    def compute_batch_drift(
+        self,
+        plate_id: str,
+        well_index: int,
+        total_wells: int = 96,
+        run_duration_h: float = 4.0
+    ) -> float:
+        """
+        Compute batch drift effect based on temporal position.
+
+        Instrument calibration drifts during long runs due to:
+        - Temperature changes
+        - Reagent degradation
+        - Focus drift
+        - Light source intensity changes
+
+        Args:
+            plate_id: Plate identifier
+            well_index: Index of well in processing order (0 to total_wells-1)
+            total_wells: Total wells in the plate
+            run_duration_h: Total run duration in hours
+
+        Returns:
+            Multiplicative drift factor
+        """
+        params = self.params.batch_drift
+
+        # Time position (0 to 1 within run)
+        t = well_index / max(total_wells - 1, 1)
+
+        # Hours elapsed
+        hours_elapsed = t * run_duration_h
+
+        # Apply recalibration reset
+        hours_since_cal = hours_elapsed % params.recalibration_interval_h
+
+        if params.drift_type == 'linear':
+            # Linear drift
+            drift = 1.0 + params.drift_rate_per_hour * hours_since_cal
+        elif params.drift_type == 'sinusoidal':
+            # Sinusoidal drift (thermal cycles)
+            drift = 1.0 + params.drift_rate_per_hour * np.sin(2 * np.pi * hours_since_cal / 4.0)
+        elif params.drift_type == 'random_walk':
+            # Random walk (deterministic per plate)
+            rng = np.random.default_rng(_stable_hash(f"drift_{plate_id}_{well_index}"))
+            steps = int(hours_since_cal * 10)  # 10 steps per hour
+            walk = rng.normal(0, params.drift_rate_per_hour / 3, steps).sum()
+            drift = 1.0 + walk
+        else:
+            drift = 1.0
+
+        return max(0.8, min(1.2, drift))  # Clamp to reasonable range
+
+    def check_well_failure(
+        self,
+        well_id: str,
+        plate_id: str,
+        failed_wells: Optional[set] = None
+    ) -> Tuple[bool, Optional[str], float]:
+        """
+        Check if well has failed and determine failure mode.
+
+        Failures cluster due to:
+        - Pipette tip issues affecting consecutive wells
+        - Contamination spreading to neighbors
+        - Systematic focus problems in regions
+
+        Args:
+            well_id: Well position
+            plate_id: Plate identifier
+            failed_wells: Set of already-failed wells (for clustering)
+
+        Returns:
+            (is_failed, failure_mode, signal_multiplier)
+        """
+        params = self.params.well_failure
+        rng = np.random.default_rng(_stable_hash(f"failure_{plate_id}_{well_id}"))
+
+        # Base failure probability
+        failure_prob = params.base_failure_rate
+
+        # Increase probability if neighbors have failed (clustering)
+        if failed_wells:
+            row, col = _parse_well_position(well_id)
+            for dr in [-1, 0, 1]:
+                for dc in [-1, 0, 1]:
+                    if dr == 0 and dc == 0:
+                        continue
+                    neighbor_row = row + dr
+                    neighbor_col = col + dc
+                    neighbor_id = f"{chr(65 + neighbor_row)}{neighbor_col + 1:02d}"
+                    if neighbor_id in failed_wells:
+                        # Increase failure probability
+                        distance = abs(dr) + abs(dc)
+                        cluster_boost = params.cluster_probability * (params.cluster_decay ** (distance - 1))
+                        failure_prob = min(0.5, failure_prob + cluster_boost)
+
+        # Check if failed
+        if rng.random() > failure_prob:
+            return (False, None, 1.0)
+
+        # Determine failure mode
+        modes = list(params.failure_modes.keys())
+        probs = list(params.failure_modes.values())
+        probs = np.array(probs) / sum(probs)  # Normalize
+        mode = rng.choice(modes, p=probs)
+
+        # Compute signal multiplier for this failure mode
+        if mode == 'bubble':
+            multiplier = rng.uniform(0.01, 0.1)
+        elif mode == 'contamination':
+            multiplier = rng.uniform(5.0, 20.0)
+        elif mode == 'pipetting_error':
+            multiplier = rng.uniform(0.05, 0.3)
+        elif mode == 'focus_issue':
+            multiplier = rng.uniform(0.5, 0.8)
+        else:
+            multiplier = 1.0
+
+        return (True, mode, multiplier)
+
+    def apply_assay_specific_noise(
+        self,
+        value: float,
+        assay_type: str,
+        well_id: str,
+        plate_id: str,
+        stress_level: float = 0.0
+    ) -> float:
+        """
+        Apply assay-specific noise characteristics.
+
+        Different assays have different noise profiles:
+        - Cell Painting: Low CV, channel-correlated
+        - LDH: Higher CV, especially for dying cells
+        - ATP: Medium CV
+
+        Args:
+            value: Base measurement value
+            assay_type: 'cell_painting', 'ldh', or 'atp'
+            well_id: Well position
+            plate_id: Plate identifier
+            stress_level: 0.0 (healthy) to 1.0 (dead/dying)
+
+        Returns:
+            Noisy value
+        """
+        params = self.params.assay_noise
+        rng = np.random.default_rng(_stable_hash(f"assay_{assay_type}_{plate_id}_{well_id}"))
+
+        if assay_type == 'ldh':
+            # LDH has higher CV, especially for dying cells
+            base_cv = params.ldh_cv
+            # Dead cells release LDH heterogeneously
+            effective_cv = base_cv + stress_level * (params.ldh_dead_cell_cv - base_cv)
+        elif assay_type == 'atp':
+            base_cv = params.atp_cv
+            # ATP also increases variance with stress
+            effective_cv = base_cv * (1.0 + 0.5 * stress_level)
+        else:  # cell_painting
+            base_cv = params.cell_painting_cv
+            effective_cv = self.compute_state_dependent_cv(base_cv, stress_level)
+
+        # Apply lognormal noise
+        noisy_value = value * rng.lognormal(0, effective_cv)
+        return max(0.0, noisy_value)
+
+    def compute_population_heterogeneity(
+        self,
+        base_sensitivity: float,
+        well_id: str,
+        plate_id: str
+    ) -> List[Tuple[float, float]]:
+        """
+        Compute subpopulation sensitivities for population heterogeneity.
+
+        Models that a cell population contains subgroups with different
+        drug sensitivities (e.g., stem-like cells, resistant clones).
+
+        Args:
+            base_sensitivity: Mean sensitivity (e.g., IC50)
+            well_id: Well position
+            plate_id: Plate identifier
+
+        Returns:
+            List of (fraction, sensitivity) tuples for each subpopulation
+        """
+        params = self.params.population
+        rng = np.random.default_rng(_stable_hash(f"subpop_{plate_id}_{well_id}"))
+
+        n_subpops = params.n_subpopulations
+
+        # Generate fractions
+        if params.subpop_fractions:
+            fractions = np.array(params.subpop_fractions[:n_subpops])
+        else:
+            # Random fractions (Dirichlet distribution)
+            fractions = rng.dirichlet(np.ones(n_subpops))
+
+        fractions = fractions / fractions.sum()  # Normalize
+
+        # Generate sensitivities
+        if params.sensitivity_distribution == 'lognormal':
+            # Lognormal: most cells near mean, some resistant
+            sensitivities = base_sensitivity * rng.lognormal(0, params.sensitivity_cv, n_subpops)
+        elif params.sensitivity_distribution == 'bimodal':
+            # Bimodal: sensitive and resistant populations
+            is_resistant = rng.random(n_subpops) > 0.7
+            sensitivities = np.where(
+                is_resistant,
+                base_sensitivity * rng.uniform(2.0, 5.0, n_subpops),
+                base_sensitivity * rng.uniform(0.5, 1.5, n_subpops)
+            )
+        elif params.sensitivity_distribution == 'uniform':
+            # Uniform spread
+            low = base_sensitivity * (1 - params.sensitivity_cv)
+            high = base_sensitivity * (1 + params.sensitivity_cv)
+            sensitivities = rng.uniform(low, high, n_subpops)
+        else:
+            sensitivities = np.full(n_subpops, base_sensitivity)
+
+        return list(zip(fractions, sensitivities))
+
     def apply_realistic_noise(
         self,
         base_morphology: Dict[str, float],
@@ -218,7 +529,9 @@ class RealisticNoiseModel:
         plate_id: str,
         stress_level: float = 0.0,
         n_rows: int = 8,
-        n_cols: int = 12
+        n_cols: int = 12,
+        well_index: int = 0,
+        failed_wells: Optional[set] = None
     ) -> Dict[str, float]:
         """
         Apply all realistic noise effects to morphology values.
@@ -230,6 +543,8 @@ class RealisticNoiseModel:
             stress_level: 0.0 (healthy) to 1.0 (dead/dying)
             n_rows: Number of plate rows
             n_cols: Number of plate columns
+            well_index: Index of well in processing order (for batch drift)
+            failed_wells: Set of already-failed wells (for failure clustering)
 
         Returns:
             Dict of channel -> noisy value
@@ -244,17 +559,30 @@ class RealisticNoiseModel:
             plate_id, well_id, effective_cv
         )
 
-        # 3. Compute spatial effect
+        # 3. Compute spatial effect (edges + gradients)
         spatial_factor = self.compute_spatial_effect(
             well_id, plate_id, n_rows, n_cols
         )
 
-        # 4. Apply all effects
+        # 4. Compute row/column systematic effects
+        row_col_factor = self.compute_row_column_effects(
+            well_id, plate_id, n_rows, n_cols
+        )
+
+        # 5. Compute batch drift
+        drift_factor = self.compute_batch_drift(
+            plate_id, well_index, n_rows * n_cols
+        )
+
+        # 6. Combine all multiplicative effects
+        total_factor = spatial_factor * row_col_factor * drift_factor
+
+        # 7. Apply all effects to morphology
         noisy_morphology = {}
         for ch in CHANNELS:
             base_val = base_morphology.get(ch, 1.0)
-            # Multiplicative: base * correlated_noise * spatial
-            noisy_morphology[ch] = base_val * noise_factors[ch] * spatial_factor
+            # Multiplicative: base * correlated_noise * spatial * row_col * drift
+            noisy_morphology[ch] = base_val * noise_factors[ch] * total_factor
             # Ensure non-negative
             noisy_morphology[ch] = max(0.0, noisy_morphology[ch])
 
