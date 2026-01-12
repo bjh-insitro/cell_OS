@@ -45,6 +45,12 @@ const AVAILABLE_DESIGNS = [
     name: 'CAL_DYNAMIC_RANGE_v1',
     description: 'Dynamic range - dose-response curves, saturation mapping',
     version: 'dynamic'
+  },
+  {
+    id: 'custom',
+    name: 'custom_design',
+    description: 'Custom design generated from Jupyter Notebook',
+    version: 'custom'
   }
 ];
 
@@ -203,15 +209,14 @@ export default function CalibrationPlatePage() {
                   </pre>
                   <button
                     onClick={() => copyToClipboard(generateJHCommand(plateData.plate.plate_id))}
-                    className={`absolute top-2 right-2 px-3 py-1 rounded text-xs font-medium transition-all ${
-                      copiedCommand
+                    className={`absolute top-2 right-2 px-3 py-1 rounded text-xs font-medium transition-all ${copiedCommand
                         ? isDarkMode
                           ? 'bg-green-600 text-white'
                           : 'bg-green-500 text-white'
                         : isDarkMode
                           ? 'bg-slate-700 hover:bg-slate-600 text-white'
                           : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
-                    }`}
+                      }`}
                   >
                     {copiedCommand ? '✓ Copied!' : 'Copy'}
                   </button>

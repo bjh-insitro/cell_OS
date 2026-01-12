@@ -15,33 +15,33 @@ const PLATE_MAP_V1 = {
   plate: {
     plate_id: "CAL_384_RULES_WORLD_v1",
     format: "384",
-    rows: ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"],
-    cols: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24],
+    rows: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"],
+    cols: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
   },
   cell_lines: {
-    A: { rows: ["A","B","C","D","E","F","G","H"], name: "HepG2" },
-    B: { rows: ["I","J","K","L","M","N","O","P"], name: "A549" }
+    A: { rows: ["A", "B", "C", "D", "E", "F", "G", "H"], name: "HepG2" },
+    B: { rows: ["I", "J", "K", "L", "M", "N", "O", "P"], name: "A549" }
   },
   anchors: {
     MILD: {
-      wells: ["A1","A12","A24","D6","D18","H1","H12","H24","I1","I12","I24","L6","L18","P1","P12","P24"],
+      wells: ["A1", "A12", "A24", "D6", "D18", "H1", "H12", "H24", "I1", "I12", "I24", "L6", "L18", "P1", "P12", "P24"],
       dose: 1
     },
     STRONG: {
-      wells: ["B3","B22","E9","E16","G3","G22","H6","H18","J3","J22","M9","M16","O3","O22","P6","P18"],
+      wells: ["B3", "B22", "E9", "E16", "G3", "G22", "H6", "H18", "J3", "J22", "M9", "M16", "O3", "O22", "P6", "P18"],
       dose: 100
     }
   },
   tiles: {
     wells: [
-      "B2","B3","C2","C3",
-      "B22","B23","C22","C23",
-      "G2","G3","H2","H3",
-      "G22","G23","H22","H23",
-      "J2","J3","K2","K3",
-      "J22","J23","K22","K23",
-      "O2","O3","P2","P3",
-      "O22","O23","P22","P23"
+      "B2", "B3", "C2", "C3",
+      "B22", "B23", "C22", "C23",
+      "G2", "G3", "H2", "H3",
+      "G22", "G23", "H22", "H23",
+      "J2", "J3", "K2", "K3",
+      "J22", "J23", "K22", "K23",
+      "O2", "O3", "P2", "P3",
+      "O22", "O23", "P22", "P23"
     ]
   }
 };
@@ -100,6 +100,11 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
           if (!response.ok) throw new Error('Failed to load dynamic range design');
           const data = await response.json();
           setPlateData(data);
+        } else if (designVersion === 'custom') {
+          const response = await fetch('/plate_designs/custom_design.json');
+          if (!response.ok) throw new Error('Failed to load custom design');
+          const data = await response.json();
+          setPlateData(data);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
@@ -138,6 +143,8 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
     return <PlateViewerMicroscope plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'liquid_handler_calibration_plate_v1') {
     return <PlateViewerLiquidHandler plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
+  } else if (plateData.design_type === 'custom_generated') {
+    return <PlateViewerCustom plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   }
 
   return (
@@ -352,23 +359,23 @@ function PlateViewerV1({ plateData, isDarkMode, onSimulate }: { plateData: any; 
           title: wellId,
           lines: isDynamicRange
             ? [
-                doseInfo,
-                cellLine,
-              ]
+              doseInfo,
+              cellLine,
+            ]
             : isWashDamage
               ? [
-                  wellType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-                  cellLine,
-                ]
+                wellType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                cellLine,
+              ]
               : isVariancePartition
                 ? [
-                    wellType.replace(/_/g, ' '),
-                    cellLine,
-                  ]
+                  wellType.replace(/_/g, ' '),
+                  cellLine,
+                ]
                 : [
-                    wellType.replace('_', ' '),
-                    cellLine === 'A' ? 'HepG2' : 'A549',
-                  ],
+                  wellType.replace('_', ' '),
+                  cellLine === 'A' ? 'HepG2' : 'A549',
+                ],
         },
       });
     });
@@ -1139,10 +1146,10 @@ function PlateViewerLiquidHandler({ plateData, isDarkMode, onSimulate }: { plate
     if (col === 1 || col === 2) {
       // Calculate dispense order index for alternation
       // In column-wise dispense: col 1 pass 1 (rows A-H), col 1 pass 2 (rows I-P), col 2 pass 1, col 2 pass 2
-      const passNum = ['A','B','C','D','E','F','G','H'].includes(row) ? 1 : 2;
+      const passNum = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(row) ? 1 : 2;
       const rowIndexInPass = passNum === 1
-        ? ['A','B','C','D','E','F','G','H'].indexOf(row)
-        : ['I','J','K','L','M','N','O','P'].indexOf(row);
+        ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].indexOf(row)
+        : ['I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'].indexOf(row);
       const dispenseIndex = (col - 1) * 16 + (passNum - 1) * 8 + rowIndexInPass;
 
       const isEven = dispenseIndex % 2 === 0;
@@ -1600,6 +1607,263 @@ function PlateViewerV3({ plateData, isDarkMode, onSimulate }: { plateData: any; 
             <div>• <strong>Spatial correction test:</strong> Tests whether spatial models need fewer parameters with decorrelated layout</div>
             <div>• <strong>Neighbor coupling probe:</strong> Does local variance inflate compared to v2? If so, v2 safer</div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Custom Viewer for designs generated from Notebook
+function PlateViewerCustom({ plateData, isDarkMode, onSimulate }: { plateData: any; isDarkMode: boolean; onSimulate?: (plateData: any) => void }) {
+  const format = plateData.metadata.plate_format.toString();
+  const rows = format === '384' ? ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"] : ["A", "B", "C", "D", "E", "F", "G", "H"];
+  const cols = Array.from({ length: format === '384' ? 24 : 12 }, (_, i) => i + 1);
+
+  // Get unique plate IDs
+  const plateIds = Array.from(new Set(plateData.wells.map((w: any) => w.plate_id))).sort() as string[];
+  const [selectedPlateId, setSelectedPlateId] = useState(plateIds[0] || 'Plate_1');
+
+  // Filter state
+  const [filterCompounds, setFilterCompounds] = useState<string[]>([]);
+  const [filterCellLines, setFilterCellLines] = useState<string[]>([]);
+  const [filterSentinels, setFilterSentinels] = useState(false);
+
+  const availableCompounds = Array.from(new Set(plateData.wells.map((w: any) => w.compound))).filter(c => c !== 'DMSO' && c !== 'vehicle') as string[];
+  const availableCellLines = Array.from(new Set(plateData.wells.map((w: any) => w.cell_line))) as string[];
+
+  const toggleCompoundFilter = (compound: string) => {
+    setFilterCompounds(prev =>
+      prev.includes(compound) ? prev.filter(c => c !== compound) : [...prev, compound]
+    );
+  };
+
+  const toggleCellLineFilter = (cellLine: string) => {
+    setFilterCellLines(prev =>
+      prev.includes(cellLine) ? prev.filter(c => c !== cellLine) : [...prev, cellLine]
+    );
+  };
+
+  const clearFilters = () => {
+    setFilterCompounds([]);
+    setFilterCellLines([]);
+    setFilterSentinels(false);
+  };
+
+  const isFilterActive = filterCompounds.length > 0 || filterCellLines.length > 0 || filterSentinels;
+
+  const downloadPlateJSON = () => {
+    const dataStr = JSON.stringify(plateData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    const exportFileDefaultName = `${plateData.design_id.replace(/\s+/g, '_')}.json`;
+
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const getWellColor = (compound: string, dose: number, doseType?: string, isDimmed?: boolean) => {
+    const opacity = isDimmed ? 'opacity-20' : 'opacity-100';
+
+    if (compound === 'DMSO' || compound === 'vehicle' || doseType === 'vehicle_filler') {
+      return `bg-slate-700/70 ${opacity}`;
+    }
+
+    // Simple color mapping for common compounds
+    const c = compound.toLowerCase();
+    let colorClass = 'bg-indigo-500/90';
+
+    if (c.includes('tunicamycin')) colorClass = 'bg-orange-500/90';
+    else if (c.includes('thapsigargin')) colorClass = 'bg-red-500/90';
+    else if (c.includes('cccp')) colorClass = 'bg-yellow-500/90';
+    else if (c.includes('mg132') || c.includes('mg-132')) colorClass = 'bg-purple-500/90';
+    else if (c.includes('2-dg') || c.includes('glucose')) colorClass = 'bg-blue-500/90';
+    else if (c.includes('etoposide')) colorClass = 'bg-emerald-500/90';
+    else if (c.includes('nocodazole')) colorClass = 'bg-pink-500/90';
+    else if (c.includes('h2o2') || c.includes('peroxide')) colorClass = 'bg-cyan-500/90';
+    else if (c.includes('tbhq')) colorClass = 'bg-amber-500/90';
+
+    return `${colorClass} ${opacity}`;
+  };
+
+  const wellData: WellData[] = plateData.wells
+    .filter((well: any) => well.plate_id === selectedPlateId)
+    .map((well: any) => {
+      // Normalize well ID: strip leading zero from column (e.g., A01 -> A1, A10 -> A10)
+      const normalizedId = well.well_pos.replace(/0(\d)$/, '$1');
+
+      // Check if well matches active filters
+      let matches = true;
+      if (filterSentinels && !well.is_sentinel) matches = false;
+      if (filterCompounds.length > 0 && !filterCompounds.includes(well.compound)) matches = false;
+      if (filterCellLines.length > 0 && !filterCellLines.includes(well.cell_line)) matches = false;
+
+      const isDimmed = isFilterActive && !matches;
+
+      return {
+        id: normalizedId,
+        color: getWellColor(well.compound, well.dose_uM, well.dose_type, isDimmed),
+        borderColor: well.cell_line === 'HepG2' ? (isDimmed ? '#ec489944' : '#ec4899') : (isDimmed ? '#a855f744' : '#a855f7'),
+        borderWidth: 2,
+        tooltip: {
+          title: well.well_pos,
+          lines: [
+            `${well.compound} ${well.dose_uM}µM`,
+            well.cell_line,
+            well.dose_type,
+            well.is_sentinel ? '(Sentinel)' : ''
+          ].filter(Boolean),
+        },
+      };
+    });
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">
+              {plateData.design_id}
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
+              {plateData.description}
+            </p>
+            <p className="text-sm text-slate-400">
+              {format}-well plate ({rows.length} rows × {cols.length} columns)
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {onSimulate && (
+              <button
+                onClick={() => onSimulate(plateData)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-all text-sm font-medium"
+              >
+                <Play className="h-4 w-4" />
+                Simulate
+              </button>
+            )}
+            <button
+              onClick={downloadPlateJSON}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-sm font-medium"
+            >
+              <Download className="h-4 w-4" />
+              Download JSON
+            </button>
+          </div>
+        </div>
+
+        {/* Plate Selector & Filters */}
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-6">
+            {plateIds.length > 1 && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-slate-400">Replicate:</span>
+                <div className="flex bg-slate-900/50 p-1 rounded-lg border border-slate-700">
+                  {plateIds.map(id => (
+                    <button
+                      key={id}
+                      onClick={() => setSelectedPlateId(id)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${selectedPlateId === id
+                        ? 'bg-indigo-600 text-white shadow-lg'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                    >
+                      {id.replace('Plate_', 'P')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-slate-400">Filter:</span>
+              <button
+                onClick={() => setFilterSentinels(!filterSentinels)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${filterSentinels
+                  ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                  }`}
+              >
+                🎯 Sentinels
+              </button>
+              {isFilterActive && (
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-4"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-6">
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Stressors</span>
+              <div className="flex flex-wrap gap-2">
+                {availableCompounds.map(cmp => (
+                  <button
+                    key={cmp}
+                    onClick={() => toggleCompoundFilter(cmp)}
+                    className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${filterCompounds.includes(cmp)
+                      ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
+                      : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:border-slate-600'
+                      }`}
+                  >
+                    {cmp}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Cell Lines</span>
+              <div className="flex flex-wrap gap-2">
+                {availableCellLines.map(cl => (
+                  <button
+                    key={cl}
+                    onClick={() => toggleCellLineFilter(cl)}
+                    className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${filterCellLines.includes(cl)
+                      ? 'bg-pink-500/20 border-pink-500 text-pink-400'
+                      : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:border-slate-600'
+                      }`}
+                  >
+                    {cl}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <PlateViewer
+          format={format as any}
+          wells={wellData}
+          isDarkMode={isDarkMode}
+          size="medium"
+          showLabels={false}
+          showAxisLabels={true}
+        />
+
+        <div className="mt-6">
+          <div className="text-sm font-semibold text-white mb-3">Legend:</div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-slate-700/70"></div>
+              <span className="text-slate-300">Vehicle / Filler</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-purple-500 rounded"></div>
+              <span className="text-slate-300">A549</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-pink-500 rounded"></div>
+              <span className="text-slate-300">HepG2</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 text-xs text-slate-500">
+          * Filler wells are added to ensure full plate utilization and provide additional baseline measurements.
         </div>
       </div>
     </div>

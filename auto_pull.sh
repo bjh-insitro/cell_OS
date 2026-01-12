@@ -1,7 +1,7 @@
 #!/bin/bash
 # Auto-pull script - polls for changes and pulls automatically
 
-REPO_DIR="/Users/bjh/cell_OS"
+REPO_DIR="/Users/aarontopol/Desktop/cell_OS"
 INTERVAL=30  # seconds between checks
 
 cd "$REPO_DIR"
