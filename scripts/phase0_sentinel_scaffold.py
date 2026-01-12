@@ -30,6 +30,19 @@ SENTINEL_POSITIONS = [
     "H04", "H09",  # Row H (2)
 ]
 
+# Fixed 28 positions for 384-well plate (distributed across entire area)
+SENTINEL_POSITIONS_384 = [
+    "A04", "A12", "A20",
+    "C08", "C16", "C24",
+    "E04", "E12", "E20",
+    "G08", "G16", "G24",
+    "I04", "I12", "I20",
+    "K08", "K16", "K24",
+    "M04", "M12", "M20",
+    "O08", "O16", "O24",
+    "B02", "F02", "J02", "N02"
+]
+
 # Type assignments (greedy placement with separation constraints)
 # vehicle (8): min gap = 3
 # ER_mid, mito_mid (5 each): min gap = 3
@@ -119,6 +132,54 @@ def get_sentinel_tokens():
             'is_sentinel': True,
             'sentinel_type': entry['type'],
         })
+    return tokens
+
+
+def get_dynamic_sentinel_tokens(cell_lines, pathways, reps_per_pathway=3, vehicle_reps_per_cl=4):
+    """
+    Generate dynamic sentinel tokens for multiple cell lines and selected pathways.
+    """
+    tokens = []
+    # Map user-friendly pathway names to schema keys
+    pathway_map = {
+        'ER Stress': 'ER_mid',
+        'Mitochondrial Stress': 'mito_mid',
+        'Proteostasis': 'proteostasis',
+        'Oxidative Stress': 'oxidative',
+        'Metabolic Stress': 'mito_mid', # Fallback or specific mapping
+        'DNA Damage': 'oxidative', # Fallback
+        'Cytoskeletal Stress': 'proteostasis', # Fallback
+        'Epigenetic Stress': 'proteostasis' # Fallback
+    }
+    
+    # Limit to first 2 cell lines as requested
+    target_cell_lines = cell_lines[:2]
+    
+    for cl in target_cell_lines:
+        # Add Vehicle
+        for _ in range(vehicle_reps_per_cl):
+            schema = PHASE0_SENTINEL_SCHEMA['vehicle']
+            tokens.append({
+                'cell_line': cl,
+                'compound': schema['compound'],
+                'dose_uM': schema['dose_uM'],
+                'is_sentinel': True,
+                'sentinel_type': 'vehicle'
+            })
+            
+        # Add Stress Pathways
+        for p in pathways:
+            schema_key = pathway_map.get(p)
+            if schema_key and schema_key in PHASE0_SENTINEL_SCHEMA:
+                schema = PHASE0_SENTINEL_SCHEMA[schema_key]
+                for _ in range(reps_per_pathway):
+                    tokens.append({
+                        'cell_line': cl,
+                        'compound': schema['compound'],
+                        'dose_uM': schema['dose_uM'],
+                        'is_sentinel': True,
+                        'sentinel_type': schema_key
+                    })
     return tokens
 
 

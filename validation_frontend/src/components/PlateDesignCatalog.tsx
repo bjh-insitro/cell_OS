@@ -172,6 +172,25 @@ const PLATE_DESIGNS: PlateDesign[] = [
     ],
     cost_estimate: 1900,
     thumbnail_color: 'from-purple-600 to-purple-700'
+  },
+  {
+    id: 'custom_design',
+    name: 'custom_design',
+    version: '1.0',
+    status: 'proposed',
+    intent: 'Custom design generated from Jupyter Notebook',
+    wells_total: 384,
+    wells_used: 384,
+    timepoint_hours: 48,
+    cell_lines: 2,
+    treatments: ['Custom compounds and doses'],
+    design_goals: [
+      'Visualize custom plate layout',
+      'Verify compound and dose assignments',
+      'Check cell line distribution'
+    ],
+    cost_estimate: 0,
+    thumbnail_color: 'from-orange-600 to-orange-700'
   }
 ];
 

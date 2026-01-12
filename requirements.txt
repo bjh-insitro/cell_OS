@@ -14,3 +14,4 @@ ortools
 tqdm
 pytest
 pylint
+ipywidgets

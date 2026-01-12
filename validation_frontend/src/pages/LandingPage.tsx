@@ -145,6 +145,13 @@ const LandingPage: React.FC = () => {
                             <span>🎬</span>
                             <span>Documentary</span>
                         </button>
+                        <button
+                            onClick={() => navigate('/calibration-plate')}
+                            className="px-8 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-full shadow-lg hover:shadow-slate-500/25 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 justify-center"
+                        >
+                            <span>🗺️</span>
+                            <span>Calibration Plate</span>
+                        </button>
                     </div>
                 </div>
 
