@@ -8,7 +8,7 @@ Usage:
     python scripts/experiments/standalone_cell_thalamus.py --mode full --workers 64
 """
 
-from cell_os.sim.standalone_cell_thalamus import main
+from cell_os.biology.standalone_cell_thalamus import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

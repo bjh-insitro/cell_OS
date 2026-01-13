@@ -193,7 +193,7 @@ class NoiseCalibrator:
         - row_cv: Row-to-row CV
         - col_cv: Column-to-column CV
         """
-        from cell_os.sim.realistic_noise import _parse_well_position, _is_edge_well
+        from cell_os.biology.realistic_noise import _parse_well_position, _is_edge_well
 
         values = data.values.flatten() if data.values.ndim > 1 else data.values
 

@@ -35,7 +35,7 @@ Real-World Motivation:
 - Artifacts are spatially structured (patches, not uniform noise)
 
 References:
-- Wash/fixation physics: src/cell_os/sim/wash_fix_core.py
+- Wash/fixation physics: src/cell_os/biology/wash_fix_core.py
 - Debris tracking: VesselState.debris_cells, VesselState.initial_cells
 """
 

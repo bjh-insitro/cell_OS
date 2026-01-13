@@ -12,8 +12,8 @@ until they calibrate.
 """
 
 import pytest
-from cell_os.epistemic_control import EpistemicController, EpistemicControllerConfig
-from cell_os.epistemic_debt import EpistemicDebtLedger
+from cell_os.epistemic_agent import EpistemicController, EpistemicControllerConfig
+from cell_os.epistemic_agent import EpistemicDebtLedger
 
 
 class TestDebtAccumulation:

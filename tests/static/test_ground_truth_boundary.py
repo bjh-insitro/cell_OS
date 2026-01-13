@@ -48,7 +48,7 @@ import pytest
 GROUND_TRUTH_MODULES = {
     "cell_os.hardware.masked_compound",
     "cell_os.hardware.masked_compound_phase5",
-    "cell_os.sim.biology_core",  # Contains IC50_true and other ground truth
+    "cell_os.biology.biology_core",  # Contains IC50_true and other ground truth
     "cell_os.legacy_simulation",  # Legacy ground truth container
 }
 

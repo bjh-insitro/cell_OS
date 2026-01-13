@@ -13,7 +13,7 @@ Test philosophy:
 """
 
 import pytest
-from cell_os.epistemic_control import (
+from cell_os.epistemic_agent import (
     EpistemicController,
     EpistemicControllerConfig,
     MIN_CALIBRATION_COST_WELLS

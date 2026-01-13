@@ -9,7 +9,7 @@ Tests core invariants for debris-driven imaging artifacts:
 
 import pytest
 import numpy as np
-from src.cell_os.sim.imaging_artifacts_core import (
+from src.cell_os.biology.imaging_artifacts_core import (
     compute_background_noise_multiplier,
     compute_segmentation_failure_probability_bump,
 )

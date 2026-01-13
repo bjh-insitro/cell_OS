@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 # Import standalone simulator components
-from cell_os.sim import standalone_cell_thalamus as sim
+from cell_os.biology import standalone_cell_thalamus as sim
 
 # Import canonical types from core
 from ..core.observation import RawWellResult

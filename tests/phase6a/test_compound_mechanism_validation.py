@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 try:
-    from cell_os.sim import standalone_cell_thalamus as sim
+    from cell_os.biology import standalone_cell_thalamus as sim
 except ImportError:
     pytest.skip("standalone_cell_thalamus not available", allow_module_level=True)
 from cell_os.hardware.mechanism_posterior_v2 import (

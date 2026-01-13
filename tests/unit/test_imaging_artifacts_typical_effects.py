@@ -14,7 +14,7 @@ Scenarios:
 import sys
 sys.path.insert(0, '/Users/bjh/cell_OS/src')
 
-from cell_os.sim.imaging_artifacts_core import (
+from cell_os.biology.imaging_artifacts_core import (
     compute_background_multipliers_by_channel,
     compute_segmentation_failure_modes,
     compute_debris_field_modifiers,

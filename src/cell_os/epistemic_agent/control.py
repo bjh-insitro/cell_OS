@@ -46,22 +46,22 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
-from cell_os.epistemic_debt import (
+from .debt import (
     EpistemicDebtLedger,
     compute_information_gain_bits,
 )
-from cell_os.epistemic_penalty import (
+from .penalty import (
     EpistemicPenaltyConfig,
     compute_full_epistemic_penalty,
     EpistemicPenaltyResult,
     EntropySource,
 )
-from cell_os.epistemic_provisional import ProvisionalPenaltyTracker
-from cell_os.epistemic_volatility import (
+from .provisional import ProvisionalPenaltyTracker
+from .volatility import (
     EntropyVolatilityTracker,
     CalibrationStabilityTracker,
 )
-from cell_os.epistemic_sandbagging import SandbaggingDetector
+from .sandbagging import SandbaggingDetector
 
 logger = logging.getLogger(__name__)
 

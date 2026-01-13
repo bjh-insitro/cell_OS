@@ -9,10 +9,31 @@ Improvements over baseline simulator:
 5. Batch drift over time (instrument calibration drifts during long runs)
 6. Well failure clustering (failures cluster due to pipette tip issues)
 7. Assay-specific noise (LDH and Cell Painting have different characteristics)
-8. Population heterogeneity (subpopulations with different sensitivities)
+
+Design Note - Why No Discrete Subpopulations:
+    Discrete subpopulation modeling (e.g., sensitive/typical/resistant buckets)
+    was intentionally removed after Phase 5/6 design review. Reasons:
+
+    1. "Privileged Structure": Hardcoded categories (25%/50%/25% splits) create
+       assumptions that may not match reality and can be exploited by agents.
+
+    2. Implementation Issues: The original _sync_subpopulation_viabilities()
+       function was forcing synchronization after every step, defeating the
+       purpose entirely (a "lie injector").
+
+    3. Unfalsifiable: Without specific flow cytometry data showing distinct
+       subpopulation death curves, the feature cannot be validated.
+
+    The replacement approach (used in BiologicalVirtualMachine) is continuous
+    heterogeneity via per-vessel random effects (bio_random_effects), which
+    provides variation without assuming specific structure.
+
+    See: docs/designs/REALISM_PRIORITY_ORDER.md
+         docs/milestones/PHASE_5_HETEROGENEITY.md
+         tests/contracts/test_no_subpop_structure.py
 
 Usage:
-    from cell_os.sim.realistic_noise import RealisticNoiseModel
+    from cell_os.biology.realistic_noise import RealisticNoiseModel
     noise_model = RealisticNoiseModel(seed=42)
     morphology = noise_model.apply_realistic_noise(
         base_morphology, well_position, stress_level, plate_id
@@ -90,15 +111,7 @@ class AssayNoiseParams:
     atp_cv: float = 0.10                # 10% baseline CV
 
 
-@dataclass
-class PopulationParams:
-    """Parameters for population heterogeneity."""
-    n_subpopulations: int = 3           # Number of subpopulations
-    # Subpopulation sensitivities (relative to mean)
-    sensitivity_distribution: str = 'lognormal'  # 'lognormal', 'bimodal', 'uniform'
-    sensitivity_cv: float = 0.3         # 30% CV in drug sensitivity across subpops
-    # Fraction of cells in each subpopulation (will be normalized)
-    subpop_fractions: Optional[List[float]] = None
+# PopulationParams removed - see module docstring "Design Note - Why No Discrete Subpopulations"
 
 
 @dataclass
@@ -113,7 +126,7 @@ class NoiseParams:
     batch_drift: BatchDriftParams = field(default_factory=BatchDriftParams)
     well_failure: WellFailureParams = field(default_factory=WellFailureParams)
     assay_noise: AssayNoiseParams = field(default_factory=AssayNoiseParams)
-    population: PopulationParams = field(default_factory=PopulationParams)
+    # population field removed - see module docstring "Design Note - Why No Discrete Subpopulations"
 
 
 def _stable_hash(s: str) -> int:
@@ -466,61 +479,8 @@ class RealisticNoiseModel:
         noisy_value = value * rng.lognormal(0, effective_cv)
         return max(0.0, noisy_value)
 
-    def compute_population_heterogeneity(
-        self,
-        base_sensitivity: float,
-        well_id: str,
-        plate_id: str
-    ) -> List[Tuple[float, float]]:
-        """
-        Compute subpopulation sensitivities for population heterogeneity.
-
-        Models that a cell population contains subgroups with different
-        drug sensitivities (e.g., stem-like cells, resistant clones).
-
-        Args:
-            base_sensitivity: Mean sensitivity (e.g., IC50)
-            well_id: Well position
-            plate_id: Plate identifier
-
-        Returns:
-            List of (fraction, sensitivity) tuples for each subpopulation
-        """
-        params = self.params.population
-        rng = np.random.default_rng(_stable_hash(f"subpop_{plate_id}_{well_id}"))
-
-        n_subpops = params.n_subpopulations
-
-        # Generate fractions
-        if params.subpop_fractions:
-            fractions = np.array(params.subpop_fractions[:n_subpops])
-        else:
-            # Random fractions (Dirichlet distribution)
-            fractions = rng.dirichlet(np.ones(n_subpops))
-
-        fractions = fractions / fractions.sum()  # Normalize
-
-        # Generate sensitivities
-        if params.sensitivity_distribution == 'lognormal':
-            # Lognormal: most cells near mean, some resistant
-            sensitivities = base_sensitivity * rng.lognormal(0, params.sensitivity_cv, n_subpops)
-        elif params.sensitivity_distribution == 'bimodal':
-            # Bimodal: sensitive and resistant populations
-            is_resistant = rng.random(n_subpops) > 0.7
-            sensitivities = np.where(
-                is_resistant,
-                base_sensitivity * rng.uniform(2.0, 5.0, n_subpops),
-                base_sensitivity * rng.uniform(0.5, 1.5, n_subpops)
-            )
-        elif params.sensitivity_distribution == 'uniform':
-            # Uniform spread
-            low = base_sensitivity * (1 - params.sensitivity_cv)
-            high = base_sensitivity * (1 + params.sensitivity_cv)
-            sensitivities = rng.uniform(low, high, n_subpops)
-        else:
-            sensitivities = np.full(n_subpops, base_sensitivity)
-
-        return list(zip(fractions, sensitivities))
+    # compute_population_heterogeneity() removed - see module docstring
+    # "Design Note - Why No Discrete Subpopulations"
 
     def apply_realistic_noise(
         self,

@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.cell_os.hardware.biological_virtual import BiologicalVirtualMachine
-from src.cell_os.sim import biology_core
+from src.cell_os.biology import biology_core
 
 
 def test_no_kink_in_attrition_derivative():

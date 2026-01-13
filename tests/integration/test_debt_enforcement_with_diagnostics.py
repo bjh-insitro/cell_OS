@@ -187,7 +187,7 @@ def test_diagnostic_logging_structure():
     This is a simpler test that just checks the diagnostic format
     without running a full loop.
     """
-    from cell_os.epistemic_control import EpistemicController, EpistemicControllerConfig
+    from cell_os.epistemic_agent import EpistemicController, EpistemicControllerConfig
 
     config = EpistemicControllerConfig(enable_debt_tracking=True)
     controller = EpistemicController(config)

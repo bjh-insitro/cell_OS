@@ -2,7 +2,7 @@
 
 import pytest
 import numpy as np
-from cell_os.sim.realistic_noise import (
+from cell_os.biology.realistic_noise import (
     RealisticNoiseModel,
     NoiseParams,
     SpatialEffectParams,
@@ -198,25 +198,9 @@ class TestAssayNoise:
         assert stressed_cv > healthy_cv
 
 
-class TestPopulationHeterogeneity:
-    """Tests for population heterogeneity."""
-
-    def test_subpopulation_fractions_sum_to_one(self):
-        """Test that subpopulation fractions sum to 1."""
-        model = RealisticNoiseModel(seed=42)
-
-        subpops = model.compute_population_heterogeneity(10.0, "A01", "plate1")
-
-        total_fraction = sum(frac for frac, _ in subpops)
-        assert total_fraction == pytest.approx(1.0)
-
-    def test_correct_number_of_subpopulations(self):
-        """Test that correct number of subpopulations is generated."""
-        model = RealisticNoiseModel(seed=42)
-
-        subpops = model.compute_population_heterogeneity(10.0, "A01", "plate1")
-
-        assert len(subpops) == model.params.population.n_subpopulations
+# TestPopulationHeterogeneity removed - discrete subpopulation modeling was intentionally
+# removed after Phase 5/6 design review. See realistic_noise.py module docstring
+# "Design Note - Why No Discrete Subpopulations" for rationale.
 
 
 class TestMoransI:

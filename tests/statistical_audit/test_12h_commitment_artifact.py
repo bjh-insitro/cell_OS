@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.cell_os.sim.biology_core import compute_attrition_rate
+from src.cell_os.biology.biology_core import compute_attrition_rate
 
 
 def test_12h_threshold_exists():

@@ -169,7 +169,7 @@ import logging, numpy, yaml, pathlib, datetime
 
 # Internal hardware modules (10)
 from .virtual import VirtualMachine
-from ..sim import biology_core
+from ..biology import biology_core
 from .run_context import RunContext, ...
 from .injection_manager import InjectionManager
 from .operation_scheduler import OperationScheduler

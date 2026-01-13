@@ -4,9 +4,9 @@ Test Phase 2 epistemic improvements: time-weighted provisional penalties and san
 
 import numpy as np
 
-from cell_os.epistemic_control import EpistemicController, EntropySource
-from cell_os.epistemic_provisional import ProvisionalPenaltyTracker
-from cell_os.epistemic_sandbagging import SandbaggingDetector, detect_sandbagging
+from cell_os.epistemic_agent import EpistemicController, EntropySource
+from cell_os.epistemic_agent import ProvisionalPenaltyTracker
+from cell_os.epistemic_agent import SandbaggingDetector, detect_sandbagging
 
 
 def test_time_weighted_provisional_penalties():

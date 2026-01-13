@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .base import StressMechanism
 from ..constants import DEFAULT_DOUBLING_TIME_H
-from ...sim import biology_core
+from ...biology import biology_core
 
 if TYPE_CHECKING:
     from ..biological_virtual import VesselState

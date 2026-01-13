@@ -23,7 +23,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
-from cell_os.epistemic_control import EpistemicController, EntropySource
+from cell_os.epistemic_agent import EpistemicController, EntropySource
 from cell_os.hardware.assay_governance import allow_scrna_seq, AssayJustification
 
 

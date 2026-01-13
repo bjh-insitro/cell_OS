@@ -9,8 +9,8 @@ Tests the loophole-closing improvements:
 
 import numpy as np
 
-from cell_os.epistemic_control import EpistemicController, EntropySource
-from cell_os.epistemic_volatility import EntropyVolatilityTracker, CalibrationStabilityTracker
+from cell_os.epistemic_agent import EpistemicController, EntropySource
+from cell_os.epistemic_agent import EntropyVolatilityTracker, CalibrationStabilityTracker
 
 
 def test_global_inflation_prevents_debt_farming():

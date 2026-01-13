@@ -15,7 +15,7 @@ sys.path.insert(0, '/Users/bjh/cell_OS/src')
 
 import pytest
 import numpy as np
-from cell_os.sim.imaging_artifacts_core import (
+from cell_os.biology.imaging_artifacts_core import (
     compute_segmentation_failure_modes,
     compute_background_multipliers_by_channel,
     compute_debris_field_modifiers,
@@ -188,7 +188,7 @@ def test_background_multipliers_backward_compatible():
     assert len(result) == 1
 
     # Value should match scalar compute_background_noise_multiplier
-    from cell_os.sim.imaging_artifacts_core import compute_background_noise_multiplier
+    from cell_os.biology.imaging_artifacts_core import compute_background_noise_multiplier
     expected = compute_background_noise_multiplier(
         debris_cells=debris_cells,
         adherent_cells=initial_cells  # For backward compat test, use initial_cells as adherent

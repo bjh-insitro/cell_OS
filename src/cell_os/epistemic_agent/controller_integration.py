@@ -22,7 +22,7 @@ from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass
 
-from cell_os.epistemic_control import (
+from cell_os.epistemic_agent.control import (
     EpistemicController,
     EpistemicControllerConfig,
 )
@@ -444,7 +444,7 @@ def compute_information_gain(
     Returns:
         Information gain in bits (can be negative if widened)
     """
-    from cell_os.epistemic_debt import compute_information_gain_bits
+    from cell_os.epistemic_agent.debt import compute_information_gain_bits
     return compute_information_gain_bits(
         prior_posterior.entropy,
         posterior.entropy

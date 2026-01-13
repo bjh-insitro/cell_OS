@@ -73,7 +73,7 @@ class ConservationViolationError(Exception):
     pass
 
 # Import shared biology core (single source of truth)
-from ..sim import biology_core
+from ..biology import biology_core
 
 # Import run context for Phase 5B realism layer
 from .run_context import RunContext, sample_plating_context, pipeline_transform
@@ -507,7 +507,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Epistemic control: Track information gain claims vs reality
         # Creates pressure toward calibrated justifications
         try:
-            from cell_os.epistemic_control import EpistemicController
+            from cell_os.epistemic_agent import EpistemicController
             self.epistemic_controller = EpistemicController()
         except ImportError:
             self.epistemic_controller = None  # Graceful degradation if not available
@@ -1355,7 +1355,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         time_since_seed_start = self.simulated_time - vessel.seed_time
 
         # Import at function level to avoid circular dependency
-        from ..sim import biology_core
+        from ..biology import biology_core
         lag_factor = biology_core.mean_lag_factor_over_interval(
             time_since_seed_start_h=time_since_seed_start,
             dt_h=hours,

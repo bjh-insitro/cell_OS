@@ -16,13 +16,13 @@ import numpy as np
 from pathlib import Path
 import tempfile
 
-from cell_os.epistemic_control import (
+from cell_os.epistemic_agent import (
     EpistemicController,
     EpistemicControllerConfig,
     measure_and_penalize,
 )
-from cell_os.epistemic_debt import compute_information_gain_bits
-from cell_os.epistemic_penalty import (
+from cell_os.epistemic_agent import compute_information_gain_bits
+from cell_os.epistemic_agent import (
     EpistemicPenaltyConfig,
     compute_entropy_penalty,
     compute_planning_horizon_shrinkage,

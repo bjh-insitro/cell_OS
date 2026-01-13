@@ -15,7 +15,7 @@ from .base import AssaySimulator
 from .assay_params import DEFAULT_ASSAY_PARAMS
 from .._impl import stable_u32, lognormal_multiplier, heavy_tail_shock, additive_floor_noise, apply_saturation, quantize_adc
 from ..run_context import pipeline_transform
-from ...sim import biology_core
+from ...biology import biology_core
 from ..constants import (
     ENABLE_ER_STRESS,
     ENABLE_MITO_DYSFUNCTION,
@@ -103,7 +103,7 @@ class CellPaintingAssay(AssaySimulator):
                 'adherent_cells': float,
             }
         """
-        from ...sim.imaging_artifacts_core import (
+        from ...biology.imaging_artifacts_core import (
             compute_background_multipliers_by_channel,
             compute_segmentation_failure_modes,
             compute_segmentation_failure_probability_bump,
@@ -696,7 +696,7 @@ class CellPaintingAssay(AssaySimulator):
 
         Returns multiplier in [1.0, 1.25] (1.0 = no debris, 1.25 = max inflation).
         """
-        from ...sim.imaging_artifacts_core import compute_background_noise_multiplier
+        from ...biology.imaging_artifacts_core import compute_background_noise_multiplier
 
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
         # Use confluence-based proxy (cross-modal independence)
@@ -724,7 +724,7 @@ class CellPaintingAssay(AssaySimulator):
 
         Returns probability bump in [0, 0.5] (0 = no debris, 0.5 = max bump).
         """
-        from ...sim.imaging_artifacts_core import compute_segmentation_failure_probability_bump
+        from ...biology.imaging_artifacts_core import compute_segmentation_failure_probability_bump
 
         debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
         # Use confluence-based proxy (cross-modal independence)

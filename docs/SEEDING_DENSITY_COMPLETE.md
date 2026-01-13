@@ -210,7 +210,7 @@ python scripts/verify_seeding_densities.py
 ### Run Plate Executor
 ```bash
 # Should work without errors
-python -c "from cell_os.plate_executor import execute_plate_design; from pathlib import Path; execute_plate_design(Path('validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v3.json'), seed=42, verbose=True)"
+python -c "from cell_os.plate_executor_v2 import execute_plate_design; from pathlib import Path; execute_plate_design(Path('validation_frontend/public/plate_designs/CAL_384_RULES_WORLD_v3.json'), seed=42, verbose=True)"
 ```
 
 ---

@@ -20,7 +20,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
-from cell_os.epistemic_control import EntropySource
+from cell_os.epistemic_agent import EntropySource
 
 
 def simulate_mechanism_posterior_entropy(stress_levels: dict) -> float:

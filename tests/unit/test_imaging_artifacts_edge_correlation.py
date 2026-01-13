@@ -9,7 +9,7 @@ full pipeline (edge → more loss → more debris → worse imaging) works.
 import pytest
 import numpy as np
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
-from cell_os.sim.imaging_artifacts_core import compute_imaging_artifact_modifiers
+from cell_os.biology.imaging_artifacts_core import compute_imaging_artifact_modifiers
 
 
 def test_edge_wells_have_higher_debris():

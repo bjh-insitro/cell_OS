@@ -10,8 +10,8 @@ Tests the three Tier 1 improvements:
 import numpy as np
 from pathlib import Path
 
-from cell_os.epistemic_control import EpistemicController, EntropySource
-from cell_os.epistemic_provisional import ProvisionalPenaltyTracker
+from cell_os.epistemic_agent import EpistemicController, EntropySource
+from cell_os.epistemic_agent import ProvisionalPenaltyTracker
 
 
 def test_entropy_source_distinguishes_exploration_vs_confusion():

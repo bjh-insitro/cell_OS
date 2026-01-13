@@ -9,7 +9,7 @@ These tests verify that debt repayment is evidence-based, not free forgiveness:
 This is about honest redemption. Calibration is work, not magic.
 """
 
-from cell_os.epistemic_control import EpistemicController, EpistemicControllerConfig
+from cell_os.epistemic_agent import EpistemicController, EpistemicControllerConfig
 
 
 def test_repayment_is_evidence_based():

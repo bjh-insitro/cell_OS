@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from cell_os.epistemic_control import EpistemicController
+from cell_os.epistemic_agent import EpistemicController
 import numpy as np
 
 

@@ -252,7 +252,7 @@ def test_epistemic_debt_full_cycle(tmp_path):
 
 def test_contamination_tracking():
     """Test that disabling enforcement marks run as contaminated."""
-    from cell_os.epistemic_control import EpistemicController, EpistemicControllerConfig
+    from cell_os.epistemic_agent import EpistemicController, EpistemicControllerConfig
 
     # Create controller with enforcement disabled
     config = EpistemicControllerConfig(enable_debt_tracking=False)

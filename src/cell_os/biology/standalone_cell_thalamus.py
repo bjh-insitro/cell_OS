@@ -111,6 +111,9 @@ USE_REALISTIC_NOISE = os.environ.get("REALISTIC_NOISE", "0") == "1"
 # Feature flag: Use advanced biology models (hormesis, density effects, instrument artifacts)
 USE_ADVANCED_BIOLOGY = os.environ.get("ADVANCED_BIOLOGY", "0") == "1"
 
+# Feature flag: Use cell cycle dynamics (phase distribution, synchronization effects)
+USE_CELL_CYCLE_DYNAMICS = os.environ.get("CELL_CYCLE_DYNAMICS", "0") == "1"
+
 # Lazy imports for advanced biology
 _hormetic_params_cache = {}
 _instrument_model = None
@@ -118,6 +121,54 @@ _density_params = None
 
 # Lazy import for realistic noise (avoid circular imports)
 _realistic_noise_model = None
+
+# Lazy import for cell cycle dynamics
+_cell_cycle_models = {}  # Cache per cell line
+
+def _get_cell_cycle_model(cell_line: str, seed: int):
+    """Get or create cell cycle model for a cell line (lazy singleton per cell line)."""
+    global _cell_cycle_models
+    key = (cell_line, seed)
+    if key not in _cell_cycle_models:
+        from .cell_cycle import CellCycleModel, CELL_LINE_PROFILES
+        # Map our cell lines to cell cycle profiles
+        profile_map = {
+            'A549': 'A549',
+            'HepG2': 'HepG2',
+            'iPSC_NGN2': 'iPSC_NGN2',
+            'iPSC_Microglia': 'iPSC_Microglia',
+        }
+        profile_name = profile_map.get(cell_line, 'A549')
+        _cell_cycle_models[key] = CellCycleModel(cell_line=profile_name, seed=seed)
+    return _cell_cycle_models[key]
+
+
+def _get_cell_cycle_drug_sensitivity(cell_line: str, compound: str, stress_axis: str, seed: int) -> float:
+    """
+    Get drug sensitivity modifier based on cell cycle phase distribution.
+
+    Phase-specific drugs (microtubule, DNA damage) have variable efficacy
+    depending on the fraction of cells in their target phase.
+
+    Returns: Sensitivity multiplier (1.0 = normal, >1 = more sensitive, <1 = resistant)
+    """
+    from .cell_cycle import DRUG_CYCLE_EFFECTS
+
+    model = _get_cell_cycle_model(cell_line, seed)
+
+    # Map stress axis to cell cycle drug effects
+    axis_to_cycle_drug = {
+        'microtubule': 'paclitaxel',  # M phase arrest
+        'dna_damage': 'etoposide',    # S phase arrest
+    }
+
+    cycle_drug = axis_to_cycle_drug.get(stress_axis)
+    if cycle_drug and cycle_drug in DRUG_CYCLE_EFFECTS:
+        return model.get_drug_sensitivity_modifier(cycle_drug)
+
+    # For other axes, use proliferation modifier (cycling cells more sensitive)
+    return model.get_proliferation_modifier()
+
 
 def _get_realistic_noise_model(seed: int):
     """Get or create realistic noise model (lazy singleton)."""
@@ -978,6 +1029,15 @@ def simulate_well(well: WellAssignment, design_id: str) -> Optional[Dict]:
                 if USE_ADVANCED_BIOLOGY and density_effects:
                     ic50_viability *= density_effects['ic50_multiplier']
 
+                # Cell cycle dynamics: phase-specific drug sensitivity
+                # More cells in target phase = more sensitive (lower effective IC50)
+                if USE_CELL_CYCLE_DYNAMICS:
+                    cycle_sensitivity = _get_cell_cycle_drug_sensitivity(
+                        well.cell_line, well.compound, stress_axis, get_rng().seed
+                    )
+                    # Sensitivity > 1 means more sensitive → lower IC50
+                    ic50_viability /= max(0.5, min(2.0, cycle_sensitivity))
+
                 viability_effect_true = 1.0 / (1.0 + (well.dose_uM / ic50_viability) ** hill_v)
 
         # Apply compound morphology effects (only when dose > 0)
@@ -1832,6 +1892,8 @@ Examples:
                         help='Use realistic noise model with channel correlations and spatial gradients')
     parser.add_argument('--advanced-biology', action='store_true',
                         help='Use advanced biology models (hormesis, density effects, instrument artifacts)')
+    parser.add_argument('--cell-cycle-dynamics', action='store_true',
+                        help='Use cell cycle dynamics (phase distribution affects drug sensitivity)')
 
     args = parser.parse_args()
 
@@ -1852,6 +1914,12 @@ Examples:
         global USE_ADVANCED_BIOLOGY
         USE_ADVANCED_BIOLOGY = True
         logger.info("🧬 Advanced biology enabled: hormesis + density effects + instrument artifacts")
+
+    # Enable cell cycle dynamics if requested
+    if args.cell_cycle_dynamics:
+        global USE_CELL_CYCLE_DYNAMICS
+        USE_CELL_CYCLE_DYNAMICS = True
+        logger.info("🔄 Cell cycle dynamics enabled: phase distribution affects drug sensitivity")
 
     # Startup logging (receipts for debugging cross-machine issues)
     print("=" * 80)

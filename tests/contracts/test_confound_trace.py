@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 from cell_os.hardware.run_context import RunContext
-from cell_os.sim import biology_core
+from cell_os.biology import biology_core
 
 
 def trace_conditions():

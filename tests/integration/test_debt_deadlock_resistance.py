@@ -9,7 +9,7 @@ These tests prove that the debt system is:
 Mission: Make epistemic debt actionable but survivable.
 """
 
-from cell_os.epistemic_control import (
+from cell_os.epistemic_agent import (
     EpistemicController,
     EpistemicControllerConfig,
     MIN_CALIBRATION_COST_WELLS

@@ -10,7 +10,7 @@ These tests verify the ONE-WAY DOOR: once debt enforcement is enabled,
 agents cannot overclaim without consequences.
 """
 
-from cell_os.epistemic_control import EpistemicController, EpistemicControllerConfig
+from cell_os.epistemic_agent import EpistemicController, EpistemicControllerConfig
 
 
 def test_debt_inflates_cost():

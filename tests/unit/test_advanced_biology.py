@@ -2,7 +2,7 @@
 
 import pytest
 import numpy as np
-from cell_os.sim.advanced_biology import (
+from cell_os.biology.advanced_biology import (
     hormetic_response,
     HormeticParams,
     biphasic_morphology_response,
