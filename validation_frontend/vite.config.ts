@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
     const tenant = env.VITE_BENCHLING_TENANT || 'insitro'; // Default to insitro or user provided
 
     return {
+        // Base path for GitHub Pages deployment
+        base: mode === 'production' ? '/cell_OS/' : '/',
         plugins: [react()],
         server: {
             port: 5173,

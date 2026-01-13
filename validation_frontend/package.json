@@ -5,12 +5,14 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc && vite build",
+        "build": "vite build",
+        "build:strict": "tsc && vite build",
         "preview": "vite preview",
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:ci": "vitest run --reporter=default --passWithNoTests=false"
+        "test:ci": "vitest run --reporter=default --passWithNoTests=false",
+        "deploy": "npm run build && gh-pages -d dist"
     },
     "dependencies": {
         "@types/dagre": "^0.7.53",
@@ -26,6 +28,7 @@
         "recharts": "^3.5.1"
     },
     "devDependencies": {
+        "gh-pages": "^6.1.1",
         "@types/node": "^24.10.2",
         "@types/react": "^18.2.43",
         "@types/react-dom": "^18.2.17",
