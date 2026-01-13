@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PoshA549StatusPage from './pages/PoshA549StatusPage';
+import MenadioneStatusPage from './pages/MenadioneStatusPage';
 import GlobalDependencyMapPage from './pages/GlobalDependencyMapPage';
 import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
@@ -19,6 +20,7 @@ function App() {
         <Router basename={basename}>
             <Routes>
                 <Route path="/" element={<PoshA549StatusPage />} />
+                <Route path="/menadione" element={<MenadioneStatusPage />} />
                 <Route path="/dashboard" element={<Navigate to="/" replace />} />
                 <Route path="/map" element={<GlobalDependencyMapPage />} />
                 <Route path="/cell-thalamus" element={<CellThalamusPage />} />
