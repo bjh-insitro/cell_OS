@@ -42,6 +42,9 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "pre-commit>=3.4.0",
+    # Type stubs
+    "types-PyYAML>=6.0",
+    "pandas-stubs>=2.0",
 ]
 notebook = [
     "jupyter>=1.0.0",
@@ -61,6 +64,7 @@ markers = [
     "manual: marks tests for manual execution only (skipped in CI, use -m manual to run)",
     "realism: statistical property checks (not default CI, use -m realism to run)",
     "integration: marks integration tests",
+    "hypothesis: property-based tests using hypothesis",
 ]
 addopts = "-m 'not manual'"
 
@@ -86,3 +90,19 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+strict_optional = true
+show_error_codes = true
+
+# Strict typing for core modules (Tier 1)
+[[tool.mypy.overrides]]
+module = "cell_os.contracts.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "cell_os.epistemic_agent.debt"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "cell_os.core.decision"
+disallow_untyped_defs = true
