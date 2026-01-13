@@ -63,7 +63,7 @@ Last major semantic fixes: 2025-12-20 10:09:11 PST
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import yaml  # Still needed for nested CellROX/segmentation params (TODO: migrate to database)
@@ -169,18 +169,22 @@ class VesselState:
         self.last_update_time = 0.0
 
         # Volume tracking (media in the vessel)
-        self.current_volume_ml = None  # Current media volume (mL) - set during seeding
-        self.working_volume_ml = None  # Standard working volume for this vessel type
-        self.max_volume_ml = None  # Maximum safe volume for this vessel type
-        self.vessel_type = None  # Vessel type identifier (e.g., "384-well", "T75")
+        self.current_volume_ml: float | None = (
+            None  # Current media volume (mL) - set during seeding
+        )
+        self.working_volume_ml: float | None = None  # Standard working volume for this vessel type
+        self.max_volume_ml: float | None = None  # Maximum safe volume for this vessel type
+        self.vessel_type: str | None = None  # Vessel type identifier (e.g., "384-well", "T75")
         self.total_evaporated_ml = 0.0  # Cumulative evaporation (for tracking)
         self._evaporation_warning_emitted = False  # Throttle: warn once per vessel
 
         # Compound exposure tracking
-        self.compounds = {}  # compound -> dose_uM
-        self.compound_start_time = {}  # compound -> simulated_time when applied
-        self.compound_meta = {}  # compound -> {ic50, hill_slope, stress_axis}
-        self.compound_volumes_added_ul = {}  # compound -> total volume added (µL)
+        self.compounds: dict[str, float] = {}  # compound -> dose_uM
+        self.compound_start_time: dict[str, float] = {}  # compound -> simulated_time when applied
+        self.compound_meta: dict[
+            str, dict[str, Any]
+        ] = {}  # compound -> {ic50, hill_slope, stress_axis}
+        self.compound_volumes_added_ul: dict[str, float] = {}  # compound -> total volume added (µL)
 
         # Death accounting (cumulative fractions)
         self.death_total = 0.0  # Total death fraction (1 - viability)
@@ -192,10 +196,10 @@ class VesselState:
         self.death_unattributed = (
             0.0  # Fraction killed by UNKNOWN unknowns (numerical residue, missing model)
         )
-        self.death_mode = None  # "compound", "confluence", "mixed", "unknown", None
+        self.death_mode: str | None = None  # "compound", "confluence", "mixed", "unknown", None
 
         # Phase 2: Vessel-level hazard accumulator (per-step cache)
-        self._hazards = {}  # {axis: hazard_rate} for current step
+        self._hazards: dict[str, float] = {}  # {axis: hazard_rate} for current step
         self._total_hazard = 0.0  # Sum of all hazards for current step
 
         # Phase 2: Vessel-level stress axes (replace subpop stress)
@@ -233,10 +237,10 @@ class VesselState:
 
         # Phase 2D.1: Operational events - Contamination
         self.contaminated = False  # Contamination event occurred
-        self.contamination_type: Optional[str] = None  # "bacterial" | "fungal" | "mycoplasma"
-        self.contamination_onset_h: Optional[float] = None  # Time when contamination started
-        self.contamination_phase: Optional[str] = None  # "latent" | "arrest" | "death"
-        self.contamination_severity: Optional[float] = None  # Severity multiplier (0.25-3.0)
+        self.contamination_type: str | None = None  # "bacterial" | "fungal" | "mycoplasma"
+        self.contamination_onset_h: float | None = None  # Time when contamination started
+        self.contamination_phase: str | None = None  # "latent" | "arrest" | "death"
+        self.contamination_severity: float | None = None  # Severity multiplier (0.25-3.0)
         self.death_contamination = 0.0  # Death from contamination (separate channel)
 
         # Latent stress states (morphology-first, death-later)
@@ -274,18 +278,21 @@ class VesselState:
         )
 
         # Cross-talk tracking (Phase 4 Option 3: transport → mito coupling)
-        self.transport_high_since = (
+        self.transport_high_since: float | None = (
             None  # Time when transport dysfunction first exceeded threshold (or None)
         )
 
+        # Contact inhibition (confluence-dependent growth suppression)
+        self.contact_pressure: float = 0.0  # Lagged confluence pressure ∈ [0, 1]
+
         # Per-well latent biology (persistent heterogeneity)
         # Initialized lazily in seed_vessel with deterministic RNG
-        self.well_biology = None
-        self.rng_well = None
+        self.well_biology: dict[str, float] | None = None
+        self.rng_well: np.random.Generator | None = None
 
         # Intrinsic biology provenance (Phase 1: persistent random effects)
-        self.lineage_id: Optional[str] = None  # Stable founder seed (hash of vessel_id at creation)
-        self.bio_random_effects: Optional[dict[str, float]] = None  # Cached RE multipliers
+        self.lineage_id: str | None = None  # Stable founder seed (hash of vessel_id at creation)
+        self.bio_random_effects: dict[str, float] | None = None  # Cached RE multipliers
         # Structure: {
         #   'growth_rate_mult': float,      # Mean-1 lognormal on growth rate
         #   'stress_sensitivity_mult': float, # Mean-1 lognormal on k_on rates
@@ -294,18 +301,16 @@ class VesselState:
 
         # Phase 2A.1: Stochastic death commitment (discrete branching events)
         self.death_committed: bool = False  # Once True, irreversible
-        self.death_committed_at_h: Optional[float] = None  # Simulated time of commitment (set once)
-        self.death_commitment_mechanism: Optional[
-            str
-        ] = None  # Which mechanism committed (set once)
-        self.death_commitment_stress_snapshot: Optional[
-            dict[str, float]
-        ] = None  # Stress state at commitment
+        self.death_committed_at_h: float | None = None  # Simulated time of commitment (set once)
+        self.death_commitment_mechanism: str | None = None  # Which mechanism committed (set once)
+        self.death_commitment_stress_snapshot: dict[str, float] | None = (
+            None  # Stress state at commitment
+        )
 
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
         # Initialize to None to signal "no step in progress" (set to {} during _step_vessel)
-        self._step_hazard_proposals: Optional[dict[str, float]] = None
+        self._step_hazard_proposals: dict[str, float] | None = None
         self._step_viability_start: float = 0.0
         self._step_cell_count_start: float = 0.0
         self._step_total_hazard: float = 0.0
@@ -481,11 +486,11 @@ class BiologicalVirtualMachine(VirtualMachine):
     def __init__(
         self,
         simulation_speed: float = 1.0,
-        params_file: Optional[str] = None,
+        params_file: str | None = None,
         use_database: bool = True,
         seed: int = 0,
-        run_context: Optional[RunContext] = None,
-        bio_noise_config: Optional[dict] = None,
+        run_context: RunContext | None = None,
+        bio_noise_config: dict | None = None,
     ):
         """
         Initialize BiologicalVirtualMachine.
@@ -641,7 +646,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self.contamination_config = None
         # Will be populated after thalamus_params load in _load_cell_thalamus_params()
 
-    def _load_parameters(self, params_file: Optional[str] = None):
+    def _load_parameters(self, params_file: str | None = None):
         """Load simulation parameters from database."""
 
         # Database is now the only source (YAML removed 2025-12-23)
@@ -676,7 +681,7 @@ class BiologicalVirtualMachine(VirtualMachine):
                     }
 
             # Load compound sensitivity
-            self.compound_sensitivity = {}
+            self.compound_sensitivity: dict[str, dict[str, float]] = {}
             for compound in db.get_all_compounds():
                 self.compound_sensitivity[compound] = {}
                 for cell_line_id in db.get_all_cell_lines():
@@ -684,9 +689,9 @@ class BiologicalVirtualMachine(VirtualMachine):
                     if sensitivity:
                         self.compound_sensitivity[compound][cell_line_id] = sensitivity.ic50_um
                         if "hill_slope" not in self.compound_sensitivity[compound]:
-                            self.compound_sensitivity[compound][
-                                "hill_slope"
-                            ] = sensitivity.hill_slope
+                            self.compound_sensitivity[compound]["hill_slope"] = (
+                                sensitivity.hill_slope
+                            )
 
             # Drop compounds that never returned any sensitivity rows
             self.compound_sensitivity = {
@@ -1395,7 +1400,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         # This allows instant_kill to be called safely outside of _step_vessel
         vessel._step_hazard_proposals = None
 
-    def _update_vessel_growth(self, vessel: VesselState, hours: float, stress_mean: float = None):
+    def _update_vessel_growth(
+        self, vessel: VesselState, hours: float, stress_mean: float | None = None
+    ):
         """
         Update cell count based on growth model.
 
@@ -1861,10 +1868,10 @@ class BiologicalVirtualMachine(VirtualMachine):
         self,
         vessel_id: str,
         cell_line: str,
-        initial_count: float = None,
+        initial_count: float | None = None,
         capacity: float = 1e7,
-        initial_viability: float = None,
-        vessel_type: str = None,
+        initial_viability: float | None = None,
+        vessel_type: str | None = None,
         density_level: str = "NOMINAL",
     ):
         """Initialize a vessel with cells.
@@ -2155,8 +2162,8 @@ class BiologicalVirtualMachine(VirtualMachine):
                     V_new = vessel.max_volume_ml
                     logger.warning(
                         f"Feed would overflow {vessel_id}: "
-                        f"clamped V_add from {V_add_nominal * hardware_bias['volume_factor']*1000:.1f}µL "
-                        f"to {V_add*1000:.1f}µL (max={vessel.max_volume_ml*1000:.1f}µL)"
+                        f"clamped V_add from {V_add_nominal * hardware_bias['volume_factor'] * 1000:.1f}µL "
+                        f"to {V_add * 1000:.1f}µL (max={vessel.max_volume_ml * 1000:.1f}µL)"
                     )
 
                 # Dilution calculation: C_new = (C_old × V_residual + C_fresh × V_added) / V_total
@@ -2244,7 +2251,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         )
         return result
 
-    def washout_compound(self, vessel_id: str, compound: Optional[str] = None) -> dict[str, Any]:
+    def washout_compound(self, vessel_id: str, compound: str | None = None) -> dict[str, Any]:
         """
         Remove compound(s) from vessel (media change / washout).
 
@@ -2788,8 +2795,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             # Warn if volume exceeds max
             if vessel.max_volume_ml is not None and vessel.current_volume_ml > vessel.max_volume_ml:
                 logger.warning(
-                    f"Vessel {vessel_id} volume ({vessel.current_volume_ml*1000:.1f}µL) "
-                    f"exceeds max volume ({vessel.max_volume_ml*1000:.1f}µL) after adding {compound}"
+                    f"Vessel {vessel_id} volume ({vessel.current_volume_ml * 1000:.1f}µL) "
+                    f"exceeds max volume ({vessel.max_volume_ml * 1000:.1f}µL) after adding {compound}"
                 )
 
         # Apply instant effect using conserved helper (maintains death accounting + subpop sync)
@@ -2884,7 +2891,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             "vessels_updated": len(self.vessel_states),
         }
 
-    def get_vessel_state(self, vessel_id: str) -> Optional[dict[str, Any]]:
+    def get_vessel_state(self, vessel_id: str) -> dict[str, Any] | None:
         """Get current state of a vessel."""
         if vessel_id not in self.vessel_states:
             return None
@@ -2933,7 +2940,7 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         return audit
 
-    def get_biology_random_effects_summary(self) -> dict[str, any]:
+    def get_biology_random_effects_summary(self) -> dict[str, Any]:
         """
         Export intrinsic biology random effects values for variance provenance analysis.
 
@@ -3093,7 +3100,7 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         return np.clip(quality, 0.0, 1.0)
 
-    def _load_raw_yaml_for_nested_params(self, params_file: Optional[str] = None):
+    def _load_raw_yaml_for_nested_params(self, params_file: str | None = None):
         """
         Load YAML for nested CellROX/segmentation parameters not yet in database.
 
@@ -3126,7 +3133,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         well_position: str,
         plate_id: str = "P1",
         batch_id: str = "batch_default",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Apply random well failures (bubbles, contamination, pipetting errors).
 
@@ -3330,8 +3337,8 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel_id: str,
         n_cells: int = 1000,
         *,
-        batch_id: Optional[str] = None,
-        params_path: Optional[str] = None,
+        batch_id: str | None = None,
+        params_path: str | None = None,
     ) -> dict[str, Any]:
         """
         Simulate single-cell RNA-seq assay.
@@ -3433,9 +3440,9 @@ class BiologicalVirtualMachine(VirtualMachine):
                 volume_loss_fraction = 1.0 - (vessel.current_volume_ml / vessel.working_volume_ml)
                 if volume_loss_fraction > 0.20:
                     logger.warning(
-                        f"Vessel {vessel.vessel_id} has lost {volume_loss_fraction*100:.1f}% volume to evaporation. "
-                        f"Current: {vessel.current_volume_ml*1000:.1f}µL, "
-                        f"Working: {vessel.working_volume_ml*1000:.1f}µL"
+                        f"Vessel {vessel.vessel_id} has lost {volume_loss_fraction * 100:.1f}% volume to evaporation. "
+                        f"Current: {vessel.current_volume_ml * 1000:.1f}µL, "
+                        f"Working: {vessel.working_volume_ml * 1000:.1f}µL"
                     )
                     vessel._evaporation_warning_emitted = True
 
