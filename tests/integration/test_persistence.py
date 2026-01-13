@@ -12,7 +12,7 @@ import shutil
 # Ensure src is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
 
-from core.experiment_db import ExperimentDB
+from cell_os.legacy_core.experiment_db import ExperimentDB
 from cell_os.titration_loop import AutonomousTitrationAgent
 from cell_os.posh.lv_moi import ScreenConfig
 from cell_os.budget_manager import BudgetConfig

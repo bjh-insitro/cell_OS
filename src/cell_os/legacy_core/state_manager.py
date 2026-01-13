@@ -6,7 +6,7 @@ Now uses the unified ExperimentDB.
 """
 from typing import Dict, Any, Optional
 import uuid
-from core.experiment_db import ExperimentDB
+from .experiment_db import ExperimentDB
 
 class StateManager:
     def __init__(self, experiment_id: str = None, db_path: str = "data/experiments.db"):

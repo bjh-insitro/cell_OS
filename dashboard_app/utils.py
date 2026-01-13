@@ -40,7 +40,7 @@ from cell_os.posh.viz import (
 )
 from cell_os.lab_world_model import LabWorldModel
 from cell_os.budget_manager import BudgetConfig 
-from core.experiment_db import ExperimentDB
+from cell_os.legacy_core.experiment_db import ExperimentDB
 from cell_os.dino_analysis import load_dino_embeddings_from_csv 
 
 # --- SHARED FUNCTIONS ---

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 from cell_os.titration_lab import MockTitrationLab
 # --- Agent Implementation ---
 
-from core.state_manager import StateManager
+from cell_os.legacy_core.state_manager import StateManager
 
 class AutonomousTitrationAgent:
     def __init__(self, config: ScreenConfig, prices: "BudgetConfig", experiment_id: str = None):
