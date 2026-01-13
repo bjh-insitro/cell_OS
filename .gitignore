@@ -1,61 +1,48 @@
-# Database files (binary data, not source code)
-*.db
-
-# Except already-tracked databases
-!data/simulation_params.db
-
-# Data directory contents
-src/data/
-
-# macOS
-.DS_Store
-
-# Generated outputs
-output/
-
-# Python cache
+# ===================
+# Python
+# ===================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.pyo
 *.pyd
 .Python
-
-# macOS metadata
-.DS_Store
-
-# Byte-compiled / optimized / DLL files
-*.py[cod]
-*$py.class
-
-# Build artifacts and caches
-__pycache__/
 *.egg-info/
 venv/
 env/
-logs/
-*.pyc
-*.pyo
-*.log
-.vite/
 
-# Local run results (exclude from git, use demo dataset in validation_frontend/public/demo_results/)
-results/epistemic_agent/*.json
-results/epistemic_agent/*.jsonl
-results/epistemic_agent/*.log
-results/epistemic_agent/runs_manifest.json
-
-# Generated output directories
+# ===================
+# Generated outputs
+# ===================
 output/
+runs/
+results/
+logs/
+*.log
 
-# Generated run outputs / identifiability artifacts
+# ===================
+# Data & databases
+# ===================
+*.db
+!data/simulation_params.db
+src/data/
 data/identifiability_*/
 data/**/observations.csv
-runs/
-output/
-results/
+
+# ===================
+# Build & tools
+# ===================
+.vite/
 .hypothesis/
 
-# Secret files - never commit
+# ===================
+# OS & IDE
+# ===================
+.DS_Store
+
+# ===================
+# Secrets - never commit
+# ===================
 .env
 .env.local
 .env.*.local
