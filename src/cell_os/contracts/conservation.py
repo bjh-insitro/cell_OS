@@ -10,9 +10,10 @@ either a bug or an exploit attempt. No silent corrections allowed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Dict, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, TypeVar
 
 from cell_os.hardware.constants import DEATH_EPS, TRACKED_DEATH_FIELDS
 
@@ -36,7 +37,7 @@ class ConservationViolation(Exception):
     vessel_id: str
     expected: float
     actual: float
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         msg = (
@@ -62,9 +63,7 @@ def assert_conservation(
 
     The contract: viable + death_compound + death_starvation + ... = 1.0
     """
-    death_total = sum(
-        getattr(vessel, f, 0.0) for f in TRACKED_DEATH_FIELDS
-    )
+    death_total = sum(getattr(vessel, f, 0.0) for f in TRACKED_DEATH_FIELDS)
     viable = getattr(vessel, "viability", 1.0)
     accounting_sum = viable + death_total
 
@@ -77,9 +76,7 @@ def assert_conservation(
                 "viability": viable,
                 "death_total": death_total,
                 "tolerance": tolerance,
-                "fields": {
-                    f: getattr(vessel, f, 0.0) for f in TRACKED_DEATH_FIELDS
-                },
+                "fields": {f: getattr(vessel, f, 0.0) for f in TRACKED_DEATH_FIELDS},
             },
         )
 
@@ -105,8 +102,16 @@ def conserved_death(method: F) -> F:
     def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         result = method(self, *args, **kwargs)
 
-        # Check all vessels
-        vessels = getattr(self, "vessels", [])
+        # Check all vessels (support both list and dict containers)
+        vessels = getattr(self, "vessels", None)
+        if vessels is None:
+            # Try vessel_states (used by BiologicalVirtualMachine)
+            vessel_states = getattr(self, "vessel_states", None)
+            if vessel_states is not None:
+                vessels = vessel_states.values()
+            else:
+                vessels = []
+
         for vessel in vessels:
             assert_conservation(vessel)
 
@@ -117,7 +122,7 @@ def conserved_death(method: F) -> F:
 
 def check_monotonicity(
     vessel: Vessel,
-    prev_deaths: Dict[str, float],
+    prev_deaths: dict[str, float],
     tolerance: float = DEATH_EPS,
 ) -> None:
     """Check that death fields are monotone non-decreasing.
