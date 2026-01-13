@@ -8,8 +8,8 @@ max_std constraints defined in :class:`ImagingWindowGoal`.
 import numpy as np
 from unittest.mock import MagicMock
 
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_acquisition import propose_imaging_doses
+from cell_os.imaging.goal import ImagingWindowGoal
+from cell_os.imaging.acquisition import propose_imaging_doses
 from cell_os.posteriors import DoseResponseGP, SliceKey
 
 

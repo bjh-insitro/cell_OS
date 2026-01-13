@@ -11,7 +11,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from cell_os.imaging_goal import ImagingWindowGoal
+from .goal import ImagingWindowGoal
 from cell_os.posteriors import DoseResponseGP, SliceKey
 from cell_os.acquisition_config import AcquisitionConfig
 

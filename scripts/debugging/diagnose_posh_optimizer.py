@@ -4,9 +4,9 @@
 import numpy as np
 
 from cell_os.posteriors import SliceKey
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_world_model import ImagingWorldModel
-from cell_os.imaging_acquisition import compute_acquisition_score
+from cell_os.imaging.goal import ImagingWindowGoal
+from cell_os.archive.imaging_world_model import ImagingWorldModel
+from cell_os.imaging.acquisition import compute_acquisition_score
 from cell_os.acquisition_config import AcquisitionConfig
 from cell_os.modeling import DoseResponseGP
 from cell_os.simulated_executor import SimulatedImagingExecutor
@@ -30,7 +30,7 @@ def main():
 
     # Seed the model
     executor = SimulatedImagingExecutor(goal=goal)
-    from cell_os.imaging_acquisition import ExperimentPlan
+    from cell_os.imaging.acquisition import ExperimentPlan
     seed_plans = [
         ExperimentPlan(sk_stress, d, 0.0) for d in [0.01, 0.1, 1.0, 10.0]
     ]

@@ -15,9 +15,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 's
 
 # Assuming these are accessible via the project PYTHONPATH
 from cell_os.posteriors import SliceKey
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_world_model import ImagingWorldModel
-from cell_os.imaging_loop import ImagingDoseLoop
+from cell_os.imaging.goal import ImagingWindowGoal
+from cell_os.archive.imaging_world_model import ImagingWorldModel
+from cell_os.imaging.loop import ImagingDoseLoop
 from cell_os.simulated_executor import SimulatedImagingExecutor
 from cell_os.modeling import DoseResponseGP
 
@@ -83,7 +83,7 @@ def run_simulation(config: dict = SIM_CONFIG) -> pd.DataFrame:
     print("Seeding model...")
     # 3. Seed the model with initial data
     print("Seeding model...")
-    from cell_os.imaging_acquisition import ExperimentPlan
+    from cell_os.imaging.acquisition import ExperimentPlan
     seed_doses = config["simulation"]["seed_doses_uM"]
     seed_plans = [
         ExperimentPlan(slice_key=sk_stress, dose_uM=d, stress_value=0.0)

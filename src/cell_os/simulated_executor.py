@@ -7,8 +7,8 @@ from typing import List
 import numpy as np
 from dataclasses import dataclass
 
-from cell_os.imaging_acquisition import ExperimentPlan, ExperimentResult
-from cell_os.imaging_goal import ImagingWindowGoal
+from cell_os.imaging.acquisition import ExperimentPlan, ExperimentResult
+from cell_os.imaging.goal import ImagingWindowGoal
 
 
 @dataclass

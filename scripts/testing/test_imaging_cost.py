@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Test cost calculation for imaging experiments."""
 
-from cell_os.imaging_cost import calculate_imaging_cost, calculate_batch_cost
-from cell_os.imaging_acquisition import ExperimentPlan
+from cell_os.imaging.cost import calculate_imaging_cost, calculate_batch_cost
+from cell_os.imaging.acquisition import ExperimentPlan
 from cell_os.posteriors import SliceKey
 
 

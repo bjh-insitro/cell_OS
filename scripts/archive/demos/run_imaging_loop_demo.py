@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 
 from cell_os.posteriors import SliceKey, DoseResponseGP
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_world_model import ImagingWorldModel
-from cell_os.imaging_loop import ImagingDoseLoop
+from cell_os.imaging.goal import ImagingWindowGoal
+from cell_os.archive.imaging_world_model import ImagingWorldModel
+from cell_os.imaging.loop import ImagingDoseLoop
 from cell_os.simulated_executor import SimulatedImagingExecutor
 
 # ----------------------------------------------------------------------

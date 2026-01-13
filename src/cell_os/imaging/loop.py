@@ -19,8 +19,8 @@ from typing import Dict, List, Protocol, Optional
 import numpy as np
 import pandas as pd
 
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_acquisition import ExperimentPlan, propose_imaging_doses
+from .goal import ImagingWindowGoal
+from .acquisition import ExperimentPlan, propose_imaging_doses
 from cell_os.posteriors import DoseResponseGP, SliceKey
 
 

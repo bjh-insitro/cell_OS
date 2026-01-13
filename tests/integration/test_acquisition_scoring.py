@@ -3,8 +3,8 @@
 import pytest
 import numpy as np
 
-from cell_os.imaging_acquisition import compute_acquisition_score
-from cell_os.imaging_goal import ImagingWindowGoal
+from cell_os.imaging.acquisition import compute_acquisition_score
+from cell_os.imaging.goal import ImagingWindowGoal
 from cell_os.acquisition_config import AcquisitionConfig
 
 

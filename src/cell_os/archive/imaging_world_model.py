@@ -22,7 +22,7 @@ from typing import Dict
 import pandas as pd
 
 from cell_os.posteriors import DoseResponseGP, SliceKey
-from cell_os.imaging_loop import WorldModelLike
+from cell_os.imaging.loop import WorldModelLike
 
 
 @dataclass

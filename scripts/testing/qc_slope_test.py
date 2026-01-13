@@ -1,9 +1,9 @@
 
 import numpy as np
 from cell_os.posteriors import SliceKey
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_world_model import ImagingWorldModel
-from cell_os.imaging_loop import ImagingDoseLoop
+from cell_os.imaging.goal import ImagingWindowGoal
+from cell_os.archive.imaging_world_model import ImagingWorldModel
+from cell_os.imaging.loop import ImagingDoseLoop
 from cell_os.simulated_executor import SimulatedImagingExecutor
 
 class RealisticGP:

@@ -3,9 +3,9 @@
 import numpy as np
 
 from cell_os.posteriors import SliceKey
-from cell_os.imaging_goal import ImagingWindowGoal
-from cell_os.imaging_world_model import ImagingWorldModel
-from cell_os.imaging_loop import ImagingDoseLoop
+from cell_os.imaging.goal import ImagingWindowGoal
+from cell_os.archive.imaging_world_model import ImagingWorldModel
+from cell_os.imaging.loop import ImagingDoseLoop
 from cell_os.simulated_executor import SimulatedImagingExecutor
 
 
@@ -40,7 +40,7 @@ class RealisticGP:
 
 
 from cell_os.modeling import DoseResponseGP
-from cell_os.imaging_acquisition import ExperimentPlan
+from cell_os.imaging.acquisition import ExperimentPlan
 
 def main():
     # Slice keys for a single (cell_line, compound, time_h) pair
