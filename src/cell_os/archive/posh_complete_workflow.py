@@ -6,7 +6,7 @@ a complete end-to-end workflow from transduction to analysis.
 """
 
 from cell_os.unit_ops import AssayRecipe, ParametricOps
-from cell_os.posh_screen_designer import create_screen_design
+from cell_os.posh.screen_designer import create_screen_design
 from cell_os.workflows import workflow_from_assay_recipe, Workflow
 
 

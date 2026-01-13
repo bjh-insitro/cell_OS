@@ -17,21 +17,21 @@ from cell_os.unit_ops import ParametricOps, VesselLibrary
 from cell_os.inventory import Inventory
 from cell_os.inventory_manager import InventoryManager
 from cell_os.workflows import WorkflowBuilder, Workflow
-from cell_os.posh_decision_engine import (
+from cell_os.posh.decision_engine import (
     POSHDecisionEngine, 
     UserRequirements, 
     POSHProtocol, 
     AutomationLevel
 )
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_screen_design import run_posh_screen_design
-from cell_os.posh_lv_moi import (
+from cell_os.posh.scenario import POSHScenario
+from cell_os.posh.screen_design import run_posh_screen_design
+from cell_os.posh.lv_moi import (
     fit_lv_transduction_model,
     LVTitrationResult,
     ScreenSimulator,
     ScreenConfig
 )
-from cell_os.posh_viz import (
+from cell_os.posh.viz import (
     plot_library_composition,
     plot_titration_curve,
     plot_titer_posterior,

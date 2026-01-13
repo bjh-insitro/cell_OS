@@ -9,7 +9,7 @@ from pathlib import Path
 from cell_os.titration_loop import TitrationReport
 from cell_os.unit_ops.parametric import ParametricOps
 from cell_os.recipe_optimizer import RecipeOptimizer
-from cell_os.posh_lv_moi import ScreenConfig # Used for type hinting
+from cell_os.posh.lv_moi import ScreenConfig # Used for type hinting
 
 # --- ADAPTERS ---
 

@@ -1,10 +1,10 @@
 import pytest
 
 from cell_os.lab_world_model import LabWorldModel
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_screen_design import run_posh_screen_design, ScreenDesignResult
-from cell_os.posh_library_design import POSHLibrary
-from cell_os.posh_lv_moi import LVDesignBundle, LVBatch, LVTitrationPlan
+from cell_os.posh.scenario import POSHScenario
+from cell_os.posh.screen_design import run_posh_screen_design, ScreenDesignResult
+from cell_os.posh.library_design import POSHLibrary
+from cell_os.posh.lv_moi import LVDesignBundle, LVBatch, LVTitrationPlan
 
 def test_end_to_end_3lines_stress_screen_library_and_lv():
     scenario = POSHScenario.from_yaml("data/scenarios/3lines_stress_screen.yaml")

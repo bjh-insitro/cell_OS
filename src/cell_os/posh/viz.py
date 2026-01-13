@@ -9,14 +9,14 @@ import numpy as np
 import altair as alt
 from typing import Optional, Dict
 
-from cell_os.posh_library_design import POSHLibrary
-from cell_os.posh_lv_moi import (
+from .library_design import POSHLibrary
+from .lv_moi import (
     LVTransductionModel,
     LVDesignBundle,
     ScreenSimulator,
     ScreenConfig
 )
-from cell_os.posh_screen_design import ScreenDesignResult
+from .screen_design import ScreenDesignResult
 
 
 def plot_library_composition(library: POSHLibrary) -> alt.Chart:

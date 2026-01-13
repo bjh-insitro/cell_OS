@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 # --- CORRECT IMPORTS ---
-from cell_os.posh_lv_moi import (
+from cell_os.posh.lv_moi import (
     fit_lv_transduction_model,
     LVTitrationResult,
     LVBatch,

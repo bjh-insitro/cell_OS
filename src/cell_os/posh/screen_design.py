@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from typing import Optional, Dict
 
 from cell_os.lab_world_model import LabWorldModel
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_library_design import POSHLibrary, design_posh_library
-from cell_os.posh_lv_moi import (
-    LVDesignBundle, 
-    design_lv_for_scenario, 
-    ScreenSimulator, 
+from .scenario import POSHScenario
+from .library_design import POSHLibrary, design_posh_library
+from .lv_moi import (
+    LVDesignBundle,
+    design_lv_for_scenario,
+    ScreenSimulator,
     ScreenConfig
 )
 

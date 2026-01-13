@@ -11,7 +11,7 @@ import numpy as np
 from typing import List, Dict, Any
 from pathlib import Path
 
-from cell_os.posh_lv_moi import TitrationReport
+from cell_os.posh.lv_moi import TitrationReport
 from cell_os.budget_manager import BudgetConfig
 
 

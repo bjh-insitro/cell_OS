@@ -1,4 +1,4 @@
-from cell_os.posh_scenario import POSHScenario
+from cell_os.posh.scenario import POSHScenario
 
 
 def test_scenario_loads():

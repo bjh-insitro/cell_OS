@@ -8,7 +8,7 @@ from typing import List
 
 # Import necessary classes for type hinting and internal logic (assuming these are in the environment)
 from cell_os.titration_loop import TitrationReport
-from cell_os.posh_lv_moi import ScreenConfig, ScreenSimulator, LVTransductionModel, TiterPosterior
+from cell_os.posh.lv_moi import ScreenConfig, ScreenSimulator, LVTransductionModel, TiterPosterior
 
 # --- HELPER FUNCTION (Logic for Manifest) ---
 # This replicates the logic from generate_manifest.py to populate the decision table

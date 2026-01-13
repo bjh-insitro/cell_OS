@@ -4,7 +4,7 @@ Test script for POSH Decision Engine
 
 import os
 
-from cell_os.posh_decision_engine import POSHDecisionEngine, UserRequirements
+from cell_os.posh.decision_engine import POSHDecisionEngine, UserRequirements
 
 def test_decision_engine():
     print("=" * 80)

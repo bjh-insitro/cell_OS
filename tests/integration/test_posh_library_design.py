@@ -2,8 +2,8 @@
 import pytest
 import pandas as pd
 from cell_os.lab_world_model import LabWorldModel
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_library_design import design_posh_library, POSHLibrary, LibraryDesignError
+from cell_os.posh.scenario import POSHScenario
+from cell_os.posh.library_design import design_posh_library, POSHLibrary, LibraryDesignError
 
 def test_design_posh_library_basic():
     # Setup Scenario

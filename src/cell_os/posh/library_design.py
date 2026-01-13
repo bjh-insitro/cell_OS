@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 import hashlib
 
 from cell_os.lab_world_model import LabWorldModel
-from cell_os.posh_scenario import POSHScenario
+from .scenario import POSHScenario
 from cell_os.guide_design_v2 import GuideLibraryAdapter, GuideDesignConfig
 from cell_os.upstream import GeneTarget
 

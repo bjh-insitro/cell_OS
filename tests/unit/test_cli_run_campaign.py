@@ -5,7 +5,7 @@ import pytest
 import yaml
 
 from cell_os.cli import run_campaign as cli_module
-from cell_os.posh_lv_moi import TitrationReport
+from cell_os.posh.lv_moi import TitrationReport
 
 
 def _write_config(tmp_path: Path, output_dir: Path, overrides=None) -> Path:

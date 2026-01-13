@@ -10,8 +10,8 @@ from scipy.optimize import curve_fit
 from scipy.stats import norm
 from sklearn.linear_model import RANSACRegressor, LinearRegression
 from cell_os.lab_world_model import LabWorldModel
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_library_design import POSHLibrary
+from .scenario import POSHScenario
+from .library_design import POSHLibrary
 
 class LVDesignError(Exception): pass
 

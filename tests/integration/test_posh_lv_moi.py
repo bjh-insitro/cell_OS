@@ -3,9 +3,9 @@ import pytest
 import pandas as pd
 import numpy as np
 from cell_os.lab_world_model import LabWorldModel
-from cell_os.posh_scenario import POSHScenario
-from cell_os.posh_library_design import POSHLibrary
-from cell_os.posh_lv_moi import (
+from cell_os.posh.scenario import POSHScenario
+from cell_os.posh.library_design import POSHLibrary
+from cell_os.posh.lv_moi import (
     LVBatch, LVTitrationPlan, LVTitrationResult, LVTransductionModel,
     design_lv_batch, design_lv_titration_plan, fit_lv_transduction_model,
     LVDesignError,

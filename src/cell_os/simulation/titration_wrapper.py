@@ -10,7 +10,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
 
-from cell_os.posh_lv_moi import (
+from cell_os.posh.lv_moi import (
     LVTransductionModel, 
     LVTitrationPlan, 
     LVTitrationResult,

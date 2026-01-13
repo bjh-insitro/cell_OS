@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import List
 from cell_os.titration_loop import TitrationReport
-from cell_os.posh_lv_moi import ScreenConfig, ScreenSimulator, LVTransductionModel, TiterPosterior
+from cell_os.posh.lv_moi import ScreenConfig, ScreenSimulator, LVTransductionModel, TiterPosterior
 
 def generate_screen_manifest(reports: List[TitrationReport], config: ScreenConfig):
     print("\n📦 GENERATING FINAL SCREEN MANIFEST")

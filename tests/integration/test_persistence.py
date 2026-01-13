@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../s
 
 from core.experiment_db import ExperimentDB
 from cell_os.titration_loop import AutonomousTitrationAgent
-from cell_os.posh_lv_moi import ScreenConfig
+from cell_os.posh.lv_moi import ScreenConfig
 from cell_os.budget_manager import BudgetConfig
 
 DB_PATH = "data/experiments.db"

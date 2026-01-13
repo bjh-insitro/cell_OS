@@ -17,7 +17,7 @@ import yaml
 
 from cell_os.budget_manager import BudgetConfig
 from cell_os.html_reporter import generate_html_report
-from cell_os.posh_lv_moi import ScreenConfig, TitrationReport
+from cell_os.posh.lv_moi import ScreenConfig, TitrationReport
 from cell_os.titration_loop import AutonomousTitrationAgent
 
 
