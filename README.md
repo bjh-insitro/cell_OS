@@ -62,7 +62,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 
 # Run epistemic agent (generates SYNTHETIC data)
-python scripts/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
+python scripts/runners/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
 
 # Output: evidence.jsonl, diagnostics.jsonl, decisions.jsonl
 # All measurements are simulated - no real cells involved
@@ -180,9 +180,9 @@ graph TB
 **Purpose**: Enforce honesty about uncertainty
 
 **Files**:
-- `src/cell_os/epistemic_control.py` - Debt tracking
-- `src/cell_os/epistemic_debt.py` - Information gain computation
-- `src/cell_os/epistemic_penalty.py` - Cost inflation from debt
+- `src/cell_os/epistemic_agent/control.py` - Debt tracking
+- `src/cell_os/epistemic_agent/debt.py` - Information gain computation
+- `src/cell_os/epistemic_agent/penalty.py` - Cost inflation from debt
 
 **What it does**:
 - **Tracks epistemic debt**: `debt += max(0, claimed_gain - actual_gain)`
@@ -224,7 +224,7 @@ assert abs(total - 1.0) < DEATH_EPS  # 1e-9 tolerance
 ## 🔬 Example Run (Synthetic Data Only)
 
 ```bash
-python scripts/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
+python scripts/runners/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
 ```
 
 **Cycle 1-3**: Agent proposes DMSO replicates (n=32), measures noise
@@ -356,7 +356,7 @@ PYTHONPATH=. python3 src/cell_os/plate_executor_v2_parallel.py \
   --seed 42 --auto-pull --auto-commit
 
 # Terminal 3: Auto-pull results (local machine)
-./auto_pull.sh
+./scripts/tools/auto_pull.sh
 ```
 
 ### Features
@@ -430,47 +430,49 @@ graph LR
 
 ```
 cell_OS/
-├── src/cell_os/
-│   ├── epistemic_agent/              # Agent + belief tracking
+├── src/cell_os/                      # Main package
+│   ├── epistemic_agent/              # Agent + belief tracking + epistemic control
 │   │   ├── loop.py                   # Main orchestration
+│   │   ├── control.py                # Debt tracking (EpistemicController)
+│   │   ├── debt.py                   # Information gain computation
+│   │   ├── penalty.py                # Cost inflation
 │   │   ├── beliefs/state.py          # What agent knows
 │   │   └── acquisition/chooser.py    # Experiment selection
 │   ├── hardware/
-│   │   ├── biological_virtual.py     # Synthetic data generator (3386 lines)
+│   │   ├── biological_virtual.py     # Synthetic data generator
 │   │   └── mechanism_posterior_v2.py # Bayesian inference (for beam search)
-│   ├── sim/
-│   │   └── biology_core.py           # Pure pharmacology functions
-│   ├── epistemic_control.py          # Debt tracking
-│   ├── epistemic_debt.py             # Information gain computation
-│   ├── epistemic_penalty.py          # Cost inflation
-│   └── plate_executor_v2_parallel.py # Calibration plate executor (parallel)
-├── validation_frontend/              # 🆕 Interactive web UI
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── EpistemicDocumentaryPage.tsx  # Main dashboard
-│   │   │   └── CalibrationResultsLoaderPage.tsx  # QC analysis viewer
-│   │   ├── components/
-│   │   │   ├── RunsBrowser.tsx        # Run management UI
-│   │   │   ├── CalibrationQCAnalysis.tsx  # QC metrics
-│   │   │   └── PlateDesignCatalog.tsx  # Design browser
-│   │   └── public/
-│   │       ├── plate_designs/         # JSON plate definitions
-│   │       └── demo_results/
-│   │           └── calibration_plates/
-│   │               └── runs_manifest.json  # Run tracking
-├── tests/                            # 10K+ lines of epistemic invariant tests
+│   ├── biology/                      # Pure biology models
+│   │   ├── biology_core.py           # Pharmacology functions
+│   │   └── advanced_biology.py       # Cell cycle, stress models
+│   ├── simulation/                   # Simulation executors
+│   │   ├── executor.py               # SimulationExecutor
+│   │   └── simulated_perturbation_executor.py
+│   ├── posh/                         # POSH screen workflow
+│   │   ├── scenario.py               # POSHScenario
+│   │   ├── library_design.py         # Library design
+│   │   └── lv_moi.py                 # LV/MOI calculations
+│   ├── imaging/                      # Imaging workflow
+│   │   ├── acquisition.py            # Experiment planning
+│   │   └── loop.py                   # Dose-response loop
+│   └── plate_executor_v2_parallel.py # Calibration plate executor
+├── scripts/                          # Organized utility scripts
+│   ├── runners/                      # Entry points (run_*.py)
+│   ├── analysis/                     # Analysis scripts
+│   ├── validation/                   # Validation & verification
+│   ├── testing/                      # Test utilities
+│   ├── tools/                        # Utility scripts
+│   ├── demos/                        # Demo scripts
+│   └── experiments/                  # Experimental scripts
+├── tests/                            # 10K+ lines of tests
 │   ├── unit/                         # Component tests
 │   ├── integration/                  # Agent + world integration
-│   └── phase6a/                      # Conservation laws, honesty, confluence
-├── scripts/
-│   ├── run_epistemic_agent.py        # Main agent entry point
-│   └── analysis/
-│       └── debt_completion_correlation.py  # Multi-seed debt vs outcome analysis
-├── auto_pull.sh                      # 🆕 Auto-sync results from GitHub
-└── docs/
-    ├── PHASE0_FOUNDER_FIXED_SCAFFOLD_COMPLETE.md
-    ├── PHASE1_AGENT_SUMMARY.md
-    └── INJECTION_B_BOUNDARY_SEMANTICS_COMPLETE.md
+│   └── phase6a/                      # Conservation laws, honesty
+├── validation_frontend/              # Interactive web UI
+├── dashboard_app/                    # Dashboard application
+├── docs/                             # Documentation
+├── data/                             # Data files
+├── configs/                          # Configuration files
+└── artifacts/                        # Generated images/plots
 ```
 
 ---
