@@ -8,7 +8,7 @@ from cell_os.posteriors import SliceKey, DoseResponseGP
 from cell_os.imaging.goal import ImagingWindowGoal
 from cell_os.archive.imaging_world_model import ImagingWorldModel
 from cell_os.imaging.loop import ImagingDoseLoop
-from cell_os.simulated_executor import SimulatedImagingExecutor
+from cell_os.simulation.simulated_executor import SimulatedImagingExecutor
 
 # ----------------------------------------------------------------------
 # 1. Make fake GP models (just linear mocks for now)

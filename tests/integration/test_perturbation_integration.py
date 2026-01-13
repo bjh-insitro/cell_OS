@@ -8,7 +8,7 @@ from cell_os.perturbation_goal import (
     PerturbationPosterior,
 )
 from cell_os.perturbation_loop import PerturbationAcquisitionLoop
-from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+from cell_os.simulation.simulated_perturbation_executor import SimulatedPerturbationExecutor
 
 
 class TestPerturbationLoopIntegration:

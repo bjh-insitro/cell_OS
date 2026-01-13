@@ -6,7 +6,7 @@ Demonstrates how to simulate complete experimental workflows and collect synthet
 
 import pandas as pd
 from pathlib import Path
-from cell_os.simulation_executor import SimulationExecutor
+from cell_os.simulation.executor import SimulationExecutor
 from cell_os.unit_ops.base import UnitOp
 
 # Ensure output directory exists

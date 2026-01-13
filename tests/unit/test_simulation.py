@@ -3,7 +3,7 @@ import pandas as pd
 
 # Add project root to path
 
-from cell_os.legacy_simulation import simulate_plate_data
+from cell_os.simulation.legacy import simulate_plate_data
 
 def test_simulation():
     print("Testing simulate_plate_data...")

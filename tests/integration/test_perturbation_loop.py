@@ -70,7 +70,7 @@ class TestPerturbationAcquisitionLoop:
         posterior = PerturbationPosterior()
         goal = PerturbationGoal()
         
-        from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+        from cell_os.simulation.simulated_perturbation_executor import SimulatedPerturbationExecutor
         executor = SimulatedPerturbationExecutor()
         loop = PerturbationAcquisitionLoop(posterior, executor, goal)
         
@@ -83,7 +83,7 @@ class TestPerturbationAcquisitionLoop:
         posterior = PerturbationPosterior()
         goal = PerturbationGoal(max_perturbations=2)
         
-        from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+        from cell_os.simulation.simulated_perturbation_executor import SimulatedPerturbationExecutor
         executor = SimulatedPerturbationExecutor()
         
         loop = PerturbationAcquisitionLoop(posterior, executor, goal)
@@ -98,7 +98,7 @@ class TestPerturbationAcquisitionLoop:
         posterior = PerturbationPosterior()
         goal = PerturbationGoal(max_perturbations=2)
         
-        from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+        from cell_os.simulation.simulated_perturbation_executor import SimulatedPerturbationExecutor
         executor = SimulatedPerturbationExecutor()
         
         loop = PerturbationAcquisitionLoop(posterior, executor, goal)

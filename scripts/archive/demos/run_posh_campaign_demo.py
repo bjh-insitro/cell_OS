@@ -15,7 +15,7 @@ import pandas as pd
 from cell_os.lab_world_model import LabWorldModel
 from cell_os.perturbation_goal import PerturbationPosterior, PerturbationGoal
 from cell_os.perturbation_loop import PerturbationAcquisitionLoop
-from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+from cell_os.simulation.simulated_perturbation_executor import SimulatedPerturbationExecutor
 
 
 def main(profile_name: str = "balanced"):

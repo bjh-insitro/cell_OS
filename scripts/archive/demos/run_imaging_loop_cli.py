@@ -10,7 +10,7 @@ from cell_os.posteriors import SliceKey
 from cell_os.imaging.goal import ImagingWindowGoal
 from cell_os.archive.imaging_world_model import ImagingWorldModel
 from cell_os.imaging.loop import ImagingDoseLoop
-from cell_os.simulated_executor import SimulatedImagingExecutor
+from cell_os.simulation.simulated_executor import SimulatedImagingExecutor
 from cell_os.acquisition_config import AcquisitionConfig
 from cell_os.modeling import DoseResponseGP
 from cell_os.imaging.cost import calculate_imaging_cost

@@ -9,7 +9,7 @@ from cell_os.imaging.goal import ImagingWindowGoal
 from cell_os.archive.imaging_world_model import ImagingWorldModel
 from cell_os.imaging.acquisition import compute_acquisition_score
 from cell_os.modeling import DoseResponseGP
-from cell_os.simulated_executor import SimulatedImagingExecutor
+from cell_os.simulation.simulated_executor import SimulatedImagingExecutor
 
 
 def main():

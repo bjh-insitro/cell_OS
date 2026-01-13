@@ -5,7 +5,7 @@ Tests for SimulationExecutor
 import pytest
 import tempfile
 import os
-from cell_os.simulation_executor import SimulationExecutor
+from cell_os.simulation.executor import SimulationExecutor
 
 class MockOp:
     def __init__(self, operation, parameters):

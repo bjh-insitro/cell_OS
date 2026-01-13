@@ -23,7 +23,7 @@ from cell_os.inventory import Inventory
 from cell_os.unit_ops import VesselLibrary
 from cell_os.modeling import DoseResponseGP
 from cell_os.acquisition import AcquisitionFunction
-from cell_os.legacy_simulation import SimulationEngine
+from cell_os.simulation.legacy import SimulationEngine
 from cell_os.assay_selector import AssaySelector
 from cell_os.lab_world_model import LabWorldModel as WorldModel
 from cell_os.campaign import Campaign, PotencyGoal, SelectivityGoal

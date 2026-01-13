@@ -41,6 +41,12 @@ from .design_validation import (
     ReplicationResult
 )
 
+# Executors
+from .executor import SimulationExecutor
+from .simulated_executor import SimulatedImagingExecutor
+from .simulated_perturbation_executor import SimulatedPerturbationExecutor
+from .legacy import simulate_plate_data, SimulationEngine
+
 __all__ = [
     # Spatial effects
     'SpatialEffectsSimulator',
@@ -70,4 +76,11 @@ __all__ = [
     'PowerAnalysisResult',
     'BatchConfoundingResult',
     'ReplicationResult',
+
+    # Executors
+    'SimulationExecutor',
+    'SimulatedImagingExecutor',
+    'SimulatedPerturbationExecutor',
+    'simulate_plate_data',
+    'SimulationEngine',
 ]

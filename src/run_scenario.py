@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cell_os.scenarios import get_scenario, list_scenarios, apply_scenario
 from cell_os.perturbation_goal import PerturbationPosterior, PerturbationGoal
 from cell_os.perturbation_loop import PerturbationAcquisitionLoop
-from cell_os.simulated_perturbation_executor import SimulatedPerturbationExecutor
+from cell_os.simulation.simulated_perturbation_executor import SimulatedPerturbationExecutor
 from cell_os.reporting import summarize_campaign
 from cell_os.inventory import OutOfStockError
 
