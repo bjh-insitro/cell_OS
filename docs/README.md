@@ -1,6 +1,6 @@
 # cell_OS Documentation Index
 
-**Last updated:** December 20, 2025
+**Last updated:** January 13, 2026
 
 Welcome! This directory hosts all written artifacts for the cell_OS platform. Use this index to navigate the documentation and understand how we organize active docs, design principles, results, and archives.
 
@@ -160,7 +160,7 @@ Jupyter notebooks for analysis and exploration.
 ### Historical Documentation
 
 #### **Archive (`archive/`)**
-All completed or historical documentation (58 documents):
+All completed or historical documentation (150+ documents):
 
 - **`archive/sessions/`** - Historical work sessions with date prefixes:
   - `2025-12-20-semantic-fixes.md` - Semantic honesty enforcement
@@ -185,6 +185,10 @@ All completed or historical documentation (58 documents):
   - `QUICK_WINS.md`, `POSH_DASHBOARD_ENHANCEMENTS.md`
   - `IPSC_PROTOCOL_AND_COST_FIXES.md`, `IPSC_PROTOCOL_FIXES.md`
   - `PHASE3_WASHOUT_COSTS.md`
+
+- **`archive/work_logs_2024/`** - Archived work logs and implementation summaries (137 documents)
+  - Completed work logs, summaries, and deliverables from 2024-2025
+  - Includes AGENT_*, PHASE*, *_COMPLETE.md, *_SUMMARY.md files
 
 - **`archive/README.md`** - Archive navigation guide
 
@@ -275,24 +279,23 @@ When a document becomes historical:
 
 ## 📊 Documentation Statistics
 
-**Last reorganization:** December 20, 2025
+**Last reorganization:** January 13, 2026
 
 **Organization summary:**
-- **docs/ root**: 10 core reference documents (CONTEXT, STATUS, QUICKSTART, etc.)
-- **docs/milestones/**: 13 phase completion documents (Phase 0 → 6A)
+- **docs/ root**: 102 reference and design documents
+- **docs/milestones/**: 18 phase completion documents (Phase 0 → 6A)
 - **docs/designs/**: 15 design philosophy and roadmap documents
-- **docs/results/**: 6 validation and test result documents
+- **docs/results/**: 7 validation and test result documents
 - **docs/architecture/**: 20 system design and implementation documents
 - **docs/testing/**: 6 test strategy and hardening documents
 - **docs/deployment/**: 4 production deployment guides
 - **docs/guides/**: 18 user and operational guides
-- **docs/archive/**: 58 historical documents (sessions, audits, improvements)
+- **docs/work_logs/**: 5 active reference documents (CHANGELOG, TODO, STATE_MAP, etc.)
+- **docs/archive/**: 14 historical documents + 137 archived work logs
 
-**Total documentation files:** 150+ markdown documents organized by category
+**Total documentation files:** 350+ markdown documents organized by category
 
-**Recent work (December 20, 2025):**
-- Organized 55+ markdown files from root and docs/ directories
-- Updated CONTEXT.md with comprehensive Phase 6A section
-- Completed documentation index with navigation pathways
-- Archived historical sessions, audits, and improvement proposals
-- Created new archive subdirectories (audits/, improvements/)
+**Recent work (January 13, 2026):**
+- Archived 137 completed work logs to `archive/work_logs_2024/`
+- Kept 5 active reference documents in `work_logs/`
+- Updated documentation statistics
