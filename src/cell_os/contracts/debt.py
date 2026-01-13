@@ -13,21 +13,24 @@ Key thresholds:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, Dict, Set, TypeVar
+from typing import Any, TypeVar
 
 # Hard block threshold: at or above this, non-calibration actions are refused
 DEBT_HARD_BLOCK_THRESHOLD: float = 2.0
 
 # Actions that are always allowed (reduce debt)
-CALIBRATION_ACTION_TYPES: Set[str] = frozenset({
-    "calibration",
-    "baseline",
-    "edge_test",
-    "noise_characterization",
-    "replicate_collection",
-})
+CALIBRATION_ACTION_TYPES: frozenset[str] = frozenset(
+    {
+        "calibration",
+        "baseline",
+        "edge_test",
+        "noise_characterization",
+        "replicate_collection",
+    }
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -46,7 +49,7 @@ class DebtViolation(Exception):
     action_type: str
     current_debt: float
     threshold: float = DEBT_HARD_BLOCK_THRESHOLD
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         msg = (

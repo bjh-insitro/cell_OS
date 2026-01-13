@@ -30,6 +30,10 @@ repos:
         additional_dependencies:
           - numpy
           - pandas-stubs
-        args: [--ignore-missing-imports]
-        # Only run on src/ to avoid test complexity
-        files: ^src/
+          - types-PyYAML
+        args:
+          - --ignore-missing-imports
+          - --explicit-package-bases
+          - --follow-imports=silent
+        # Quick type check on contracts (CI does strict checking)
+        files: ^src/cell_os/contracts/
