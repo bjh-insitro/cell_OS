@@ -36,6 +36,12 @@ data/**/observations.csv
 .hypothesis/
 
 # ===================
+# Backup files
+# ===================
+*.bak
+*.backup
+
+# ===================
 # OS & IDE
 # ===================
 .DS_Store
