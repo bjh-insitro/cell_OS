@@ -1,7 +1,6 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PoshA549StatusPage from './pages/PoshA549StatusPage';
 import GlobalDependencyMapPage from './pages/GlobalDependencyMapPage';
-import LandingPage from './pages/LandingPage';
 import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
 import ViewingPage from './pages/CellThalamus/ViewingPage';
@@ -19,8 +18,8 @@ function App() {
     return (
         <Router basename={basename}>
             <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/dashboard" element={<PoshA549StatusPage />} />
+                <Route path="/" element={<PoshA549StatusPage />} />
+                <Route path="/dashboard" element={<Navigate to="/" replace />} />
                 <Route path="/map" element={<GlobalDependencyMapPage />} />
                 <Route path="/cell-thalamus" element={<CellThalamusPage />} />
                 <Route path="/cell-thalamus/viewing" element={<ViewingPage />} />
