@@ -13,7 +13,7 @@ v0.4.2: Baseline pay-for-calibration regime with noise gates.
 No Bayesian math, no LLM - just trackable heuristics with receipts.
 """
 
-from typing import Dict, List, Set, Optional, Any, Tuple
+from typing import Dict, List, Set, Optional, Any, Tuple, Literal, cast
 from dataclasses import dataclass, field
 from collections import Counter
 import math
@@ -966,7 +966,7 @@ class BeliefState:
             )
 
         # Update beliefs using modular updaters
-        diagnostics_out = []
+        diagnostics_out: List[Any] = []
         self._noise_updater.update(conditions, diagnostics_out)
         self._edge_updater.update(conditions)
         self._response_updater.update(conditions)
@@ -1166,7 +1166,10 @@ class BeliefState:
         self,
         violations: List[IntegrityViolation],
         prev_state: ExecutionIntegrityState
-    ) -> Tuple[str, str]:
+    ) -> Tuple[
+        Literal["none", "warning", "halt", "fatal"],
+        Literal["none", "continue", "cautious", "soft_halt", "hard_halt", "diagnose"]
+    ]:
         """
         Compute aggregate severity and recommended action from violations.
 
@@ -1238,6 +1241,8 @@ class BeliefState:
         # Re-compute severity with hysteresis
         # If we have consecutive bad checks, escalate severity
         violations = integrity_state_from_obs.violations
+        severity: Literal["none", "warning", "halt", "fatal"]
+        recommended_action: Literal["none", "continue", "cautious", "soft_halt", "hard_halt", "diagnose"]
         if consecutive_bad >= 2 and len(violations) > 0:
             # Sustained violation → escalate to halt
             severity = "halt"

@@ -21,7 +21,7 @@ import json
 import math
 
 
-def _json_dumps_safe(obj: Any, **kwargs) -> str:
+def _json_dumps_safe(obj: Any, **kwargs: Any) -> str:
     """JSON serializer that handles infinity and NaN values.
 
     Converts:
@@ -31,7 +31,7 @@ def _json_dumps_safe(obj: Any, **kwargs) -> str:
 
     This ensures valid JSON output for JSONL files.
     """
-    def _convert(o):
+    def _convert(o: Any) -> Any:
         if isinstance(o, float):
             if math.isinf(o) or math.isnan(o):
                 return None
@@ -149,9 +149,9 @@ class Decision:
     - Run context ID (if relevant)
     """
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
-        rationale_dict = {
+        rationale_dict: dict[str, Any] = {
             "summary": self.rationale.summary,
             "rules_fired": list(self.rationale.rules_fired),
             "warnings": list(self.rationale.warnings),

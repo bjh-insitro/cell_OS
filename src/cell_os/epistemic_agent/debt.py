@@ -108,7 +108,7 @@ class EpistemicClaim:
     @property
     def overclaim(self) -> float:
         """How much did we overclaim? (positive = overpromised, negative = underpromised)"""
-        if not self.is_resolved:
+        if self.realized_gain_bits is None:
             return 0.0
         return self.claimed_gain_bits - self.realized_gain_bits
 
@@ -135,7 +135,7 @@ class RepaymentEvent:
     evidence: Dict[str, Any]  # Measurement evidence justifying repayment
     timestamp: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Enforce non-negative repayment."""
         if self.repay_bits < 0:
             raise ValueError(f"Repayment must be non-negative, got {self.repay_bits}")
