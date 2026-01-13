@@ -16,6 +16,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.python-version }}-
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/unit/ -v --tb=short -x -m "not slow"
+        timeout-minutes: 20
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: test  # Only run if unit tests pass
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -25,19 +56,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-cache
-          restore-keys: pip-
+          key: pip-${{ runner.os }}-3.11-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-3.11-
+            pip-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest hypothesis
+          pip install -e ".[dev]"
 
-      - name: Run unit tests
+      - name: Run integration tests
         run: |
-          PYTHONPATH=src python -m pytest tests/unit/ -v --tb=short -x -m "not slow"
-        timeout-minutes: 20
+          python -m pytest tests/integration/ -v --tb=short -m "not slow and not manual"
+        timeout-minutes: 30
 
   lint:
     runs-on: ubuntu-latest
@@ -54,3 +86,36 @@ jobs:
 
       - name: Run ruff check
         run: ruff check src/ --select=E,F --ignore=E501,F401 --exit-zero
+
+      - name: Run ruff format check
+        run: ruff format src/ --check --diff || true
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-3.11-mypy-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-3.11-mypy-
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run mypy
+        run: |
+          mypy src/cell_os --ignore-missing-imports --no-error-summary || true
+        # Non-blocking for now (exit-zero via || true)
+        # Remove || true once type coverage improves
