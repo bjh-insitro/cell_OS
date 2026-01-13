@@ -1,16 +1,15 @@
-numpy
-pandas
-scikit-learn
-matplotlib
-jupyter
-ipykernel
-streamlit
-pyyaml
-graphviz
-altair
-plotly
-networkx
-ortools
-tqdm
-pytest
-pylint
+# Dependencies are now managed in pyproject.toml
+#
+# For development install:
+#   pip install -e ".[dev]"
+#
+# For production install:
+#   pip install -e .
+#
+# For notebook support:
+#   pip install -e ".[notebook]"
+#
+# This file is kept for backward compatibility with tools
+# that expect requirements.txt. It references the main deps.
+
+-e .

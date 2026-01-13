@@ -5,29 +5,48 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cell-os"
 version = "0.1.0"
-description = "Autonomous lab operating system for cell biology experiments"
+description = "Epistemic control research testbed for autonomous cell biology experiments"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
+license = {text = "MIT"}
 dependencies = [
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "scipy",
-    "pyyaml",
-    "streamlit",
-    "matplotlib",
-    "graphviz",
-    "altair",
-    "plotly",
-    "networkx",
-    "ortools",
-    "tqdm",
-    "fastapi",
-    "uvicorn[standard]",
+    # Core scientific stack
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+
+    # Visualization
+    "matplotlib>=3.7.0",
+    "altair>=5.0.0",
+    "plotly>=5.15.0",
+
+    # Web/Dashboard
+    "streamlit>=1.28.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+
+    # Utilities
+    "pyyaml>=6.0",
+    "networkx>=3.0",
+    "ortools>=9.6",
+    "tqdm>=4.65.0",
+    "graphviz>=0.20",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "black", "ruff", "mypy"]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "hypothesis>=6.82.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+]
+notebook = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.25.0",
+]
 
 [project.scripts]
 cell-os-run = "cell_os.cli.run_campaign:main"
@@ -44,3 +63,26 @@ markers = [
     "integration: marks integration tests",
 ]
 addopts = "-m 'not manual'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "F401",  # unused imports (sometimes intentional re-exports)
+]
+
+[tool.ruff.isort]
+known-first-party = ["cell_os"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
