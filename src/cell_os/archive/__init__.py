@@ -13,5 +13,6 @@
 # - beam_search_new_methods.py: Draft methods for BeamSearch COMMIT gating (never integrated)
 # - assay_governance.py: scRNA-seq cost gating logic (never integrated)
 # - plate_executor_parallel.py: Parallel v1 executor (superseded by plate_executor_v2_parallel)
+# - plate_executor_v1.py: Original plate executor (superseded by plate_executor_v2)
 #
 # If you need to resurrect any of these, move them back to the parent directory.
