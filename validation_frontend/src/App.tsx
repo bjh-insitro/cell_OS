@@ -13,9 +13,11 @@ import CalibrationResultsPage from './pages/CalibrationResultsPage';
 import CalibrationResultsLoaderPage from './pages/CalibrationResultsLoaderPage';
 import PlateDesignComparisonPage from './pages/PlateDesignComparisonPage';
 
+const basename = import.meta.env.BASE_URL;
+
 function App() {
     return (
-        <Router>
+        <Router basename={basename}>
             <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/dashboard" element={<PoshA549StatusPage />} />
