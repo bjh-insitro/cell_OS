@@ -41,14 +41,14 @@ A complete epistemic control system that enforces **uncertainty conservation as 
 
 | # | Feature | Purpose | File | Status |
 |---|---------|---------|------|--------|
-| 1 | **Debt tracking** | Track claimed vs realized gain | `epistemic_debt.py` | ✅ |
-| 2 | **Asymmetric penalties** | Overclaim hurts > underclaim helps | `epistemic_debt.py` | ✅ |
-| 3 | **Action-specific inflation** | Expensive actions face higher penalty | `epistemic_debt.py` | ✅ |
-| 4 | **Global inflation** | ALL actions face debt penalty | `epistemic_debt.py` | ✅ |
+| 1 | **Debt tracking** | Track claimed vs realized gain | `epistemic_agent/debt.py` | ✅ |
+| 2 | **Asymmetric penalties** | Overclaim hurts > underclaim helps | `epistemic_agent/debt.py` | ✅ |
+| 3 | **Action-specific inflation** | Expensive actions face higher penalty | `epistemic_agent/debt.py` | ✅ |
+| 4 | **Global inflation** | ALL actions face debt penalty | `epistemic_agent/debt.py` | ✅ |
 | 5 | **Entropy penalties** | Widening subtracts from reward | `epistemic_penalty.py` | ✅ |
 | 6 | **Horizon shrinkage** | High uncertainty shrinks horizon | `epistemic_penalty.py` | ✅ |
 | 7 | **Entropy source tracking** | Exploration ≠ confusion | `epistemic_penalty.py` | ✅ |
-| 8 | **Marginal gain accounting** | Prevent redundancy spam | `epistemic_debt.py` | ✅ |
+| 8 | **Marginal gain accounting** | Prevent redundancy spam | `epistemic_agent/debt.py` | ✅ |
 | 9 | **Provisional penalties** | Multi-step credit assignment | `epistemic_provisional.py` | ✅ |
 | 10 | **Volatility tracking** | Detect thrashing | `epistemic_volatility.py` | ✅ |
 | 11 | **Stability tracking** | Penalize erratic calibration | `epistemic_volatility.py` | ✅ |
@@ -57,7 +57,7 @@ A complete epistemic control system that enforces **uncertainty conservation as 
 
 ## Core Modules (Detailed)
 
-### 1. Debt Ledger (`epistemic_debt.py`)
+### 1. Debt Ledger (`epistemic_agent/debt.py`)
 
 **Purpose**: Track epistemic claims and accumulate debt from overclaiming
 
@@ -278,7 +278,7 @@ class CalibrationStabilityTracker:
 
 ---
 
-### 5. High-Level Controller (`epistemic_control.py`)
+### 5. High-Level Controller (`epistemic_agent/control.py`)
 
 **Purpose**: Unified interface coordinating all mechanisms
 
@@ -346,7 +346,7 @@ stats = controller.get_statistics()
 def __init__(self, ...):
     # Epistemic control: Track information gain claims vs reality
     try:
-        from cell_os.epistemic_control import EpistemicController
+        from cell_os.epistemic_agent.control import EpistemicController
         self.epistemic_controller = EpistemicController()
     except ImportError:
         self.epistemic_controller = None
@@ -538,9 +538,9 @@ Future sophistication can address these, but current system is robust for produc
 
 ### Core Modules (4 files, ~1200 lines)
 ```
-src/cell_os/epistemic_debt.py         306 lines
-src/cell_os/epistemic_penalty.py      230 lines
-src/cell_os/epistemic_control.py      481 lines
+src/cell_os/epistemic_agent/debt.py         306 lines
+src/cell_os/epistemic_agent/penalty.py      230 lines
+src/cell_os/epistemic_agent/control.py      481 lines
 src/cell_os/epistemic_provisional.py  120 lines
 src/cell_os/epistemic_volatility.py   202 lines (NEW - Phase 6A)
 ```

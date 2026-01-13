@@ -44,7 +44,7 @@ Agent Workflow:
 ## Components
 
 ### 1. EpistemicController (Core)
-**File**: `src/cell_os/epistemic_control.py`
+**File**: `src/cell_os/epistemic_agent/control.py`
 
 **Responsibilities**:
 - Track claims vs realizations
@@ -94,7 +94,7 @@ get_inflated_cost(
 ```python
 # Epistemic control: Track information gain claims vs reality
 try:
-    from cell_os.epistemic_control import EpistemicController
+    from cell_os.epistemic_agent.control import EpistemicController
     self.epistemic_controller = EpistemicController()
 except ImportError:
     self.epistemic_controller = None  # Graceful degradation
@@ -358,7 +358,7 @@ integration = EpistemicIntegration(enable=False)
 - `docs/EPISTEMIC_CONTROLLER_INTEGRATION.md` - This document (NEW)
 
 ### Existing (Already Integrated)
-- `src/cell_os/epistemic_control.py` - Core controller (no changes needed)
+- `src/cell_os/epistemic_agent/control.py` - Core controller (no changes needed)
 - `src/cell_os/hardware/biological_virtual.py:440-446, 3252-3260` - VM integration (already active)
 
 ---

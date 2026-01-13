@@ -230,7 +230,7 @@ result = compute_debris_field_modifiers(
 ## Files Created/Modified
 
 ### Modified
-- `src/cell_os/sim/imaging_artifacts_core.py` (added 3 new functions, ~370 lines)
+- `src/cell_os/biology/imaging_artifacts_core.py` (added 3 new functions, ~370 lines)
 
 ### Created
 - `tests/unit/test_imaging_artifacts_structured.py` (11 tests, ~550 lines)
@@ -342,6 +342,6 @@ Next step: Design wiring strategy with explicit flag, validate typical effects, 
 ## References
 
 - **Phase 1 scalar artifacts**: `docs/IMAGING_ARTIFACTS_COMPLETE.md`
-- **Core module**: `src/cell_os/sim/imaging_artifacts_core.py`
+- **Core module**: `src/cell_os/biology/imaging_artifacts_core.py`
 - **Wash/fixation physics**: `docs/WASH_FIXATION_INTEGRATION_COMPLETE.md`
 - **Test suite**: `tests/unit/test_imaging_artifacts_structured.py`

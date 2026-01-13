@@ -48,7 +48,7 @@ def step(self, current_entropy, time_increment_h):
 
 **Files Modified**:
 - `src/cell_os/epistemic_provisional.py` - Added time tracking
-- `src/cell_os/epistemic_control.py` - Pass time increment to step()
+- `src/cell_os/epistemic_agent/control.py` - Pass time increment to step()
 
 ---
 
@@ -103,7 +103,7 @@ Credited: 0.1 + (0.8 × 0.5) = 0.5 bits
 - `src/cell_os/epistemic_sandbagging.py` - NEW (180 lines)
 
 **Files Modified**:
-- `src/cell_os/epistemic_control.py` - Integrated into resolve_action()
+- `src/cell_os/epistemic_agent/control.py` - Integrated into resolve_action()
 
 ---
 
@@ -244,7 +244,7 @@ tests/phase6a/test_epistemic_phase2_improvements.py  300 lines
 ### Modified Files (2)
 ```
 src/cell_os/epistemic_provisional.py   +40 lines (time tracking)
-src/cell_os/epistemic_control.py       +60 lines (sandbagging integration)
+src/cell_os/epistemic_agent/control.py       +60 lines (sandbagging integration)
 ```
 
 **Total**: ~580 lines new/modified

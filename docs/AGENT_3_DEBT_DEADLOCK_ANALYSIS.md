@@ -6,7 +6,7 @@
 
 ### Issue 1: Calibration IS Inflated by Debt
 
-**Location**: `src/cell_os/epistemic_control.py:508`
+**Location**: `src/cell_os/epistemic_agent/control.py:508`
 
 ```python
 def should_refuse_action(...):
@@ -46,7 +46,7 @@ Current behavior:
 
 ### Issue 4: Debt Repayment is Implicit
 
-**Location**: `epistemic_control.py:412-472`
+**Location**: `epistemic_agent/control.py:412-472`
 
 Repayment exists but:
 - Not obviously monotonic

@@ -19,12 +19,12 @@ This creates pressure toward calibrated justifications without hardcoding thresh
 
 ## Core Components
 
-### 1. Epistemic Debt (`epistemic_debt.py`)
+### 1. Epistemic Debt (`epistemic_agent/debt.py`)
 
 Tracks the gap between claimed and realized information gain.
 
 ```python
-from cell_os.epistemic_debt import EpistemicDebtLedger
+from cell_os.epistemic_agent.debt import EpistemicDebtLedger
 
 ledger = EpistemicDebtLedger()
 
@@ -55,7 +55,7 @@ Makes posterior widening hurt in two ways:
 
 #### Immediate penalty (subtract from reward)
 ```python
-from cell_os.epistemic_penalty import compute_entropy_penalty, EpistemicPenaltyConfig
+from cell_os.epistemic_agent.penalty import compute_entropy_penalty, EpistemicPenaltyConfig
 
 config = EpistemicPenaltyConfig(entropy_penalty_weight=1.0)
 
@@ -72,7 +72,7 @@ print(f"Penalty: {penalty:.2f}")  # → 0.50 (subtract from reward)
 
 #### Planning horizon shrinkage
 ```python
-from cell_os.epistemic_penalty import compute_planning_horizon_shrinkage
+from cell_os.epistemic_agent.penalty import compute_planning_horizon_shrinkage
 
 # High uncertainty shrinks planning horizon
 multiplier = compute_planning_horizon_shrinkage(
@@ -88,12 +88,12 @@ print(f"Horizon multiplier: {multiplier:.2f}")  # → 0.60 (40% reduction)
 
 ---
 
-### 3. Integrated Controller (`epistemic_control.py`)
+### 3. Integrated Controller (`epistemic_agent/control.py`)
 
 High-level interface that coordinates debt + penalties:
 
 ```python
-from cell_os.epistemic_control import EpistemicController
+from cell_os.epistemic_agent.control import EpistemicController
 
 controller = EpistemicController()
 

@@ -106,7 +106,7 @@ python scripts/run_posh_campaign_demo.py --profile wise_pi
 
 #### Imaging Dose Selection
 ```python
-from cell_os.imaging_goal import ImagingWindowGoal
+from cell_os.imaging.goal import ImagingWindowGoal
 from cell_os.acquisition_config import get_profile
 
 # Use profile to set imaging constraints

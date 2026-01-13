@@ -18,7 +18,7 @@ This guide shows how to integrate #3 into your planning loop.
 ## Step 1: Initialize Controller (5 min)
 
 ```python
-from cell_os.epistemic_control import EpistemicController, EntropySource
+from cell_os.epistemic_agent.control import EpistemicController, EntropySource
 
 # At experiment start
 controller = EpistemicController()

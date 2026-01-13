@@ -87,7 +87,7 @@ with open(self.diagnostics_file, 'a', encoding='utf-8') as f:
 ### Model Implemented: Hard Refusal with Deadlock Prevention
 
 **Enforced at:** `src/cell_os/epistemic_agent/loop.py:169-241`
-**Implementation:** `src/cell_os/epistemic_control.py:499-595`
+**Implementation:** `src/cell_os/epistemic_agent/control.py:499-595`
 
 ```
 debt < 2.0 bits:
@@ -107,7 +107,7 @@ Deadlock prevention:
 
 ## Action Classification
 
-**Function:** `epistemic_control.py:532`
+**Function:** `epistemic_agent/control.py:532`
 
 ```python
 is_calibration = template_name in {
@@ -176,15 +176,15 @@ assert diagnostic["inflation_factor"] >= 1.0
 ## Production Verification Checklist
 
 ✅ **Debt blocks non-calibration when ≥ 2.0 bits**
-- Code: `epistemic_control.py:551`
+- Code: `epistemic_agent/control.py:551`
 - Test: `test_epistemic_debt_forces_calibration_then_recovers` (existing)
 
 ✅ **Calibration always accessible**
-- Code: `epistemic_control.py:532, 539`
+- Code: `epistemic_agent/control.py:532, 539`
 - Capped inflation (1.5×)
 
 ✅ **Budget reserve prevents deadlock**
-- Code: `epistemic_control.py:545`
+- Code: `epistemic_agent/control.py:545`
 - Reserve: 12 wells (MIN_CALIBRATION_COST_WELLS)
 
 ✅ **Agent responds to refusals**

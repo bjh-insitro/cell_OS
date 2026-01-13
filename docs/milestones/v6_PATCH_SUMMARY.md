@@ -73,7 +73,7 @@ def get_biology_modifiers(self) -> Dict[str, float]:
 ### Diff 3: Apply hazard multiplier
 **Files**:
 - `src/cell_os/hardware/biological_virtual.py:1385-1387` (pass to biology_core)
-- `src/cell_os/sim/biology_core.py:531-534` (apply multiplier)
+- `src/cell_os/biology/biology_core.py:531-534` (apply multiplier)
 
 ```python
 # In _step_vessel():

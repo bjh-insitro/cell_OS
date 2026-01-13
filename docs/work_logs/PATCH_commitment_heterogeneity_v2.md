@@ -67,7 +67,7 @@ else:
         vessel.compound_meta['commitment_delays'][cache_key] = 1e9  # Infinite delay
 ```
 
-### File 2: `src/cell_os/sim/biology_core.py`
+### File 2: `src/cell_os/biology/biology_core.py`
 
 **Replace lines 439-441** with:
 

@@ -16,15 +16,15 @@ A battle-tested epistemic control system enforcing **uncertainty conservation as
 
 | Phase | # | Mechanism | Loophole Closed | File | Lines |
 |-------|---|-----------|-----------------|------|-------|
-| **Base** | 1 | Debt tracking | Overclaiming free lunch | `epistemic_debt.py` | 306 |
-| | 2 | Asymmetric penalties | Underclaim advantage | `epistemic_debt.py` | - |
-| | 3 | Cost inflation | No consequences | `epistemic_debt.py` | - |
+| **Base** | 1 | Debt tracking | Overclaiming free lunch | `epistemic_agent/debt.py` | 306 |
+| | 2 | Asymmetric penalties | Underclaim advantage | `epistemic_agent/debt.py` | - |
+| | 3 | Cost inflation | No consequences | `epistemic_agent/debt.py` | - |
 | | 4 | Entropy penalties | Widening OK | `epistemic_penalty.py` | 230 |
 | | 5 | Horizon shrinkage | Ignore uncertainty | `epistemic_penalty.py` | - |
 | **Tier 1** | 6 | Entropy source tracking | All widening equal | `epistemic_penalty.py` | - |
-| | 7 | Marginal gain accounting | Redundancy spam | `epistemic_debt.py` | - |
+| | 7 | Marginal gain accounting | Redundancy spam | `epistemic_agent/debt.py` | - |
 | | 8 | Provisional penalties | Penalize exploration | `epistemic_provisional.py` | 207 |
-| **Phase 1** | 9 | Global inflation | Debt farming | `epistemic_debt.py` | - |
+| **Phase 1** | 9 | Global inflation | Debt farming | `epistemic_agent/debt.py` | - |
 | | 10 | Volatility tracking | Thrashing | `epistemic_volatility.py` | 202 |
 | | 11 | Stability tracking | Erratic calibration | `epistemic_volatility.py` | - |
 | **Phase 2** | 12 | Time-weighted settlement | Rapid spam exploit | `epistemic_provisional.py` | +40 |
@@ -236,7 +236,7 @@ Credit lost: 0.75 bits (21%)
 ```python
 def __init__(self):
     # Epistemic control active by default
-    from cell_os.epistemic_control import EpistemicController
+    from cell_os.epistemic_agent.control import EpistemicController
     self.epistemic_controller = EpistemicController()
 
 def scrna_seq_assay(self, ...):
@@ -329,9 +329,9 @@ config = EpistemicControllerConfig(
 
 ### Core Modules (6 files, ~2900 lines)
 ```
-src/cell_os/epistemic_debt.py           306 lines
-src/cell_os/epistemic_penalty.py        230 lines
-src/cell_os/epistemic_control.py        541 lines (+60 Phase 2)
+src/cell_os/epistemic_agent/debt.py           306 lines
+src/cell_os/epistemic_agent/penalty.py        230 lines
+src/cell_os/epistemic_agent/control.py        541 lines (+60 Phase 2)
 src/cell_os/epistemic_provisional.py    207 lines (+40 Phase 2)
 src/cell_os/epistemic_volatility.py     202 lines
 src/cell_os/epistemic_sandbagging.py    180 lines (NEW Phase 2)

@@ -1,21 +1,30 @@
-# Cell_OS - Developer Reference for Codex Work
+# Cell_OS - Developer Reference
 
-**Last Updated**: 2025-12-01  
+**Last Updated**: 2025-01-12
 **Status**: Production-ready development environment
 
 ---
 
 ## 🚀 Quick Start
 
-### Running the Dashboard
+### Setup
 ```bash
-cd /Users/brighart/cell_OS/cell_OS
-python3 -m streamlit run dashboard_app/app.py
+git clone https://github.com/brighart/cell_OS.git
+cd cell_OS
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .
 ```
 
-**Dashboard URLs**:
-- Local: http://localhost:8501 (or 8502 if 8501 is taken)
-- Network: http://192.168.86.114:8501
+### Running the Epistemic Agent
+```bash
+python scripts/runners/run_epistemic_agent.py --cycles 20 --budget 384 --seed 42
+```
+
+### Running the Dashboard
+```bash
+python3 -m streamlit run dashboard_app/app.py
+```
 
 ### Running Tests
 ```bash
@@ -25,7 +34,7 @@ pytest
 # Specific test categories
 pytest tests/unit/
 pytest tests/integration/
-pytest tests/dashboard/
+pytest tests/phase6a/  # Epistemic control tests
 ```
 
 ---
@@ -34,133 +43,132 @@ pytest tests/dashboard/
 
 ```
 cell_OS/
-├── src/cell_os/              # Core simulation engine
-│   ├── hardware/             # Virtual machines (BiologicalVirtualMachine)
-│   ├── unit_ops/            # Unit operations (cell culture, QC, etc.)
-│   ├── workflows/           # Workflow builders and execution
-│   ├── database/            # Database repositories
-│   │   └── repositories/    # Repository pattern implementations
-│   ├── inventory.py         # Resource management
-│   ├── inventory_manager.py # Persistent inventory with lot tracking
-│   └── simulation_params_db.py  # Legacy parameter database
+├── src/cell_os/                      # Main package
+│   ├── epistemic_agent/              # Agent + epistemic control system
+│   │   ├── loop.py                   # Main orchestration
+│   │   ├── control.py                # EpistemicController (debt tracking)
+│   │   ├── debt.py                   # Information gain computation
+│   │   ├── penalty.py                # Cost inflation from debt
+│   │   ├── beliefs/                  # Belief state management
+│   │   ├── acquisition/              # Experiment selection (chooser.py)
+│   │   └── agent/                    # Policy rules
+│   │
+│   ├── hardware/                     # Virtual machines & mechanisms
+│   │   ├── biological_virtual.py     # BiologicalVirtualMachine (synthetic data)
+│   │   ├── mechanism_posterior_v2.py # Bayesian inference
+│   │   ├── beam_search/              # Beam search implementation
+│   │   ├── assays/                   # Assay implementations
+│   │   └── stress_mechanisms/        # Stress response models
+│   │
+│   ├── biology/                      # Pure biology models (was sim/)
+│   │   ├── biology_core.py           # Pharmacology functions
+│   │   ├── advanced_biology.py       # Cell cycle, stress models
+│   │   ├── realistic_noise.py        # Noise models
+│   │   └── imaging_artifacts_core.py # Imaging artifact simulation
+│   │
+│   ├── simulation/                   # Simulation executors
+│   │   ├── executor.py               # SimulationExecutor
+│   │   ├── simulated_executor.py     # SimulatedImagingExecutor
+│   │   ├── simulated_perturbation_executor.py
+│   │   └── legacy.py                 # Legacy simulation code
+│   │
+│   ├── posh/                         # POSH screen workflow
+│   │   ├── scenario.py               # POSHScenario
+│   │   ├── library_design.py         # Library design
+│   │   ├── lv_moi.py                 # LV/MOI calculations
+│   │   ├── screen_design.py          # Screen design orchestration
+│   │   └── viz.py                    # Visualization
+│   │
+│   ├── imaging/                      # Imaging workflow
+│   │   ├── acquisition.py            # Experiment planning
+│   │   ├── goal.py                   # Imaging goals
+│   │   ├── loop.py                   # Dose-response loop
+│   │   └── cost.py                   # Cost calculations
+│   │
+│   ├── core/                         # Core data structures
+│   ├── database/                     # Database repositories
+│   ├── unit_ops/                     # Unit operations
+│   ├── workflows/                    # Workflow builders
+│   ├── calibration/                  # Calibration systems
+│   ├── contracts/                    # Contract enforcement
+│   ├── analysis/                     # Analysis utilities
+│   ├── qc/                           # Quality control
+│   └── legacy_core/                  # Legacy DB code (preserved)
 │
-├── dashboard_app/           # Streamlit dashboard
-│   ├── app.py              # Main entry point
-│   ├── pages/              # Dashboard pages (tabs)
-│   ├── components/         # Reusable UI components
-│   └── utils.py            # Dashboard utilities
+├── scripts/                          # Organized utility scripts
+│   ├── runners/                      # Entry points (run_*.py)
+│   ├── analysis/                     # Analysis scripts
+│   ├── validation/                   # Validation & verification
+│   ├── testing/                      # Test utilities & benchmarks
+│   ├── tools/                        # Utility scripts
+│   ├── demos/                        # Demo scripts
+│   ├── debugging/                    # Debug utilities
+│   ├── experiments/                  # Experimental scripts
+│   ├── visualization/                # Visualization scripts
+│   └── deployment/                   # Deployment scripts
 │
-├── data/                   # Configuration and databases
-│   ├── simulation_parameters.yaml
-│   ├── simulation_params.db
-│   ├── inventory.db
-│   └── campaigns.db
+├── tests/                            # Test suite (10K+ lines)
+│   ├── unit/                         # Component tests
+│   ├── integration/                  # Integration tests
+│   ├── phase6a/                      # Epistemic control tests
+│   ├── contracts/                    # Contract tests
+│   └── adversarial/                  # Adversarial agent tests
 │
-├── config/                 # Example configurations
-│   ├── posh_screen_example.yaml
-│   └── titration_example.yaml
-│
-├── scripts/               # Utility scripts
-│   ├── migrations/       # Database migration scripts
-│   └── seed_inventory_resources.py
-│
-├── tests/                # Test suite
-│   ├── unit/
-│   ├── integration/
-│   └── dashboard/
-│
-└── docs/                 # Documentation
-    ├── STATUS.md
-    ├── MIGRATION_HISTORY.md
-    └── archive/          # Historical documentation
+├── dashboard_app/                    # Streamlit dashboard
+├── validation_frontend/              # React validation UI
+├── docs/                             # Documentation
+├── data/                             # Data files & databases
+├── configs/                          # Configuration files
+├── artifacts/                        # Generated images/plots
+└── cases/                            # Test cases
 ```
-
----
-
-## 🔧 Recent Fixes (2025-12-01)
-
-### 1. **Streamlit Deprecation Warnings - FIXED ✅**
-- **Issue**: `use_container_width` parameter deprecated
-- **Fix**: Replaced all instances with `width="stretch"` across dashboard pages
-- **Files Modified**: All files in `dashboard_app/pages/`
-- **Command Used**: 
-  ```bash
-  find dashboard_app/pages -name "*.py" -type f -exec sed -i '' 's/use_container_width=True/width="stretch"/g' {} +
-  ```
-
-### 2. **Database Schema Mismatch - FIXED ✅**
-- **Issue**: `CompoundSensitivity` initialization error with `sensitivity_id`
-- **Root Cause**: Database query returns `sensitivity_id` (or `id`) field which doesn't exist in dataclass
-- **Fix**: Updated repository to filter out both `id` and `sensitivity_id` fields
-- **File**: `src/cell_os/database/repositories/simulation_params.py`
-- **Lines Modified**: 185, 198
-
-### 3. **Arrow Serialization Error - FIXED ✅**
-- **Issue**: Mixed data types in inventory lots causing Pandas/Arrow serialization failures
-- **Fix**: Explicit type casting in `get_lots()` method
-- **File**: `src/cell_os/inventory_manager.py`
-- **Lines Modified**: 300-307
-
----
-
-## 💾 Database Architecture
-
-### Primary Databases
-
-#### 1. **inventory.db**
-- **Purpose**: Inventory management with lot tracking
-- **Tables**:
-  - `resources` - Catalog of all resources (reagents, vessels, etc.)
-  - `lots` - Individual lot tracking (FIFO consumption)
-  - `stock_levels` - Cached stock levels for performance
-  - `transactions` - Complete audit trail
-
-**Key Design Pattern**: Repository pattern with connection pooling
-
-#### 2. **simulation_params.db**
-- **Purpose**: Cell line parameters and compound sensitivities
-- **Tables**:
-  - `cell_line_params` - Growth parameters per cell line
-  - `compound_sensitivity` - IC50 and dose-response data
-  - `default_params` - Fallback parameter values
-  - `simulation_runs` - Execution history
-
-**Migration Status**: Fully migrated from YAML, with YAML fallback
-
-#### 3. **campaigns.db**
-- **Purpose**: POSH campaign definitions and execution history
-- **Managed By**: `CampaignRepository`
-
-### Database Access Patterns
-
-**DO**:
-- Use repository classes (e.g., `SimulationParamsRepository`, `InventoryManager`)
-- Filter out database-specific fields (`id`, `created_at`, `sensitivity_id`) before instantiating dataclasses
-- Use connection pooling for concurrent access
-
-**DON'T**:
-- Access databases directly with raw SQL (except in repositories)
-- Assume field names match dataclass attributes
-- Hardcode database paths (use defaults or config)
 
 ---
 
 ## 🧪 Key Components
 
-### BiologicalVirtualMachine
+### 1. Epistemic Agent
+
+**Location**: `src/cell_os/epistemic_agent/`
+
+The epistemic agent is the core research contribution - it enforces honesty about uncertainty.
+
+**Key Files**:
+- `loop.py` - Main orchestration loop
+- `control.py` - EpistemicController (debt tracking, cost inflation)
+- `debt.py` - Information gain computation
+- `penalty.py` - Penalty calculations
+- `beliefs/state.py` - What the agent knows
+- `acquisition/chooser.py` - Experiment selection
+
+**Usage**:
+```python
+from cell_os.epistemic_agent import EpistemicController, EpistemicControllerConfig
+
+config = EpistemicControllerConfig(
+    debt_threshold=2.0,
+    cost_inflation_rate=0.1
+)
+controller = EpistemicController(config)
+
+# Track debt
+controller.record_claim(claimed_gain=0.8)
+controller.record_observation(actual_gain=0.3)
+# debt += max(0, 0.8 - 0.3) = 0.5 bits
+```
+
+### 2. BiologicalVirtualMachine
+
 **Location**: `src/cell_os/hardware/biological_virtual.py`
 
-**Purpose**: Simulates realistic cell biology with:
-- Exponential growth with confluence saturation
-- Lag phase dynamics
-- Edge well effects (evaporation/temp gradients)
-- Stochastic noise injection
-- Compound dose-response (Hill equation)
+Generates realistic synthetic cell biology data with known ground truth.
 
-**Parameter Loading**:
-1. Try database first (if `use_database=True`)
-2. Fallback to YAML (`data/simulation_parameters.yaml`)
-3. Fallback to hardcoded defaults
+**Features**:
+- Death conservation enforcement (`viable + Σ(deaths) = 1.0`)
+- Observer-independent physics
+- Deterministic execution (same seed → identical results)
+- 5-channel Cell Painting + LDH cytotoxicity
+- Batch effects, edge biases, noise injection
 
 **Key Methods**:
 - `seed_vessel()` - Initialize vessel with cells
@@ -169,291 +177,214 @@ cell_OS/
 - `treat_with_compound()` - Apply dose-response model
 - `advance_time()` - Update all vessel growth states
 
-### Unit Operations
-**Location**: `src/cell_os/unit_ops/operations/`
+### 3. Biology Models
 
-All unit operations now:
-- Accept parametric resource definitions (no hardcoded volumes)
-- Track BOM (Bill of Materials) for cost analysis
-- Report to InventoryManager for consumption tracking
-- Validate parameters at execution time
+**Location**: `src/cell_os/biology/`
 
-**Key Operations**:
-- `cell_culture.py` - Seeding, expansion, feeding
-- `harvest_freeze.py` - Harvest, QC, cryopreservation
-- `qc_ops.py` - Cell counting, viability, identity testing
-- `transfection.py` - Transfection protocols
+Pure pharmacology and biology functions (no side effects):
+- `biology_core.py` - Hill curves, dose-response
+- `advanced_biology.py` - Cell cycle, stress models
+- `realistic_noise.py` - Noise generation
+- `imaging_artifacts_core.py` - Imaging artifacts
 
-### Inventory Management
-**Location**: `src/cell_os/inventory_manager.py`
+### 4. POSH Workflow
 
-**Features**:
-- FIFO lot consumption
-- Expiration tracking
-- Transaction audit trail
-- Stock level alerts
-- Resource catalog with pricing
+**Location**: `src/cell_os/posh/`
 
-**Usage**:
+Pooled Optical Screens in Human cells workflow:
 ```python
-from cell_os.inventory_manager import InventoryManager
-from cell_os.inventory import Inventory
+from cell_os.posh import POSHScenario, POSHLibrary, ScreenConfig
 
-inventory = Inventory()
-inv_manager = InventoryManager(inventory, db_path="data/inventory.db")
+scenario = POSHScenario.load("data/scenarios/my_scenario.yaml")
+library = design_posh_library(scenario, world_model)
+```
 
-# Add stock
-inv_manager.add_stock("pbs", quantity=500.0, lot_id="LOT-123")
+### 5. Imaging Workflow
 
-# Consume stock (FIFO)
-inv_manager.consume_stock("pbs", quantity=50.0, transaction_meta={"reason": "MCB prep"})
+**Location**: `src/cell_os/imaging/`
 
-# Query
-lots = inv_manager.get_lots("pbs")
-transactions = inv_manager.get_transactions(resource_id="pbs", limit=10)
+Dose-response imaging experiments:
+```python
+from cell_os.imaging import ImagingDoseLoop, ImagingWindowGoal
+
+goal = ImagingWindowGoal(target_viability=0.7, max_std=0.1)
+loop = ImagingDoseLoop(world_model, executor, goal)
 ```
 
 ---
 
-## 🎨 Dashboard Architecture
+## 💾 Database Architecture
 
-**Framework**: Streamlit  
-**Entry Point**: `dashboard_app/app.py`
+### Primary Databases
 
-### Tab Structure
-- **Home** - System status and quick actions
-- **Mission Control** - Active executions and monitoring
-- **Science** - Biological data visualization
-- **Workflow Builder** - Visual workflow designer
-- **POSH Campaign** - Campaign simulation and analysis
-- **Cell Line Inspector** - Cell line database browser
-- **Inventory** - Stock management
-- **BOM Audit** - Cost and resource tracking
-- **Analytics** - Historical data analysis
+| Database | Purpose | Location |
+|----------|---------|----------|
+| `simulation_params.db` | Cell line params, compound sensitivity | `data/` |
+| `inventory.db` | Resource tracking, lot management | `data/` |
+| `campaigns.db` | POSH campaign definitions | `data/` |
 
-### Common Utilities
-**Location**: `dashboard_app/utils.py`
+### Repository Pattern
 
 ```python
-from dashboard_app.utils import init_automation_resources
+from cell_os.database.repositories.simulation_params import SimulationParamsRepository
 
-vessel_lib, inv, ops, builder, inv_manager = init_automation_resources()
-```
-
-### Styling Guidelines
-- Use `width="stretch"` for full-width components (NOT `use_container_width=True`)
-- Use `st.columns()` for responsive layouts
-- Prefer `st.dataframe()` over `st.table()` for large datasets
-- Use `st.cache_data` for expensive computations
-
----
-
-## ⚠️ Known Issues & Gotchas
-
-### 1. **Streamlit Caching**
-- Streamlit aggressively caches dataframes
-- Use `st.rerun()` after database modifications to refresh UI
-- Clear cache with `st.cache_data.clear()` if needed
-
-### 2. **Database Connection Pooling**
-- Some repositories use pooling (`use_pooling=True`)
-- Others use traditional connection management
-- **Rule**: Let repositories handle connections, don't manage manually
-
-### 3. **YAML vs Database**
-- System designed for gradual migration from YAML to SQLite
-- Many components have dual-loading (DB first, YAML fallback)
-- Don't remove YAML files yet - they're still fallback sources
-
-### 4. **Plotly Deprecation Warnings**
-- Using old `key` parameter style in some plotly charts
-- **TODO**: Migrate to `config` parameter
-- Not urgent - functionality works fine
-
-### 5. **Dataclass Field Filtering**
-- Always filter database columns before passing to dataclasses with `**row`
-- Common fields to exclude: `id`, `sensitivity_id`, `created_at`, `updated_at`
-
-### 6. **Time Zones**
-- All timestamps should be ISO format with UTC
-- Use `datetime.now().isoformat()` for consistency
-
----
-
-## 🔄 Common Development Workflows
-
-### Adding a New Cell Line
-1. Add parameters to `data/simulation_parameters.yaml` OR
-2. Use `SimulationParamsRepository` to insert into DB:
-   ```python
-   from cell_os.database.repositories.simulation_params import SimulationParamsRepository, CellLineSimParams
-   
-   repo = SimulationParamsRepository()
-   params = CellLineSimParams(
-       cell_line_id="iPSC-001",
-       doubling_time_h=20.0,
-       max_confluence=0.85,
-       # ... other params
-   )
-   repo.add_cell_line_params(params)
-   ```
-
-### Adding a New Resource
-1. Update `data/raw/pricing.yaml` OR
-2. Use inventory database:
-   ```bash
-   python scripts/seed_inventory_resources.py
-   ```
-
-### Creating a New Dashboard Tab
-1. Create file: `dashboard_app/pages/tab_my_feature.py`
-2. Implement: `def render_my_feature(df, pricing):`
-3. Register in `dashboard_app/app.py` in the `TABS` dictionary
-
-### Running a Simulation
-```python
-from cell_os.simulation.mcb_sim import MCBSimulation
-
-sim = MCBSimulation(
-    cell_line="U2OS",
-    target_vials=50,
-    use_automation=True
-)
-results = sim.run()
+repo = SimulationParamsRepository()
+params = repo.get_cell_line_params("U2OS")
 ```
 
 ---
 
-## 📊 Testing Strategy
+## 🧪 Testing
 
-### Unit Tests
-- Test individual components in isolation
-- Mock external dependencies (databases, files)
-- Fast execution (< 1 second per test)
+### Test Categories
 
-### Integration Tests
-- Test database interactions
-- Test workflow execution end-to-end
-- Use temporary databases
+| Directory | Purpose | Run Command |
+|-----------|---------|-------------|
+| `tests/unit/` | Component tests | `pytest tests/unit/` |
+| `tests/integration/` | End-to-end tests | `pytest tests/integration/` |
+| `tests/phase6a/` | Epistemic control | `pytest tests/phase6a/` |
+| `tests/contracts/` | Contract enforcement | `pytest tests/contracts/` |
 
-### Dashboard Tests
-- Test page loads without errors
-- Verify all tabs render
-- Check for import errors
+### Key Test Files
 
-### Running Specific Tests
+- `tests/integration/test_epistemic_debt_enforcement.py` - Debt tracking tests
+- `tests/phase6a/test_death_accounting_honesty.py` - Conservation laws
+- `tests/unit/test_active_learner.py` - Agent behavior
+
+### Running Tests
+
 ```bash
-# Single file
-pytest tests/unit/test_inventory.py -v
-
-# Single test
-pytest tests/unit/test_inventory.py::test_add_stock -v
+# All tests
+pytest
 
 # With coverage
 pytest --cov=src/cell_os tests/
+
+# Single test
+pytest tests/unit/test_imaging_acquisition.py::test_propose_imaging_doses -v
+
+# Stop on first failure
+pytest -x
 ```
 
 ---
 
-## 🐛 Debugging Tips
+## 🎨 Frontend Applications
 
-### Dashboard Issues
-1. Check terminal output where Streamlit is running
-2. Look for Python errors in browser console (F12)
-3. Check `streamlit.log` if running in background
-4. Use `st.write()` for debugging - prints to dashboard
+### Dashboard (Streamlit)
 
-### Database Issues
-1. Check database exists: `ls -la data/*.db`
-2. Inspect schema: `sqlite3 data/inventory.db ".schema"`
-3. Check data: `sqlite3 data/inventory.db "SELECT * FROM resources LIMIT 5;"`
-4. Enable logging: Set `logging.basicConfig(level=logging.DEBUG)`
+**Location**: `dashboard_app/`
 
-### Simulation Issues
-1. Verify parameters loaded: Check logs for "Loaded parameters from..."
-2. Check vessel states: Use `vm.get_vessel_state(vessel_id)`
-3. Inspect BOM: `workflow.get_bom()` shows all consumed items
-4. Review execution log: Check timestamps and order of operations
+```bash
+python3 -m streamlit run dashboard_app/app.py
+```
+
+### Validation Frontend (React)
+
+**Location**: `validation_frontend/`
+
+```bash
+cd validation_frontend
+npm install
+npm run dev
+```
 
 ---
 
-## 📝 Documentation Standards
+## 📝 Code Standards
 
-### Code Documentation
-- **Docstrings**: Google style for all public functions/classes
-- **Type Hints**: Required for function signatures
-- **Comments**: Explain WHY, not WHAT
+### Imports
+
+Use the new consolidated package paths:
+```python
+# Epistemic control
+from cell_os.epistemic_agent import EpistemicController
+from cell_os.epistemic_agent.control import EpistemicControllerConfig
+
+# Biology
+from cell_os.biology.biology_core import hill_curve
+
+# POSH
+from cell_os.posh import POSHScenario, POSHLibrary
+
+# Imaging
+from cell_os.imaging import ImagingDoseLoop, ExperimentPlan
+
+# Simulation
+from cell_os.simulation import SimulationExecutor
+```
+
+### Docstrings
+
+Google style:
+```python
+def compute_debt(claimed: float, actual: float) -> float:
+    """Compute epistemic debt from overclaiming.
+
+    Args:
+        claimed: Claimed information gain in bits
+        actual: Actual information gain in bits
+
+    Returns:
+        Debt accumulated (0 if underclaimed)
+    """
+    return max(0, claimed - actual)
+```
 
 ### Commit Messages
-- Use conventional commits: `fix:`, `feat:`, `docs:`, `refactor:`
-- Reference issues/PRs when applicable
-- Keep first line < 72 characters
 
-### Documentation Files
-- **README.md**: User-facing getting started guide
-- **docs/STATUS.md**: Current system status
-- **docs/MIGRATION_HISTORY.md**: Major changes and migrations
-- **This file**: Developer reference and troubleshooting
-
----
-
-## 🔐 Environment Variables
-
-Currently minimal. Most configuration is in YAML or databases.
-
-**Optional**:
-- `CELL_OS_DB_PATH` - Override default database location
-- `STREAMLIT_SERVER_PORT` - Change default Streamlit port
+Use conventional commits:
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `docs:` - Documentation
+- `refactor:` - Code restructuring
+- `test:` - Test changes
+- `chore:` - Maintenance
 
 ---
 
-## 📞 Key Contacts & Resources
+## 🐛 Debugging
 
-### Related Documentation
-- `docs/STATUS.md` - Current system status
-- `docs/MIGRATION_HISTORY.md` - Change history
-- `dashboard_app/ARCHITECTURE.txt` - Dashboard design
-- `dashboard_app/QUICK_REFERENCE.md` - Dashboard patterns
+### Common Issues
 
-### External References
-- Streamlit Docs: https://docs.streamlit.io
-- PyArrow: https://arrow.apache.org/docs/python/
-- SQLite: https://www.sqlite.org/docs.html
+**Import Errors**:
+```bash
+# Ensure package is installed
+pip install -e .
+
+# Check PYTHONPATH
+PYTHONPATH=src python -c "from cell_os.epistemic_agent import EpistemicController"
+```
+
+**Test Failures**:
+```bash
+# Run with verbose output
+pytest -v --tb=long tests/path/to/test.py
+
+# Run single test
+pytest tests/path/to/test.py::test_function_name -v
+```
+
+**Database Issues**:
+```bash
+# Check database exists
+ls -la data/*.db
+
+# Inspect schema
+sqlite3 data/simulation_params.db ".schema"
+```
 
 ---
 
-## ✅ Pre-Deployment Checklist
+## 📚 Documentation
 
-- [ ] All tests passing: `pytest`
-- [ ] No linting errors: `ruff check .`
-- [ ] Database migrations applied
-- [ ] YAML configs validated
-- [ ] Dashboard loads without errors
-- [ ] Simulation runs complete successfully
-- [ ] Documentation updated
-- [ ] Git commit and push
-
----
-
-## 🎯 Next Priorities
-
-### High Priority
-1. Fix remaining Plotly deprecation warnings (migrate to `config` parameter)
-2. Complete migration of all YAML data to databases
-3. Add connection pooling to all repositories
-4. Comprehensive integration test suite
-
-### Medium Priority
-1. Add user authentication to dashboard
-2. Export/import functionality for databases
-3. Automated database backups
-4. Performance profiling and optimization
-
-### Low Priority
-1. Dark mode for dashboard
-2. Multi-language support
-3. Mobile-responsive layouts
-4. API endpoints for external integrations
+| Document | Purpose |
+|----------|---------|
+| `README.md` | Project overview |
+| `docs/DEVELOPER_REFERENCE.md` | This file |
+| `docs/CONTRIBUTING.md` | Contribution guidelines |
+| `docs/WHAT_WE_BUILT.md` | System overview |
+| `docs/guides/` | Feature guides |
 
 ---
 

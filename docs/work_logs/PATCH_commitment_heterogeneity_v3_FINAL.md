@@ -129,7 +129,7 @@ params = {'commitment_delay_h': commitment_delay_h} if commitment_delay_h is not
 
 ## Change 4: Reorder attrition with IC50 validity guard
 
-**File**: `src/cell_os/sim/biology_core.py`
+**File**: `src/cell_os/biology/biology_core.py`
 **Location**: Replace lines 439-452 in `compute_attrition_rate_instantaneous`
 
 ```python

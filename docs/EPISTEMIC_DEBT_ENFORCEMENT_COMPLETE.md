@@ -90,7 +90,7 @@ Refusals are appended to `epistemic_refusals.jsonl` (append-only, no deletion).
 
 ### 2. Enforcement Logic (The Choke Point)
 
-**File**: `src/cell_os/epistemic_control.py`
+**File**: `src/cell_os/epistemic_agent/control.py`
 
 ```python
 def should_refuse_action(
@@ -349,7 +349,7 @@ This is a one-way door. Once crossed, the system cannot go back to free speculat
    - Added `RefusalEvent` dataclass (lines 95-142)
    - Added `append_refusals_jsonl()` function
 
-2. `src/cell_os/epistemic_control.py`
+2. `src/cell_os/epistemic_agent/control.py`
    - Added `should_refuse_action()` method (lines 389-441)
    - Implements cost inflation and threshold checking
 

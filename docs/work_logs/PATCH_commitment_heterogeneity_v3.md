@@ -141,7 +141,7 @@ hazard_rate = compute_attrition_rate_instantaneous(
 
 ### Part 4: Update attrition function (no sentinel, just branch)
 
-**File**: `src/cell_os/sim/biology_core.py`
+**File**: `src/cell_os/biology/biology_core.py`
 
 **Replace lines 439-441** with:
 ```python

@@ -154,19 +154,19 @@ claim(expected_gain=0.5)  # Impossible! Only 0.3 bits left
 ## Implementation Estimates
 
 ### Time-Weighted Provisional Penalties
-- **Files**: `epistemic_provisional.py`, `epistemic_control.py`
+- **Files**: `epistemic_provisional.py`, `epistemic_agent/control.py`
 - **Changes**: Add `time_elapsed_h` parameter to settlement logic
 - **Test**: Verify rapid actions don't age penalties as much
 - **Lines**: ~50 new, ~30 modified
 
 ### Sandbagging Detection
-- **Files**: `epistemic_debt.py`, `epistemic_control.py`
+- **Files**: `epistemic_agent/debt.py`, `epistemic_agent/control.py`
 - **New class**: `SandbaggingDetector`
 - **Test**: Track surprise ratio, apply discount
 - **Lines**: ~100 new
 
 ### Per-Modality Debt
-- **Files**: `epistemic_debt.py`
+- **Files**: `epistemic_agent/debt.py`
 - **Changes**: Dict[modality, float] instead of single debt
 - **Test**: Verify isolation between modalities
 - **Lines**: ~80 modified

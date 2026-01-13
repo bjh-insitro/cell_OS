@@ -1,186 +1,94 @@
-# Codebase Cleanup Recommendations
+# Codebase Cleanup Status
 
-## 🗑️ Files to Remove/Deprecate
+**Last Updated**: 2025-01-12
 
-### 1. Redundant Files
-- **`workflow_visualizer.py`** → Functionality integrated into `dashboard.py` (Tab 4)
-  - **Action**: Move to `deprecated/` folder
-  
-- **`examples_cell_line_database.py`** → Example usage only
-  - **Action**: Move to `examples/` or `docs/examples/`
+This document tracks cleanup recommendations and their status.
 
-### 2. Temporary/Build Files
-- **`.DS_Store`** → macOS system file
-  - **Action**: Add to `.gitignore`
+## Completed Cleanup (2025-01-12)
 
-## 📚 Documentation Reorganization
+### Module Consolidation
 
-### Create `docs/` Directory
-Move all documentation files into organized structure:
+| Task | Status |
+|------|--------|
+| Rename `sim/` to `biology/` | Done |
+| Move epistemic modules into `epistemic_agent/` | Done |
+| Consolidate POSH modules into `posh/` | Done |
+| Consolidate imaging modules into `imaging/` | Done |
+| Move simulation executors into `simulation/` | Done |
+| Remove empty orphan packages | Done |
+| Archive deprecated `plate_executor.py` | Done |
 
-```
-docs/
-├── protocols/
-│   ├── zombie_posh_protocol.md
-│   ├── zombie_posh_inhouse_protocol.md
-│   ├── zombie_posh_qc_checkpoints.md
-│   ├── vanilla_posh_implementation_plan.md
-│   └── upstream_protocol.md
-├── architecture/
-│   ├── ARCHITECTURE.md
-│   ├── ONTOLOGY.md
-│   └── PROJECT_STRUCTURE.md
-├── guides/
-│   ├── POSH_SYSTEM_OVERVIEW.md
-│   ├── COST_AWARE_DECISION_SUPPORT.md
-│   ├── USER_GUIDE.md
-│   ├── campaign.md
-│   └── README.md (index)
-├── archive/migrations/
-│   ├── 2025-11-27-automation-parameterization-summary.md  # replaces AUTOMATION_SUMMARY.md
-│   └── 2025-11-27-reagent-pricing-summary.md              # replaces REAGENT_PRICING_SUMMARY.md
-└── README.md (keep in root)
-```
+### Root Directory Cleanup
 
-## 🔧 Code Organization
+| Task | Status |
+|------|--------|
+| Move loose markdown docs to `docs/` | Done |
+| Move images to `artifacts/` | Done |
+| Move shell scripts to `scripts/` | Done |
+| Consolidate `output/`, `runs/` (gitignored) | Done |
+| Clean up `.gitignore` duplicates | Done |
 
-### Create Subdirectories in `src/`
+### Scripts Organization
 
-```
-src/
-├── core/
-│   ├── unit_ops.py
-│   ├── inventory.py
-│   └── cell_line_database.py
-├── posh/
-│   ├── screen_designer.py
-│   ├── decision_engine.py
-│   ├── complete_workflow.py
-│   ├── automation_decision.py
-│   └── shopping_list.py
-├── workflows/
-│   ├── workflows.py
-│   ├── workflow_optimizer.py
-│   ├── workflow_renderer.py
-│   └── workflow_renderer_plotly.py
-├── analysis/
-│   ├── modeling.py
-│   ├── assay_selector.py
-│   └── campaign.py
-├── visualization/
-│   ├── plotting.py
-│   └── reporting.py
-└── utils/
-    ├── schema.py
-    ├── simulation.py
-    └── acquisition.py
-```
+| Task | Status |
+|------|--------|
+| Move `run_*.py` to `scripts/runners/` | Done |
+| Move `analyze_*.py` to `scripts/analysis/` | Done |
+| Move `validate_*.py` to `scripts/validation/` | Done |
+| Move `demo_*.py` to `scripts/demos/` | Done |
+| Merge `debug/` into `debugging/` | Done |
+| Merge `verify/` into `validation/` | Done |
+| Merge `utils/` into `tools/` | Done |
 
-## ✅ Immediate Actions (High Priority)
+### Documentation Updates
 
-1. **Create `.gitignore`** if not exists:
-```
-.DS_Store
-__pycache__/
-*.pyc
-env/
-.venv/
-*.egg-info/
-.ipynb_checkpoints/
-results/*.csv
-results/*.png
-```
+| Task | Status |
+|------|--------|
+| Update README.md project structure | Done |
+| Update DEVELOPER_REFERENCE.md | Done |
+| Create CONTRIBUTING.md | Done |
+| Create CHANGELOG.md | Done |
+| Fix old import paths in docs | Done |
 
-2. **Move deprecated files**:
-```bash
-mkdir deprecated
-mv workflow_visualizer.py deprecated/
-```
+## Remaining Cleanup Tasks
 
-3. **Create docs directory**:
-```bash
-mkdir -p docs/{protocols,architecture,guides}
-```
+### Low Priority
 
-4. **Update README.md** to reference PROJECT_STRUCTURE.md
+- [ ] Review and potentially archive old milestone docs in `docs/`
+- [ ] Consolidate duplicate guides content
+- [ ] Add type hints to legacy modules
+- [ ] Remove unused utility functions
 
-## 🧪 Testing Improvements
+### Not Planned
 
-### Add Missing Tests
-- `test_posh_complete_workflow.py` - Test integrated workflow
-- `test_cell_line_database.py` - Test cell line profiles
-- `test_cellpaint_panels.py` - Test panel builder
+- **Wet-lab integration** - Out of scope
+- **UI/UX overhaul** - Not needed for research testbed
+- **Performance optimization** - Current performance is adequate
 
-### Test Coverage Goals
-- Core modules: >80%
-- POSH modules: >70%
-- Utilities: >60%
-
-## 📦 Package Structure (Future)
-
-Consider converting to proper Python package:
+## Current Project Structure
 
 ```
-cell_os/
-├── setup.py
-├── pyproject.toml
-├── cell_os/
-│   ├── __init__.py
-│   ├── core/
-│   ├── posh/
+cell_OS/
+├── src/cell_os/
+│   ├── epistemic_agent/     # Epistemic control system
+│   ├── hardware/            # Synthetic data generator
+│   ├── biology/             # Pure biology models
+│   ├── simulation/          # Simulation executors
+│   ├── posh/                # POSH workflow
+│   ├── imaging/             # Imaging workflow
+│   ├── core/                # Data structures
+│   ├── database/            # Repositories
+│   └── ...
+├── scripts/
+│   ├── runners/             # Entry points
+│   ├── analysis/            # Analysis
+│   ├── validation/          # Verification
+│   ├── tools/               # Utilities
 │   └── ...
 ├── tests/
 ├── docs/
-└── examples/
+├── data/
+└── ...
 ```
 
-## 🎯 Priority Order
-
-### Week 1: Cleanup
-- [ ] Create `.gitignore`
-- [ ] Move deprecated files
-- [ ] Create `docs/` structure
-- [ ] Move documentation files
-
-### Week 2: Organization
-- [ ] Reorganize `src/` into subdirectories
-- [ ] Update imports across codebase
-- [ ] Add `__init__.py` files
-
-### Week 3: Testing
-- [ ] Add missing tests
-- [ ] Run test coverage analysis
-- [ ] Fix any broken tests
-
-### Week 4: Documentation
-- [ ] Update all documentation links
-- [ ] Generate API documentation
-- [ ] Create developer guide
-
-## 📊 Current Status
-
-### Active & Essential (Keep)
-- ✅ `dashboard.py`
-- ✅ `run_loop.py`
-- ✅ `src/unit_ops.py`
-- ✅ `src/inventory.py`
-- ✅ `src/posh_screen_designer.py`
-- ✅ `src/posh_decision_engine.py`
-- ✅ `src/cell_line_database.py`
-
-### Deprecated (Move)
-- ❌ `workflow_visualizer.py`
-- ❌ `examples_cell_line_database.py`
-
-### Needs Review
-- ⚠️ `src/llm_scientist.py` - Experimental, not integrated
-- ⚠️ `src/recipe_optimizer.py` - Usage unclear
-- ⚠️ `src/acquisition.py` - Usage unclear
-
-## 💡 Additional Recommendations
-
-1. **Version Control**: Tag current state as v0.1.0 before major reorganization
-2. **Backup**: Create backup branch before moving files
-3. **Documentation**: Update all internal links after reorganization
-4. **Testing**: Run full test suite after each reorganization step
-5. **Communication**: Document all changes in CHANGELOG.md
+See `README.md` and `docs/DEVELOPER_REFERENCE.md` for full structure.

@@ -333,7 +333,7 @@ Cell fate must be identical whether you call `cell_painting_assay()` or not. Dys
 ## Implementation Files
 
 **Core Biology:**
-- `src/cell_os/sim/biology_core.py` - Added `compute_transport_dysfunction_from_exposure()`
+- `src/cell_os/biology/biology_core.py` - Added `compute_transport_dysfunction_from_exposure()`
 - `src/cell_os/hardware/biological_virtual.py` - Updated `_apply_compound_attrition()`
 
 **Tests:**

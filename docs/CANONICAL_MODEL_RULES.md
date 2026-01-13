@@ -250,7 +250,7 @@ When killing a translation:
 ├─────────────────────────────────────────┤
 │  World Interface (epistemic_agent/world)│ ← Observable readouts
 ├─────────────────────────────────────────┤
-│  Simulation (hardware/, sim/)           │ ← Pure physics
+│  Simulation (hardware/, biology/)           │ ← Pure physics
 └─────────────────────────────────────────┘
 
          Adapters (core/legacy_adapters.py)

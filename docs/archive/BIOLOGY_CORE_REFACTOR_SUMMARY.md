@@ -6,7 +6,7 @@ Successfully refactored Cell Thalamus simulation to eliminate code duplication a
 
 ## What Was Done
 
-### 1. Created `src/cell_os/sim/biology_core.py`
+### 1. Created `src/cell_os/biology/biology_core.py`
 
 Pure functions for all biology calculations:
 - `compute_microtubule_ic50_multiplier()` - Proliferation-coupled sensitivity
@@ -174,8 +174,8 @@ This catches "one path applied noise earlier" bugs.
 
 ## Files Modified
 
-1. **Created:** `src/cell_os/sim/biology_core.py` - Single source of truth
-2. **Created:** `src/cell_os/sim/__init__.py` - Module init
+1. **Created:** `src/cell_os/biology/biology_core.py` - Single source of truth
+2. **Created:** `src/cell_os/biology/__init__.py` - Module init
 3. **Modified:** `src/cell_os/hardware/biological_virtual.py` - Uses biology_core
    - Extended VesselState
    - Refactored treat_with_compound

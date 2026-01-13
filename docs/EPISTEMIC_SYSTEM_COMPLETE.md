@@ -21,21 +21,21 @@ See: `docs/SCRNA_SEQ_HARDENING.md`
 - **Cost inflation**: 1 bit debt → 10% cost increase
 - **Persistent**: saves/loads for auditing
 
-See: `src/cell_os/epistemic_debt.py`
+See: `src/cell_os/epistemic_agent/debt.py`
 
 ### 3. Entropy Penalties (New)
 - **Immediate penalty**: posterior widening subtracts from reward
 - **Horizon shrinkage**: high entropy reduces planning horizon
 - **Agent-action specific**: only penalizes expensive, confounded assays
 
-See: `src/cell_os/epistemic_penalty.py`
+See: `src/cell_os/epistemic_agent/penalty.py`
 
 ### 4. Integrated Controller (New)
 - **High-level API**: claim → measure → resolve → penalize
 - **Coordinates debt + penalties**: one interface for both
 - **Auditing**: statistics, save/load, logging
 
-See: `src/cell_os/epistemic_control.py`
+See: `src/cell_os/epistemic_agent/control.py`
 
 ---
 
@@ -248,9 +248,9 @@ planning_horizon *= penalty.horizon_multiplier
 
 ### Core modules (new)
 ```
-src/cell_os/epistemic_debt.py              (250 lines)
-src/cell_os/epistemic_penalty.py           (230 lines)
-src/cell_os/epistemic_control.py           (330 lines)
+src/cell_os/epistemic_agent/debt.py              (250 lines)
+src/cell_os/epistemic_agent/penalty.py           (230 lines)
+src/cell_os/epistemic_agent/control.py           (330 lines)
 ```
 
 ### Tests (new)

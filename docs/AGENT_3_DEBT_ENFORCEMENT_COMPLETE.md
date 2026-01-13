@@ -40,7 +40,7 @@ This is NOT soft inflation alone. The block is the teeth.
 
 ### Step 1: Centralized Enforcement ✅
 
-**Location**: `src/cell_os/epistemic_control.py::should_refuse_action()`
+**Location**: `src/cell_os/epistemic_agent/control.py::should_refuse_action()`
 
 All non-calibration templates pass through a single enforcement function that checks:
 1. **Hard threshold**: debt > 2.0 blocks non-calibration
@@ -119,7 +119,7 @@ def compute_repayment(is_calibration, noise_improvement):
 
 ### Step 4: Debt Non-Optional ✅
 
-**Default config** (`src/cell_os/epistemic_control.py:96`):
+**Default config** (`src/cell_os/epistemic_agent/control.py:96`):
 ```python
 enable_debt_tracking: bool = True  # NON-OPTIONAL by default
 ```
@@ -213,7 +213,7 @@ No exceptions. No flags. No clever workarounds.
 ## Files Changed
 
 ### Modified:
-1. **`src/cell_os/epistemic_control.py`**
+1. **`src/cell_os/epistemic_agent/control.py`**
    - Added `MIN_CALIBRATION_COST_WELLS = 12` constant
    - Updated `should_refuse_action()` to check budget reserve
    - Added `blocked_by_reserve` check

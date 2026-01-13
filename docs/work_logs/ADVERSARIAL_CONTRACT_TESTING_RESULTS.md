@@ -78,7 +78,7 @@ For each test:
 
 ### Regression Test 3: Remove Hazard Multiplier Application ⚠️ NOT CAUGHT
 
-**Change**: Commented out hazard multiplier application in `src/cell_os/sim/biology_core.py`.
+**Change**: Commented out hazard multiplier application in `src/cell_os/biology/biology_core.py`.
 
 **Impact**:
 - Between-run variance: 0.00019062 → 0.00019379 (essentially unchanged)
@@ -98,7 +98,7 @@ For each test:
 
 ### Regression Test 4: Remove EC50 + Hazard Multipliers ✅ CAUGHT
 
-**Change**: Removed both EC50 multiplier applications in `src/cell_os/hardware/biological_virtual.py` (2 locations) AND hazard multiplier in `src/cell_os/sim/biology_core.py`.
+**Change**: Removed both EC50 multiplier applications in `src/cell_os/hardware/biological_virtual.py` (2 locations) AND hazard multiplier in `src/cell_os/biology/biology_core.py`.
 
 **Impact**:
 - Between-run variance: 0.00019062 → 0.00001434 (13× reduction!)

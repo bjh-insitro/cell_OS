@@ -13,7 +13,7 @@ PYTHONPATH=src:$PYTHONPATH python3 scripts/demos/full_epistemic_system_demo.py
 
 ## Basic Usage
 ```python
-from cell_os.epistemic_control import EpistemicController, EntropySource
+from cell_os.epistemic_agent.control import EpistemicController, EntropySource
 
 # Setup
 controller = EpistemicController()

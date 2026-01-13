@@ -61,7 +61,7 @@ params = {'commitment_delay_h': commitment_delay_h} if commitment_delay_h else N
 ```
 
 ### Change 4: Reorder attrition with strong fallback contract
-**File**: `src/cell_os/sim/biology_core.py:439-452`
+**File**: `src/cell_os/biology/biology_core.py:439-452`
 
 Replace with (order matters):
 ```python
@@ -248,7 +248,7 @@ Next structural upgrade:
 **Merge command**:
 ```bash
 git add src/cell_os/hardware/biological_virtual.py
-git add src/cell_os/sim/biology_core.py
+git add src/cell_os/biology/biology_core.py
 git add tests/statistical_audit/
 git commit -m "fix: remove 12h commitment threshold, add per-subpop heterogeneity
 

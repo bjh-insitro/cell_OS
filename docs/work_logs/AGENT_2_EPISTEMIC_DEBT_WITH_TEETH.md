@@ -26,7 +26,7 @@ Turn epistemic debt from a logged concept into a force that shapes agent behavio
 - Agent behavior already adapts (switches to calibration when insolvent)
 - Soft regime (cost inflation alone) lets agents "shrug and proceed"
 
-**Location:** `src/cell_os/epistemic_debt.py` (lines 16-77)
+**Location:** `src/cell_os/epistemic_agent/debt.py` (lines 16-77)
 
 **Semantics documented:**
 ```
@@ -63,7 +63,7 @@ Turn epistemic debt from a logged concept into a force that shapes agent behavio
 
 **Changes:**
 
-**`src/cell_os/epistemic_control.py`:**
+**`src/cell_os/epistemic_agent/control.py`:**
 - Added contamination tracking to `EpistemicControllerConfig` (lines 78-84)
 - Added `is_contaminated` and `contamination_reason` fields to controller (lines 133-143)
 - Updated `get_statistics()` to expose contamination status (lines 569-572)
@@ -184,8 +184,8 @@ All criteria met:
 ## Files Changed
 
 **Modified:**
-1. `src/cell_os/epistemic_debt.py` - Added HARD REGIME semantics (60 lines of documentation)
-2. `src/cell_os/epistemic_control.py` - Added contamination tracking
+1. `src/cell_os/epistemic_agent/debt.py` - Added HARD REGIME semantics (60 lines of documentation)
+2. `src/cell_os/epistemic_agent/control.py` - Added contamination tracking
 3. `src/cell_os/epistemic_agent/loop.py` - Added contamination warning at run start
 
 **Created:**

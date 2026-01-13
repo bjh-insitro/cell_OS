@@ -42,7 +42,7 @@ should_refuse, refusal_reason, refusal_context = self.epistemic.should_refuse_ac
 )
 ```
 
-Implementation: `src/cell_os/epistemic_control.py:499-595`
+Implementation: `src/cell_os/epistemic_agent/control.py:499-595`
 
 ### Action Classification
 
@@ -83,7 +83,7 @@ When debt crosses threshold, the system **guarantees** calibration remains acces
 3. Calibration receives **capped inflation** (max 1.5×)
 4. Budget reserve enforcement prevents spending last 12 wells on biology
 
-**Code:** `epistemic_control.py:532-540`
+**Code:** `epistemic_agent/control.py:532-540`
 
 ### Guarantee 2: Debt Can Decrease
 
@@ -102,7 +102,7 @@ else:
     repayment = BASE_REPAYMENT
 ```
 
-**Code:** `epistemic_control.py:436-497`
+**Code:** `epistemic_agent/control.py:436-497`
 
 **Integration:** `loop.py:399-427`
 
@@ -113,7 +113,7 @@ If debt ≥ 2.0 AND calibration is unaffordable:
 - **Terminal abort** with diagnostic message
 - Does NOT spin in refusal loop
 
-**Code:** `epistemic_control.py:553-564`, `loop.py:224-235`
+**Code:** `epistemic_agent/control.py:553-564`, `loop.py:224-235`
 
 ## Agent Response to Refusals
 
@@ -262,22 +262,22 @@ Every cycle writes `epistemic_debt_status` event to `diagnostics.jsonl`:
 ✅ **Hard refusal on debt threshold**
 - Debt ≥ 2.0 → non-calibration blocked
 - Refusal reason: "epistemic_debt_action_blocked"
-- Code: `epistemic_control.py:551`, `loop.py:169-241`
+- Code: `epistemic_agent/control.py:551`, `loop.py:169-241`
 
 ✅ **Calibration always accessible**
 - Calibration exempt from hard threshold
 - Capped inflation (1.5×)
-- Code: `epistemic_control.py:532, 539`
+- Code: `epistemic_agent/control.py:532, 539`
 
 ✅ **Budget reserve enforcement**
 - Non-calibration must leave ≥12 wells
 - Prevents epistemic bankruptcy
-- Code: `epistemic_control.py:545`
+- Code: `epistemic_agent/control.py:545`
 
 ✅ **Deadlock detection**
 - Detects when calibration unaffordable
 - Terminal abort on deadlock
-- Code: `epistemic_control.py:553-564`, `loop.py:224-235`
+- Code: `epistemic_agent/control.py:553-564`, `loop.py:224-235`
 
 ✅ **Agent learns from refusals**
 - `record_refusal()` sets `epistemic_insolvent`
@@ -292,7 +292,7 @@ Every cycle writes `epistemic_debt_status` event to `diagnostics.jsonl`:
 ✅ **Debt repayment**
 - Evidence-based: requires noise improvement
 - 0.25-1.0 bits per calibration
-- Code: `epistemic_control.py:436-497`, `loop.py:399-427`
+- Code: `epistemic_agent/control.py:436-497`, `loop.py:399-427`
 
 ✅ **Recovery mechanism**
 - Debt decreases after calibration

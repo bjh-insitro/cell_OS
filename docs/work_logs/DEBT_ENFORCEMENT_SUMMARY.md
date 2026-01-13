@@ -61,7 +61,7 @@ Tests:
 
 **Enforcement Point:** `loop.py:169-241`
 
-**Implementation:** `epistemic_control.py:499-595`
+**Implementation:** `epistemic_agent/control.py:499-595`
 
 ## Action Classification
 

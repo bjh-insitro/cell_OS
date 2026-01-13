@@ -184,7 +184,7 @@ _update_death_mode()
 
 ## Files Modified
 
-1. `src/cell_os/sim/biology_core.py`:
+1. `src/cell_os/biology/biology_core.py`:
    - Added `compute_transport_dysfunction_from_exposure()`
 
 2. `src/cell_os/hardware/biological_virtual.py`:

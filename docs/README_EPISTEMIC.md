@@ -23,7 +23,7 @@ Plus three critical improvements:
 ## Quick Start
 
 ```python
-from cell_os.epistemic_control import EpistemicController, EntropySource
+from cell_os.epistemic_agent.control import EpistemicController, EntropySource
 
 # Initialize
 controller = EpistemicController()

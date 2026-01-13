@@ -55,7 +55,7 @@ Track cumulative death fractions separately:
 7. ✅ **Single source of truth** - biology_core used by both paths
 
 **Files created:**
-- `src/cell_os/sim/biology_core.py` - Pure biology functions
+- `src/cell_os/biology/biology_core.py` - Pure biology functions
 - Extended `VesselState` with death accounting fields
 
 ---
@@ -327,7 +327,7 @@ All within [0.3, 5.0] bounds ✓
 ## Files Modified
 
 **Core Implementation:**
-- `src/cell_os/sim/biology_core.py` - Pure biology functions
+- `src/cell_os/biology/biology_core.py` - Pure biology functions
 - `src/cell_os/hardware/biological_virtual.py` - Agent path implementation
 - `standalone_cell_thalamus.py` - Standalone implementation
 

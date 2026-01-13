@@ -307,7 +307,7 @@ That's a fundamentally different learning problem. And it's closer to real scien
 
 - **Base system**: `docs/EPISTEMIC_CONTROL_SYSTEM.md`
 - **scRNA hardening**: `docs/SCRNA_SEQ_HARDENING.md`
-- **Entropy penalty**: `src/cell_os/epistemic_penalty.py`
+- **Entropy penalty**: `src/cell_os/epistemic_agent/penalty.py`
 - **Provisional penalties**: `src/cell_os/epistemic_provisional.py`
 - **Test coverage**: `tests/phase6a/test_epistemic_improvements.py`
 

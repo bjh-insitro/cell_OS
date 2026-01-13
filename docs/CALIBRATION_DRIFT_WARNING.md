@@ -13,7 +13,7 @@ The time semantics fix (using t0 instead of t1 for biology) corrected a systemat
 
 #### 1. Attrition Rates (High Impact)
 
-**File**: `src/cell_os/sim/biology_core.py`
+**File**: `src/cell_os/biology/biology_core.py`
 
 **Constants**:
 ```python

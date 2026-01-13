@@ -18,7 +18,7 @@ This completes the pipeline: **edge wells → more wash loss → more debris →
 
 ## Architecture
 
-### Core Module: `src/cell_os/sim/imaging_artifacts_core.py`
+### Core Module: `src/cell_os/biology/imaging_artifacts_core.py`
 
 **Pure functions** (no side effects, hard bounds, monotonic):
 
@@ -301,7 +301,7 @@ From integration test and unit tests:
 ## Files Created/Modified
 
 ### New Files
-- `src/cell_os/sim/imaging_artifacts_core.py` - Pure functions for debris effects
+- `src/cell_os/biology/imaging_artifacts_core.py` - Pure functions for debris effects
 - `tests/unit/test_imaging_artifacts_monotonicity.py` - Invariant tests (10 tests)
 - `tests/unit/test_imaging_artifacts_edge_correlation.py` - Edge correlation tests (6 tests)
 - `docs/IMAGING_ARTIFACTS_COMPLETE.md` - This document
@@ -377,6 +377,6 @@ The simulator went from "realistic" (hand-wave) to "auditable" (hard bounds + te
 ## References
 
 - **Wash/Fixation Physics**: `docs/WASH_FIXATION_INTEGRATION_COMPLETE.md`
-- **Core Module**: `src/cell_os/sim/imaging_artifacts_core.py`
+- **Core Module**: `src/cell_os/biology/imaging_artifacts_core.py`
 - **Test Suite**: `tests/unit/test_imaging_artifacts_*.py`
 - **Integration Test**: `/tmp/test_debris_imaging_integration.py`

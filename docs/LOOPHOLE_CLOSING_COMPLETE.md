@@ -21,7 +21,7 @@ Implemented three advanced features to close remaining loopholes in the epistemi
 - Cheap assay ($20): $20.81 (4% increase)
 - Expensive assay ($200): $244.80 (22% increase)
 
-**File**: `src/cell_os/epistemic_debt.py`
+**File**: `src/cell_os/epistemic_agent/debt.py`
 
 ```python
 def get_cost_multiplier(self, base_cost, sensitivity=0.1, global_sensitivity=0.02):
@@ -161,8 +161,8 @@ The system now enforces **uncertainty conservation as a physical law**, with mul
 
 ## Files Modified
 
-1. `src/cell_os/epistemic_debt.py` - Added global inflation to `get_cost_multiplier()`
-2. `src/cell_os/epistemic_control.py` - Integrated volatility and stability trackers
+1. `src/cell_os/epistemic_agent/debt.py` - Added global inflation to `get_cost_multiplier()`
+2. `src/cell_os/epistemic_agent/control.py` - Integrated volatility and stability trackers
 3. `src/cell_os/epistemic_volatility.py` - **NEW** - Volatility and stability tracking
 4. `tests/phase6a/test_epistemic_advanced.py` - **NEW** - Comprehensive test suite
 

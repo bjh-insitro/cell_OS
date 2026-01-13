@@ -5,32 +5,32 @@
 ### Where Debt is Computed
 
 **Debt State Storage:**
-- Class: `EpistemicDebtLedger` in `src/cell_os/epistemic_debt.py:145`
+- Class: `EpistemicDebtLedger` in `src/cell_os/epistemic_agent/debt.py:145`
 - Field: `total_debt: float` (line 162)
 - Claims list: `claims: List[EpistemicClaim]` (line 163)
 - Repayments list: `repayments: List[RepaymentEvent]` (line 164)
 
 **Claim Recording:**
-- Function: `EpistemicDebtLedger.claim()` in `epistemic_debt.py:167-196`
+- Function: `EpistemicDebtLedger.claim()` in `epistemic_agent/debt.py:167-196`
 - Creates `EpistemicClaim` with `claimed_gain_bits`
-- Called via `EpistemicController.claim_action()` in `epistemic_control.py:162-195`
+- Called via `EpistemicController.claim_action()` in `epistemic_agent/control.py:162-195`
 - Integration: `EpistemicIntegration.claim_design()` in `controller_integration.py:114-177`
 
 **Gain Realization:**
-- Function: `EpistemicDebtLedger.realize()` in `epistemic_debt.py:205-234`
+- Function: `EpistemicDebtLedger.realize()` in `epistemic_agent/debt.py:205-234`
 - Computes penalty: `claim.overclaim_penalty` (max(0, claimed - realized))
 - Updates: `self.total_debt += penalty` (line 221)
-- Called via `EpistemicController.resolve_action()` in `epistemic_control.py:237-293`
+- Called via `EpistemicController.resolve_action()` in `epistemic_agent/control.py:237-293`
 
 **Debt Repayment:**
-- Function: `EpistemicDebtLedger.apply_repayment()` in `epistemic_debt.py:244-299`
+- Function: `EpistemicDebtLedger.apply_repayment()` in `epistemic_agent/debt.py:244-299`
 - Evidence-based: requires `repayment_reason` and `evidence` dict
 - Reduces debt: `self.total_debt = max(0.0, self.total_debt - actual_repayment)`
 
 ### Where Debt is Consulted
 
 **Enforcement Point:**
-- Function: `EpistemicController.should_refuse_action()` in `epistemic_control.py:499-595`
+- Function: `EpistemicController.should_refuse_action()` in `epistemic_agent/control.py:499-595`
 - Hard threshold: `debt > 2.0 bits` blocks non-calibration actions (line 551)
 - Cost inflation: applied via `get_inflated_cost()` (lines 537-540)
 - Budget reserve: non-calibration must leave ≥12 wells (MIN_CALIBRATION_COST_WELLS)
@@ -72,23 +72,23 @@
 
 1. **Hard Refusal on Debt Threshold**
    - Debt ≥ 2.0 bits → refusal for non-calibration
-   - Implemented in `epistemic_control.py:551`
+   - Implemented in `epistemic_agent/control.py:551`
    - Enforced in `loop.py:169-241`
 
 2. **Calibration Always Accessible**
    - Calibration templates exempt from hard threshold
    - Capped inflation (1.5×) for calibration
-   - Implemented in `epistemic_control.py:532, 539`
+   - Implemented in `epistemic_agent/control.py:532, 539`
 
 3. **Budget Reserve Enforcement**
    - Non-calibration must leave ≥12 wells for recovery
    - Prevents epistemic bankruptcy
-   - Implemented in `epistemic_control.py:545`
+   - Implemented in `epistemic_agent/control.py:545`
 
 4. **Deadlock Detection**
    - Detects when debt requires calibration but calibration unaffordable
    - Terminal abort on deadlock
-   - Implemented in `epistemic_control.py:553-564` and `loop.py:224-235`
+   - Implemented in `epistemic_agent/control.py:553-564` and `loop.py:224-235`
 
 5. **Agent Learns from Refusals**
    - `beliefs.record_refusal()` sets `epistemic_insolvent = True`

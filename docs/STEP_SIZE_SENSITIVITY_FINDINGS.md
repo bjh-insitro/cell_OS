@@ -31,7 +31,7 @@ Created `tests/phase6a/test_step_size_consistency.py` with four adversarial test
 
 ## Finding 1: Attrition Hard Threshold (Smoking Gun)
 
-**Location**: `src/cell_os/sim/biology_core.py:345`
+**Location**: `src/cell_os/biology/biology_core.py:345`
 
 ```python
 # No attrition before 12h (cells need time to commit to death)
@@ -164,7 +164,7 @@ Biology now correctly uses t0:
 
 ### Immediate: Interval-Integrated Attrition Gate
 
-**What to change**: `src/cell_os/sim/biology_core.py:345`
+**What to change**: `src/cell_os/biology/biology_core.py:345`
 
 **Current logic**:
 ```python

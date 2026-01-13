@@ -31,7 +31,7 @@ This violates the conservation law principle that death causes should be mutuall
 
 ### Fix 1: Attrition Returns 0.0 for Microtubule + Dividing Cells
 
-**File**: `src/cell_os/sim/biology_core.py` (lines 363-393)
+**File**: `src/cell_os/biology/biology_core.py` (lines 363-393)
 
 **Before**:
 ```python
@@ -285,7 +285,7 @@ This fix reinforces the "world" interpretation:
 ## Files Modified
 
 ### Core Simulation Logic
-**`src/cell_os/sim/biology_core.py`** (lines 363-393):
+**`src/cell_os/biology/biology_core.py`** (lines 363-393):
 - Removed 'microtubule' from `base_attrition_rates` dict
 - Added explicit check: if dividing cell + microtubule → return 0.0
 - Neurons (iPSC_NGN2) still get transport-collapse attrition

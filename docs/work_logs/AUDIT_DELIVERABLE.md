@@ -136,7 +136,7 @@ The simulator implements a **deterministic population-level model** with lognorm
 
 ### Proof of Existence
 
-**Location**: `src/cell_os/sim/biology_core.py:439-441`
+**Location**: `src/cell_os/biology/biology_core.py:439-441`
 
 ```python
 if time_since_treatment_h <= 12.0:
