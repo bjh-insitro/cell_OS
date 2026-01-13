@@ -30,6 +30,7 @@ from .control import (
     EpistemicController,
     EpistemicControllerConfig,
     EntropySource,
+    MIN_CALIBRATION_COST_WELLS,
     measure_and_penalize,
 )
 from .debt import (
@@ -52,6 +53,7 @@ __all__ = [
     'EpistemicController',
     'EpistemicControllerConfig',
     'EntropySource',
+    'MIN_CALIBRATION_COST_WELLS',
     'measure_and_penalize',
     # Debt
     'EpistemicDebtLedger',

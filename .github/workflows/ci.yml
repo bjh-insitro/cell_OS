@@ -117,7 +117,7 @@ jobs:
       - name: Run mypy (strict on Tier 1 modules)
         run: |
           # Blocking check on contracts module (must pass)
-          mypy src/cell_os/contracts --strict
+          mypy src/cell_os/contracts --strict --explicit-package-bases
 
       - name: Run mypy (advisory on full codebase)
         run: |
