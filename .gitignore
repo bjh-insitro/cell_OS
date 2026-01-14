@@ -56,3 +56,4 @@ data/**/observations.csv
 *.key
 credentials.json
 secrets.yaml
+.playwright-mcp/
