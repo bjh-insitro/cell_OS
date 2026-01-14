@@ -103,10 +103,6 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({ workflow }) => {
                         <span>In Progress</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                        <span>Blocked</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-slate-200 dark:bg-slate-600"></div>
                         <span>Pending</span>
                     </div>

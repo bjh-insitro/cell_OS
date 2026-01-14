@@ -10,6 +10,10 @@ export const getAxisLabel = (kind: AxisKind): string => {
             return "Functional Genomics";
         case "measurement":
             return "PST";
+        case "analysis":
+            return "Compute";
+        case "program":
+            return "Senior Steering Committee";
         default:
             return kind;
     }

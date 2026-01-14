@@ -17,7 +17,22 @@ export const MenadioneStatusPage: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="flex justify-end mb-4">
+                <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">Workflows:</span>
+                        <Link
+                            to="/map"
+                            className="px-3 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-blue-900 dark:hover:text-blue-300 transition-colors"
+                        >
+                            Generic
+                        </Link>
+                        <Link
+                            to="/menadione/map"
+                            className="px-3 py-1 text-xs font-medium rounded-full bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300"
+                        >
+                            Menadione A549
+                        </Link>
+                    </div>
                     <ThemeToggle />
                 </div>
 
@@ -71,7 +86,7 @@ export const MenadioneStatusPage: React.FC = () => {
                                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 drop-shadow-sm">Global Dependency Map</h2>
                                     <p className="text-slate-800 dark:text-slate-200 font-medium mb-8 max-w-md drop-shadow-sm">View the complete project lineage and dependencies in a full-screen interactive map.</p>
                                     <Link
-                                        to="/map"
+                                        to="/menadione/map"
                                         className="inline-flex items-center justify-center px-8 py-4 border border-transparent text-lg font-medium rounded-full text-white bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
                                     >
                                         View Full Screen Map →

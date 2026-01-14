@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PoshA549StatusPage from './pages/PoshA549StatusPage';
 import MenadioneStatusPage from './pages/MenadioneStatusPage';
+import MenadioneMapPage from './pages/MenadioneMapPage';
+import OverallMapPage from './pages/OverallMapPage';
 import GlobalDependencyMapPage from './pages/GlobalDependencyMapPage';
 import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
@@ -21,8 +23,10 @@ function App() {
             <Routes>
                 <Route path="/" element={<PoshA549StatusPage />} />
                 <Route path="/menadione" element={<MenadioneStatusPage />} />
+                <Route path="/menadione/map" element={<MenadioneMapPage />} />
                 <Route path="/dashboard" element={<Navigate to="/" replace />} />
                 <Route path="/map" element={<GlobalDependencyMapPage />} />
+                <Route path="/overall" element={<OverallMapPage />} />
                 <Route path="/cell-thalamus" element={<CellThalamusPage />} />
                 <Route path="/cell-thalamus/viewing" element={<ViewingPage />} />
                 <Route path="/autonomous-loop" element={<AutonomousLoopPage />} />

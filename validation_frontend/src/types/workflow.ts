@@ -1,4 +1,4 @@
-export type AxisKind = "cell_line" | "stressor" | "perturbation" | "measurement";
+export type AxisKind = "cell_line" | "stressor" | "perturbation" | "measurement" | "analysis" | "container" | "program";
 
 export type AxisStatus = "not_started" | "design" | "in_progress" | "blocked" | "ready";
 
@@ -19,6 +19,11 @@ export interface Dependency {
     linkedAxisId?: string;
 }
 
+export interface SubItem {
+    title: string;
+    status: string;
+}
+
 export interface WorkflowAxis {
     id: string;
     kind: AxisKind;
@@ -33,6 +38,9 @@ export interface WorkflowAxis {
     tasks: AxisTask[];
     dependencies?: Dependency[];
     visible?: boolean;
+    subItems?: SubItem[];
+    quarter?: number; // 0-4 for timeline positioning (0 = Q1 2026, 1 = Q2 2026, etc.)
+    program?: string; // Program filter (e.g., 'rubric', 'cell_thalamus', 'data_printing')
 }
 
 export interface Workflow {

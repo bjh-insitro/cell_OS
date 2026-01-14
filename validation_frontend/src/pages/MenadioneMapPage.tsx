@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DependencyMap } from '../components/DependencyMap';
-import { mockWorkflow } from '../data/mockWorkflow';
+import { mockWorkflowMenadione } from '../data/mockWorkflowMenadione';
 
 import { AxisDetailPanel } from '../components/AxisDetailPanel';
 
 import { ThemeToggle } from '../components/ThemeToggle';
 
-const GlobalDependencyMapPage: React.FC = () => {
+const MenadioneMapPage: React.FC = () => {
     const [selectedKinds, setSelectedKinds] = useState<string[]>([]);
     const [selectedAxisId, setSelectedAxisId] = useState<string | null>(null);
 
@@ -23,20 +23,7 @@ const GlobalDependencyMapPage: React.FC = () => {
         setSelectedAxisId(node.id);
     };
 
-    const selectedAxis = selectedAxisId ? mockWorkflow.axes.find(a => a.id === selectedAxisId) : null;
-
-    // Extract all blocked axes with their blockers
-    const blockedAxes = mockWorkflow.axes.filter(axis => {
-        const hasBlockers = axis.blockers && axis.blockers.length > 0;
-        const hasDependencyBlockers = axis.dependencies?.some(dep => dep.status !== 'ready' && dep.status !== 'done');
-        return hasBlockers || hasDependencyBlockers || axis.status === 'blocked';
-    }).map(axis => ({
-        id: axis.id,
-        name: axis.name,
-        owner: axis.owner,
-        blockers: axis.blockers || [],
-        dependencyBlockers: axis.dependencies?.filter(dep => dep.status !== 'ready' && dep.status !== 'done') || []
-    }));
+    const selectedAxis = selectedAxisId ? mockWorkflowMenadione.axes.find(a => a.id === selectedAxisId) : null;
 
     const kinds: { value: string; label: string; color: string }[] = [
         { value: 'cell_line', label: 'Biobanking', color: 'bg-violet-500' },
@@ -50,8 +37,8 @@ const GlobalDependencyMapPage: React.FC = () => {
             <div className="shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between shadow-sm z-10">
                 <div className="flex items-center space-x-8">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">{mockWorkflow.name}</h1>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{mockWorkflow.id}</p>
+                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">{mockWorkflowMenadione.name}</h1>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{mockWorkflowMenadione.id}</p>
                     </div>
 
                     <div className="flex items-center space-x-4">
@@ -89,13 +76,13 @@ const GlobalDependencyMapPage: React.FC = () => {
                         <span className="text-sm text-slate-500 dark:text-slate-400">Workflows:</span>
                         <Link
                             to="/map"
-                            className="px-3 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                            className="px-3 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-blue-900 dark:hover:text-blue-300 transition-colors"
                         >
                             Generic
                         </Link>
                         <Link
                             to="/menadione/map"
-                            className="px-3 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-pink-100 hover:text-pink-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-pink-900 dark:hover:text-pink-300 transition-colors"
+                            className="px-3 py-1 text-xs font-medium rounded-full bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300"
                         >
                             Menadione A549
                         </Link>
@@ -147,7 +134,7 @@ const GlobalDependencyMapPage: React.FC = () => {
                         </div>
                     </div>
                     <DependencyMap
-                        workflow={mockWorkflow}
+                        workflow={mockWorkflowMenadione}
                         className="h-full w-full bg-transparent"
                         highlightedKinds={selectedKinds}
                         onNodeClick={handleNodeClick}
@@ -170,4 +157,4 @@ const GlobalDependencyMapPage: React.FC = () => {
     );
 };
 
-export default GlobalDependencyMapPage;
+export default MenadioneMapPage;
