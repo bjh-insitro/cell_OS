@@ -28,8 +28,8 @@ interface DependencyMapProps {
     useTimelineLayout?: boolean;
 }
 
-const nodeWidth = 250;
-const nodeHeight = 100;
+const nodeWidth = 145;
+const nodeHeight = 58;
 const containerNodeWidth = 280;
 const containerNodeHeight = 200;
 const quarterWidth = 300; // Width for each quarter column
@@ -39,9 +39,11 @@ const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidt
     // 5 swim lanes, 4 quarters
     const numLanes = 5;
     const numQuarters = 4;
+    const leftMargin = 100; // Space for swim lane labels
 
     const laneHeight = containerHeight / numLanes;
-    const quarterColumnWidth = containerWidth / numQuarters;
+    const usableWidth = containerWidth - leftMargin;
+    const quarterColumnWidth = usableWidth / numQuarters;
     const nodeOffset = (laneHeight - nodeHeight) / 2; // Center node vertically in lane
 
     const swimLaneY: { [key: string]: number } = {
@@ -70,16 +72,30 @@ const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidt
         const baseY = swimLaneY[kind] ?? 100;
 
         // Stack nodes horizontally (side by side) with small vertical offset for visual separation
-        const horizontalOffset = stackIndex * (nodeWidth + 20); // Node width + gap
-        const verticalOffset = stackIndex * 15; // Small diagonal offset
+        const horizontalOffset = stackIndex * (nodeWidth + 10); // Node width + gap
+        const verticalOffset = stackIndex * 12; // Small diagonal offset
 
         const customYOffset = node.data.yOffset ?? 0;
         const customXPosition = node.data.xPosition;
 
+        // Scale custom xPosition and customWidth proportionally to container width
+        // Original design was for ~2600px width, scale to fit
+        const designWidth = 2600;
+        const scaleFactor = containerWidth / designWidth;
+        const scaledXPosition = customXPosition !== undefined
+            ? customXPosition * scaleFactor
+            : undefined;
+
+        // Scale customWidth if present
+        const originalCustomWidth = node.data.customWidth;
+        if (originalCustomWidth) {
+            node.data.scaledWidth = Math.max(nodeWidth, originalCustomWidth * scaleFactor);
+        }
+
         node.targetPosition = Position.Left;
         node.sourcePosition = Position.Right;
         node.position = {
-            x: customXPosition !== undefined ? customXPosition : (quarter * quarterColumnWidth + 50 + horizontalOffset),
+            x: scaledXPosition !== undefined ? scaledXPosition : (leftMargin + quarter * quarterColumnWidth + horizontalOffset),
             y: baseY + verticalOffset + customYOffset,
         };
     });
@@ -132,18 +148,18 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
 };
 
 const CheckIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-green-600">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-green-600 flex-shrink-0">
         <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
     </svg>
 );
 
 const PendingIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-amber-500">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-amber-500 flex-shrink-0">
         <circle cx="12" cy="12" r="9" strokeDasharray="4 2" />
     </svg>
 );
 
-const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; customStyle?: string } }) => {
+const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
     const getHeaderColor = (kind: string, status: string) => {
         if (kind === 'cell_line') return 'bg-violet-500';
         if (kind === 'measurement') return 'bg-orange-500';
@@ -186,28 +202,22 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
                         : isPending
                             ? 'bg-amber-50 dark:bg-amber-900/20 border-2 border-dashed border-amber-400 dark:border-amber-500'
                             : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-            } rounded-lg shadow-md overflow-hidden`} style={{ width: data.customWidth ? `${data.customWidth}px` : '250px' }}>
+            } rounded-lg shadow-md overflow-hidden`} style={{ width: `${data.scaledWidth || data.customWidth || 145}px` }}>
                 <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
-                <div className={`h-2 ${data.customStyle === 'dark' ? 'bg-white' : getHeaderColor(data.kind, data.status)}`} />
-                <div className={`p-3 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
-                    <div className={`flex ${data.customStyle === 'dark' ? 'justify-center' : 'justify-between'} items-start mb-1`}>
-                        <div className={`text-xs font-semibold uppercase ${data.customStyle === 'dark' ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{data.subLabel}</div>
+                <div className={`h-1.5 ${data.customStyle === 'dark' ? 'bg-white' : getHeaderColor(data.kind, data.status)}`} />
+                <div className={`p-2 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
+                    <div className={`flex ${data.customStyle === 'dark' ? 'justify-center' : 'justify-between'} items-start mb-0.5`}>
+                        <div className={`text-[10px] font-semibold uppercase truncate ${data.customStyle === 'dark' ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{data.subLabel}</div>
                         {!data.hideStatusIcons && isDone && <CheckIcon />}
                         {!data.hideStatusIcons && isPending && <PendingIcon />}
-                        {!data.hideStatusIcons && isBlocked && <span className="text-red-500 text-lg">⛔</span>}
+                        {!data.hideStatusIcons && isBlocked && <span className="text-red-500 text-sm">⛔</span>}
                     </div>
-                    <div className={`font-bold ${data.customStyle === 'dark' ? 'text-white text-[28px] leading-tight' : 'text-sm text-slate-900 dark:text-white'}`}>{data.label}</div>
+                    <div className={`font-bold leading-tight line-clamp-2 ${data.customStyle === 'dark' ? 'text-white text-[14px]' : 'text-[11px] text-slate-900 dark:text-white'}`}>{data.label}</div>
 
                     {/* Inline blocker warning */}
                     {isBlocked && data.computedBlockers && data.computedBlockers.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-red-300 dark:border-red-700">
-                            <div className="text-xs font-bold text-red-600 dark:text-red-400 mb-1">BLOCKED:</div>
-                            <div className="text-xs text-red-700 dark:text-red-300">
-                                {data.computedBlockers[0]}
-                                {data.computedBlockers.length > 1 && (
-                                    <span className="ml-1 text-red-500">+{data.computedBlockers.length - 1} more</span>
-                                )}
-                            </div>
+                        <div className="mt-1 pt-1 border-t border-red-300 dark:border-red-700">
+                            <div className="text-[9px] font-bold text-red-600 dark:text-red-400">BLOCKED: {data.computedBlockers.length}</div>
                         </div>
                     )}
                 </div>
@@ -306,7 +316,7 @@ const ResizeHandler: React.FC<{ useTimelineLayout?: boolean }> = ({ useTimelineL
     useEffect(() => {
         const handleResize = () => {
             if (!useTimelineLayout) {
-                setTimeout(() => fitView(), 0);
+                setTimeout(() => fitView({ padding: 0.1 }), 50);
             }
         };
         window.addEventListener('resize', handleResize);
@@ -477,12 +487,14 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                     onNodeClick={onNodeClick}
                     nodeTypes={nodeTypes}
                     fitView={!useTimelineLayout}
+                    fitViewOptions={{ padding: 0.1 }}
                     defaultViewport={useTimelineLayout ? { x: 0, y: 0, zoom: 1 } : undefined}
+                    minZoom={0.3}
                     attributionPosition="bottom-right"
                 >
                     <ResizeHandler useTimelineLayout={useTimelineLayout} />
                     {!useTimelineLayout && <Background className="!bg-slate-50 dark:!bg-slate-900" color="#94a3b8" gap={16} />}
-                    <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
+                    <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:text-white" position="bottom-right" />
                 </ReactFlow>
             </ReactFlowProvider>
         </div>

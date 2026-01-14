@@ -8,27 +8,6 @@ export const mockWorkflowMenadione: Workflow = {
     status: "in_progress",
     axes: [
         {
-            id: "axis_dose_tasks",
-            kind: "container",
-            name: "Cell Thalamus",
-            status: "in_progress",
-            owner: "Roey",
-            definitionOfDone: "All dose optimization experiments complete.",
-            inputsRequired: "A549 cells, Menadione",
-            outputsPromised: "Dose response data",
-            blockers: undefined,
-            visible: true,
-            dependencies: [
-                { id: "d_cas9_dose", label: "Generate Cas9+ A549s", status: "ready", linkedAxisId: "axis_cas9_wcb" },
-            ],
-            tasks: [],
-            subItems: [
-                { title: "Treat A549s with Menadione at different doses", status: "in_progress" },
-                { title: "Obtain Cell Paint at Different Time Points", status: "in_progress" },
-            ],
-            quarter: 0.3,
-        },
-        {
             id: "axis_stressor",
             kind: "stressor",
             name: "Obtain Optimised Dosage Regime",
@@ -40,7 +19,6 @@ export const mockWorkflowMenadione: Workflow = {
             blockers: undefined,
             dependencies: [
                 { id: "d_cas9", label: "Generate Cas9+ A549s", status: "ready", linkedAxisId: "axis_cas9_wcb" },
-                { id: "d_dose_tasks", label: "Cell Thalamus", status: "in_progress", linkedAxisId: "axis_dose_tasks" },
             ],
             tasks: [
                 { id: "t4", title: "Dose response curve", status: "done" },
@@ -79,7 +57,7 @@ export const mockWorkflowMenadione: Workflow = {
             inputsRequired: "A549 cells, Cas9 plasmid/virus",
             outputsPromised: "Cas9+ A549 cell vials",
             blockers: undefined,
-            visible: false,
+            visible: true,
             benchlingEntityId: "LI34529",
             tasks: [{ id: "t_cas9_wcb", title: "Expand cells", status: "done" }],
             quarter: 0,
