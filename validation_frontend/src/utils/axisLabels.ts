@@ -2,6 +2,8 @@ import { AxisKind } from "../types/workflow";
 
 export const getAxisLabel = (kind: AxisKind): string => {
     switch (kind) {
+        case "strategy":
+            return "Strategy";
         case "cell_line":
             return "Biobanking";
         case "stressor":

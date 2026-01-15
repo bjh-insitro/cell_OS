@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DependencyMap } from '../components/DependencyMap';
-import { mockWorkflowMenadione } from '../data/mockWorkflowMenadione';
+import { mockWorkflowA549Focus } from '../data/mockWorkflowA549Focus';
 
 import { AxisDetailPanel } from '../components/AxisDetailPanel';
 
 import { ThemeToggle } from '../components/ThemeToggle';
 
-const MenadioneMapPage: React.FC = () => {
+const A549FocusMapPage: React.FC = () => {
     const [selectedKinds, setSelectedKinds] = useState<string[]>([]);
+    const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
     const [selectedAxisId, setSelectedAxisId] = useState<string | null>(null);
 
     const toggleKind = (kind: string) => {
@@ -19,17 +20,33 @@ const MenadioneMapPage: React.FC = () => {
         );
     };
 
+    const toggleProgram = (program: string) => {
+        setSelectedPrograms(prev =>
+            prev.includes(program)
+                ? prev.filter(p => p !== program)
+                : [...prev, program]
+        );
+    };
+
     const handleNodeClick = (_: React.MouseEvent, node: any) => {
         setSelectedAxisId(node.id);
     };
 
-    const selectedAxis = selectedAxisId ? mockWorkflowMenadione.axes.find(a => a.id === selectedAxisId) : null;
+    const selectedAxis = selectedAxisId ? mockWorkflowA549Focus.axes.find(a => a.id === selectedAxisId) : null;
 
     const kinds: { value: string; label: string; color: string }[] = [
+        { value: 'strategy', label: 'Strategy', color: 'bg-black' },
+        { value: 'perturbation', label: 'Functional Genomics', color: 'bg-teal-500' },
         { value: 'cell_line', label: 'Biobanking', color: 'bg-violet-500' },
         { value: 'stressor', label: 'Cell Models', color: 'bg-pink-500' },
-        { value: 'perturbation', label: 'Functional Genomics', color: 'bg-teal-500' },
         { value: 'measurement', label: 'PST', color: 'bg-orange-500' },
+        { value: 'analysis', label: 'Compute', color: 'bg-slate-500' },
+    ];
+
+    const programs: { value: string; label: string }[] = [
+        { value: 'rubric', label: 'Rubric' },
+        { value: 'cell_thalamus', label: 'Cell Thalamus' },
+        { value: 'data_printing', label: 'Data Printing' },
     ];
 
     return (
@@ -37,12 +54,11 @@ const MenadioneMapPage: React.FC = () => {
             <div className="shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between shadow-sm z-10">
                 <div className="flex items-center space-x-8">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">{mockWorkflowMenadione.name}</h1>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{mockWorkflowMenadione.id}</p>
+                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">{mockWorkflowA549Focus.name}</h1>
                     </div>
 
                     <div className="flex items-center space-x-4">
-                        <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">Filter by:</span>
+                        <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">Home Function:</span>
                         <div className="flex space-x-2">
                             {kinds.map(kind => (
                                 <button
@@ -57,6 +73,27 @@ const MenadioneMapPage: React.FC = () => {
                                     `}
                                 >
                                     {kind.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                        <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">Programs:</span>
+                        <div className="flex space-x-2">
+                            {programs.map(program => (
+                                <button
+                                    key={program.value}
+                                    onClick={() => toggleProgram(program.value)}
+                                    className={`
+                                        px-2 py-1 rounded-full text-[10px] font-bold transition-all border
+                                        ${selectedPrograms.includes(program.value)
+                                            ? 'bg-blue-500 text-white border-transparent shadow-md'
+                                            : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                                        }
+                                    `}
+                                >
+                                    {program.label}
                                 </button>
                             ))}
                         </div>
@@ -82,13 +119,13 @@ const MenadioneMapPage: React.FC = () => {
                         </Link>
                         <Link
                             to="/menadione/map"
-                            className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300"
+                            className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-pink-100 hover:text-pink-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-pink-900 dark:hover:text-pink-300 transition-colors"
                         >
                             Menadione A549
                         </Link>
                         <Link
                             to="/a549-focus"
-                            className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-amber-900 dark:hover:text-amber-300 transition-colors"
+                            className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
                         >
                             A549 Focus
                         </Link>
@@ -106,7 +143,14 @@ const MenadioneMapPage: React.FC = () => {
 
             <div className="grow min-h-0 w-full relative flex">
                 <div className="grow min-h-0 relative">
-                    {/* Swim lane backgrounds and labels - 5 equal lanes at 20% each */}
+                    {/* Now line - rendered before DependencyMap so it's behind */}
+                    <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: '2%' }}>
+                        <div className="h-full w-0.5 bg-red-500" />
+                        <div className="absolute -translate-x-1/2 left-1/2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded z-10" style={{ bottom: '-4px' }}>
+                            NOW
+                        </div>
+                    </div>
+                    {/* Swim lane backgrounds and labels - 5 lanes (no Strategy) */}
                     <div className="absolute inset-0 pointer-events-none overflow-hidden flex flex-col">
                         {/* Functional Genomics lane - teal (lane 1) */}
                         <div className="flex-1 bg-teal-300/10 dark:bg-teal-900/10 border-b-2 border-teal-300 dark:border-teal-700 relative">
@@ -140,12 +184,14 @@ const MenadioneMapPage: React.FC = () => {
                         </div>
                     </div>
                     <DependencyMap
-                        workflow={mockWorkflowMenadione}
+                        workflow={mockWorkflowA549Focus}
                         className="h-full w-full bg-transparent"
                         highlightedKinds={selectedKinds}
+                        highlightedPrograms={selectedPrograms}
                         onNodeClick={handleNodeClick}
                         hideStatusIcons={false}
                         useTimelineLayout={true}
+                        skipStrategyLane={true}
                     />
                 </div>
 
@@ -163,4 +209,4 @@ const MenadioneMapPage: React.FC = () => {
     );
 };
 
-export default MenadioneMapPage;
+export default A549FocusMapPage;

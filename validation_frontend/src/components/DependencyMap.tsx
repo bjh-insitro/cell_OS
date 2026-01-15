@@ -26,18 +26,19 @@ interface DependencyMapProps {
     onNodeClick?: (event: React.MouseEvent, node: Node) => void;
     hideStatusIcons?: boolean;
     useTimelineLayout?: boolean;
+    skipStrategyLane?: boolean;
 }
 
-const nodeWidth = 145;
-const nodeHeight = 58;
+const nodeWidth = 280;
+const nodeHeight = 140;
 const containerNodeWidth = 280;
 const containerNodeHeight = 200;
 const quarterWidth = 300; // Width for each quarter column
 
-const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidth: number, containerHeight: number) => {
+const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidth: number, containerHeight: number, skipStrategyLane: boolean = false) => {
     // Calculate dynamic dimensions based on container size
-    // 5 swim lanes, 4 quarters
-    const numLanes = 5;
+    // 5 or 6 swim lanes depending on whether strategy is skipped
+    const numLanes = skipStrategyLane ? 5 : 6;
     const numQuarters = 4;
     const leftMargin = 100; // Space for swim lane labels
 
@@ -46,12 +47,22 @@ const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidt
     const quarterColumnWidth = usableWidth / numQuarters;
     const nodeOffset = (laneHeight - nodeHeight) / 2; // Center node vertically in lane
 
-    const swimLaneY: { [key: string]: number } = {
+    // When skipStrategyLane is true, shift all lanes up by one position
+    const swimLaneY: { [key: string]: number } = skipStrategyLane ? {
+        'strategy': -1000,                             // Strategy - hidden off-screen
         'perturbation': nodeOffset,                    // Functional Genomics - teal (lane 1)
         'cell_line': laneHeight + nodeOffset,          // Biobanking - violet (lane 2)
         'stressor': laneHeight * 2 + nodeOffset,       // Cell Models - pink (lane 3)
         'measurement': laneHeight * 3 + nodeOffset,    // PST - orange (lane 4)
         'analysis': laneHeight * 4 + nodeOffset,       // Compute - grey (lane 5)
+        'program': nodeOffset,                         // Default
+    } : {
+        'strategy': nodeOffset,                        // Strategy - black (lane 1)
+        'perturbation': laneHeight + nodeOffset,       // Functional Genomics - teal (lane 2)
+        'cell_line': laneHeight * 2 + nodeOffset,      // Biobanking - violet (lane 3)
+        'stressor': laneHeight * 3 + nodeOffset,       // Cell Models - pink (lane 4)
+        'measurement': laneHeight * 4 + nodeOffset,    // PST - orange (lane 5)
+        'analysis': laneHeight * 5 + nodeOffset,       // Compute - grey (lane 6)
         'program': nodeOffset,                         // Default
     };
 
@@ -109,15 +120,18 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
 
     dagreGraph.setGraph({
         rankdir: 'LR',
-        nodesep: 40,    // Vertical spacing between nodes in same rank
-        ranksep: 80,    // Horizontal spacing between ranks (columns)
-        align: 'UL',    // Align nodes to upper-left for more compact layout
+        nodesep: 140,   // Vertical spacing between nodes in same rank
+        ranksep: 10,    // Horizontal spacing between ranks (columns)
+        marginx: 5,     // Left/right margin
+        marginy: 40,    // Top/bottom margin
     });
 
     nodes.forEach((node) => {
         const isContainer = node.type === 'container';
-        const width = isContainer ? containerNodeWidth : nodeWidth;
-        const height = isContainer ? containerNodeHeight : nodeHeight;
+        // Account for taller nodes when they have blockers or custom width
+        const hasBlockers = node.data.computedBlockers && node.data.computedBlockers.length > 0;
+        const width = isContainer ? containerNodeWidth : (node.data.customWidth || nodeWidth);
+        const height = isContainer ? containerNodeHeight : (hasBlockers ? nodeHeight + 40 : nodeHeight);
         dagreGraph.setNode(node.id, { width, height });
     });
 
@@ -161,6 +175,7 @@ const PendingIcon = () => (
 
 const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
     const getHeaderColor = (kind: string, status: string) => {
+        if (kind === 'strategy') return 'bg-black';
         if (kind === 'cell_line') return 'bg-violet-500';
         if (kind === 'measurement') return 'bg-orange-500';
         if (kind === 'stressor') return 'bg-pink-500';
@@ -202,22 +217,20 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
                         : isPending
                             ? 'bg-amber-50 dark:bg-amber-900/20 border-2 border-dashed border-amber-400 dark:border-amber-500'
                             : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-            } rounded-lg shadow-md overflow-hidden`} style={{ width: `${data.scaledWidth || data.customWidth || 145}px` }}>
+            } rounded-lg shadow-md overflow-hidden`} style={{ width: `${data.scaledWidth || data.customWidth || nodeWidth}px` }}>
                 <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
-                <div className={`h-1.5 ${data.customStyle === 'dark' ? 'bg-white' : getHeaderColor(data.kind, data.status)}`} />
-                <div className={`p-2 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
-                    <div className={`flex ${data.customStyle === 'dark' ? 'justify-center' : 'justify-between'} items-start mb-0.5`}>
-                        <div className={`text-[10px] font-semibold uppercase truncate ${data.customStyle === 'dark' ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{data.subLabel}</div>
+                <div className={`p-3 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
+                    <div className={`flex ${data.customStyle === 'dark' ? 'justify-center' : 'justify-between'} items-start`}>
+                        <div className={`font-bold leading-tight line-clamp-2 ${data.customStyle === 'dark' ? 'text-white text-[26px]' : 'text-[26px] text-slate-900 dark:text-white'}`}>{data.label}</div>
                         {!data.hideStatusIcons && isDone && <CheckIcon />}
                         {!data.hideStatusIcons && isPending && <PendingIcon />}
-                        {!data.hideStatusIcons && isBlocked && <span className="text-red-500 text-sm">⛔</span>}
+                        {!data.hideStatusIcons && isBlocked && <span className="text-red-500 text-[28px] ml-1">⛔</span>}
                     </div>
-                    <div className={`font-bold leading-tight line-clamp-2 ${data.customStyle === 'dark' ? 'text-white text-[14px]' : 'text-[11px] text-slate-900 dark:text-white'}`}>{data.label}</div>
 
                     {/* Inline blocker warning */}
                     {isBlocked && data.computedBlockers && data.computedBlockers.length > 0 && (
-                        <div className="mt-1 pt-1 border-t border-red-300 dark:border-red-700">
-                            <div className="text-[9px] font-bold text-red-600 dark:text-red-400">BLOCKED: {data.computedBlockers.length}</div>
+                        <div className="mt-2 pt-2 border-t border-red-300 dark:border-red-700">
+                            <div className="text-[22px] font-bold text-red-600 dark:text-red-400">BLOCKED: {data.computedBlockers.length}</div>
                         </div>
                     )}
                 </div>
@@ -326,7 +339,7 @@ const ResizeHandler: React.FC<{ useTimelineLayout?: boolean }> = ({ useTimelineL
     return null;
 };
 
-export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout }) => {
+export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 1600, height: 800 });
 
@@ -464,9 +477,9 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
         }
 
         return useTimelineLayout
-            ? getTimelineLayoutedElements(filteredNodes, filteredEdges, containerSize.width, containerSize.height)
+            ? getTimelineLayoutedElements(filteredNodes, filteredEdges, containerSize.width, containerSize.height, skipStrategyLane)
             : getLayoutedElements(filteredNodes, filteredEdges);
-    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, useTimelineLayout, containerSize]);
+    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, useTimelineLayout, containerSize, skipStrategyLane]);
 
     const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
@@ -487,9 +500,9 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                     onNodeClick={onNodeClick}
                     nodeTypes={nodeTypes}
                     fitView={!useTimelineLayout}
-                    fitViewOptions={{ padding: 0.1 }}
+                    fitViewOptions={{ padding: 0.02, minZoom: 0.6, maxZoom: 2 }}
                     defaultViewport={useTimelineLayout ? { x: 0, y: 0, zoom: 1 } : undefined}
-                    minZoom={0.3}
+                    minZoom={0.5}
                     attributionPosition="bottom-right"
                 >
                     <ResizeHandler useTimelineLayout={useTimelineLayout} />

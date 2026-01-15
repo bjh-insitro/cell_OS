@@ -3,6 +3,8 @@ import PoshA549StatusPage from './pages/PoshA549StatusPage';
 import MenadioneStatusPage from './pages/MenadioneStatusPage';
 import MenadioneMapPage from './pages/MenadioneMapPage';
 import OverallMapPage from './pages/OverallMapPage';
+import A549FocusMapPage from './pages/A549FocusMapPage';
+import Phase0ThalamusPage from './pages/Phase0ThalamusPage';
 import GlobalDependencyMapPage from './pages/GlobalDependencyMapPage';
 import UnderDevelopmentPage from './pages/UnderDevelopmentPage';
 import CellThalamusPage from './pages/CellThalamus/CellThalamusPage';
@@ -27,6 +29,8 @@ function App() {
                 <Route path="/dashboard" element={<Navigate to="/" replace />} />
                 <Route path="/map" element={<GlobalDependencyMapPage />} />
                 <Route path="/overall" element={<OverallMapPage />} />
+                <Route path="/a549-focus" element={<A549FocusMapPage />} />
+                <Route path="/phase0-thalamus" element={<Phase0ThalamusPage />} />
                 <Route path="/cell-thalamus" element={<CellThalamusPage />} />
                 <Route path="/cell-thalamus/viewing" element={<ViewingPage />} />
                 <Route path="/autonomous-loop" element={<AutonomousLoopPage />} />

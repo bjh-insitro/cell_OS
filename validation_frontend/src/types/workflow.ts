@@ -1,6 +1,6 @@
-export type AxisKind = "cell_line" | "stressor" | "perturbation" | "measurement" | "analysis" | "container" | "program";
+export type AxisKind = "strategy" | "cell_line" | "stressor" | "perturbation" | "measurement" | "analysis" | "container" | "program";
 
-export type AxisStatus = "not_started" | "design" | "in_progress" | "blocked" | "ready";
+export type AxisStatus = "not_started" | "design" | "in_progress" | "blocked" | "ready" | "done";
 
 export type TaskStatus = "not_started" | "in_progress" | "blocked" | "done";
 
