@@ -27,6 +27,7 @@ interface DependencyMapProps {
     hideStatusIcons?: boolean;
     useTimelineLayout?: boolean;
     skipStrategyLane?: boolean;
+    hideTooltip?: boolean;
 }
 
 const nodeWidth = 280;
@@ -173,7 +174,7 @@ const PendingIcon = () => (
     </svg>
 );
 
-const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
+const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; hideTooltip?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
     const getHeaderColor = (kind: string, status: string) => {
         if (kind === 'strategy') return 'bg-black';
         if (kind === 'cell_line') return 'bg-violet-500';
@@ -237,8 +238,8 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
                 <Handle type="source" position={Position.Right} className="!bg-slate-400 !w-2 !h-2" />
             </div>
 
-            {/* Tooltip - Only show if not dimmed */}
-            {!data.dimmed && (
+            {/* Tooltip - Only show if not dimmed and not hidden */}
+            {!data.dimmed && !data.hideTooltip && (
                 <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-64 bg-slate-800 dark:bg-slate-700 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-lg">
                     <div className="mb-2">
                         <span className="font-bold text-slate-300">Owner:</span> {data.owner}
@@ -339,7 +340,7 @@ const ResizeHandler: React.FC<{ useTimelineLayout?: boolean }> = ({ useTimelineL
     return null;
 };
 
-export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane }) => {
+export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane, hideTooltip }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 1600, height: 800 });
 
@@ -423,6 +424,7 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                         computedBlockers: computedBlockers,
                         dimmed: isDimmed,
                         hideStatusIcons: hideStatusIcons,
+                        hideTooltip: hideTooltip,
                         quarter: axis.quarter,
                         yOffset: (axis as any).yOffset,
                         xPosition: (axis as any).xPosition,
@@ -479,7 +481,7 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
         return useTimelineLayout
             ? getTimelineLayoutedElements(filteredNodes, filteredEdges, containerSize.width, containerSize.height, skipStrategyLane)
             : getLayoutedElements(filteredNodes, filteredEdges);
-    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, useTimelineLayout, containerSize, skipStrategyLane]);
+    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, hideTooltip, useTimelineLayout, containerSize, skipStrategyLane]);
 
     const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
