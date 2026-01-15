@@ -45,6 +45,7 @@ const Phase0ThalamusPage: React.FC = () => {
                     workflow={mockWorkflowPhase0Thalamus}
                     className="h-full w-full"
                     hideTooltip={true}
+                    hideKindInfo={true}
                 />
             </div>
         </div>

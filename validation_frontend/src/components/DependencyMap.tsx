@@ -28,6 +28,7 @@ interface DependencyMapProps {
     useTimelineLayout?: boolean;
     skipStrategyLane?: boolean;
     hideTooltip?: boolean;
+    hideKindInfo?: boolean;
 }
 
 const nodeWidth = 280;
@@ -174,7 +175,7 @@ const PendingIcon = () => (
     </svg>
 );
 
-const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; hideTooltip?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
+const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; hideTooltip?: boolean; hideKindInfo?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
     const getHeaderColor = (kind: string, status: string) => {
         if (kind === 'strategy') return 'bg-black';
         if (kind === 'cell_line') return 'bg-violet-500';
@@ -220,7 +221,15 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
                             : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
             } rounded-lg shadow-md overflow-hidden`} style={{ width: `${data.scaledWidth || data.customWidth || nodeWidth}px` }}>
                 <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
+                {/* Colored header bar - hidden when hideKindInfo is true */}
+                {!data.hideKindInfo && (
+                    <div className={`h-1.5 ${data.customStyle === 'dark' ? 'bg-white' : getHeaderColor(data.kind, data.status)}`} />
+                )}
                 <div className={`p-3 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
+                    {/* Home function label - hidden when hideKindInfo is true */}
+                    {!data.hideKindInfo && (
+                        <div className={`text-[10px] font-semibold uppercase truncate mb-1 ${data.customStyle === 'dark' ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{data.subLabel}</div>
+                    )}
                     <div className={`flex ${data.customStyle === 'dark' ? 'justify-center' : 'justify-between'} items-start`}>
                         <div className={`font-bold leading-tight line-clamp-2 ${data.customStyle === 'dark' ? 'text-white text-[26px]' : 'text-[26px] text-slate-900 dark:text-white'}`}>{data.label}</div>
                         {!data.hideStatusIcons && isDone && <CheckIcon />}
@@ -340,7 +349,7 @@ const ResizeHandler: React.FC<{ useTimelineLayout?: boolean }> = ({ useTimelineL
     return null;
 };
 
-export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane, hideTooltip }) => {
+export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane, hideTooltip, hideKindInfo }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 1600, height: 800 });
 
@@ -425,6 +434,7 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                         dimmed: isDimmed,
                         hideStatusIcons: hideStatusIcons,
                         hideTooltip: hideTooltip,
+                        hideKindInfo: hideKindInfo,
                         quarter: axis.quarter,
                         yOffset: (axis as any).yOffset,
                         xPosition: (axis as any).xPosition,
@@ -481,7 +491,7 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
         return useTimelineLayout
             ? getTimelineLayoutedElements(filteredNodes, filteredEdges, containerSize.width, containerSize.height, skipStrategyLane)
             : getLayoutedElements(filteredNodes, filteredEdges);
-    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, hideTooltip, useTimelineLayout, containerSize, skipStrategyLane]);
+    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, hideTooltip, hideKindInfo, useTimelineLayout, containerSize, skipStrategyLane]);
 
     const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
