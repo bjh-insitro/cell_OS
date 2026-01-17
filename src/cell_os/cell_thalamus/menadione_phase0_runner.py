@@ -36,6 +36,7 @@ Usage:
 import argparse
 import logging
 import time
+from functools import partial
 from multiprocessing import Pool, cpu_count
 from typing import Any
 
@@ -51,6 +52,9 @@ from cell_os.hardware.biological_virtual import BiologicalVirtualMachine
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Flag to control per-well logging (set by --quiet)
+_QUIET_MODE = False
+
 # Protocol constants
 ATTACHMENT_PERIOD_H = 24.0  # 24h attachment (overnight, Day -1 to Day 0)
 FEED_VOLUME_UL = 50.0  # Fresh medium volume during feed
@@ -65,11 +69,15 @@ SEEDING_DENSITY = {
 }
 
 
-def init_worker():
+def init_worker(quiet: bool = False):
     """Initialize worker process by pre-loading parameters."""
     import os
     import random
     import time
+
+    # Suppress verbose logging from biological_virtual in quiet mode
+    if quiet:
+        logging.getLogger("cell_os.hardware.biological_virtual").setLevel(logging.ERROR)
 
     # Stagger worker startup to reduce database contention
     # Random delay 0-0.5s per worker
@@ -77,7 +85,8 @@ def init_worker():
 
     # Pre-load parameters once per worker (populates the module-level cache)
     BiologicalVirtualMachine(simulation_speed=0)
-    logger.info(f"Worker {os.getpid()} ready")
+    if not quiet:
+        logger.info(f"Worker {os.getpid()} ready")
 
 
 def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | None:
@@ -203,10 +212,6 @@ def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | 
                 result["gamma_h2ax_fold_induction"] = gamma_data.get("fold_induction")
                 result["gamma_h2ax_pct_positive"] = gamma_data.get("pct_above_vehicle_p95")
 
-            elapsed = time.time() - start_time
-            logger.info(
-                f"✓ Well {well.well_id} done (worker {worker_id}, {elapsed:.1f}s, viab={ground_truth_viability:.2f})"
-            )
             return result
 
     except Exception as e:
@@ -222,6 +227,7 @@ def run_menadione_simulation(
     mode: str = "full",
     workers: int | None = None,
     db_path: str = "data/menadione_phase0.db",
+    quiet: bool = False,
 ) -> str:
     """
     Run Menadione Phase 0 simulation.
@@ -230,10 +236,18 @@ def run_menadione_simulation(
         mode: "full" for complete design, "quick" for single plate test
         workers: Number of parallel workers (defaults to CPU count)
         db_path: Path to output database
+        quiet: Suppress per-well logging, show only progress
 
     Returns:
         Design ID of the completed simulation
     """
+    global _QUIET_MODE
+    _QUIET_MODE = quiet
+
+    # Suppress verbose logging from biological_virtual in quiet mode
+    if quiet:
+        logging.getLogger("cell_os.hardware.biological_virtual").setLevel(logging.ERROR)
+
     start_time = time.time()
 
     # Create design
@@ -283,9 +297,11 @@ def run_menadione_simulation(
         # Parallel execution with worker initialization
         # The initializer pre-loads parameters once per worker, avoiding
         # database contention when all workers start simultaneously
-        logger.info("Initializing worker pool (this may take a few seconds)...")
-        with Pool(workers, initializer=init_worker) as pool:
-            logger.info("Worker pool ready, processing wells...")
+        if not quiet:
+            logger.info("Initializing worker pool (this may take a few seconds)...")
+        with Pool(workers, initializer=partial(init_worker, quiet)) as pool:
+            if not quiet:
+                logger.info("Worker pool ready, processing wells...")
             for i, result in enumerate(pool.imap_unordered(execute_well, args)):
                 if result:
                     results.append(result)
@@ -359,6 +375,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--db", type=str, default="data/menadione_phase0.db", help="Output database path"
     )
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress per-well logging, show only progress"
+    )
 
     args = parser.parse_args()
 
@@ -366,6 +385,7 @@ if __name__ == "__main__":
         mode=args.mode,
         workers=args.workers,
         db_path=args.db,
+        quiet=args.quiet,
     )
 
     print(f"\n✓ Simulation complete: {design_id}")
