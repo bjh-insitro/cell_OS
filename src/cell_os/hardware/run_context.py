@@ -13,8 +13,9 @@ This forces:
 - Correlated failure modes (not i.i.d. noise)
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 import numpy as np
 
@@ -48,40 +49,40 @@ class RunContext:
     instrument_shift: float  # -0.2 to +0.2, affects measurement noise
 
     # Optional per-plate deltas (small variations within run)
-    plate_deltas: Optional[dict[str, float]] = None
+    plate_deltas: dict[str, float] | None = None
 
     # Metadata
     seed: int = 0
     context_id: str = ""
 
     # v6: Batch effect profile (semantic provenance)
-    _profile: Optional[RunBatchProfile] = None
+    _profile: RunBatchProfile | None = None
 
     # v6: Cached biology modifiers (derived from profile once per run)
-    _biology_modifiers: Optional[dict[str, float]] = None
+    _biology_modifiers: dict[str, float] | None = None
 
     # Within-run drift (temporal measurement drift)
     drift_enabled: bool = True
-    _drift_model: Optional[DriftModel] = None
+    _drift_model: DriftModel | None = None
 
     # v7: Simulation realism controls (demo-visible plate artifacts)
     realism_profile: str = "clean"  # "clean", "realistic", or "hostile"
     batch_id: str = ""  # Derived from context_id for batch tracking
 
     # Optional batch metadata (for demo outputs and plotting)
-    operator_id: Optional[str] = None
-    media_lot_id: Optional[str] = None
-    stain_lot_id: Optional[str] = None
-    instrument_day: Optional[str] = None
+    operator_id: str | None = None
+    media_lot_id: str | None = None
+    stain_lot_id: str | None = None
+    instrument_day: str | None = None
 
     # Exchangeable well UIDs (Attack 2 fix: position-independent well identifiers)
     # Maps (plate_id, well_position) -> uint32 unique ID
     # Generated lazily per plate, deterministic under run seed
-    _well_uid_map: Optional[dict] = None
-    _rng_well_uids: Optional[np.random.Generator] = None
+    _well_uid_map: dict | None = None
+    _rng_well_uids: np.random.Generator | None = None
 
     @staticmethod
-    def sample(seed: int, config: Optional[dict] = None) -> "RunContext":
+    def sample(seed: int, config: dict | None = None) -> RunContext:
         """
         Sample a run context with correlated factors.
 
@@ -512,7 +513,7 @@ class RunContext:
         This is the single source of truth for "why did this run behave this way?"
         """
         # Force profile initialization if not already cached
-        bio_mods = self.get_biology_modifiers()
+        self.get_biology_modifiers()
 
         # Get profile serialization (includes schema_version, mapping_version, profile_hash)
         batch_effects_dict = self._profile.to_dict() if self._profile else None
@@ -534,7 +535,7 @@ class RunContext:
         }
 
 
-def sample_plating_context(seed: int, config: Optional[dict] = None) -> dict[str, float]:
+def sample_plating_context(seed: int, config: dict | None = None) -> dict[str, float]:
     """
     Sample per-plate plating artifacts (Injection #2 prep).
 
@@ -559,9 +560,9 @@ def sample_plating_context(seed: int, config: Optional[dict] = None) -> dict[str
 
 def pipeline_transform(
     morphology: dict[str, float],
-    context: "RunContext",
+    context: RunContext,
     batch_id: str,
-    plate_id: Optional[str] = None,
+    plate_id: str | None = None,
 ) -> dict[str, float]:
     """
     Phase 5B Injection #3: Pipeline Drift
