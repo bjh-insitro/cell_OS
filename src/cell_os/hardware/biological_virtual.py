@@ -106,6 +106,11 @@ except ImportError:
     # YAML fallback is needed for parallel execution to avoid SQLite locking
     logger.info("SimulationParamsRepository not available, using YAML fallback")
 
+# Module-level cache for simulation parameters (loaded once per process)
+# This avoids redundant database loads when running many wells in parallel
+_SIMULATION_PARAMS_CACHE: dict | None = None
+_THALAMUS_PARAMS_CACHE: dict | None = None
+
 # Import assay simulators
 # Note: Mechanism-specific parameters (ER_STRESS_K_ON, etc.) are now imported
 # only by the mechanism modules in stress_mechanisms/
@@ -668,6 +673,15 @@ class BiologicalVirtualMachine(VirtualMachine):
 
     def _load_parameters(self, params_file: str | None = None):
         """Load simulation parameters from database."""
+        global _SIMULATION_PARAMS_CACHE
+
+        # Check module-level cache first (avoids redundant loads in parallel execution)
+        if _SIMULATION_PARAMS_CACHE is not None:
+            self.cell_line_params = _SIMULATION_PARAMS_CACHE["cell_line_params"]
+            self.compound_sensitivity = _SIMULATION_PARAMS_CACHE["compound_sensitivity"]
+            self.defaults = _SIMULATION_PARAMS_CACHE["defaults"]
+            logger.debug("Using cached simulation parameters")
+            return
 
         # Database is now the only source (YAML removed 2025-12-23)
         if not self.use_database:
@@ -749,7 +763,14 @@ class BiologicalVirtualMachine(VirtualMachine):
             if not self.defaults:
                 raise ValueError("Database contains no defaults. Check SimulationParamsRepository.")
 
-            logger.info("✅ Loaded parameters from database")
+            # Cache for subsequent BVM instances in this process
+            _SIMULATION_PARAMS_CACHE = {
+                "cell_line_params": self.cell_line_params,
+                "compound_sensitivity": self.compound_sensitivity,
+                "defaults": self.defaults,
+            }
+
+            logger.info("✅ Loaded parameters from database (cached for this process)")
             logger.info(f"  Cell lines: {len(self.cell_line_params)}")
             logger.info(f"  Compounds: {len(self.compound_sensitivity)}")
 
@@ -3402,19 +3423,28 @@ class BiologicalVirtualMachine(VirtualMachine):
 
     def _load_cell_thalamus_params(self):
         """Load Cell Thalamus parameters for morphology simulation."""
-        thalamus_params_file = (
-            Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_params.yaml"
-        )
+        global _THALAMUS_PARAMS_CACHE
 
-        if not thalamus_params_file.exists():
-            logger.warning(f"Cell Thalamus params not found: {thalamus_params_file}")
-            self.thalamus_params = None
-            return
+        # Check module-level cache first (avoids redundant file loads in parallel execution)
+        if _THALAMUS_PARAMS_CACHE is not None:
+            self.thalamus_params = _THALAMUS_PARAMS_CACHE
+            logger.debug("Using cached Cell Thalamus parameters")
+        else:
+            thalamus_params_file = (
+                Path(__file__).parent.parent.parent.parent / "data" / "cell_thalamus_params.yaml"
+            )
 
-        with open(thalamus_params_file) as f:
-            self.thalamus_params = yaml.safe_load(f)
+            if not thalamus_params_file.exists():
+                logger.warning(f"Cell Thalamus params not found: {thalamus_params_file}")
+                self.thalamus_params = None
+                return
 
-        logger.info("Loaded Cell Thalamus parameters")
+            with open(thalamus_params_file) as f:
+                self.thalamus_params = yaml.safe_load(f)
+
+            # Cache for subsequent BVM instances in this process
+            _THALAMUS_PARAMS_CACHE = self.thalamus_params
+            logger.info("Loaded Cell Thalamus parameters (cached for this process)")
 
         # Phase 2D.1: Load contamination config (if operational events enabled)
         if self.thalamus_params:
