@@ -145,6 +145,7 @@ from .constants import (
     DEFAULT_MEDIA_GLUCOSE_mM,
     DEFAULT_MEDIA_GLUTAMINE_mM,
 )
+from .stochastic_biology import extract_plate_id_defensive
 
 # Import stress mechanism simulators
 from .stress_mechanisms import (
@@ -2074,7 +2075,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             )
 
             hardware_bias = get_hardware_bias(
-                plate_id=vessel_id.split("_")[0] if "_" in vessel_id else "unknown_plate",
+                plate_id=extract_plate_id_defensive(vessel_id),
                 batch_id="batch_default",
                 well_position=well_position,
                 instrument=instrument,
@@ -2123,7 +2124,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Use well_uid from RunContext, NOT well_position or vessel_id.
         # well_uid is sampled deterministically from run seed but independent of geometry.
         # Wells are exchangeable: swapping positions doesn't change their biology.
-        plate_id = vessel_id.split("_")[0] if "_" in vessel_id else "unknown_plate"
+        plate_id = extract_plate_id_defensive(vessel_id)
         well_uid = self.run_context.get_well_uid(plate_id, well_position)
         well_seed = stable_u32(f"well_biology_{well_uid}_{cell_line}")
         state.rng_well = np.random.default_rng(well_seed)
@@ -2141,8 +2142,6 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Phase 1: Initialize lineage_id and intrinsic biology random effects
         # Use hash(vessel_id) as stable lineage key (TODO: replace with WCB lineage when available)
-        from .stochastic_biology import extract_plate_id_defensive
-
         state.lineage_id = f"lineage_{stable_u32(vessel_id):08x}"
 
         # Extract plate_id from vessel_id with defensive fallback
@@ -2225,7 +2224,7 @@ class BiologicalVirtualMachine(VirtualMachine):
             )
 
             hardware_bias = get_hardware_bias(
-                plate_id=vessel_id.split("_")[0] if "_" in vessel_id else "unknown_plate",
+                plate_id=extract_plate_id_defensive(vessel_id),
                 batch_id="batch_default",
                 well_position=well_position,
                 instrument="el406_culture",

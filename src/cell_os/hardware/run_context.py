@@ -13,9 +13,10 @@ This forces:
 - Correlated failure modes (not i.i.d. noise)
 """
 
-import numpy as np
 from dataclasses import dataclass
 from typing import Dict, Optional
+
+import numpy as np
 
 # v6: Import batch effects for semantic provenance
 from .batch_effects import RunBatchProfile
@@ -39,14 +40,15 @@ class RunContext:
 
     All factors are correlated to create coherent "cursed days".
     """
+
     # Global factors (shared across all plates in run)
     incubator_shift: float  # -0.3 to +0.3, affects biology
-    reagent_lot_shift: Dict[str, float]  # Per-channel intensity biases (imaging)
-    scalar_reagent_lot_shift: Dict[str, float]  # Per-assay kit biases (ATP/LDH/UPR/TRAFFICKING)
+    reagent_lot_shift: dict[str, float]  # Per-channel intensity biases (imaging)
+    scalar_reagent_lot_shift: dict[str, float]  # Per-assay kit biases (ATP/LDH/UPR/TRAFFICKING)
     instrument_shift: float  # -0.2 to +0.2, affects measurement noise
 
     # Optional per-plate deltas (small variations within run)
-    plate_deltas: Optional[Dict[str, float]] = None
+    plate_deltas: Optional[dict[str, float]] = None
 
     # Metadata
     seed: int = 0
@@ -56,7 +58,7 @@ class RunContext:
     _profile: Optional[RunBatchProfile] = None
 
     # v6: Cached biology modifiers (derived from profile once per run)
-    _biology_modifiers: Optional[Dict[str, float]] = None
+    _biology_modifiers: Optional[dict[str, float]] = None
 
     # Within-run drift (temporal measurement drift)
     drift_enabled: bool = True
@@ -75,11 +77,11 @@ class RunContext:
     # Exchangeable well UIDs (Attack 2 fix: position-independent well identifiers)
     # Maps (plate_id, well_position) -> uint32 unique ID
     # Generated lazily per plate, deterministic under run seed
-    _well_uid_map: Optional[Dict] = None
+    _well_uid_map: Optional[dict] = None
     _rng_well_uids: Optional[np.random.Generator] = None
 
     @staticmethod
-    def sample(seed: int, config: Optional[Dict] = None) -> 'RunContext':
+    def sample(seed: int, config: Optional[dict] = None) -> "RunContext":
         """
         Sample a run context with correlated factors.
 
@@ -95,8 +97,8 @@ class RunContext:
         rng = np.random.default_rng(seed)
         config = config or {}
 
-        context_strength = config.get('context_strength', 1.0)
-        correlation = config.get('correlation_strength', 0.5)
+        context_strength = config.get("context_strength", 1.0)
+        correlation = config.get("correlation_strength", 0.5)
 
         # Sample correlated factors
         # Start with shared "cursed day" latent
@@ -105,55 +107,65 @@ class RunContext:
         # Incubator shift: affects growth and stress sensitivity
         # Correlated with cursed_latent (when day is cursed, incubator is off)
         incubator_shift = (
-            correlation * cursed_latent +
-            np.sqrt(1 - correlation**2) * rng.normal(0, 1.0)
-        ) * 0.3 * context_strength
+            (correlation * cursed_latent + np.sqrt(1 - correlation**2) * rng.normal(0, 1.0))
+            * 0.3
+            * context_strength
+        )
 
         # Instrument shift: affects measurement noise and illumination
         # Also correlated with cursed_latent (bad days have bad optics)
         instrument_shift = (
-            correlation * cursed_latent +
-            np.sqrt(1 - correlation**2) * rng.normal(0, 1.0)
-        ) * 0.05 * context_strength  # Reduced from 0.2 → ±5% illumination (was ±22%)
+            (correlation * cursed_latent + np.sqrt(1 - correlation**2) * rng.normal(0, 1.0))
+            * 0.05
+            * context_strength
+        )  # Reduced from 0.2 → ±5% illumination (was ±22%)
 
         # Reagent lot shift: channel-specific biases (imaging)
         # Some correlation with cursed_latent, but also independent per-channel
-        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+        channels = ["er", "mito", "nucleus", "actin", "rna"]
         reagent_lot_shift = {}
         for channel in channels:
             # Each channel gets: correlated component + independent component
             channel_shift = (
-                0.5 * correlation * cursed_latent +  # Some shared
-                0.5 * rng.normal(0, 1.0)  # Some independent
-            ) * 0.05 * context_strength  # Reduced from 0.15 → ±5% channel bias (was ±16%)
+                (
+                    0.5 * correlation * cursed_latent  # Some shared
+                    + 0.5 * rng.normal(0, 1.0)  # Some independent
+                )
+                * 0.05
+                * context_strength
+            )  # Reduced from 0.15 → ±5% channel bias (was ±16%)
             reagent_lot_shift[channel] = float(channel_shift)
 
         # Scalar assay reagent lot shift: per-assay biases (biochemical readouts)
         # Similar structure to imaging channels, but for ATP/LDH/UPR/TRAFFICKING kits
-        scalar_assays = ['ATP', 'LDH', 'UPR', 'TRAFFICKING']
+        scalar_assays = ["ATP", "LDH", "UPR", "TRAFFICKING"]
         scalar_reagent_lot_shift = {}
         for assay in scalar_assays:
             # Each assay kit gets: correlated component + independent component
             assay_shift = (
-                0.5 * correlation * cursed_latent +  # Some shared (bad day = bad reagents)
-                0.5 * rng.normal(0, 1.0)  # Some independent (each kit is different lot)
-            ) * 0.05 * context_strength  # Reduced from 0.15 → ±5% assay bias (was ±16%)
+                (
+                    0.5 * correlation * cursed_latent  # Some shared (bad day = bad reagents)
+                    + 0.5 * rng.normal(0, 1.0)  # Some independent (each kit is different lot)
+                )
+                * 0.05
+                * context_strength
+            )  # Reduced from 0.15 → ±5% assay bias (was ±16%)
             scalar_reagent_lot_shift[assay] = float(assay_shift)
 
         # Generate context ID for tracking
         context_id = f"ctx_{seed:08x}"
 
         # Initialize drift model (if enabled)
-        drift_enabled = config.get('drift_enabled', True)
+        drift_enabled = config.get("drift_enabled", True)
         drift_model = DriftModel(seed + 200) if drift_enabled else None
 
         # v7: Realism profile and batch metadata
-        realism_profile = config.get('realism_profile', 'clean')
-        batch_id = config.get('batch_id', f"batch_{seed:08x}")
-        operator_id = config.get('operator_id', None)
-        media_lot_id = config.get('media_lot_id', None)
-        stain_lot_id = config.get('stain_lot_id', None)
-        instrument_day = config.get('instrument_day', None)
+        realism_profile = config.get("realism_profile", "clean")
+        batch_id = config.get("batch_id", f"batch_{seed:08x}")
+        operator_id = config.get("operator_id", None)
+        media_lot_id = config.get("media_lot_id", None)
+        stain_lot_id = config.get("stain_lot_id", None)
+        instrument_day = config.get("instrument_day", None)
 
         # Initialize well UID infrastructure (Attack 2 fix)
         # Dedicated RNG stream for well UIDs (offset seed to avoid coupling)
@@ -176,10 +188,10 @@ class RunContext:
             stain_lot_id=stain_lot_id,
             instrument_day=instrument_day,
             _well_uid_map=well_uid_map,
-            _rng_well_uids=rng_well_uids
+            _rng_well_uids=rng_well_uids,
         )
 
-    def get_biology_modifiers(self) -> Dict[str, float]:
+    def get_biology_modifiers(self) -> dict[str, float]:
         """
         Get modifiers for biological parameters.
 
@@ -214,7 +226,7 @@ class RunContext:
             self._biology_modifiers = self._profile.to_multipliers()
 
             # Add stress_sensitivity placeholder (not yet implemented)
-            self._biology_modifiers['stress_sensitivity'] = 1.0
+            self._biology_modifiers["stress_sensitivity"] = 1.0
 
         return self._biology_modifiers
 
@@ -243,7 +255,9 @@ class RunContext:
         self._profile = profile
         self._biology_modifiers = None  # Clear cache to force re-derivation
 
-    def get_measurement_modifiers(self, t_hours: float = 0.0, modality: str = 'imaging') -> Dict[str, any]:
+    def get_measurement_modifiers(
+        self, t_hours: float = 0.0, modality: str = "imaging"
+    ) -> dict[str, any]:
         """
         Get modifiers for measurement parameters at time t for specific modality.
 
@@ -294,22 +308,24 @@ class RunContext:
         }
 
         # Base noise inflation from batch context
-        base_noise_inflation = float(1.0 + 0.5 * abs(self.instrument_shift))  # Up to 1.025× more noise
+        base_noise_inflation = float(
+            1.0 + 0.5 * abs(self.instrument_shift)
+        )  # Up to 1.025× more noise
 
         # Total noise inflation (batch + drift)
         total_noise_inflation = base_noise_inflation * drift_noise_inflation
 
         return {
-            'channel_biases': channel_biases,
-            'scalar_assay_biases': scalar_assay_biases,
-            'noise_inflation': total_noise_inflation,
-            'gain': total_gain,
+            "channel_biases": channel_biases,
+            "scalar_assay_biases": scalar_assay_biases,
+            "noise_inflation": total_noise_inflation,
+            "gain": total_gain,
             # Legacy fields for backward compatibility (can be deprecated later)
-            'illumination_bias': total_gain if modality == 'imaging' else base_gain,
-            'reader_gain': total_gain if modality == 'reader' else base_gain,
+            "illumination_bias": total_gain if modality == "imaging" else base_gain,
+            "reader_gain": total_gain if modality == "reader" else base_gain,
         }
 
-    def get_realism_config(self) -> Dict[str, float]:
+    def get_realism_config(self) -> dict[str, float]:
         """
         Get realism layer parameters for detector-side effects.
 
@@ -333,30 +349,30 @@ class RunContext:
 
         if profile == "realistic":
             return {
-                'position_row_bias_pct': 2.0,
-                'position_col_bias_pct': 2.0,
-                'edge_mean_shift_pct': -5.0,
-                'edge_noise_multiplier': 2.0,
-                'outlier_rate': 0.01,
-                'batch_effect_strength': 1.0,
+                "position_row_bias_pct": 2.0,
+                "position_col_bias_pct": 2.0,
+                "edge_mean_shift_pct": -5.0,
+                "edge_noise_multiplier": 2.0,
+                "outlier_rate": 0.01,
+                "batch_effect_strength": 1.0,
             }
         elif profile == "hostile":
             return {
-                'position_row_bias_pct': 3.0,
-                'position_col_bias_pct': 3.0,
-                'edge_mean_shift_pct': -7.0,
-                'edge_noise_multiplier': 2.5,
-                'outlier_rate': 0.03,
-                'batch_effect_strength': 1.5,
+                "position_row_bias_pct": 3.0,
+                "position_col_bias_pct": 3.0,
+                "edge_mean_shift_pct": -7.0,
+                "edge_noise_multiplier": 2.5,
+                "outlier_rate": 0.03,
+                "batch_effect_strength": 1.5,
             }
         else:  # "clean" or unknown
             return {
-                'position_row_bias_pct': 0.0,
-                'position_col_bias_pct': 0.0,
-                'edge_mean_shift_pct': 0.0,
-                'edge_noise_multiplier': 1.0,
-                'outlier_rate': 0.0,
-                'batch_effect_strength': 1.0,
+                "position_row_bias_pct": 0.0,
+                "position_col_bias_pct": 0.0,
+                "edge_mean_shift_pct": 0.0,
+                "edge_noise_multiplier": 1.0,
+                "outlier_rate": 0.0,
+                "batch_effect_strength": 1.0,
             }
 
     def get_well_uid(self, plate_id: str, well_position: str) -> int:
@@ -404,6 +420,7 @@ class RunContext:
             plate_id: Plate identifier
             first_well_position: First well seen (used to infer format)
         """
+
         # Check if this is a legacy/test format (e.g., "1", "test", "well", "ctrl")
         # Legacy formats get a single UID for the exact position requested
         # Standard format: starts with A-P, followed by digits (e.g., A1, B12, P24)
@@ -411,7 +428,7 @@ class RunContext:
             if not pos or len(pos) < 2:
                 return False
             row = pos[0].upper()
-            if row < 'A' or row > 'P':  # Valid row letters A-P
+            if row < "A" or row > "P":  # Valid row letters A-P
                 return False
             try:
                 col = int(pos[1:])
@@ -429,23 +446,26 @@ class RunContext:
             return
 
         # Infer plate format (96-well, 384-well, etc.)
-        # Heuristic: if well has 2-digit column, it's 96-well (max col 12)
-        # If 3-digit or col > 12, assume 384-well (max col 24)
+        # Heuristic: Check both row AND column to determine plate format
+        # 96-well: rows A-H (8), columns 1-12
+        # 384-well: rows A-P (16), columns 1-24
+        row_letter = first_well_position[0].upper()
         col_str = first_well_position[1:]
         try:
             col_num = int(col_str)
-            if col_num <= 12:
-                n_rows, n_cols = 8, 12  # 96-well
-            else:
+            # If row is I-P or column > 12, it must be 384-well
+            if row_letter > "H" or col_num > 12:
                 n_rows, n_cols = 16, 24  # 384-well
-        except:
+            else:
+                n_rows, n_cols = 8, 12  # 96-well
+        except ValueError:
             # Fallback to 96-well
             n_rows, n_cols = 8, 12
 
         # Generate canonical well list (A01, A02, ..., H12 for 96-well)
         wells = []
         for row_idx in range(n_rows):
-            row_letter = chr(ord('A') + row_idx)
+            row_letter = chr(ord("A") + row_idx)
             for col_idx in range(1, n_cols + 1):
                 well_pos = f"{row_letter}{col_idx:02d}"
                 wells.append(well_pos)
@@ -466,20 +486,20 @@ class RunContext:
 
         summary = [
             f"RunContext: {self.context_id}",
-            f"  Biology:",
+            "  Biology:",
             f"    EC50: {bio_mods['ec50_multiplier']:.3f}×",
             f"    Stress sensitivity: {bio_mods['stress_sensitivity']:.3f}×",
             f"    Growth rate: {bio_mods['growth_rate_multiplier']:.3f}×",
-            f"  Measurement:",
+            "  Measurement:",
             f"    Noise inflation: {meas_mods['noise_inflation']:.3f}×",
             f"    Illumination bias: {meas_mods['illumination_bias']:.3f}×",
             f"    Channel biases: er={meas_mods['channel_biases']['er']:.3f}×, "
             f"mito={meas_mods['channel_biases']['mito']:.3f}×, "
-            f"actin={meas_mods['channel_biases']['actin']:.3f}×"
+            f"actin={meas_mods['channel_biases']['actin']:.3f}×",
         ]
         return "\n".join(summary)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """
         Serialize RunContext for logging (v6: includes batch effect provenance).
 
@@ -501,20 +521,20 @@ class RunContext:
         meas_mods = self.get_measurement_modifiers()
 
         return {
-            'context_id': self.context_id,
-            'seed': self.seed,
-            'batch_effects': batch_effects_dict,
-            'measurement_effects': {
-                'channel_biases': meas_mods['channel_biases'],
-                'scalar_assay_biases': meas_mods['scalar_assay_biases'],
-                'noise_inflation': meas_mods['noise_inflation'],
-                'illumination_bias': meas_mods['illumination_bias'],
-                'reader_gain': meas_mods['reader_gain']
-            }
+            "context_id": self.context_id,
+            "seed": self.seed,
+            "batch_effects": batch_effects_dict,
+            "measurement_effects": {
+                "channel_biases": meas_mods["channel_biases"],
+                "scalar_assay_biases": meas_mods["scalar_assay_biases"],
+                "noise_inflation": meas_mods["noise_inflation"],
+                "illumination_bias": meas_mods["illumination_bias"],
+                "reader_gain": meas_mods["reader_gain"],
+            },
         }
 
 
-def sample_plating_context(seed: int, config: Optional[Dict] = None) -> Dict[str, float]:
+def sample_plating_context(seed: int, config: Optional[dict] = None) -> dict[str, float]:
     """
     Sample per-plate plating artifacts (Injection #2 prep).
 
@@ -527,22 +547,22 @@ def sample_plating_context(seed: int, config: Optional[Dict] = None) -> Dict[str
     rng = np.random.default_rng(seed)
     config = config or {}
 
-    strength = config.get('plating_artifact_strength', 1.0)
+    strength = config.get("plating_artifact_strength", 1.0)
 
     return {
-        'seeding_density_error': float(rng.uniform(-0.2, 0.2) * strength),
-        'post_dissociation_stress': float(rng.uniform(0.0, 0.3) * strength),
-        'clumpiness': float(rng.uniform(0.0, 0.3) * strength),
-        'tau_recovery_h': float(rng.uniform(6.0, 16.0))
+        "seeding_density_error": float(rng.uniform(-0.2, 0.2) * strength),
+        "post_dissociation_stress": float(rng.uniform(0.0, 0.3) * strength),
+        "clumpiness": float(rng.uniform(0.0, 0.3) * strength),
+        "tau_recovery_h": float(rng.uniform(6.0, 16.0)),
     }
 
 
 def pipeline_transform(
-    morphology: Dict[str, float],
-    context: 'RunContext',
+    morphology: dict[str, float],
+    context: "RunContext",
     batch_id: str,
-    plate_id: Optional[str] = None
-) -> Dict[str, float]:
+    plate_id: Optional[str] = None,
+) -> dict[str, float]:
     """
     Phase 5B Injection #3: Pipeline Drift
 
@@ -584,13 +604,13 @@ def pipeline_transform(
     # 1. Channel-specific segmentation bias (correlated with reagent lot)
     # When reagent lot is bad, segmentation also tends to be off
     # Correlation = 0.3 (mild, not deterministic)
-    for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
+    for channel in ["er", "mito", "nucleus", "actin", "rna"]:
         reagent_shift = context.reagent_lot_shift.get(channel, 0.0)
 
         # Pipeline bias: 30% correlated with reagent lot + 70% independent
         pipeline_bias = (
-            0.3 * reagent_shift +  # Correlated component
-            0.7 * rng_batch.normal(0, 0.1)  # Independent component
+            0.3 * reagent_shift  # Correlated component
+            + 0.7 * rng_batch.normal(0, 0.1)  # Independent component
         )
 
         # Apply as multiplicative bias (segmentation threshold shifts)
@@ -602,8 +622,8 @@ def pipeline_transform(
     affine_scale_er = float(np.exp(rng_batch.normal(0, 0.05)))
     affine_scale_mito = float(np.exp(rng_batch.normal(0, 0.05)))
 
-    transformed['er'] *= affine_scale_er
-    transformed['mito'] *= affine_scale_mito
+    transformed["er"] *= affine_scale_er
+    transformed["mito"] *= affine_scale_mito
 
     # 3. Discrete failure modes (rare but catastrophic)
     # These are per-plate, not per-batch (plate-level QC failures)
@@ -615,24 +635,26 @@ def pipeline_transform(
 
         failure_prob = 0.05  # 5% of plates have systematic failures
         if rng_plate.random() < failure_prob:
-            failure_type = rng_plate.choice(['focus_off', 'illumination_wrong', 'segmentation_fail'])
+            failure_type = rng_plate.choice(
+                ["focus_off", "illumination_wrong", "segmentation_fail"]
+            )
 
-            if failure_type == 'focus_off':
+            if failure_type == "focus_off":
                 # Out of focus → all channels dimmer and blurrier (reduced dynamic range)
                 focus_penalty = rng_plate.uniform(0.7, 0.9)
                 for channel in transformed:
                     transformed[channel] *= focus_penalty
 
-            elif failure_type == 'illumination_wrong':
+            elif failure_type == "illumination_wrong":
                 # Illumination correction failed → channel-dependent intensity shifts
                 for channel in transformed:
                     illum_shift = rng_plate.uniform(0.8, 1.3)
                     transformed[channel] *= illum_shift
 
-            elif failure_type == 'segmentation_fail':
+            elif failure_type == "segmentation_fail":
                 # Segmentation thresholds wrong → nucleus/actin ratio off
-                transformed['nucleus'] *= rng_plate.uniform(0.6, 0.8)
-                transformed['actin'] *= rng_plate.uniform(1.2, 1.5)
+                transformed["nucleus"] *= rng_plate.uniform(0.6, 0.8)
+                transformed["actin"] *= rng_plate.uniform(1.2, 1.5)
 
     # Ensure no negative values
     for channel in transformed:
