@@ -13,9 +13,10 @@ Design:
 - Main rng_growth stream is never touched (perfect isolation)
 """
 
-import numpy as np
 import re
-from typing import Dict, Optional
+
+import numpy as np
+
 from ._impl import stable_u32
 
 
@@ -61,15 +62,15 @@ def extract_plate_id_defensive(vessel_id: str) -> str:
     """
     # Match well coordinates: A-P (96/384 well plates), followed by 01-24
     # Examples: A01, B12, P24
-    well_pattern = r'([A-P]\d{2})$'
+    well_pattern = r"([A-P]\d{2})$"
     match = re.search(well_pattern, vessel_id)
 
     if match:
         # Well position found, use prefix as plate_id
         well_start = match.start()
-        if well_start > 0 and vessel_id[well_start - 1] == '_':
+        if well_start > 0 and vessel_id[well_start - 1] == "_":
             # Has separator before well (e.g., "Plate1_A01")
-            return vessel_id[:well_start - 1]
+            return vessel_id[: well_start - 1]
         else:
             # No separator (e.g., "PlateA01"), use everything before well
             return vessel_id[:well_start]
@@ -102,7 +103,7 @@ class StochasticBiologyHelper:
     TODO: Upgrade stable_u32 to stable_u64 for collision resistance at scale.
     """
 
-    def __init__(self, config: Dict, run_seed: int):
+    def __init__(self, config: dict, run_seed: int):
         """
         Initialize stochastic biology helper.
 
@@ -117,48 +118,73 @@ class StochasticBiologyHelper:
         """
         self.config = config
         self.run_seed = run_seed
-        self.enabled = config.get('enabled', False)
+        self.enabled = config.get("enabled", False)
 
         # CV parameters
-        self.growth_cv = config.get('growth_cv', 0.0)
-        self.stress_cv = config.get('stress_sensitivity_cv', 0.0)
-        self.hazard_cv = config.get('hazard_scale_cv', 0.0)
+        self.growth_cv = config.get("growth_cv", 0.0)
+        self.stress_cv = config.get("stress_sensitivity_cv", 0.0)
+        self.hazard_cv = config.get("hazard_scale_cv", 0.0)
 
         # Phase 3.0: IC50 heterogeneity (bugfix - was always 1.0)
-        self.ic50_cv = config.get('ic50_cv', 0.20)  # 20% CV for induction sensitivity
+        self.ic50_cv = config.get("ic50_cv", 0.20)  # 20% CV for induction sensitivity
 
         # Phase 3.1: Death threshold heterogeneity (correlated with IC50)
-        self.death_threshold_cv = config.get('death_threshold_cv', 0.25)  # 25% CV for apoptotic priming
-        self.sensitivity_correlation = config.get('sensitivity_correlation', 0.5)  # ρ = 0.5 (moderate)
+        self.death_threshold_cv = config.get(
+            "death_threshold_cv", 0.25
+        )  # 25% CV for apoptotic priming
+        self.sensitivity_correlation = config.get(
+            "sensitivity_correlation", 0.5
+        )  # ρ = 0.5 (moderate)
 
         # Variance split
-        self.plate_fraction = config.get('plate_level_fraction', 0.3)
+        self.plate_fraction = config.get("plate_level_fraction", 0.3)
 
         # Phase 2A.1: ER commitment event parameters (default OFF)
-        self.er_commitment_enabled = config.get('er_commitment_enabled', False)
-        self.er_commitment_threshold = config.get('er_commitment_threshold', 0.60)
-        self.er_commitment_baseline_hazard_per_h = config.get('er_commitment_baseline_hazard_per_h', 0.01)
-        self.er_commitment_sharpness_p = config.get('er_commitment_sharpness_p', 2.0)
-        self.er_commitment_hazard_cap_per_h = config.get('er_commitment_hazard_cap_per_h', 0.10)
-        self.er_committed_death_hazard_per_h = config.get('er_committed_death_hazard_per_h', 0.50)
-        self.er_commitment_track_snapshot = config.get('er_commitment_track_snapshot', True)
+        self.er_commitment_enabled = config.get("er_commitment_enabled", False)
+        self.er_commitment_threshold = config.get("er_commitment_threshold", 0.60)
+        self.er_commitment_baseline_hazard_per_h = config.get(
+            "er_commitment_baseline_hazard_per_h", 0.01
+        )
+        self.er_commitment_sharpness_p = config.get("er_commitment_sharpness_p", 2.0)
+        self.er_commitment_hazard_cap_per_h = config.get("er_commitment_hazard_cap_per_h", 0.10)
+        self.er_committed_death_hazard_per_h = config.get("er_committed_death_hazard_per_h", 0.50)
+        self.er_commitment_track_snapshot = config.get("er_commitment_track_snapshot", True)
 
         # Phase 2A.2: Mito commitment event parameters (default OFF, same defaults as ER)
-        self.mito_commitment_enabled = config.get('mito_commitment_enabled', False)
-        self.mito_commitment_threshold = config.get('mito_commitment_threshold', 0.60)
-        self.mito_commitment_baseline_hazard_per_h = config.get('mito_commitment_baseline_hazard_per_h', 0.01)
-        self.mito_commitment_sharpness_p = config.get('mito_commitment_sharpness_p', 2.0)
-        self.mito_commitment_hazard_cap_per_h = config.get('mito_commitment_hazard_cap_per_h', 0.10)
-        self.mito_committed_death_hazard_per_h = config.get('mito_committed_death_hazard_per_h', 0.50)
-        self.mito_commitment_track_snapshot = config.get('mito_commitment_track_snapshot', True)
+        self.mito_commitment_enabled = config.get("mito_commitment_enabled", False)
+        self.mito_commitment_threshold = config.get("mito_commitment_threshold", 0.60)
+        self.mito_commitment_baseline_hazard_per_h = config.get(
+            "mito_commitment_baseline_hazard_per_h", 0.01
+        )
+        self.mito_commitment_sharpness_p = config.get("mito_commitment_sharpness_p", 2.0)
+        self.mito_commitment_hazard_cap_per_h = config.get("mito_commitment_hazard_cap_per_h", 0.10)
+        self.mito_committed_death_hazard_per_h = config.get(
+            "mito_committed_death_hazard_per_h", 0.50
+        )
+        self.mito_commitment_track_snapshot = config.get("mito_commitment_track_snapshot", True)
+
+        # Phase 0 Thalamus: DNA damage commitment event parameters (default OFF)
+        self.dna_commitment_enabled = config.get("dna_commitment_enabled", False)
+        self.dna_commitment_threshold = config.get(
+            "dna_commitment_threshold", 0.50
+        )  # Lower threshold (DNA damage is serious)
+        self.dna_commitment_baseline_hazard_per_h = config.get(
+            "dna_commitment_baseline_hazard_per_h", 0.015
+        )
+        self.dna_commitment_sharpness_p = config.get("dna_commitment_sharpness_p", 2.0)
+        self.dna_commitment_hazard_cap_per_h = config.get("dna_commitment_hazard_cap_per_h", 0.12)
+        self.dna_committed_death_hazard_per_h = config.get(
+            "dna_committed_death_hazard_per_h", 0.60
+        )  # Apoptosis is fast
+        self.dna_commitment_track_snapshot = config.get("dna_commitment_track_snapshot", True)
 
         # Key mapping for consistent naming
         self.KEYMAP = {
-            'growth': 'growth_rate_mult',
-            'stress': 'stress_sensitivity_mult',
-            'hazard': 'hazard_scale_mult',
-            'ic50': 'ic50_shift_mult',  # Phase 3.0: IC50 heterogeneity (induction sensitivity)
-            'death_theta': 'death_threshold_shift_mult',  # Phase 3.1: Death threshold heterogeneity
+            "growth": "growth_rate_mult",
+            "stress": "stress_sensitivity_mult",
+            "hazard": "hazard_scale_mult",
+            "ic50": "ic50_shift_mult",  # Phase 3.0: IC50 heterogeneity (induction sensitivity)
+            "death_theta": "death_threshold_shift_mult",  # Phase 3.1: Death threshold heterogeneity
         }
 
     def _make_substream_seed(self, offset: int, key: str) -> int:
@@ -176,11 +202,7 @@ class StochasticBiologyHelper:
         seed64 = np.uint64(((self.run_seed + offset) & 0xFFFFFFFFFFFFFFFF) ^ stable_u32(key))
         return seed64
 
-    def sample_random_effects(
-        self,
-        lineage_id: str,
-        plate_id: str
-    ) -> Dict[str, float]:
+    def sample_random_effects(self, lineage_id: str, plate_id: str) -> dict[str, float]:
         """
         Sample hierarchical random effects for a vessel.
 
@@ -215,11 +237,12 @@ class StochasticBiologyHelper:
         sqrt_1_minus_rho_sq = np.sqrt(1.0 - rho * rho)
 
         plate_latents = {
-            'growth': float(rng_plate.standard_normal()),
-            'stress': float(rng_plate.standard_normal()),
-            'hazard': float(rng_plate.standard_normal()),
-            'ic50': z_plate_shared,  # Phase 3.0: IC50 heterogeneity
-            'death_theta': rho * z_plate_shared + sqrt_1_minus_rho_sq * z_plate_theta_indep,  # Phase 3.1
+            "growth": float(rng_plate.standard_normal()),
+            "stress": float(rng_plate.standard_normal()),
+            "hazard": float(rng_plate.standard_normal()),
+            "ic50": z_plate_shared,  # Phase 3.0: IC50 heterogeneity
+            "death_theta": rho * z_plate_shared
+            + sqrt_1_minus_rho_sq * z_plate_theta_indep,  # Phase 3.1
         }
 
         # Create per-lineage RNG substream (deterministic from lineage_id)
@@ -230,26 +253,27 @@ class StochasticBiologyHelper:
         z_vessel_theta_indep = float(rng_lineage.standard_normal())
 
         vessel_latents = {
-            'growth': float(rng_lineage.standard_normal()),
-            'stress': float(rng_lineage.standard_normal()),
-            'hazard': float(rng_lineage.standard_normal()),
-            'ic50': z_vessel_shared,  # Phase 3.0: IC50 heterogeneity
-            'death_theta': rho * z_vessel_shared + sqrt_1_minus_rho_sq * z_vessel_theta_indep,  # Phase 3.1
+            "growth": float(rng_lineage.standard_normal()),
+            "stress": float(rng_lineage.standard_normal()),
+            "hazard": float(rng_lineage.standard_normal()),
+            "ic50": z_vessel_shared,  # Phase 3.0: IC50 heterogeneity
+            "death_theta": rho * z_vessel_shared
+            + sqrt_1_minus_rho_sq * z_vessel_theta_indep,  # Phase 3.1
         }
 
         # Combine hierarchically with proper CV→sigma conversion
         re = {}
         for short_key, full_key in self.KEYMAP.items():
             # Get CV parameter
-            if short_key == 'growth':
+            if short_key == "growth":
                 total_cv = self.growth_cv
-            elif short_key == 'stress':
+            elif short_key == "stress":
                 total_cv = self.stress_cv
-            elif short_key == 'hazard':
+            elif short_key == "hazard":
                 total_cv = self.hazard_cv
-            elif short_key == 'ic50':
+            elif short_key == "ic50":
                 total_cv = self.ic50_cv
-            elif short_key == 'death_theta':
+            elif short_key == "death_theta":
                 total_cv = self.death_threshold_cv
             else:
                 total_cv = 0.0  # Unknown key, disable
@@ -261,7 +285,10 @@ class StochasticBiologyHelper:
                 sigma_vessel = sigma_total * np.sqrt(1.0 - self.plate_fraction)
 
                 # Log-space sum with mean correction
-                z_total = plate_latents[short_key] * sigma_plate + vessel_latents[short_key] * sigma_vessel
+                z_total = (
+                    plate_latents[short_key] * sigma_plate
+                    + vessel_latents[short_key] * sigma_vessel
+                )
                 correction = 0.5 * (sigma_plate**2 + sigma_vessel**2)
                 mult = float(np.exp(z_total - correction))
             else:
@@ -273,7 +300,9 @@ class StochasticBiologyHelper:
 
         return re
 
-    def make_event_rng(self, lineage_id: str, event_name: str, mechanism: str) -> np.random.Generator:
+    def make_event_rng(
+        self, lineage_id: str, event_name: str, mechanism: str
+    ) -> np.random.Generator:
         """
         Create deterministic RNG substream for discrete stochastic events.
 
@@ -297,11 +326,7 @@ class StochasticBiologyHelper:
 
     @staticmethod
     def compute_commitment_hazard(
-        S: float,
-        S_commit: float,
-        lambda0: float,
-        p: float,
-        cap: float
+        S: float, S_commit: float, lambda0: float, p: float, cap: float
     ) -> float:
         """
         Compute commitment hazard rate as function of stress level.
@@ -330,7 +355,7 @@ class StochasticBiologyHelper:
         u = (S - S_commit) / (1.0 - S_commit)
 
         # Power law with cap
-        lambda_commit = lambda0 * (u ** p)
+        lambda_commit = lambda0 * (u**p)
         return float(min(cap, lambda_commit))
 
     @staticmethod
@@ -360,12 +385,7 @@ class StochasticBiologyHelper:
         return u < p_event
 
     def maybe_trigger_commitment(
-        self,
-        vessel,
-        mechanism: str,
-        stress_S: float,
-        sim_time_h: float,
-        dt_h: float
+        self, vessel, mechanism: str, stress_S: float, sim_time_h: float, dt_h: float
     ) -> None:
         """
         Phase 2A.3: Shared commitment event sampler (mechanism-agnostic).
@@ -393,7 +413,7 @@ class StochasticBiologyHelper:
         if vessel.death_committed or vessel.lineage_id is None:
             return
 
-        # Get mechanism-specific config (ER or mito)
+        # Get mechanism-specific config (ER, mito, or dna)
         if mechanism == "er_stress":
             enabled = self.er_commitment_enabled
             threshold = self.er_commitment_threshold
@@ -408,6 +428,13 @@ class StochasticBiologyHelper:
             sharpness = self.mito_commitment_sharpness_p
             cap = self.mito_commitment_hazard_cap_per_h
             track_snapshot = self.mito_commitment_track_snapshot
+        elif mechanism == "dna":
+            enabled = self.dna_commitment_enabled
+            threshold = self.dna_commitment_threshold
+            baseline_hazard = self.dna_commitment_baseline_hazard_per_h
+            sharpness = self.dna_commitment_sharpness_p
+            cap = self.dna_commitment_hazard_cap_per_h
+            track_snapshot = self.dna_commitment_track_snapshot
         else:
             raise ValueError(f"Unknown commitment mechanism: {mechanism}")
 
@@ -417,25 +444,17 @@ class StochasticBiologyHelper:
 
         # Compute commitment hazard
         lambda_commit = self.compute_commitment_hazard(
-            S=stress_S,
-            S_commit=threshold,
-            lambda0=baseline_hazard,
-            p=sharpness,
-            cap=cap
+            S=stress_S, S_commit=threshold, lambda0=baseline_hazard, p=sharpness, cap=cap
         )
 
         # Sample event
         if lambda_commit > 0:
             rng_event = self.make_event_rng(
-                lineage_id=vessel.lineage_id,
-                event_name="commitment",
-                mechanism=mechanism
+                lineage_id=vessel.lineage_id, event_name="commitment", mechanism=mechanism
             )
 
             event_occurred = self.sample_poisson_event(
-                lambda_rate=lambda_commit,
-                dt_h=dt_h,
-                rng=rng_event
+                lambda_rate=lambda_commit, dt_h=dt_h, rng=rng_event
             )
 
             if event_occurred:
@@ -446,17 +465,19 @@ class StochasticBiologyHelper:
 
                 # Optionally record stress snapshot
                 if track_snapshot:
-                    stress_field = "er_stress" if mechanism == "er_stress" else "mito_dysfunction"
-                    vessel.death_commitment_stress_snapshot = {
-                        stress_field: float(stress_S)
-                    }
+                    if mechanism == "er_stress":
+                        stress_field = "er_stress"
+                    elif mechanism == "mito":
+                        stress_field = "mito_dysfunction"
+                    elif mechanism == "dna":
+                        stress_field = "dna_damage"
+                    else:
+                        stress_field = mechanism
+                    vessel.death_commitment_stress_snapshot = {stress_field: float(stress_S)}
 
     @staticmethod
     def add_committed_hazard(
-        vessel,
-        mechanism: str,
-        base_hazard_per_h: float,
-        committed_hazard_per_h: float
+        vessel, mechanism: str, base_hazard_per_h: float, committed_hazard_per_h: float
     ) -> float:
         """
         Phase 2A.3: Shared committed hazard augmentation (mechanism-agnostic).

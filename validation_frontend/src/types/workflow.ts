@@ -10,7 +10,7 @@ export interface AxisTask {
     status: TaskStatus;
 }
 
-export type DependencyStatus = "ready" | "pending" | "blocked" | "not_started";
+export type DependencyStatus = "ready" | "pending" | "blocked" | "not_started" | "in_progress";
 
 export interface Dependency {
     id: string;
@@ -22,6 +22,26 @@ export interface Dependency {
 export interface SubItem {
     title: string;
     status: string;
+}
+
+export interface PathologyGate {
+    threshold: number;
+    foldChangeRequired: number;
+    description: string;
+}
+
+export interface BiomarkerMetadata {
+    name: string;
+    target: string;
+    stressAxis: string;
+    assayType: string;
+    readout: string;
+    pathologyGate?: PathologyGate;
+}
+
+export interface ConfidenceRange {
+    left: number;
+    right: number;
 }
 
 export interface WorkflowAxis {
@@ -41,6 +61,16 @@ export interface WorkflowAxis {
     subItems?: SubItem[];
     quarter?: number; // 0-4 for timeline positioning (0 = Q1 2026, 1 = Q2 2026, etc.)
     program?: string; // Program filter (e.g., 'rubric', 'cell_thalamus', 'data_printing')
+    // Date-based timeline positioning
+    startDaysFromNow?: number;
+    durationDays?: number;
+    xPosition?: number;
+    customWidth?: number;
+    yOffset?: number;
+    confidenceRange?: ConfidenceRange;
+    docLink?: string;
+    // Biomarker metadata for supplemental assays
+    biomarker?: BiomarkerMetadata;
 }
 
 export interface Workflow {

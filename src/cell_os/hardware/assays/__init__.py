@@ -7,12 +7,14 @@ and returns synthetic data with realistic noise characteristics.
 
 from .base import AssaySimulator
 from .cell_painting import CellPaintingAssay
-from .viability import LDHViabilityAssay
 from .scrna_seq import ScRNASeqAssay
+from .supplemental_if import SupplementalIFAssay
+from .viability import LDHViabilityAssay
 
 __all__ = [
-    'AssaySimulator',
-    'CellPaintingAssay',
-    'LDHViabilityAssay',
-    'ScRNASeqAssay',
+    "AssaySimulator",
+    "CellPaintingAssay",
+    "LDHViabilityAssay",
+    "ScRNASeqAssay",
+    "SupplementalIFAssay",
 ]

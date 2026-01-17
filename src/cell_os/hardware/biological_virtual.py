@@ -111,7 +111,7 @@ except ImportError:
 # only by the mechanism modules in stress_mechanisms/
 # Import shared utilities
 from ._impl import lognormal_multiplier, stable_u32
-from .assays import CellPaintingAssay, LDHViabilityAssay, ScRNASeqAssay
+from .assays import CellPaintingAssay, LDHViabilityAssay, ScRNASeqAssay, SupplementalIFAssay
 
 # Import constants from shared module (feature flags and core parameters only)
 from .constants import (
@@ -119,6 +119,7 @@ from .constants import (
     DEATH_EPS,
     DEFAULT_DOUBLING_TIME_H,
     ENABLE_CONTINUOUS_SUBTHRESHOLD_COST,
+    ENABLE_DNA_DAMAGE,
     ENABLE_ER_STRESS,
     ENABLE_FEEDING_COSTS,
     ENABLE_INTERVENTION_COSTS,
@@ -144,6 +145,7 @@ from .constants import (
 
 # Import stress mechanism simulators
 from .stress_mechanisms import (
+    DNADamageMechanism,
     ERStressMechanism,
     MitoDysfunctionMechanism,
     MitoticCatastropheMechanism,
@@ -254,6 +256,12 @@ class VesselState:
         self.transport_damage = 0.0  # Accumulated transport damage (0-1, persistent memory trace)
         self.transport_dysfunction_mixture = 0.0  # Mixed transport dysfunction
 
+        # DNA damage state (Phase 0 Thalamus: γ-H2AX biomarker pathway)
+        self.dna_damage = 0.0  # DNA damage level (0-1), readout via γ-H2AX
+        self.dna_damage_memory = 0.0  # Accumulated DNA damage memory (0-1, persistent, slow repair)
+        self.death_dna_damage = 0.0  # Death from DNA damage (apoptosis)
+        self.death_committed_dna = 0.0  # Death from committed DNA damage
+
         # Phase 6: Continuous heterogeneity (discrete subpopulations removed)
         # Heterogeneity via per-vessel continuous random effects (bio_random_effects)
         # Optional discrete persisters: see pathologies/discrete_persisters.py (not yet implemented)
@@ -303,9 +311,9 @@ class VesselState:
         self.death_committed: bool = False  # Once True, irreversible
         self.death_committed_at_h: float | None = None  # Simulated time of commitment (set once)
         self.death_commitment_mechanism: str | None = None  # Which mechanism committed (set once)
-        self.death_commitment_stress_snapshot: dict[str, float] | None = (
-            None  # Stress state at commitment
-        )
+        self.death_commitment_stress_snapshot: dict[
+            str, float
+        ] | None = None  # Stress state at commitment
 
         # Transient per-step bookkeeping (not persisted across steps)
         # These are intentionally prefixed to signal "internal mechanics"
@@ -634,6 +642,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self._cell_painting_assay = CellPaintingAssay(self)
         self._ldh_viability_assay = LDHViabilityAssay(self)
         self._scrna_seq_assay = ScRNASeqAssay(self)
+        self._supplemental_if_assay = SupplementalIFAssay(self)
 
         # Initialize stress mechanism simulators
         self._er_stress = ERStressMechanism(self)
@@ -641,6 +650,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         self._transport_dysfunction = TransportDysfunctionMechanism(self)
         self._nutrient_depletion = NutrientDepletionMechanism(self)
         self._mitotic_catastrophe = MitoticCatastropheMechanism(self)
+        self._dna_damage = DNADamageMechanism(self)
 
         # Phase 2D.1: Load contamination config (if operational events enabled)
         self.contamination_config = None
@@ -689,9 +699,9 @@ class BiologicalVirtualMachine(VirtualMachine):
                     if sensitivity:
                         self.compound_sensitivity[compound][cell_line_id] = sensitivity.ic50_um
                         if "hill_slope" not in self.compound_sensitivity[compound]:
-                            self.compound_sensitivity[compound]["hill_slope"] = (
-                                sensitivity.hill_slope
-                            )
+                            self.compound_sensitivity[compound][
+                                "hill_slope"
+                            ] = sensitivity.hill_slope
 
             # Drop compounds that never returned any sensitivity rows
             self.compound_sensitivity = {
@@ -1334,6 +1344,9 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         if ENABLE_MITO_DYSFUNCTION:
             self._mito_dysfunction.update(vessel, hours)
+
+        if ENABLE_DNA_DAMAGE:
+            self._dna_damage.update(vessel, hours)
 
         # 1f) Capture stress at END of interval (after stress updates)
         # This is stress_t1 for predictor-corrector

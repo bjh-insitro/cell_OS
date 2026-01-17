@@ -10,7 +10,7 @@ export const mockWorkflowMenadione: Workflow = {
         {
             id: "axis_stressor",
             kind: "stressor",
-            name: "Obtain Optimised Dosage Regime",
+            name: "Menadione Dosage Data Collection (A549)",
             status: "in_progress",
             owner: "Roey",
             definitionOfDone: "Dose and timepoint selected with >30% cell death and robust ROS signal.",
@@ -26,26 +26,54 @@ export const mockWorkflowMenadione: Workflow = {
                 { id: "t6", title: "Select working concentration", status: "not_started" },
                 { id: "t7", title: "Validate readouts", status: "not_started" },
             ],
-            quarter: 0.6,
+            // Date-based positioning: starts 2 weeks from now (moved 2 weeks left), 4 weeks duration
+            startDaysFromNow: 16,
+            durationDays: 28,
+            // 4 weeks left (1 + 3 extra), 3 weeks right uncertainty (1 + 2 extra)
+            confidenceRange: { left: 400, right: 300 },
         },
         {
-            id: "axis_perturbation",
+            id: "axis_design_library",
             kind: "perturbation",
-            name: "Design, clone and generate WG LV Library",
+            name: "Design Library",
             status: "not_started",
             owner: "Nav",
-            definitionOfDone: "Library virus produced with >10^8 TU/mL and NGS verified.",
-            inputsRequired: "Gene list, HEK293T packaging cells",
-            outputsPromised: "Concentrated virus library, NGS QC report",
+            definitionOfDone: "Library design complete and validated.",
+            inputsRequired: "Gene list",
+            outputsPromised: "Library design, gRNA sequences",
             blockers: undefined,
             tasks: [
                 { id: "t_design", title: "Design gRNAs", status: "not_started" },
                 { id: "t_order_oligos", title: "Order synthesis", status: "not_started" },
                 { id: "t_clone", title: "Cloning", status: "not_started" },
+            ],
+            // Date-based positioning: visible on left side of screen
+            startDaysFromNow: -5,
+            durationDays: 7, // 1 week duration
+            yOffset: 0, // Handles now at fixed position
+            // Uncertainty range: extends 0px left (fixed start), 100px right (uncertain end)
+            confidenceRange: { left: 0, right: 100 },
+        },
+        {
+            id: "axis_generate_lv",
+            kind: "perturbation",
+            name: "Generate Lib LV particles",
+            status: "not_started",
+            owner: "Nav",
+            definitionOfDone: "Library virus produced with >10^8 TU/mL and NGS verified.",
+            inputsRequired: "Library design, HEK293T packaging cells",
+            outputsPromised: "Concentrated virus library, NGS QC report",
+            blockers: undefined,
+            dependencies: [
+                { id: "d_design", label: "Design Library", status: "not_started", linkedAxisId: "axis_design_library" },
+            ],
+            tasks: [
                 { id: "t10", title: "Generate LV", status: "not_started" },
                 { id: "t11", title: "Titer", status: "not_started" },
             ],
-            quarter: 0,
+            // Date-based: starts 1 week after Design Library ends (-5 + 7 = day 2, + 7 day gap = day 9)
+            startDaysFromNow: 9,
+            durationDays: 28, // 4 weeks duration
         },
         {
             id: "axis_cas9_wcb",
@@ -60,7 +88,9 @@ export const mockWorkflowMenadione: Workflow = {
             visible: true,
             benchlingEntityId: "LI34529",
             tasks: [{ id: "t_cas9_wcb", title: "Expand cells", status: "done" }],
-            quarter: 0,
+            // Date-based positioning: visible on left side of screen
+            startDaysFromNow: -5,
+            durationDays: 7,
         },
         {
             id: "axis_transduce",
@@ -75,10 +105,14 @@ export const mockWorkflowMenadione: Workflow = {
             blockers: undefined,
             dependencies: [
                 { id: "d_cas9_wcb", label: "Generate Cas9+ A549s", status: "ready", linkedAxisId: "axis_cas9_wcb" },
-                { id: "d_wg_lib", label: "WG LV Library", status: "not_started", linkedAxisId: "axis_perturbation" },
+                { id: "d_wg_lib", label: "Generate Lib LV particles", status: "not_started", linkedAxisId: "axis_generate_lv" },
             ],
             tasks: [{ id: "t_transduce", title: "Large scale transduction", status: "not_started" }],
-            quarter: 0.6,
+            // Date-based: starts 1 week after Generate LV ends (9 + 28 + 7 = 44)
+            startDaysFromNow: 44,
+            durationDays: 28, // 4 weeks duration
+            // 1 week left uncertainty, 2 weeks right uncertainty
+            confidenceRange: { left: 100, right: 200 },
         },
         {
             id: "axis_treat_tbhp",
@@ -94,9 +128,31 @@ export const mockWorkflowMenadione: Workflow = {
             dependencies: [
                 { id: "d_transduce", label: "Transduce A549s with WG Library", status: "not_started", linkedAxisId: "axis_transduce" },
                 { id: "d_dose", label: "Obtain Dose of Menadione", status: "in_progress", linkedAxisId: "axis_stressor" },
+                { id: "d_dosage_analysis", label: "Analysis of Dosage Regime", status: "not_started", linkedAxisId: "axis_dosage_analysis" },
             ],
             tasks: [{ id: "t_treat", title: "Perform treatment", status: "not_started" }],
-            quarter: 1.25,
+            // Date-based: starts 2 weeks after Transduce ends (44 + 28 + 14 = 86), visible beyond uncertainty
+            startDaysFromNow: 86,
+            durationDays: 14,
+        },
+        {
+            id: "axis_prepare_plates",
+            kind: "measurement",
+            name: "Prepare plates for phenotyping",
+            status: "not_started",
+            owner: "Jana",
+            definitionOfDone: "Plates prepared and ready for imaging.",
+            inputsRequired: "Treated plates",
+            outputsPromised: "Prepared plates",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_treat_prep", label: "Treat with Menadione", status: "not_started", linkedAxisId: "axis_treat_tbhp" },
+            ],
+            tasks: [{ id: "t_prepare", title: "Prepare plates", status: "not_started" }],
+            // Date-based: starts 3 days after Treat ends (86 + 14 + 3 = 103), 1.5 weeks (11 days) duration
+            startDaysFromNow: 103,
+            durationDays: 11,
         },
         {
             id: "axis_paint_image",
@@ -105,15 +161,17 @@ export const mockWorkflowMenadione: Workflow = {
             status: "not_started",
             owner: "Jana",
             definitionOfDone: "Plates imaged.",
-            inputsRequired: "Treated plates",
+            inputsRequired: "Prepared plates",
             outputsPromised: "Raw images",
             blockers: undefined,
-            visible: false,
+            visible: true,
             dependencies: [
-                { id: "d_treat", label: "Treat with Menadione", status: "not_started", linkedAxisId: "axis_treat_tbhp" },
+                { id: "d_prepare", label: "Prepare plates for phenotyping", status: "not_started", linkedAxisId: "axis_prepare_plates" },
             ],
             tasks: [{ id: "t_image", title: "Acquire images", status: "not_started" }],
-            quarter: 2,
+            // Date-based: starts 3 days after Prepare plates ends (103 + 11 + 3 = 117), 2 weeks duration
+            startDaysFromNow: 117,
+            durationDays: 14,
         },
         {
             id: "axis_iss",
@@ -125,29 +183,177 @@ export const mockWorkflowMenadione: Workflow = {
             inputsRequired: "Imaged plates",
             outputsPromised: "ISS images",
             blockers: undefined,
-            visible: false,
+            visible: true,
             dependencies: [
                 { id: "d_image", label: "Acquire Phenotyping images", status: "not_started", linkedAxisId: "axis_paint_image" },
             ],
             tasks: [{ id: "t_iss", title: "Acquire ISS images", status: "not_started" }],
-            quarter: 2.75,
+            // Date-based: starts 3 days after Phenotyping ends (117 + 14 + 3 = 134), 2 weeks duration
+            startDaysFromNow: 134,
+            durationDays: 14,
         },
         {
             id: "axis_analysis",
             kind: "analysis",
-            name: "Analysis",
+            name: "POSH/Perturb Analysis",
             status: "not_started",
             owner: "TBD",
             definitionOfDone: "Data analysis complete.",
-            inputsRequired: "ISS images, Phenotyping images",
+            inputsRequired: "ISS images, Phenotyping images, Perturbation data",
             outputsPromised: "Analysis results, hit list",
             blockers: undefined,
             visible: true,
             dependencies: [
                 { id: "d_iss", label: "Acquire ISS images", status: "not_started", linkedAxisId: "axis_iss" },
+                { id: "d_perturb_analysis", label: "Acquire WG Perturb A549/Menadione data", status: "not_started", linkedAxisId: "axis_a549_perturb" },
             ],
             tasks: [{ id: "t_analysis", title: "Run analysis pipeline", status: "not_started" }],
-            quarter: 3.25,
+            // Date-based: starts 1 week after ISS ends (134 + 14 + 7 = 155), 1 month duration
+            startDaysFromNow: 155,
+            durationDays: 28,
+        },
+        {
+            id: "axis_dosage_plan",
+            kind: "analysis",
+            name: "Conceptualize analysis plan for dosage regime",
+            status: "in_progress",
+            owner: "TBD",
+            definitionOfDone: "Analysis plan conceptualized and documented.",
+            inputsRequired: "Project requirements",
+            outputsPromised: "Analysis plan document",
+            blockers: undefined,
+            visible: true,
+            dependencies: [],
+            tasks: [{ id: "t_dosage_plan", title: "Create analysis plan", status: "in_progress" }],
+            // Date-based: starts now
+            startDaysFromNow: 0,
+            durationDays: 14,
+            docLink: "https://docs.google.com/document/d/1BZWSwD5WSjHcodTqpZhM8SbCRPQhT5ruPFzikkk6--A/edit?tab=t.0#heading=h.hd1z8kvo8nzo",
+        },
+        {
+            id: "axis_gamma_h2ax",
+            kind: "measurement",
+            name: "γ-H2AX Supplemental IF Assay",
+            status: "not_started",
+            owner: "Jana",
+            definitionOfDone: "γ-H2AX immunofluorescence assay completed across dose-response matrix. Nuclear intensity quantified, pathology gate threshold determined.",
+            inputsRequired: "A549 cells treated with Menadione dose-response matrix, anti-γ-H2AX primary antibody, fluorescent secondary",
+            outputsPromised: "γ-H2AX nuclear intensity distributions per dose/timepoint, pathology gate pass/fail calls, DNA damage quantification",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_gamma_stressor", label: "Menadione Dosage Data Collection", status: "in_progress", linkedAxisId: "axis_stressor" },
+            ],
+            tasks: [
+                { id: "t_gamma_plate", title: "Plate cells for IF assay", status: "not_started" },
+                { id: "t_gamma_treat", title: "Treat with Menadione dose matrix", status: "not_started" },
+                { id: "t_gamma_fix", title: "Fix and permeabilize", status: "not_started" },
+                { id: "t_gamma_stain", title: "γ-H2AX immunostaining", status: "not_started" },
+                { id: "t_gamma_image", title: "Acquire IF images", status: "not_started" },
+                { id: "t_gamma_quantify", title: "Quantify nuclear intensity", status: "not_started" },
+            ],
+            // Date-based: starts same time as Menadione dosage (16 days from now), 3 weeks duration
+            startDaysFromNow: 16,
+            durationDays: 21,
+            // Biomarker-specific metadata
+            biomarker: {
+                name: "γ-H2AX",
+                target: "Phospho-H2AX (Ser139)",
+                stressAxis: "dna_damage",
+                assayType: "immunofluorescence",
+                readout: "nuclear_intensity",
+                pathologyGate: {
+                    threshold: 0.6,
+                    foldChangeRequired: 3,
+                    description: "≥60% positive OR ≥40% positive with ≥3× fold change vs DMSO"
+                }
+            }
+        },
+        {
+            id: "axis_dosage_analysis",
+            kind: "analysis",
+            name: "Analysis of Dosage Regime",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "Dosage regime analysis complete with pathology gate assessment.",
+            inputsRequired: "Dosage regime data, γ-H2AX IF data, Cell Painting morphology data",
+            outputsPromised: "Dosage analysis report, operating point recommendation, pathology gate status",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_dosage", label: "Menadione Dosage Data Collection", status: "in_progress", linkedAxisId: "axis_stressor" },
+                { id: "d_dosage_plan", label: "Conceptualize analysis plan for dosage regime", status: "in_progress", linkedAxisId: "axis_dosage_plan" },
+                { id: "d_gamma_h2ax", label: "γ-H2AX Supplemental IF Assay", status: "not_started", linkedAxisId: "axis_gamma_h2ax" },
+            ],
+            tasks: [
+                { id: "t_dosage_analysis", title: "Analyze Cell Painting data", status: "not_started" },
+                { id: "t_gamma_analysis", title: "Analyze γ-H2AX data", status: "not_started" },
+                { id: "t_pathology_gate", title: "Check pathology gate criteria", status: "not_started" },
+                { id: "t_operating_point", title: "Nominate operating point", status: "not_started" },
+            ],
+            // Date-based: starts 2 weeks after Dosage Regime ends (16 + 28 + 14 = 58), 1 week duration with 1 week uncertainty on each side
+            startDaysFromNow: 58,
+            durationDays: 7,
+            // 1 week = 175px (7 days * 25px/day)
+            confidenceRange: { left: 175, right: 175 },
+        },
+        {
+            id: "axis_a549_perturb",
+            kind: "perturbation",
+            name: "Acquire WG Perturb A549/Menadione Seq data",
+            status: "not_started",
+            owner: "JanaM",
+            definitionOfDone: "Complete genome-wide perturbation screen in A549 cells with Menadione stressor.",
+            inputsRequired: "A549 cells, Menadione, WG Library, Transduced cells",
+            outputsPromised: "Raw perturbation screening data",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_perturb_seq", label: "Prepare Seq Lib", status: "not_started", linkedAxisId: "axis_prepare_seq_lib" },
+            ],
+            tasks: [{ id: "t_perturb", title: "Perform perturbation screen", status: "not_started" }],
+            // Date-based: starts 3 days after Prepare Seq Lib ends (103 + 7 + 3 = 113), 2 weeks duration
+            startDaysFromNow: 113,
+            durationDays: 14,
+        },
+        {
+            id: "axis_fg_treat_menadione",
+            kind: "perturbation",
+            name: "Treat with Menadione",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "Cells treated with Menadione for sequencing.",
+            inputsRequired: "Transduced cells, Menadione",
+            outputsPromised: "Treated cells for sequencing",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_fg_transduce", label: "Transduce A549s with WG Library", status: "not_started", linkedAxisId: "axis_transduce" },
+                { id: "d_fg_dosage", label: "Analysis of Dosage Regime", status: "not_started", linkedAxisId: "axis_dosage_analysis" },
+            ],
+            tasks: [{ id: "t_fg_treat", title: "Treat cells", status: "not_started" }],
+            // Date-based: starts 2 weeks after Transduce ends (44 + 28 + 14 = 86), visible beyond uncertainty
+            startDaysFromNow: 86,
+            durationDays: 14,
+        },
+        {
+            id: "axis_prepare_seq_lib",
+            kind: "perturbation",
+            name: "Prepare Seq Lib",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "Sequencing library prepared.",
+            inputsRequired: "Treated cells",
+            outputsPromised: "Sequencing library",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_seq_treat", label: "Treat with Menadione", status: "not_started", linkedAxisId: "axis_fg_treat_menadione" },
+            ],
+            tasks: [{ id: "t_prep_seq", title: "Prepare sequencing library", status: "not_started" }],
+            // Date-based: starts 3 days after FG Treat ends (86 + 14 + 3 = 103), 1 week duration
+            startDaysFromNow: 103,
+            durationDays: 7,
         },
     ],
 };

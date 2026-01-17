@@ -11,6 +11,7 @@ import ReactFlow, {
     Handle,
     ReactFlowProvider,
     useReactFlow,
+    Viewport,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
@@ -29,43 +30,49 @@ interface DependencyMapProps {
     skipStrategyLane?: boolean;
     hideTooltip?: boolean;
     hideKindInfo?: boolean;
+    timelineScale?: number;
+    onViewportChange?: (viewport: Viewport) => void;
 }
 
-const nodeWidth = 280;
-const nodeHeight = 140;
-const containerNodeWidth = 280;
-const containerNodeHeight = 200;
+const nodeWidth = 180;
+const nodeHeight = 100;
+const containerNodeWidth = 200;
+const containerNodeHeight = 150;
 const quarterWidth = 300; // Width for each quarter column
 
-const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidth: number, containerHeight: number, skipStrategyLane: boolean = false) => {
+const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidth: number, containerHeight: number, skipStrategyLane: boolean = false, timelineScale: number = 1) => {
     // Calculate dynamic dimensions based on container size
     // 5 or 6 swim lanes depending on whether strategy is skipped
     const numLanes = skipStrategyLane ? 5 : 6;
-    const numQuarters = 4;
-    const leftMargin = 100; // Space for swim lane labels
+    const numQuarters = 4 / timelineScale; // Scale factor stretches the timeline
+    const leftMargin = 10; // Space for swim lane labels
 
     const laneHeight = containerHeight / numLanes;
     const usableWidth = containerWidth - leftMargin;
     const quarterColumnWidth = usableWidth / numQuarters;
-    const nodeOffset = (laneHeight - nodeHeight) / 2; // Center node vertically in lane
 
-    // When skipStrategyLane is true, shift all lanes up by one position
-    const swimLaneY: { [key: string]: number } = skipStrategyLane ? {
-        'strategy': -1000,                             // Strategy - hidden off-screen
-        'perturbation': nodeOffset,                    // Functional Genomics - teal (lane 1)
-        'cell_line': laneHeight + nodeOffset,          // Biobanking - violet (lane 2)
-        'stressor': laneHeight * 2 + nodeOffset,       // Cell Models - pink (lane 3)
-        'measurement': laneHeight * 3 + nodeOffset,    // PST - orange (lane 4)
-        'analysis': laneHeight * 4 + nodeOffset,       // Compute - grey (lane 5)
-        'program': nodeOffset,                         // Default
+    // Calculate the center Y position for each lane
+    // Center cards directly in each lane (no offset needed)
+    const getLaneCenterY = (laneIndex: number) => {
+        return (laneIndex + 0.5) * laneHeight;
+    };
+
+    const swimLaneCenterY: { [key: string]: number } = skipStrategyLane ? {
+        'strategy': -1000,                    // Strategy - hidden off-screen
+        'perturbation': getLaneCenterY(0),    // Functional Genomics - teal (lane 1)
+        'cell_line': getLaneCenterY(1),       // Biobanking - violet (lane 2)
+        'stressor': getLaneCenterY(2),        // Cell Models - pink (lane 3)
+        'measurement': getLaneCenterY(3),     // PST - orange (lane 4)
+        'analysis': getLaneCenterY(4),        // Compute - grey (lane 5)
+        'program': getLaneCenterY(0),         // Default
     } : {
-        'strategy': nodeOffset,                        // Strategy - black (lane 1)
-        'perturbation': laneHeight + nodeOffset,       // Functional Genomics - teal (lane 2)
-        'cell_line': laneHeight * 2 + nodeOffset,      // Biobanking - violet (lane 3)
-        'stressor': laneHeight * 3 + nodeOffset,       // Cell Models - pink (lane 4)
-        'measurement': laneHeight * 4 + nodeOffset,    // PST - orange (lane 5)
-        'analysis': laneHeight * 5 + nodeOffset,       // Compute - grey (lane 6)
-        'program': nodeOffset,                         // Default
+        'strategy': getLaneCenterY(0),        // Strategy - black (lane 1)
+        'perturbation': getLaneCenterY(1),    // Functional Genomics - teal (lane 2)
+        'cell_line': getLaneCenterY(2),       // Biobanking - violet (lane 3)
+        'stressor': getLaneCenterY(3),        // Cell Models - pink (lane 4)
+        'measurement': getLaneCenterY(4),     // PST - orange (lane 5)
+        'analysis': getLaneCenterY(5),        // Compute - grey (lane 6)
+        'program': getLaneCenterY(0),         // Default
     };
 
     // Track how many nodes are in each swim lane at each quarter to handle stacking
@@ -82,34 +89,38 @@ const getTimelineLayoutedElements = (nodes: Node[], edges: Edge[], containerWidt
         const stackIndex = laneQuarterCount[laneKey];
         laneQuarterCount[laneKey]++;
 
-        const baseY = swimLaneY[kind] ?? 100;
+        // Calculate actual node height for centering (use consistent height for alignment)
+        // Use a fixed height so all nodes in a lane align at the same Y position
+        // This should match the minHeight set on the card component
+        const visualNodeHeight = 95; // Consistent height for all nodes
+
+        // Get the center of the lane and calculate top position to center this node
+        const laneCenterY = swimLaneCenterY[kind] ?? 100;
+        const nodeTopY = laneCenterY - visualNodeHeight / 2;
 
         // Stack nodes horizontally (side by side) with small vertical offset for visual separation
         const horizontalOffset = stackIndex * (nodeWidth + 10); // Node width + gap
-        const verticalOffset = stackIndex * 12; // Small diagonal offset
+        // No vertical offset - keep all nodes in the same lane at the same Y position
+        const verticalOffset = 0;
 
         const customYOffset = node.data.yOffset ?? 0;
         const customXPosition = node.data.xPosition;
 
-        // Scale custom xPosition and customWidth proportionally to container width
-        // Original design was for ~2600px width, scale to fit
-        const designWidth = 2600;
-        const scaleFactor = containerWidth / designWidth;
-        const scaledXPosition = customXPosition !== undefined
-            ? customXPosition * scaleFactor
-            : undefined;
+        // Use fixed positions - DO NOT scale based on container width
+        // This ensures layout stays consistent across screen sizes
+        // Users can pan/scroll to see content that doesn't fit
 
-        // Scale customWidth if present
+        // Use customWidth directly without scaling
         const originalCustomWidth = node.data.customWidth;
         if (originalCustomWidth) {
-            node.data.scaledWidth = Math.max(nodeWidth, originalCustomWidth * scaleFactor);
+            node.data.scaledWidth = Math.max(nodeWidth, originalCustomWidth);
         }
 
         node.targetPosition = Position.Left;
         node.sourcePosition = Position.Right;
         node.position = {
-            x: scaledXPosition !== undefined ? scaledXPosition : (leftMargin + quarter * quarterColumnWidth + horizontalOffset),
-            y: baseY + verticalOffset + customYOffset,
+            x: customXPosition !== undefined ? customXPosition : (leftMargin + quarter * quarterColumnWidth + horizontalOffset),
+            y: nodeTopY + verticalOffset + customYOffset,
         };
     });
 
@@ -175,7 +186,7 @@ const PendingIcon = () => (
     </svg>
 );
 
-const CustomNode = ({ data }: { data: { label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; hideTooltip?: boolean; hideKindInfo?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean } }) => {
+const CustomNode = ({ data }: { data: { id: string; label: string; subLabel: string; status: string; kind: string; owner: string; definitionOfDone: string; inputsRequired: string; outputsPromised: string; computedBlockers: string[]; dimmed?: boolean; hideStatusIcons?: boolean; hideTooltip?: boolean; hideKindInfo?: boolean; confidenceRange?: { left: number; right: number }; customWidth?: number; scaledWidth?: number; customStyle?: string; compact?: boolean; durationDays?: number; startDaysFromNow?: number } }) => {
     const getHeaderColor = (kind: string, status: string) => {
         if (kind === 'strategy') return 'bg-black';
         if (kind === 'cell_line') return 'bg-violet-500';
@@ -196,60 +207,158 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
 
     const isDone = data.status === 'ready' || data.status === 'done';
     const isBlocked = !data.hideStatusIcons && (data.status === 'blocked' || (data.computedBlockers && data.computedBlockers.length > 0));
-    const isPending = !isDone && !isBlocked;
+    // Time-based status: current/past = in progress, future = planned
+    const startDays = data.startDaysFromNow ?? 0;
+    const durationDays = data.durationDays ?? 14;
+    const isCurrent = startDays <= 0 || (startDays > 0 && startDays <= durationDays); // Started or within duration
+    const isInProgress = !isDone && !isBlocked && isCurrent;
+    const isPlanned = !isDone && !isBlocked && !isCurrent; // Future tasks
+    const isPending = !isDone && !isBlocked; // For styling purposes - both IN PROGRESS and PLANNED get amber styling
 
     return (
-        <div className={`group relative ${data.dimmed ? 'opacity-20 grayscale transition-all duration-300' : 'opacity-100 transition-all duration-300'} hover:z-[100]`}>
+        <div className={`group relative ${data.dimmed ? 'opacity-20 grayscale transition-all duration-300' : 'opacity-100 transition-all duration-300'} hover:z-[9999]`}>
             {/* Confidence interval range indicator */}
-            {data.confidenceRange && (
-                <div
-                    className="absolute top-0 bottom-0 bg-slate-200 dark:bg-slate-600 rounded-lg -z-10"
-                    style={{
-                        left: `-${data.confidenceRange.left}px`,
-                        right: `-${data.confidenceRange.right}px`,
-                        width: `calc(100% + ${data.confidenceRange.left + data.confidenceRange.right}px)`,
-                    }}
-                />
-            )}
+            {data.confidenceRange && (() => {
+                const cardWidth = data.scaledWidth || data.customWidth || nodeWidth;
+                const totalWidth = cardWidth + data.confidenceRange.left + data.confidenceRange.right;
+                const cardStartPercent = (data.confidenceRange.left / totalWidth) * 100;
+                const cardEndPercent = ((cardWidth + data.confidenceRange.left) / totalWidth) * 100;
+
+                // Use red for blocked cards, yellow for others
+                const uncertaintyColor = isBlocked ? '#fecaca' : '#fde68a'; // red-200 or amber-200
+                const borderColor = isBlocked ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500';
+
+                // Build gradient based on which sides have uncertainty
+                // Use wider transition zones (15-20%) for smoother blending without visible lines
+                // Center color matches the card background (amber-50 for pending, red-50 for blocked)
+                const centerColor = isBlocked ? '#fef2f2' : '#fffbeb'; // red-50 or amber-50
+                let gradient;
+                if (data.confidenceRange.left > 0 && data.confidenceRange.right > 0) {
+                    // Both sides: color -> center -> color (smooth 15% transitions)
+                    gradient = `linear-gradient(to right, ${uncertaintyColor} 0%, ${centerColor} ${cardStartPercent + 15}%, ${centerColor} ${cardEndPercent - 15}%, ${uncertaintyColor} 100%)`;
+                } else if (data.confidenceRange.right > 0) {
+                    // Right side only: center -> color (smooth 20% transition)
+                    gradient = `linear-gradient(to right, ${centerColor} 0%, ${centerColor} ${cardEndPercent - 10}%, ${uncertaintyColor} 100%)`;
+                } else {
+                    // Left side only: color -> center (smooth 20% transition)
+                    gradient = `linear-gradient(to right, ${uncertaintyColor} 0%, ${centerColor} ${cardStartPercent + 15}%, ${centerColor} 100%)`;
+                }
+
+                // Only show labels for axis_stressor (Obtain Optimised Dosage Regime)
+                const showLabels = data.id === 'axis_stressor';
+
+                return (
+                    <>
+                        {/* Labels above card showing Start Uncertainty, Task Length, and Completion Uncertainty */}
+                        {showLabels && (
+                            <div className="absolute pointer-events-none" style={{ bottom: '100%', left: `-${data.confidenceRange.left}px`, right: `-${data.confidenceRange.right}px`, marginBottom: '6px' }}>
+                                <div className="flex items-end text-xs text-slate-600 dark:text-slate-300 font-semibold" style={{ height: '24px' }}>
+                                    {/* Start Uncertainty label - only show if left uncertainty exists */}
+                                    {data.confidenceRange.left > 0 && (
+                                        <div className="flex items-center" style={{ width: `${data.confidenceRange.left}px` }}>
+                                            <span className="text-slate-500 text-base">←</span>
+                                            <div className="flex-1 border-t-2 border-slate-400 dark:border-slate-500 mx-1" />
+                                            <span className="whitespace-nowrap px-1">Start Uncertainty</span>
+                                            <div className="flex-1 border-t-2 border-slate-400 dark:border-slate-500 mx-1" />
+                                            <span className="text-slate-500 text-base">→</span>
+                                        </div>
+                                    )}
+                                    {/* Task Length label - spans the card width */}
+                                    <div className="flex items-center" style={{ width: `${cardWidth}px` }}>
+                                        <span className="text-slate-500 text-base">←</span>
+                                        <div className="flex-1 border-t-2 border-slate-400 dark:border-slate-500 mx-1" />
+                                        <span className="whitespace-nowrap px-1">Task Length</span>
+                                        <div className="flex-1 border-t-2 border-slate-400 dark:border-slate-500 mx-1" />
+                                        <span className="text-slate-500 text-base">→</span>
+                                    </div>
+                                    {/* Completion Uncertainty label - only show if right uncertainty exists */}
+                                    {data.confidenceRange.right > 0 && (
+                                        <div className="flex items-center" style={{ width: `${data.confidenceRange.right}px` }}>
+                                            <span className="text-slate-500 text-base">←</span>
+                                            <div className="flex-1 border-t-2 border-slate-400 dark:border-slate-500 mx-1" />
+                                            <span className="whitespace-nowrap px-1">Completion Uncertainty</span>
+                                            <div className="flex-1 border-t-2 border-slate-400 dark:border-slate-500 mx-1" />
+                                            <span className="text-slate-500 text-base">→</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        <div
+                            className={`absolute top-0 bottom-0 rounded-lg border-2 border-dashed ${borderColor}`}
+                            style={{
+                                left: `-${data.confidenceRange.left}px`,
+                                right: `-${data.confidenceRange.right}px`,
+                                width: `calc(100% + ${data.confidenceRange.left + data.confidenceRange.right}px)`,
+                                background: gradient,
+                                zIndex: -1,
+                                pointerEvents: 'none',
+                            }}
+                        />
+                    </>
+                );
+            })()}
             <div className={`${
                 data.customStyle === 'dark'
                     ? 'bg-slate-900 border-2 border-slate-700'
                     : isBlocked
-                        ? 'bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 animate-pulse shadow-lg shadow-red-500/50'
+                        ? data.confidenceRange
+                            ? 'bg-transparent border-0 shadow-none'
+                            : 'bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 animate-pulse shadow-lg shadow-red-500/50'
                         : isPending
-                            ? 'bg-amber-50 dark:bg-amber-900/20 border-2 border-dashed border-amber-400 dark:border-amber-500'
+                            ? data.confidenceRange
+                                ? 'bg-transparent border-0 shadow-none'
+                                : 'bg-amber-50 dark:bg-amber-900/20 border-2 border-dashed border-amber-400 dark:border-amber-500'
                             : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-            } rounded-lg shadow-md overflow-hidden`} style={{ width: `${data.scaledWidth || data.customWidth || nodeWidth}px` }}>
-                <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
+            } rounded-lg shadow-md overflow-hidden`} style={{ width: `${data.scaledWidth || data.customWidth || nodeWidth}px`, height: '95px' }}>
+                <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" style={{ left: data.confidenceRange ? -(data.confidenceRange.left + 6) : -6 }} />
                 {/* Colored header bar - hidden when hideKindInfo is true */}
                 {!data.hideKindInfo && (
                     <div className={`h-1.5 ${data.customStyle === 'dark' ? 'bg-white' : getHeaderColor(data.kind, data.status)}`} />
                 )}
-                <div className={`p-3 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
+                <div className={`p-2 ${data.customStyle === 'dark' ? 'text-center' : ''}`}>
                     {/* Home function label - hidden when hideKindInfo is true */}
                     {!data.hideKindInfo && (
                         <div className={`text-[10px] font-semibold uppercase truncate mb-1 ${data.customStyle === 'dark' ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{data.subLabel}</div>
                     )}
                     <div className={`flex ${data.customStyle === 'dark' ? 'justify-center' : 'justify-between'} items-start`}>
-                        <div className={`font-bold leading-tight line-clamp-2 ${data.customStyle === 'dark' ? 'text-white text-[26px]' : 'text-[26px] text-slate-900 dark:text-white'}`}>{data.label}</div>
+                        <div className={`font-bold leading-tight line-clamp-2 ${data.customStyle === 'dark' ? 'text-white text-sm' : 'text-sm text-slate-900 dark:text-white'}`}>{data.label}</div>
                         {!data.hideStatusIcons && isDone && <CheckIcon />}
                         {!data.hideStatusIcons && isPending && <PendingIcon />}
-                        {!data.hideStatusIcons && isBlocked && <span className="text-red-500 text-[28px] ml-1">⛔</span>}
+                        {!data.hideStatusIcons && isBlocked && <span className="text-red-500 text-base ml-1">⛔</span>}
                     </div>
 
-                    {/* Inline blocker warning */}
+                    {/* Status labels */}
                     {isBlocked && data.computedBlockers && data.computedBlockers.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-red-300 dark:border-red-700">
-                            <div className="text-[22px] font-bold text-red-600 dark:text-red-400">BLOCKED: {data.computedBlockers.length}</div>
+                        <div className="mt-1 pt-1 border-t border-red-300 dark:border-red-700">
+                            <div className="text-xs font-bold text-red-600 dark:text-red-400">BLOCKED: {data.computedBlockers.length}</div>
+                        </div>
+                    )}
+                    {isInProgress && !isBlocked && (
+                        <div className="mt-1 pt-1 border-t border-amber-300 dark:border-amber-700">
+                            <div className="text-xs font-bold text-amber-600 dark:text-amber-400">IN PROGRESS</div>
+                        </div>
+                    )}
+                    {isDone && (
+                        <div className="mt-1 pt-1 border-t border-green-300 dark:border-green-700">
+                            <div className="text-xs font-bold text-green-600 dark:text-green-400">COMPLETE</div>
+                        </div>
+                    )}
+                    {!isBlocked && !isInProgress && !isDone && (
+                        <div className="mt-1 pt-1 border-t border-slate-200 dark:border-slate-600">
+                            <div className="text-xs font-bold text-slate-500 dark:text-slate-400">PLANNED</div>
                         </div>
                     )}
                 </div>
-                <Handle type="source" position={Position.Right} className="!bg-slate-400 !w-2 !h-2" />
+                <Handle type="source" position={Position.Right} className="!bg-slate-400 !w-2 !h-2" style={{ right: data.confidenceRange ? -(data.confidenceRange.right + 6) : -6 }} />
             </div>
 
             {/* Tooltip - Only show if not dimmed and not hidden */}
+            {/* Position above for most cards, below for top lane (perturbation/Functional Genomics) */}
             {!data.dimmed && !data.hideTooltip && (
-                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-64 bg-slate-800 dark:bg-slate-700 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-lg">
+                <div className={`absolute left-1/2 transform -translate-x-1/2 w-64 bg-slate-800 dark:bg-slate-700 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-[1000] shadow-lg ${
+                    data.kind === 'perturbation' ? 'top-full mt-2' : 'bottom-full mb-2'
+                }`}>
                     <div className="mb-2">
                         <span className="font-bold text-slate-300">Owner:</span> {data.owner}
                     </div>
@@ -268,14 +377,37 @@ const CustomNode = ({ data }: { data: { label: string; subLabel: string; status:
                         </div>
                     )}
 
+                    {/* Duration and uncertainty info */}
+                    {data.durationDays && (
+                        <div className="mb-2">
+                            <span className="font-bold text-slate-300">Duration:</span> {data.durationDays} days ({Math.round(data.durationDays / 7 * 10) / 10} weeks)
+                        </div>
+                    )}
+                    {data.confidenceRange && (data.confidenceRange.left > 0 || data.confidenceRange.right > 0) && (
+                        <div className="mb-2">
+                            <span className="font-bold text-slate-300">Uncertainty:</span>
+                            {data.confidenceRange.left > 0 && (
+                                <span className="ml-1">Start: {Math.round(data.confidenceRange.left / 25)} days</span>
+                            )}
+                            {data.confidenceRange.left > 0 && data.confidenceRange.right > 0 && <span>,</span>}
+                            {data.confidenceRange.right > 0 && (
+                                <span className="ml-1">End: {Math.round(data.confidenceRange.right / 25)} days</span>
+                            )}
+                        </div>
+                    )}
+
                     <div className="mb-2">
                         <span className="font-bold text-slate-300">Inputs:</span> {data.inputsRequired}
                     </div>
                     <div>
                         <span className="font-bold text-slate-300">Outputs:</span> {data.outputsPromised}
                     </div>
-                    {/* Arrow */}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 -mb-1 border-4 border-transparent border-b-slate-800 dark:border-b-slate-700"></div>
+                    {/* Arrow - points up for top lane (tooltip below), points down for others (tooltip above) */}
+                    <div className={`absolute left-1/2 transform -translate-x-1/2 border-4 border-transparent ${
+                        data.kind === 'perturbation'
+                            ? 'bottom-full -mb-1 border-b-slate-800 dark:border-b-slate-700'
+                            : 'top-full -mt-1 border-t-slate-800 dark:border-t-slate-700'
+                    }`}></div>
                 </div>
             )}
         </div>
@@ -286,7 +418,7 @@ const ContainerNode = ({ data }: { data: { label: string; subItems: { title: str
     return (
         <div className="group relative">
             <div className="bg-slate-200 dark:bg-slate-700 rounded-xl p-4 shadow-md w-[280px] border border-slate-300 dark:border-slate-600">
-                <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" />
+                <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-2 !h-2" style={{ left: -6 }} />
                 <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">{data.label}</div>
                 <div className="space-y-2">
                     {data.subItems.map((item, idx) => {
@@ -338,8 +470,10 @@ const ResizeHandler: React.FC<{ useTimelineLayout?: boolean }> = ({ useTimelineL
 
     useEffect(() => {
         const handleResize = () => {
+            // For timeline layout, don't auto-fit on resize - let user control the view
+            // For non-timeline layouts, fit view normally
             if (!useTimelineLayout) {
-                setTimeout(() => fitView({ padding: 0.1 }), 50);
+                setTimeout(() => fitView({ padding: 0.1 }), 100);
             }
         };
         window.addEventListener('resize', handleResize);
@@ -349,7 +483,58 @@ const ResizeHandler: React.FC<{ useTimelineLayout?: boolean }> = ({ useTimelineL
     return null;
 };
 
-export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane, hideTooltip, hideKindInfo }) => {
+// Viewport constraint handler for timeline layout - restricts vertical panning
+const ViewportConstraint: React.FC<{ onViewportChange?: (viewport: Viewport) => void }> = ({ onViewportChange }) => {
+    const { setViewport } = useReactFlow();
+    const lockedY = useRef(0); // Lock y to initial position
+
+    // This is called from the parent's onMove - immediately correct any y drift
+    const constrainViewport = useCallback((viewport: Viewport) => {
+        // If y has drifted from locked position, correct it immediately
+        if (viewport.y !== lockedY.current) {
+            setViewport({ ...viewport, y: lockedY.current }, { duration: 0 });
+        }
+        // Report the corrected viewport
+        if (onViewportChange) {
+            onViewportChange({ ...viewport, y: lockedY.current });
+        }
+    }, [setViewport, onViewportChange]);
+
+    // Expose the constrain function via a ref that parent can access
+    useEffect(() => {
+        // Store the function on window for the parent to call
+        (window as any).__constrainViewport = constrainViewport;
+        return () => {
+            delete (window as any).__constrainViewport;
+        };
+    }, [constrainViewport]);
+
+    return null;
+};
+
+// Custom reset view button for timeline layout - resets to initial position
+const HorizontalFitViewButton: React.FC = () => {
+    const { setViewport } = useReactFlow();
+
+    const handleClick = () => {
+        // Reset to initial timeline view (start position, default zoom)
+        setViewport({ x: 0, y: 0, zoom: 1 });
+    };
+
+    return (
+        <button
+            onClick={handleClick}
+            className="react-flow__controls-button"
+            title="reset view"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+        </button>
+    );
+};
+
+export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedAxisId, className, highlightedKinds, highlightedPrograms, onNodeClick, hideStatusIcons, useTimelineLayout, skipStrategyLane, hideTooltip, hideKindInfo, timelineScale = 1, onViewportChange }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 1600, height: 800 });
 
@@ -422,6 +607,7 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                     id: axis.id,
                     type: 'custom',
                     data: {
+                        id: axis.id,
                         label: axis.name,
                         subLabel: getAxisLabel(axis.kind),
                         status: axis.status,
@@ -438,6 +624,8 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                         quarter: axis.quarter,
                         yOffset: (axis as any).yOffset,
                         xPosition: (axis as any).xPosition,
+                        startDaysFromNow: (axis as any).startDaysFromNow,
+                        durationDays: (axis as any).durationDays,
                         confidenceRange: (axis as any).confidenceRange,
                         customWidth: (axis as any).customWidth,
                         customStyle: (axis as any).customStyle
@@ -457,11 +645,15 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                             id: `${dep.linkedAxisId}-${axis.id}`,
                             source: dep.linkedAxisId,
                             target: axis.id,
+                            type: 'smoothstep',
                             animated: false,
+                            zIndex: -1,
                             style: { stroke: edgeColor, strokeWidth: 2 },
                             markerEnd: {
                                 type: MarkerType.ArrowClosed,
                                 color: edgeColor,
+                                width: 12,
+                                height: 12,
                             },
                         });
                     }
@@ -489,9 +681,9 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
         }
 
         return useTimelineLayout
-            ? getTimelineLayoutedElements(filteredNodes, filteredEdges, containerSize.width, containerSize.height, skipStrategyLane)
+            ? getTimelineLayoutedElements(filteredNodes, filteredEdges, containerSize.width, containerSize.height, skipStrategyLane, timelineScale)
             : getLayoutedElements(filteredNodes, filteredEdges);
-    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, hideTooltip, hideKindInfo, useTimelineLayout, containerSize, skipStrategyLane]);
+    }, [workflow, focusedAxisId, highlightedKinds, highlightedPrograms, hideStatusIcons, hideTooltip, hideKindInfo, useTimelineLayout, containerSize, skipStrategyLane, timelineScale]);
 
     const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
@@ -515,11 +707,36 @@ export const DependencyMap: React.FC<DependencyMapProps> = ({ workflow, focusedA
                     fitViewOptions={{ padding: 0.02, minZoom: 0.6, maxZoom: 2 }}
                     defaultViewport={useTimelineLayout ? { x: 0, y: 0, zoom: 1 } : undefined}
                     minZoom={0.5}
+                    panOnDrag={true}
+                    panOnScroll={useTimelineLayout}
+                    panOnScrollMode={useTimelineLayout ? "horizontal" : undefined}
+                    zoomOnScroll={!useTimelineLayout}
+                    preventScrolling={true}
+                    onMove={(_event, viewport) => {
+                        if (useTimelineLayout) {
+                            // Call the constraint function to lock y position
+                            const constrainFn = (window as any).__constrainViewport;
+                            if (constrainFn) {
+                                constrainFn(viewport);
+                            }
+                        } else if (onViewportChange) {
+                            onViewportChange(viewport);
+                        }
+                    }}
                     attributionPosition="bottom-right"
+                    elevateEdgesOnSelect={true}
+                    edgesUpdatable={false}
                 >
                     <ResizeHandler useTimelineLayout={useTimelineLayout} />
+                    {useTimelineLayout && <ViewportConstraint onViewportChange={onViewportChange} />}
                     {!useTimelineLayout && <Background className="!bg-slate-50 dark:!bg-slate-900" color="#94a3b8" gap={16} />}
-                    <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:text-white" position="bottom-right" />
+                    <Controls
+                        className="dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                        position="bottom-right"
+                        showFitView={!useTimelineLayout}
+                    >
+                        {useTimelineLayout && <HorizontalFitViewButton />}
+                    </Controls>
                 </ReactFlow>
             </ReactFlowProvider>
         </div>

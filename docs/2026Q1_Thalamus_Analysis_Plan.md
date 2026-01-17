@@ -100,6 +100,7 @@ Sentinels are used to assess run-to-run stability, not biological interpretation
 - No single-cell segmentation required for Phase 0
 - Standard QC filters for focus, illumination, and saturation
 - Agentic QC may be used to flag gross acquisition failures
+- Nuclei based pixel intensity analysis
 
 ---
 
@@ -135,18 +136,36 @@ Hand-engineered morphology features:
 ### 2. Reproducibility
 
 - Assess correlation of treated-vs-vehicle shifts across plates and days
-- Confirm replicates cluster by condition, not by plate or day
+- Confirm that condition-associated shifts are reproducible across plates and days, and that technical factors do not dominate the condition-induced signal used for dose/timepoint selection
 
 **Failure mode:** If embeddings cluster by technical factors, Phase 0 does not pass.
 
-### 3. Viability anchoring
+### 3. Viability and pathology anchoring
+
+#### 3a. Pathology exclusion gate (γ-H2AX)
+
+γ-H2AX is used solely as a pathology exclusion flag to identify dose–timepoint regimes dominated by overt DNA damage. It is not optimized, ranked, or used to nominate the operating point.
+
+A dose–timepoint is disqualified as a saturated damage regime if either of the following plate-local criteria are met:
+
+- ≥60% of nuclei exceed the vehicle P95 γ-H2AX nuclear intensity threshold, or
+- ≥40% of nuclei exceed the vehicle P95 threshold and median nuclear γ-H2AX intensity is ≥3× vehicle.
+
+These regimes are excluded even if morphology separation is large, because morphology here reflects damage dominance rather than structured stress response.
+
+In this regime, perturbational effects are expected to flatten and converge, making the condition unsuitable for pooled perturbation analysis.
+
+#### 3b. Viability shoulder identification
 
 - Plot scalar viability against morphological shift across doses
-- Identify operating region where:
-  - morphology shifts increase monotonically relative to vehicle
+- Identify the operating region where:
+  - morphology shifts increase monotonically in magnitude from vehicle in morphology feature space, without reversal across adjacent doses
   - viability shows early stress but has not collapsed
+  - γ-H2AX pathology flags remain below saturation thresholds
 
 The candidate operating point is selected as the maximum morphology separation observed prior to viability inflection, not at a predefined viability threshold.
+
+Dose nomination follows the decision order: morphology separation → reproducibility → viability → pathology exclusion.
 
 ### 4. Sentinel stability (lightweight SPC)
 
@@ -166,6 +185,7 @@ Phase 0 analysis must produce:
    - exceed technical variance
 3. Confirmation that viability is preserved
 4. Identification of any obvious technical risks for pooled execution
+5. Documentation that the nominated operating point lies upstream of γ-H2AX-defined saturated damage regimes
 
 **No biological claims are made at this stage.**
 

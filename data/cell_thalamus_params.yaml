@@ -199,6 +199,16 @@ compounds:
     ec50_uM: 80.0
     hill_slope: 2.0
 
+  menadione:
+    name: "Menadione (Vitamin K3)"
+    stress_axis: "oxidative"
+    intensity: 1.2              # Strong morphology effect (potent ROS generator)
+    ec50_uM: 25.0               # EC50 at 25 µM (A549 cells)
+    hill_slope: 1.8             # Moderate steepness
+    dna_damage_coupling: 0.6    # Oxidative stress → DNA damage coupling factor
+    # Note: Menadione redox-cycles via NQO1, generating superoxide which causes
+    # both mitochondrial dysfunction and DNA double-strand breaks (γ-H2AX positive)
+
 # Baseline morphology per cell line (arbitrary units)
 baseline_morphology:
   A549:
@@ -445,6 +455,7 @@ cell_line_ic50_modifiers:
     # Lung cancer - NRF2 primed (oxidative resistant), fast cycling (microtubule sensitive)
     tBHQ: 1.5          # More resistant to oxidative stress (NRF2 pathway active)
     H2O2: 1.3          # Moderate resistance
+    menadione: 1.4     # Resistant (NRF2 + NQO1 detoxification pathway)
     tunicamycin: 1.0   # Baseline ER stress sensitivity
     thapsigargin: 1.0  # Baseline
     CCCP: 1.0          # Baseline mitochondrial stress
@@ -459,6 +470,7 @@ cell_line_ic50_modifiers:
     # Hepatoma - High ER load (ER stress sensitive), OXPHOS dependent (mito sensitive)
     tBHQ: 0.9          # Slightly more sensitive
     H2O2: 1.5          # More resistant (high peroxide detox capacity)
+    menadione: 0.7     # More sensitive (high NQO1 but OXPHOS dependent - mito damage)
     tunicamycin: 0.7   # More sensitive (high ER protein load)
     thapsigargin: 0.7  # More sensitive (high ER calcium load)
     CCCP: 0.8          # More sensitive (OXPHOS dependent)
@@ -472,6 +484,7 @@ cell_line_ic50_modifiers:
     # Osteosarcoma - Baseline for most stresses
     tBHQ: 1.0
     H2O2: 1.0
+    menadione: 1.0     # Baseline
     tunicamycin: 1.0
     thapsigargin: 1.0
     CCCP: 1.0
@@ -485,6 +498,7 @@ cell_line_ic50_modifiers:
     # iPSC-derived neurons - Post-mitotic, high metabolic rate, oxidative stress sensitive
     tBHQ: 0.5          # Very sensitive to oxidative stress (high ROS baseline)
     H2O2: 0.4          # Extremely sensitive (neurons accumulate oxidative damage)
+    menadione: 0.4     # Extremely sensitive (redox cycling + high mito dependence)
     tunicamycin: 0.9   # Moderately sensitive to ER stress
     thapsigargin: 0.9  # Moderately sensitive
     CCCP: 0.3          # Extremely sensitive (high mitochondrial dependence)
@@ -498,6 +512,7 @@ cell_line_ic50_modifiers:
     # iPSC-derived microglia - Brain immune cells, inflammatory response, ROS producers
     tBHQ: 1.2          # Resistant to oxidative stress (produce ROS as defense mechanism)
     H2O2: 1.5          # More resistant (high antioxidant capacity, ROS is their weapon)
+    menadione: 1.3     # Resistant (high antioxidant capacity, NQO1 expression)
     tunicamycin: 0.8   # Somewhat sensitive (high ER protein synthesis for cytokines)
     thapsigargin: 0.8  # Somewhat sensitive
     CCCP: 0.9          # Moderately sensitive (metabolically active but not neuron-level dependent)

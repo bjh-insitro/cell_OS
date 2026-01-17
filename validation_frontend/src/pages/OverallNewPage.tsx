@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { DependencyMap } from '../components/DependencyMap';
 import { mockWorkflowMenadione } from '../data/mockWorkflowMenadione';
+import { Workflow } from '../types/workflow';
 import { Viewport } from 'reactflow';
 
 import { AxisDetailPanel } from '../components/AxisDetailPanel';
@@ -85,7 +86,183 @@ const logTimelineInfo = (containerWidth: number) => {
     });
 };
 
-const MenadioneMapPage: React.FC = () => {
+// Extended workflow with HepG2 transduction
+const workflowWithHepG2: Workflow = {
+    ...mockWorkflowMenadione,
+    axes: [
+        ...mockWorkflowMenadione.axes,
+        {
+            id: "axis_transduce_hepg2",
+            kind: "cell_line",
+            name: "Transduce HepG2s with WG Library",
+            status: "not_started",
+            owner: "Babacar",
+            definitionOfDone: "HepG2 mutant pool created for screening.",
+            visible: true,
+            inputsRequired: "Cas9+ HepG2s, WG LV Library",
+            outputsPromised: "Transduced HepG2 cell pool",
+            blockers: undefined,
+            dependencies: [
+                { id: "d_wg_lib_hepg2", label: "Generate Lib LV particles", status: "not_started", linkedAxisId: "axis_generate_lv" },
+            ],
+            tasks: [{ id: "t_transduce_hepg2", title: "Large scale transduction", status: "not_started" }],
+            // Date-based: starts after A549 transduction (44 + 28 + 7 = 79) + 16 days offset
+            startDaysFromNow: 95,
+            durationDays: 28, // 4 weeks duration
+            confidenceRange: { left: 100, right: 200 },
+        },
+        // HepG2 Functional Genomics downstream
+        {
+            id: "axis_hepg2_fg_treat",
+            kind: "perturbation",
+            name: "Treat with Menadione (HepG2)",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "HepG2 cells treated with Menadione for sequencing.",
+            inputsRequired: "Transduced HepG2 cells, Menadione",
+            outputsPromised: "Treated HepG2 cells for sequencing",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_transduce", label: "Transduce HepG2s with WG Library", status: "not_started", linkedAxisId: "axis_transduce_hepg2" },
+            ],
+            tasks: [{ id: "t_hepg2_fg_treat", title: "Treat cells", status: "not_started" }],
+            startDaysFromNow: 162,
+            durationDays: 14,
+        },
+        {
+            id: "axis_hepg2_prepare_seq_lib",
+            kind: "perturbation",
+            name: "Prepare Seq Lib (HepG2)",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "HepG2 sequencing library prepared.",
+            inputsRequired: "Treated HepG2 cells",
+            outputsPromised: "HepG2 sequencing library",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_fg_treat", label: "Treat with Menadione (HepG2)", status: "not_started", linkedAxisId: "axis_hepg2_fg_treat" },
+            ],
+            tasks: [{ id: "t_hepg2_prep_seq", title: "Prepare sequencing library", status: "not_started" }],
+            startDaysFromNow: 179,
+            durationDays: 7,
+        },
+        {
+            id: "axis_hepg2_perturb",
+            kind: "perturbation",
+            name: "Acquire WG Perturb HepG2/Menadione Seq data",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "Complete genome-wide perturbation screen in HepG2 cells with Menadione stressor.",
+            inputsRequired: "HepG2 cells, Menadione, WG Library, Transduced cells",
+            outputsPromised: "Raw HepG2 perturbation screening data",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_seq_lib", label: "Prepare Seq Lib (HepG2)", status: "not_started", linkedAxisId: "axis_hepg2_prepare_seq_lib" },
+            ],
+            tasks: [{ id: "t_hepg2_perturb", title: "Perform perturbation screen", status: "not_started" }],
+            startDaysFromNow: 189,
+            durationDays: 14,
+        },
+        // HepG2 PST downstream
+        {
+            id: "axis_hepg2_treat",
+            kind: "measurement",
+            name: "Treat with Menadione (HepG2)",
+            status: "not_started",
+            owner: "Jana",
+            definitionOfDone: "HepG2 cells treated with Menadione stressor.",
+            inputsRequired: "Transduced HepG2 cells, Menadione",
+            outputsPromised: "Treated HepG2 cell plates",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_transduce_pst", label: "Transduce HepG2s with WG Library", status: "not_started", linkedAxisId: "axis_transduce_hepg2" },
+            ],
+            tasks: [{ id: "t_hepg2_treat", title: "Perform treatment", status: "not_started" }],
+            startDaysFromNow: 162,
+            durationDays: 14,
+        },
+        {
+            id: "axis_hepg2_prepare_plates",
+            kind: "measurement",
+            name: "Prepare plates for phenotyping (HepG2)",
+            status: "not_started",
+            owner: "Jana",
+            definitionOfDone: "HepG2 plates prepared and ready for imaging.",
+            inputsRequired: "Treated HepG2 plates",
+            outputsPromised: "Prepared HepG2 plates",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_treat_prep", label: "Treat with Menadione (HepG2)", status: "not_started", linkedAxisId: "axis_hepg2_treat" },
+            ],
+            tasks: [{ id: "t_hepg2_prepare", title: "Prepare plates", status: "not_started" }],
+            startDaysFromNow: 179,
+            durationDays: 11,
+        },
+        {
+            id: "axis_hepg2_paint_image",
+            kind: "measurement",
+            name: "Acquire Phenotyping images (HepG2)",
+            status: "not_started",
+            owner: "Jana",
+            definitionOfDone: "HepG2 plates imaged.",
+            inputsRequired: "Prepared HepG2 plates",
+            outputsPromised: "Raw HepG2 images",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_prepare", label: "Prepare plates for phenotyping (HepG2)", status: "not_started", linkedAxisId: "axis_hepg2_prepare_plates" },
+            ],
+            tasks: [{ id: "t_hepg2_image", title: "Acquire images", status: "not_started" }],
+            startDaysFromNow: 193,
+            durationDays: 14,
+        },
+        {
+            id: "axis_hepg2_iss",
+            kind: "measurement",
+            name: "Acquire ISS images (HepG2)",
+            status: "not_started",
+            owner: "Jana",
+            definitionOfDone: "HepG2 ISS imaging complete.",
+            inputsRequired: "Imaged HepG2 plates",
+            outputsPromised: "HepG2 ISS images",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_image", label: "Acquire Phenotyping images (HepG2)", status: "not_started", linkedAxisId: "axis_hepg2_paint_image" },
+            ],
+            tasks: [{ id: "t_hepg2_iss", title: "Acquire ISS images", status: "not_started" }],
+            startDaysFromNow: 210,
+            durationDays: 14,
+        },
+        // HepG2 Compute downstream
+        {
+            id: "axis_hepg2_analysis",
+            kind: "analysis",
+            name: "POSH/Perturb Analysis (HepG2)",
+            status: "not_started",
+            owner: "TBD",
+            definitionOfDone: "HepG2 data analysis complete.",
+            inputsRequired: "HepG2 ISS images, Phenotyping images, Perturbation data",
+            outputsPromised: "HepG2 analysis results, hit list",
+            blockers: undefined,
+            visible: true,
+            dependencies: [
+                { id: "d_hepg2_iss_analysis", label: "Acquire ISS images (HepG2)", status: "not_started", linkedAxisId: "axis_hepg2_iss" },
+                { id: "d_hepg2_perturb_analysis", label: "Acquire WG Perturb HepG2/Menadione Seq data", status: "not_started", linkedAxisId: "axis_hepg2_perturb" },
+            ],
+            tasks: [{ id: "t_hepg2_analysis", title: "Run analysis pipeline", status: "not_started" }],
+            startDaysFromNow: 231,
+            durationDays: 28,
+        },
+    ],
+};
+
+const OverallNewPage: React.FC = () => {
     const [selectedKinds, setSelectedKinds] = useState<string[]>([]);
     const [selectedAxisId, setSelectedAxisId] = useState<string | null>(null);
     const [containerWidth, setContainerWidth] = useState(1600); // Default, will be measured
@@ -110,7 +287,7 @@ const MenadioneMapPage: React.FC = () => {
 
     // Transform workflow data: convert date-based fields to xPosition and customWidth
     const transformedWorkflow = useMemo(() => {
-        const transformedAxes = mockWorkflowMenadione.axes.map(axis => {
+        const transformedAxes = workflowWithHepG2.axes.map(axis => {
             const axisWithDates = axis as typeof axis & {
                 startDaysFromNow?: number;
                 durationDays?: number;
@@ -136,7 +313,7 @@ const MenadioneMapPage: React.FC = () => {
         });
 
         return {
-            ...mockWorkflowMenadione,
+            ...workflowWithHepG2,
             axes: transformedAxes,
         };
     }, [containerWidth]);
@@ -168,8 +345,8 @@ const MenadioneMapPage: React.FC = () => {
             <div className="shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between shadow-sm z-10">
                 <div className="flex items-center space-x-8">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">{mockWorkflowMenadione.name}</h1>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{mockWorkflowMenadione.id}</p>
+                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">{workflowWithHepG2.name}</h1>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{workflowWithHepG2.id}</p>
                     </div>
 
                     <div className="flex items-center space-x-4">
@@ -202,12 +379,6 @@ const MenadioneMapPage: React.FC = () => {
                             className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-emerald-900 dark:hover:text-emerald-300 transition-colors"
                         >
                             Overall
-                        </Link>
-                        <Link
-                            to="/overall-new"
-                            className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-700 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-emerald-900 dark:hover:text-emerald-300 transition-colors"
-                        >
-                            Overall New
                         </Link>
                     </div>
                     <div className="flex items-center gap-2 mr-4">
@@ -339,4 +510,4 @@ const MenadioneMapPage: React.FC = () => {
     );
 };
 
-export default MenadioneMapPage;
+export default OverallNewPage;

@@ -67,8 +67,12 @@ ER_STRESS_MORPH_ALPHA = 0.5  # Morphology scaling factor (50% bump at S=1)
 # FIX: Increased K_ACCUM 3× for reachability, convex boost (D²) for compulsory tracking
 ER_DAMAGE_K_ACCUM = 0.06  # Accumulation rate (per hour): dD/dt += k_accum * S
 ER_DAMAGE_K_REPAIR = 0.0289  # Repair rate (per hour): dD/dt -= k_repair * D  (24h half-life)
-ER_DAMAGE_BOOST = 5.0  # Convex induction boost: k_on *= (1 + boost * D²), makes damage mechanistically compulsory
-ER_DAMAGE_RECOVERY_SLOW = 1.0  # Recovery slowdown: k_off /= (1 + slow * D), damage visible in trajectory slopes
+ER_DAMAGE_BOOST = (
+    5.0  # Convex induction boost: k_on *= (1 + boost * D²), makes damage mechanistically compulsory
+)
+ER_DAMAGE_RECOVERY_SLOW = (
+    1.0  # Recovery slowdown: k_off /= (1 + slow * D), damage visible in trajectory slopes
+)
 
 # Phase: Scars - Mito damage accumulation (persistent memory, matches ER pattern)
 MITO_DAMAGE_K_ACCUM = 0.05  # Accumulation rate (per hour): dD/dt += k_accum * S
@@ -84,7 +88,9 @@ TRANSPORT_DAMAGE_RECOVERY_SLOW = 0.6  # Recovery slowdown: k_off /= (1 + slow * 
 
 # Phase6a: State-dependent measurement noise (damage-driven heteroskedasticity)
 # Cell Painting assay noise increases with accumulated damage to teach agents uncertainty is path-dependent
-CELL_PAINTING_DAMAGE_CV_SCALE = 0.35  # Scaling: variance rises sharply with damage (pedagogical signal)
+CELL_PAINTING_DAMAGE_CV_SCALE = (
+    0.35  # Scaling: variance rises sharply with damage (pedagogical signal)
+)
 CELL_PAINTING_DAMAGE_CV_CAP = 0.60  # Soft cap: prevents CV > 1.0 at max damage (keeps assay usable)
 
 # Mito dysfunction dynamics (morphology-first, death-later mechanism)
@@ -99,6 +105,29 @@ MITO_DYSFUNCTION_MORPH_ALPHA = 0.4  # Morphology scaling factor (40% loss at S=1
 TRANSPORT_DYSFUNCTION_K_ON = 0.35  # Induction rate constant (per hour) - faster than ER/mito
 TRANSPORT_DYSFUNCTION_K_OFF = 0.08  # Decay rate constant (per hour) - faster recovery
 TRANSPORT_DYSFUNCTION_MORPH_ALPHA = 0.65  # Morphology scaling factor (65% increase at S=1)
+
+# DNA damage dynamics (Phase 0 Thalamus: γ-H2AX biomarker)
+# DNA damage is induced by oxidative stress (menadione), direct DNA-damaging agents (etoposide, cisplatin)
+# or as secondary effect from ROS-generating compounds
+ENABLE_DNA_DAMAGE = True
+DNA_DAMAGE_K_ON = 0.20  # Induction rate constant (per hour)
+DNA_DAMAGE_K_OFF = 0.02  # Decay rate constant (per hour) - slower repair than other axes
+DNA_DAMAGE_DEATH_THETA = 0.5  # Stress level for death onset (DNA damage is serious)
+DNA_DAMAGE_DEATH_WIDTH = 0.12  # Sigmoid width for death transition
+DNA_DAMAGE_H_MAX = 0.06  # Max death hazard (per hour) at full stress (apoptosis)
+DNA_DAMAGE_MORPH_ALPHA = 0.3  # Morphology scaling factor for nucleus channel
+
+# DNA damage memory dynamics (persistent, slow repair)
+DNA_DAMAGE_K_ACCUM = 0.08  # Accumulation rate (per hour): dD/dt += k_accum * S
+DNA_DAMAGE_K_REPAIR = 0.0144  # Repair rate (per hour): dD/dt -= k_repair * D (48h half-life)
+DNA_DAMAGE_BOOST = 3.0  # Convex induction boost: k_on *= (1 + boost * D²)
+DNA_DAMAGE_RECOVERY_SLOW = 1.5  # Recovery slowdown: k_off /= (1 + slow * D)
+
+# Oxidative → DNA damage coupling (ROS causes double-strand breaks)
+# Menadione and other oxidative stressors induce DNA damage as secondary effect
+ENABLE_OXIDATIVE_DNA_COUPLING = True
+OXIDATIVE_DNA_COUPLING_THRESHOLD = 0.3  # Mito dysfunction must exceed this
+OXIDATIVE_DNA_COUPLING_RATE = 0.04  # DNA damage induction rate (per hour) from oxidative stress
 
 # Phase 4 Option 3: Cross-talk (transport → mito coupling)
 # Prolonged transport dysfunction induces secondary mito dysfunction
@@ -127,17 +156,21 @@ DEATH_EPS = 1e-9
 # Tracked death fields (allowlist for _propose_hazard validation)
 # These are the ONLY fields that contribute to death accounting
 # Any typo or new field must be explicitly added here AND to conservation checks
-TRACKED_DEATH_FIELDS = frozenset({
-    "death_compound",
-    "death_starvation",
-    "death_mitotic_catastrophe",
-    "death_er_stress",
-    "death_mito_dysfunction",
-    "death_confluence",
-    "death_contamination",  # Phase 2D.1: Operational events (bacterial/fungal contamination)
-    "death_unknown",  # Known unknowns (seeding stress, handling mishaps)
-    "death_committed_er",  # Phase 2A.1: Stochastic ER commitment (post-commitment hazard)
-    "death_committed_mito",  # Phase 2A.2: Stochastic mito commitment (post-commitment hazard)
-    # death_unattributed is NOT in this list (it's computed, not proposed)
-    # death_transport_dysfunction is NOT in this list (Phase 2 stub, no hazard in v1)
-})
+TRACKED_DEATH_FIELDS = frozenset(
+    {
+        "death_compound",
+        "death_starvation",
+        "death_mitotic_catastrophe",
+        "death_er_stress",
+        "death_mito_dysfunction",
+        "death_dna_damage",  # Phase 0 Thalamus: DNA damage (γ-H2AX pathway)
+        "death_confluence",
+        "death_contamination",  # Phase 2D.1: Operational events (bacterial/fungal contamination)
+        "death_unknown",  # Known unknowns (seeding stress, handling mishaps)
+        "death_committed_er",  # Phase 2A.1: Stochastic ER commitment (post-commitment hazard)
+        "death_committed_mito",  # Phase 2A.2: Stochastic mito commitment (post-commitment hazard)
+        "death_committed_dna",  # Phase 0 Thalamus: Stochastic DNA damage commitment
+        # death_unattributed is NOT in this list (it's computed, not proposed)
+        # death_transport_dysfunction is NOT in this list (Phase 2 stub, no hazard in v1)
+    }
+)

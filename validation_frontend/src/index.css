@@ -27,3 +27,8 @@ body {
   padding: 0;
   overflow: hidden;
 }
+
+/* Fix ReactFlow node z-index on hover so tooltips appear above other nodes */
+.react-flow__node:hover {
+  z-index: 9999 !important;
+}

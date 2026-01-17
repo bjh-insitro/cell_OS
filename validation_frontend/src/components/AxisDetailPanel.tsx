@@ -1,9 +1,112 @@
 
 import React, { useEffect, useState } from "react";
-import { WorkflowAxis } from "../types/workflow";
+import { WorkflowAxis, BiomarkerMetadata } from "../types/workflow";
 import { getAxisLabel } from "../utils/axisLabels";
 import { StatusPill } from "./StatusPill";
 import { BenchlingService, BenchlingEntity } from "../services/BenchlingService";
+
+// Biomarker Panel Component
+const BiomarkerPanel: React.FC<{ biomarker: BiomarkerMetadata }> = ({ biomarker }) => {
+    const stressAxisColors: Record<string, { bg: string; text: string; border: string }> = {
+        dna_damage: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-300', border: 'border-red-200 dark:border-red-800' },
+        oxidative: { bg: 'bg-orange-50 dark:bg-orange-900/20', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200 dark:border-orange-800' },
+        er_stress: { bg: 'bg-purple-50 dark:bg-purple-900/20', text: 'text-purple-700 dark:text-purple-300', border: 'border-purple-200 dark:border-purple-800' },
+        mitochondrial: { bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-300', border: 'border-green-200 dark:border-green-800' },
+    };
+
+    const colors = stressAxisColors[biomarker.stressAxis] || stressAxisColors.dna_damage;
+
+    return (
+        <div className={`${colors.bg} border ${colors.border} rounded-lg p-4`}>
+            <div className="flex items-center gap-2 mb-3">
+                <div className={`w-6 h-6 rounded-full ${colors.text} flex items-center justify-center`}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                </div>
+                <h3 className={`text-sm font-bold ${colors.text}`}>Biomarker Assay</h3>
+            </div>
+
+            <div className="space-y-3">
+                {/* Biomarker Name and Target */}
+                <div className="flex justify-between items-start">
+                    <div>
+                        <div className={`text-lg font-bold ${colors.text}`}>{biomarker.name}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{biomarker.target}</div>
+                    </div>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${colors.bg} ${colors.text} border ${colors.border}`}>
+                        {biomarker.stressAxis.replace('_', ' ').toUpperCase()}
+                    </span>
+                </div>
+
+                {/* Assay Details */}
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <div>
+                        <div className="text-[10px] uppercase text-slate-400 font-semibold">Assay Type</div>
+                        <div className="text-xs text-slate-700 dark:text-slate-300 capitalize">{biomarker.assayType.replace('_', ' ')}</div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] uppercase text-slate-400 font-semibold">Readout</div>
+                        <div className="text-xs text-slate-700 dark:text-slate-300 capitalize">{biomarker.readout.replace('_', ' ')}</div>
+                    </div>
+                </div>
+
+                {/* Pathology Gate */}
+                {biomarker.pathologyGate && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <div className="text-[10px] uppercase text-slate-400 font-semibold mb-2">Pathology Gate Criteria</div>
+                        <div className="bg-white dark:bg-slate-800 rounded p-3 border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mb-2">{biomarker.pathologyGate.description}</p>
+                            <div className="flex gap-4">
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-slate-400">Threshold:</span>
+                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                        {(biomarker.pathologyGate.threshold * 100).toFixed(0)}%
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-slate-400">Fold Change:</span>
+                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                        ≥{biomarker.pathologyGate.foldChangeRequired}×
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Mini visualization of pathology gate */}
+                        <div className="mt-3 h-16 relative bg-slate-100 dark:bg-slate-900 rounded overflow-hidden">
+                            {/* Threshold line */}
+                            <div
+                                className="absolute w-full h-px bg-green-500"
+                                style={{ bottom: `${biomarker.pathologyGate.threshold * 100}%` }}
+                            >
+                                <span className="absolute right-1 -top-3 text-[8px] text-green-600 dark:text-green-400 font-mono">
+                                    {(biomarker.pathologyGate.threshold * 100).toFixed(0)}% threshold
+                                </span>
+                            </div>
+                            {/* Fail zone */}
+                            <div
+                                className="absolute bottom-0 w-full bg-red-100 dark:bg-red-900/30"
+                                style={{ height: `${biomarker.pathologyGate.threshold * 100 - 20}%` }}
+                            />
+                            {/* Pass zone */}
+                            <div
+                                className="absolute w-full bg-green-100 dark:bg-green-900/30"
+                                style={{
+                                    bottom: `${biomarker.pathologyGate.threshold * 100}%`,
+                                    height: `${100 - biomarker.pathologyGate.threshold * 100}%`
+                                }}
+                            />
+                            {/* Labels */}
+                            <span className="absolute top-1 right-1 text-[8px] text-green-600 dark:text-green-400 font-semibold">PASS</span>
+                            <span className="absolute bottom-1 right-1 text-[8px] text-red-500 dark:text-red-400 font-semibold">FAIL</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 interface AxisDetailPanelProps {
     axis: WorkflowAxis;
@@ -156,6 +259,11 @@ export const AxisDetailPanel: React.FC<AxisDetailPanelProps> = ({ axis, onClose 
                             <p className="text-sm text-slate-600 dark:text-slate-300">{axis.outputsPromised}</p>
                         </div>
                     </div>
+
+                    {/* Biomarker Panel */}
+                    {axis.biomarker && (
+                        <BiomarkerPanel biomarker={axis.biomarker} />
+                    )}
 
                     {axis.blockers && (
                         <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-lg p-4">
