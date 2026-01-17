@@ -150,6 +150,11 @@ ENABLE_SYNERGISTIC_COUPLING = True
 SYNERGY_GATE_S0 = 0.2  # Stress threshold below which synergy doesn't activate (suppresses noise)
 SYNERGY_K_HAZARD = 0.035  # Synergy hazard coefficient (per hour): h = k * gate(S_er) * gate(S_mito)
 
+# Baseline viability dynamics
+# Healthy attached cells in culture are not 100% viable - there's slow baseline turnover
+HEALTHY_ATTACHED_VIABILITY = 0.98  # Viability of healthy attached cells after media change
+BASELINE_DEATH_RATE_PER_H = 0.0004  # ~1% per day (0.01/24 ≈ 0.0004/h) baseline turnover
+
 # Death accounting epsilon (for conservation law enforcement)
 DEATH_EPS = 1e-9
 

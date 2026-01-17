@@ -30,31 +30,24 @@ CELL_PAINTING_CONTRACT = MeasurementContract(
         # Observable biological state
         "state.viability",
         "state.confluence",
-
         # Latent stress states (morphology-first mechanisms)
         "state.er_stress",
         "state.mito_dysfunction",
         "state.transport_dysfunction",
-
         # Damage state (persistent scars, for state-dependent noise)
         "state.er_damage",
         "state.mito_damage",
         "state.transport_damage",
-
         # Contact pressure (measurement confounder)
         "state.contact_pressure",
-
         # Subpopulation structure (for heterogeneity)
         "state.subpopulations[*][*]",
-
         # Persistent well biology
         "state.well_biology[*]",
         "state.well_position",
-
         # Temporal durations (NOT treatment identity)
         "state.time_since_last_perturbation_h",
         "state.time_since_last_feed_h",
-
         # Measurement artifacts
         "state.last_washout_time",
         "state.washout_artifact_until_time",
@@ -62,25 +55,22 @@ CELL_PAINTING_CONTRACT = MeasurementContract(
         "state.plating_context",
         "state.plating_context[*]",
         "state.seed_time",
-
         # Debris and handling (for quality metrics)
         "state.debris_cells",
         "state.initial_cells",
         "state.cells_lost_to_handling",
         "state.edge_damage_score",
-
         # Well biology (persistent per-well latent factors)
         "state.well_biology",
         "state.well_biology[*].*",
         "state.well_biology.__iter__",
         "state.well_biology.__len__",
-
         # Metadata
         "state.vessel_id",
         "state.cell_line",
         "state.last_update_time",
-    } | TRAVERSAL,
-
+    }
+    | TRAVERSAL,
     forbidden_reads={
         "state.cell_count",  # Cross-modal independence
         "state.compounds",  # Treatment blinding
@@ -91,14 +81,12 @@ CELL_PAINTING_CONTRACT = MeasurementContract(
         "state.death_confluence",  # Ground truth label
         "state.death_unknown",  # Ground truth label
     },
-
     forbidden_output_keys={
         "viability",  # Only structural morphology allowed
         "cell_count",  # Cross-modal
         "death_mode",  # Ground truth
         "death_compound",  # Ground truth
     },
-
     allow_debug_truth=False,  # Cell Painting is purely observational
 )
 
@@ -113,34 +101,30 @@ LDH_VIABILITY_CONTRACT = MeasurementContract(
         "state.cell_count",  # LDH scales with biomass
         "state.viability",  # For signal scaling
         "state.confluence",
-
+        "state.cytotox_released_since_feed",  # Accumulated cytotox signal in media (cleared on feed)
         # Latent stress states (for UPR/ATP/trafficking markers)
         "state.er_stress",
         "state.mito_dysfunction",
         "state.transport_dysfunction",
-
         # Measurement artifacts
         "state.last_washout_time",
         "state.washout_artifact_until_time",
         "state.washout_artifact_magnitude",
-
         # Death labels ONLY for debug truth output
         "state.death_mode",
         "state.death_compound",
         "state.death_confluence",
         "state.death_unknown",
-
         # Metadata
         "state.vessel_id",
         "state.cell_line",
-    } | TRAVERSAL,
-
+    }
+    | TRAVERSAL,
     forbidden_reads={
         "state.compounds",  # Treatment blinding
         "state.compound_meta",  # Treatment blinding
         "state.compound_start_time",  # Treatment blinding
     },
-
     forbidden_output_keys={
         # Ground truth only in _debug_truth
         "viability",
@@ -148,7 +132,6 @@ LDH_VIABILITY_CONTRACT = MeasurementContract(
         "death_mode",
         "death_compound",
     },
-
     allow_debug_truth=True,  # LDH can output ground truth when debug enabled
 )
 
@@ -163,28 +146,23 @@ SCRNA_CONTRACT = MeasurementContract(
         "state.capturable_cells",  # Observable proxy (NOT cell_count)
         "state.viability",
         "state.confluence",
-
         # Subpopulation structure (for expression profiles)
         "state.subpopulations",
         "state.subpopulations[*][*]",
-
         # Latent stress states (for expression signatures)
         "state.er_stress",
         "state.mito_dysfunction",
         "state.transport_dysfunction",
         "state.contact_pressure",
-
         # Temporal durations
         "state.time_since_last_perturbation_h",
-
         # Measurement artifacts
         "state.last_washout_time",
-
         # Metadata
         "state.vessel_id",
         "state.cell_line",
-    } | TRAVERSAL,
-
+    }
+    | TRAVERSAL,
     forbidden_reads={
         "state.cell_count",  # Use capturable_cells proxy instead
         "state.compounds",  # Treatment blinding
@@ -195,12 +173,10 @@ SCRNA_CONTRACT = MeasurementContract(
         "state.death_confluence",  # Ground truth label
         "state.death_unknown",  # Ground truth label
     },
-
     forbidden_output_keys={
         "cell_count",  # Use captured_cell_count instead
         "death_mode",
         "death_compound",
     },
-
     allow_debug_truth=False,  # scRNA is observational
 )

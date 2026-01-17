@@ -448,6 +448,67 @@ timepoints:
 plate_format: 96  # 96-well plates
 wells_per_condition: 3  # Technical replicates per plate
 
+# Harvest Viability Model
+# Before seeding, cells are harvested (trypsinized, centrifuged). This process
+# causes baseline cell death that varies by cell line, passage, and operator skill.
+# Viability is NEVER 100% at harvest - typical range is 89-96%.
+harvest_viability:
+  # Per cell line: mean and CV for harvest viability
+  # Mean reflects cell line robustness, CV reflects batch-to-batch variation
+  A549:
+    mean: 0.94        # Robust cancer line, typically 94% viable at harvest
+    cv: 0.02          # Low variation (hardy cells)
+  HepG2:
+    mean: 0.92        # Moderate robustness
+    cv: 0.025         # Slightly more variable
+  U2OS:
+    mean: 0.95        # Very robust osteosarcoma
+    cv: 0.015         # Very consistent
+  iPSC_NGN2:
+    mean: 0.89        # Fragile neurons - worst at harvest
+    cv: 0.035         # High variation (operator skill matters)
+  iPSC_Microglia:
+    mean: 0.91        # Semi-adherent, moderate robustness
+    cv: 0.030         # Moderate variation
+  DEFAULT:
+    mean: 0.93        # Default for unknown cell lines
+    cv: 0.025         # Default variation
+
+# Instrument-specific Seeding Stress
+# After harvest, cells are dispensed into wells. The dispensing method affects
+# viability due to mechanical shear forces:
+# - Manual pipetting with wide-bore tips: gentlest (~2% death)
+# - EL406 8-channel manifold: moderate (~3% death)
+# - Pin-based systems (narrower gauge): higher stress (~4-5% death)
+seeding_instruments:
+  manual_pipette:
+    name: "Manual pipetting (wide-bore tips)"
+    death_fraction_mean: 0.02   # 2% cell death during seeding
+    death_fraction_cv: 0.25     # 25% CV on the death fraction
+    notes: "Gentlest method, wide-bore tips minimize shear"
+
+  el406_8ch:
+    name: "BioTek EL406 8-channel manifold"
+    death_fraction_mean: 0.03   # 3% cell death
+    death_fraction_cv: 0.20     # 20% CV
+    notes: "Standard liquid handler, moderate shear"
+
+  certus_flex:
+    name: "Certus Flex dispenser"
+    death_fraction_mean: 0.035  # 3.5% cell death
+    death_fraction_cv: 0.20     # 20% CV
+    notes: "Precision dispenser, slightly higher shear for complex plate maps"
+
+  pin_based:
+    name: "Pin-based dispenser (e.g., CyBi-Well)"
+    death_fraction_mean: 0.045  # 4.5% cell death
+    death_fraction_cv: 0.15     # 15% CV (more consistent but higher baseline)
+    notes: "Narrow gauge pins create more shear stress"
+
+  DEFAULT:
+    death_fraction_mean: 0.03   # Default to EL406-like
+    death_fraction_cv: 0.20
+
 # Cell-line-specific IC50 modifiers (relative to base EC50)
 # Captures biological differences in stress sensitivity
 cell_line_ic50_modifiers:

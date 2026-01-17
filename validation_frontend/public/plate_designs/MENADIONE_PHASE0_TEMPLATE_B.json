@@ -1,0 +1,3267 @@
+{
+  "schema_version": "menadione_phase0_v1",
+  "plate": {
+    "plate_id": "MENADIONE_PHASE0_TEMPLATE_B",
+    "format": "384",
+    "rows": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M",
+      "N",
+      "O",
+      "P"
+    ],
+    "cols": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24
+    ]
+  },
+  "intent": "Menadione Phase 0 dose-response calibration - Template B",
+  "template": {
+    "template_id": "B",
+    "seed": 2002,
+    "description": "Pre-randomized template B for variance partitioning"
+  },
+  "cell_lines": {
+    "A549": {
+      "rows": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M",
+        "N",
+        "O",
+        "P"
+      ],
+      "name": "A549",
+      "description": "NRF2-primed, oxidative stress resistant"
+    }
+  },
+  "compound": {
+    "name": "menadione",
+    "mechanism": "Redox cycler (vitamin K3)",
+    "doses_uM": [
+      0.0,
+      5.0,
+      15.0,
+      35.0,
+      75.0,
+      150.0
+    ],
+    "dose_labels": {
+      "0.0": "Vehicle (DMSO)",
+      "5.0": "~EC10 - minimal effect",
+      "15.0": "~EC25 - early response",
+      "35.0": "~EC50 - half-maximal",
+      "75.0": "~EC75 - strong response",
+      "150.0": "~EC90 - near-maximal"
+    }
+  },
+  "sentinels": {
+    "total": 64,
+    "vehicle": {
+      "count": 40,
+      "dose_uM": 0.0,
+      "purpose": "Edge effect quantification, baseline signal"
+    },
+    "mild_menadione": {
+      "count": 12,
+      "dose_uM": 15.0,
+      "purpose": "Statistical process control (SPC), mild stress"
+    },
+    "strong_menadione": {
+      "count": 12,
+      "dose_uM": 75.0,
+      "purpose": "Statistical process control (SPC), strong stress"
+    }
+  },
+  "experimental": {
+    "total": 318,
+    "reps_per_dose": {
+      "0.0": 53,
+      "5.0": 53,
+      "15.0": 53,
+      "35.0": 53,
+      "75.0": 53,
+      "150.0": 53
+    }
+  },
+  "design_goals": [
+    "Establish Menadione dose-response curve for A549 cells",
+    "Quantify variance components (passage, plate, position, timepoint)",
+    "Provide power for detecting 10% viability differences",
+    "Fixed sentinel positions for cross-plate SPC",
+    "Randomized experimental positions for position effect averaging"
+  ],
+  "statistics": {
+    "total_wells": 382,
+    "sentinel_wells": 64,
+    "experimental_wells": 318,
+    "doses": 6,
+    "reps_per_dose": 53,
+    "edge_fraction": 0.17
+  },
+  "wells": [
+    {
+      "well_pos": "A01",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A02",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A03",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A04",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A05",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A06",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A07",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A08",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A09",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A12",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A13",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A14",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A15",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A16",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A17",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A18",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A19",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A20",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A21",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A22",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A23",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "A24",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "B01",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "B02",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B03",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B04",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B05",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B06",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B07",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B08",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B09",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B10",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B12",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B13",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B14",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B15",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B16",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B17",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B18",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B19",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B20",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B21",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B22",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B23",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "B24",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "C01",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "C02",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C03",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C04",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C05",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C06",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C07",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C08",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C09",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C10",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C12",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C13",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C14",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C15",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C16",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C17",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C18",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C19",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C20",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C21",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C22",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C23",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "C24",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "D01",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "D02",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D03",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D04",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D05",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D06",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D07",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D08",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D09",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D10",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D11",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D12",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D13",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D14",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D15",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D16",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D17",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D18",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D19",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D20",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D21",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D22",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D23",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "D24",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "E01",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "E02",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E03",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E04",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E05",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E06",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E07",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E08",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E09",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E10",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E11",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E12",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E13",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E14",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E15",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E16",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E17",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E18",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E19",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E20",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E21",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E22",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E23",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "E24",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "F01",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "F02",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F03",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F04",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F05",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F06",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F07",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F08",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F09",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F10",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F11",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F12",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F13",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F14",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F15",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F16",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F17",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F18",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F19",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F20",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F21",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F22",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F23",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "F24",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "G01",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "G02",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G03",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G04",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G05",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G06",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G07",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G08",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G09",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G10",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G12",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G13",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G14",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G15",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G16",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G17",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G18",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G19",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G20",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G21",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G22",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G23",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "G24",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "H01",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "H02",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H03",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H04",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H05",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H06",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H07",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H08",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H09",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H10",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H11",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H12",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H13",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H14",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H15",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H16",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H17",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H18",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H19",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H20",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H21",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H22",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H23",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "H24",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "I01",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "I02",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I03",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I04",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I05",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I06",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I07",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I08",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I09",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I10",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I11",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I12",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I13",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I14",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I15",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I16",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I17",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I18",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I19",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I20",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I21",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I22",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I23",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "I24",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "J01",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "J02",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J03",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J04",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J05",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J06",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J07",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J08",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J09",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J10",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J12",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J13",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J14",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J15",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J16",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J17",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J18",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J19",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J20",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J21",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J22",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J23",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "J24",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "K01",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "K02",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K03",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K04",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K05",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K06",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K07",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K08",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K09",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K10",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K11",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K12",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K13",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K14",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K15",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K16",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K17",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K18",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K19",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K20",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K21",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K22",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K23",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "K24",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "L01",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "L02",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L03",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L04",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L05",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L06",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L07",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L08",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L09",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L10",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L11",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L12",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L13",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L14",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L15",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L16",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L17",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L18",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L19",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L20",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L21",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L22",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L23",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "L24",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "M01",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "M02",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M03",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M04",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M05",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M06",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M07",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M08",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M09",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M10",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M11",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M12",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M13",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M14",
+      "dose_uM": 15.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "mild_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M15",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M16",
+      "dose_uM": 75.0,
+      "is_sentinel": true,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "sentinel_type": "strong_menadione",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M17",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M18",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M19",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M20",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M21",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M22",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M23",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "M24",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "N01",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "N02",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N03",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N04",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N05",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N06",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N07",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N08",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N09",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N10",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N11",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N12",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N13",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N14",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N15",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N16",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N17",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N18",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N19",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N20",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N21",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N22",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N23",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "N24",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "O01",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "O02",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O03",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O04",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O05",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O06",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O07",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O08",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O09",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O10",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O12",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O13",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O14",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O15",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O16",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O17",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O18",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O19",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O20",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O21",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O22",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O23",
+      "dose_uM": 15.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "center"
+    },
+    {
+      "well_pos": "O24",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P01",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P02",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P03",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P04",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P05",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P06",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P07",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P08",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P09",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P10",
+      "dose_uM": 0.0,
+      "is_sentinel": false,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P11",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P12",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P13",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P14",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P15",
+      "dose_uM": 75.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P16",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P17",
+      "dose_uM": 35.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P18",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P19",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P21",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P22",
+      "dose_uM": 5.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P23",
+      "dose_uM": 150.0,
+      "is_sentinel": false,
+      "compound": "menadione",
+      "cell_line": "A549",
+      "zone": "edge"
+    },
+    {
+      "well_pos": "P24",
+      "dose_uM": 0.0,
+      "is_sentinel": true,
+      "compound": "DMSO",
+      "cell_line": "A549",
+      "sentinel_type": "vehicle",
+      "zone": "edge"
+    }
+  ]
+}

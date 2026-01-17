@@ -90,11 +90,11 @@ export default function PlateViewer({
           {/* Column headers */}
           {showAxisLabels && (
             <div className="flex">
-              <div className={size === 'small' ? 'w-3' : 'w-10'}></div>
+              <div className={`flex-shrink-0 ${size === 'small' ? 'w-3' : 'w-10'}`}></div>
               {Array.from({ length: dims.cols }).map((_, col) => (
                 <div
                   key={col}
-                  className={`${dims.wellWidth} text-center ${dims.fontSize} ${
+                  className={`flex-shrink-0 ${dims.wellWidth} ${size === 'small' ? 'mr-0.5' : 'mr-1'} text-center ${dims.fontSize} ${
                     isDarkMode ? 'text-slate-400' : 'text-zinc-500'
                   } mb-1`}
                 >
@@ -110,7 +110,7 @@ export default function PlateViewer({
               {/* Row label */}
               {showAxisLabels && (
                 <div
-                  className={`${size === 'small' ? 'w-3' : 'w-10'} ${dims.fontSize} ${
+                  className={`flex-shrink-0 ${size === 'small' ? 'w-3' : 'w-10'} ${dims.fontSize} ${
                     isDarkMode ? 'text-slate-400' : 'text-zinc-500'
                   } text-right pr-2`}
                 >
@@ -130,7 +130,7 @@ export default function PlateViewer({
                 return (
                   <div
                     key={wellId}
-                    className={`${dims.wellWidth} ${dims.wellHeight} ${size === 'small' ? 'mr-0.5' : 'mr-1'} rounded border-${borderWidth} flex items-center justify-center transition-all group relative ${color} ${
+                    className={`flex-shrink-0 ${dims.wellWidth} ${dims.wellHeight} ${size === 'small' ? 'mr-0.5' : 'mr-1'} rounded border-${borderWidth} flex items-center justify-center transition-all group relative ${color} ${
                       onWellClick ? 'cursor-pointer hover:ring-2 hover:ring-violet-500' : ''
                     }`}
                     style={{ borderColor }}

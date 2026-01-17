@@ -18,7 +18,7 @@ Core VM (this file):
 Delegated Subsystems:
     • Assays (src/cell_os/hardware/assays/):
         - CellPaintingAssay - 5-channel morphology
-        - LDHViabilityAssay - Scalar readouts (LDH, ATP, UPR, trafficking)
+        - CytotoxAssay - Cytotoxicity (kit-agnostic) + scalar readouts (ATP, UPR, trafficking)
         - ScRNASeqAssay - Single-cell transcriptomics
 
     • Stress Mechanisms (src/cell_os/hardware/stress_mechanisms/):
@@ -111,10 +111,12 @@ except ImportError:
 # only by the mechanism modules in stress_mechanisms/
 # Import shared utilities
 from ._impl import lognormal_multiplier, stable_u32
-from .assays import CellPaintingAssay, LDHViabilityAssay, ScRNASeqAssay, SupplementalIFAssay
+from .assays import CellPaintingAssay, CytotoxAssay, ScRNASeqAssay, SupplementalIFAssay
 
 # Import constants from shared module (feature flags and core parameters only)
 from .constants import (
+    # Baseline viability dynamics
+    BASELINE_DEATH_RATE_PER_H,
     # Death accounting
     DEATH_EPS,
     DEFAULT_DOUBLING_TIME_H,
@@ -131,6 +133,7 @@ from .constants import (
     ENABLE_TRANSPORT_DYSFUNCTION,
     FEEDING_CONTAMINATION_RISK,
     FEEDING_TIME_COST_H,
+    HEALTHY_ATTACHED_VIABILITY,
     SUBTHRESHOLD_STRESS_GROWTH_PENALTY,
     SYNERGY_GATE_S0,
     SYNERGY_K_HAZARD,
@@ -284,6 +287,12 @@ class VesselState:
         self.initial_cells = (
             initial_count  # Initial cell count at seeding (for debris normalization)
         )
+
+        # Cytotoxicity signal accumulation in media (cleared on media change)
+        # Dead cells release intracellular contents (proteases for CytoTox-Glo, LDH for LDH-Glo)
+        # This signal accumulates in media until media is changed
+        # Units: "dead cell equivalents" - fraction of cells that died and released contents
+        self.cytotox_released_since_feed = 0.0  # Accumulated cytotox signal since last media change
 
         # Cross-talk tracking (Phase 4 Option 3: transport → mito coupling)
         self.transport_high_since: float | None = (
@@ -640,7 +649,7 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         # Initialize assay simulators
         self._cell_painting_assay = CellPaintingAssay(self)
-        self._ldh_viability_assay = LDHViabilityAssay(self)
+        self._cytotox_assay = CytotoxAssay(self)
         self._scrna_seq_assay = ScRNASeqAssay(self)
         self._supplemental_if_assay = SupplementalIFAssay(self)
 
@@ -1041,6 +1050,13 @@ class BiologicalVirtualMachine(VirtualMachine):
         vessel._step_total_kill = kill_total
         vessel._step_total_hazard = float(total_hazard)
 
+        # Accumulate cytotox signal from newly dead cells into media
+        # Dead cells lyse and release contents (proteases/LDH), which accumulates until media change
+        if kill_total > DEATH_EPS:
+            vessel.cytotox_released_since_feed = float(
+                getattr(vessel, "cytotox_released_since_feed", 0.0) + kill_total
+            )
+
         # Allocate realized kill across tracked causes proportionally using RAW hazards
         if kill_total > DEATH_EPS and total_hazard_raw > DEATH_EPS:
             for death_field, hazard_raw in proposals.items():
@@ -1392,6 +1408,12 @@ class BiologicalVirtualMachine(VirtualMachine):
         # Accumulated damage causes slow attrition even without active stress
         # This removes "immortal above viability 0.5" pathology
         self._apply_chronic_damage_hazard(vessel, hours)
+
+        # 2c) Baseline death rate: slow turnover even in healthy culture
+        # Represents senescence, spontaneous apoptosis, mechanical detachment
+        # ~1% per day = 0.0004/h, maintains steady-state viability at ~98%
+        if BASELINE_DEATH_RATE_PER_H > 0.0:
+            self._propose_hazard(vessel, BASELINE_DEATH_RATE_PER_H, "death_unknown")
 
         # 3) Commit death once (combined survival + proportional allocation)
         self._commit_step_death(vessel, hours)
@@ -1886,6 +1908,7 @@ class BiologicalVirtualMachine(VirtualMachine):
         initial_viability: float | None = None,
         vessel_type: str | None = None,
         density_level: str = "NOMINAL",
+        seeding_instrument: str | None = None,
     ):
         """Initialize a vessel with cells.
 
@@ -1894,9 +1917,20 @@ class BiologicalVirtualMachine(VirtualMachine):
             cell_line: Cell line name
             initial_count: Initial cell count (if None, looked up from database using vessel_type)
             capacity: Vessel capacity
-            initial_viability: Override initial viability (default: 0.98 for realistic seeding stress)
+            initial_viability: Override initial viability (bypasses harvest+instrument model)
             vessel_type: Vessel type (e.g., "384-well", "T75"). Required if initial_count is None.
             density_level: Density level ("LOW", "NOMINAL", "HIGH"). Only used if initial_count is None.
+            seeding_instrument: Instrument used for seeding. Options: "manual_pipette",
+                "el406_8ch", "certus_flex", "pin_based". Default: "el406_8ch".
+                Different instruments cause different levels of mechanical stress.
+
+        Viability Model:
+            Starting viability is calculated as:
+            1. Harvest viability: Cell line-specific (89-96% range, never 100%)
+            2. Instrument seeding stress: Manual ~2%, EL406 ~3%, pin-based ~4-5%
+            3. Hardware artifacts: Pin/valve biases, settling, roughness
+
+            Final viability = harvest_viab × (1 - seeding_death) × roughness_factor
 
         Example (NEW way - recommended):
             >>> vm.seed_vessel("well_A1", "A549", vessel_type="384-well", density_level="NOMINAL")
@@ -1920,8 +1954,62 @@ class BiologicalVirtualMachine(VirtualMachine):
         if initial_count <= 0:
             raise ValueError(f"initial_count must be positive, got {initial_count}")
         state = VesselState(vessel_id, cell_line, initial_count)
+
+        # === Harvest + Instrument Viability Model ===
+        # Calculate realistic starting viability from harvest quality and seeding stress
+        # Only applies if initial_viability is not explicitly provided
         if initial_viability is not None:
+            # Explicit override - bypass the model
             state.viability = initial_viability
+        else:
+            # Ensure thalamus_params are loaded
+            if not hasattr(self, "thalamus_params") or self.thalamus_params is None:
+                self._load_cell_thalamus_params()
+
+            # 1. Sample harvest viability (cell line-specific, 89-96% range)
+            harvest_params = (
+                self.thalamus_params.get("harvest_viability", {}) if self.thalamus_params else {}
+            )
+            cell_line_harvest = harvest_params.get(cell_line, harvest_params.get("DEFAULT", {}))
+            harvest_mean = cell_line_harvest.get("mean", 0.93)
+            harvest_cv = cell_line_harvest.get("cv", 0.025)
+
+            # Deterministic seed for harvest viability (per vessel, per run)
+            harvest_seed = stable_u32(f"harvest_{self.run_context.seed}_{vessel_id}")
+            harvest_rng = np.random.default_rng(harvest_seed)
+            harvest_viability = float(lognormal_multiplier(harvest_rng, harvest_cv) * harvest_mean)
+            # Clamp to realistic range [0.85, 0.98] - never 100%, never below 85%
+            harvest_viability = max(0.85, min(0.98, harvest_viability))
+
+            # 2. Sample instrument-specific seeding stress
+            # Default to el406_8ch if not specified
+            instrument_key = seeding_instrument or "el406_8ch"
+            instrument_params = (
+                self.thalamus_params.get("seeding_instruments", {}) if self.thalamus_params else {}
+            )
+            instrument_cfg = instrument_params.get(
+                instrument_key, instrument_params.get("DEFAULT", {})
+            )
+            seeding_death_mean = instrument_cfg.get("death_fraction_mean", 0.03)
+            seeding_death_cv = instrument_cfg.get("death_fraction_cv", 0.20)
+
+            # Deterministic seed for seeding stress (per vessel, per run)
+            seeding_seed = stable_u32(f"seeding_{self.run_context.seed}_{vessel_id}")
+            seeding_rng = np.random.default_rng(seeding_seed)
+            seeding_death = float(
+                lognormal_multiplier(seeding_rng, seeding_death_cv) * seeding_death_mean
+            )
+            # Clamp to realistic range [0.01, 0.10] - at least 1%, at most 10%
+            seeding_death = max(0.01, min(0.10, seeding_death))
+
+            # 3. Combine: viability = harvest × (1 - seeding_death)
+            state.viability = harvest_viability * (1.0 - seeding_death)
+
+            logger.debug(
+                f"Seeding {vessel_id}: harvest={harvest_viability:.3f}, "
+                f"instrument={instrument_key}, seeding_death={seeding_death:.3f}, "
+                f"initial_viability={state.viability:.3f}"
+            )
 
         # Initialize volume tracking from database (if vessel_type provided)
         if vessel_type is not None:
@@ -2016,6 +2104,9 @@ class BiologicalVirtualMachine(VirtualMachine):
         seeding_stress_death = 1.0 - state.viability
         if seeding_stress_death > DEATH_EPS:
             state.death_unknown = seeding_stress_death
+            # Dead cells at seeding release cytotox signal (proteases/LDH) into media immediately
+            # Units: fraction of initial cells that died (same as death fraction)
+            state.cytotox_released_since_feed = seeding_stress_death
 
         state.vessel_capacity = capacity
         state.last_passage_time = self.simulated_time
@@ -2230,6 +2321,33 @@ class BiologicalVirtualMachine(VirtualMachine):
 
         vessel.last_feed_time = self.simulated_time
 
+        # === Viability Reset: Media change removes dead floating cells ===
+        # Dead cells from seeding or prior stress are aspirated with old media.
+        # The remaining attached population is healthy (~98% viability).
+        # This resets viability to HEALTHY_ATTACHED_VIABILITY and adjusts death accounting.
+        old_viability = vessel.viability
+        old_ldh = getattr(vessel, "cytotox_released_since_feed", 0.0)
+
+        if old_viability < HEALTHY_ATTACHED_VIABILITY:
+            # Dead cells removed - reset to healthy baseline
+            vessel.viability = HEALTHY_ATTACHED_VIABILITY
+            # Adjust death accounting: the "removed" death is no longer in the well
+            # Reset death_unknown to reflect baseline turnover only
+            removed_death = (1.0 - old_viability) - (1.0 - HEALTHY_ATTACHED_VIABILITY)
+            if removed_death > DEATH_EPS:
+                # Reduce death_unknown by the amount removed (but not below zero)
+                vessel.death_unknown = max(0.0, vessel.death_unknown - removed_death)
+            logger.debug(
+                f"Media change on {vessel_id}: viability {old_viability:.3f} → {vessel.viability:.3f} "
+                f"(removed {removed_death:.3f} dead fraction)"
+            )
+
+        # === Cytotox Signal Reset: Media change removes accumulated signal ===
+        # Old media (containing proteases/LDH from lysed cells) is aspirated out.
+        # Fresh media has no cytotox signal - reset accumulator to zero.
+        vessel.cytotox_released_since_feed = 0.0
+        logger.debug(f"Media change on {vessel_id}: cytotox signal reset from {old_ldh:.4f} → 0.0")
+
         # Return realized values (event delivered immediately)
         result = {
             "status": "success",
@@ -2238,6 +2356,11 @@ class BiologicalVirtualMachine(VirtualMachine):
             "media_glucose_mM": vessel.media_glucose_mM,  # Realized value (delivered)
             "media_glutamine_mM": vessel.media_glutamine_mM,  # Realized value (delivered)
             "time": self.simulated_time,
+            "viability_reset": old_viability < HEALTHY_ATTACHED_VIABILITY,
+            "old_viability": old_viability,
+            "new_viability": vessel.viability,
+            "ldh_reset": old_ldh > DEATH_EPS,
+            "old_ldh": old_ldh,
         }
 
         if ENABLE_FEEDING_COSTS:
@@ -2838,6 +2961,8 @@ class BiologicalVirtualMachine(VirtualMachine):
             "base_ec50": base_ec50,
             "potency_scalar": potency_scalar,  # Scales k_on for latent induction
             "toxicity_scalar": toxicity_scalar,  # Scales death rates
+            # DNA damage coupling (for oxidative → DNA damage pathway, e.g., menadione)
+            "dna_damage_coupling": compound_params.get("dna_damage_coupling", 0.0),
         }
 
         # v5 Diff 1: Track exposure state for washout/recovery semantics
@@ -3327,23 +3452,37 @@ class BiologicalVirtualMachine(VirtualMachine):
             return {"status": "error", "message": "Vessel not found"}
         return self._cell_painting_assay.measure(self.vessel_states[vessel_id], **kwargs)
 
-    def atp_viability_assay(self, vessel_id: str, **kwargs) -> dict[str, Any]:
+    def cytotox_assay(self, vessel_id: str, **kwargs) -> dict[str, Any]:
         """
-        Simulate LDH cytotoxicity assay (orthogonal scalar readout).
+        Simulate cytotoxicity assay (kit-agnostic, supernatant-based).
 
-        Returns LDH, ATP, UPR, and trafficking marker signals.
+        Measures dead-cell biomarker release (proteases, LDH, etc.) into supernatant.
+        Compatible with CytoTox-Glo, LDH-Glo, and similar kits.
+
+        Also returns orthogonal scalar markers:
+        - ATP signal (metabolic state / mito dysfunction proxy)
+        - UPR marker (ER stress proxy)
+        - Trafficking marker (transport dysfunction proxy)
 
         Args:
             vessel_id: Vessel identifier
             **kwargs: Additional parameters (plate_id, day, operator, well_position)
 
         Returns:
-            Dict with scalar readouts and metadata
+            Dict with cytotox_signal, atp_signal, upr_marker, trafficking_marker and metadata
         """
         if vessel_id not in self.vessel_states:
             logger.warning(f"Vessel {vessel_id} not found")
             return {"status": "error", "message": "Vessel not found"}
-        return self._ldh_viability_assay.measure(self.vessel_states[vessel_id], **kwargs)
+        return self._cytotox_assay.measure(self.vessel_states[vessel_id], **kwargs)
+
+    def atp_viability_assay(self, vessel_id: str, **kwargs) -> dict[str, Any]:
+        """
+        Backward compatibility alias for cytotox_assay().
+
+        Deprecated: Use cytotox_assay() instead.
+        """
+        return self.cytotox_assay(vessel_id, **kwargs)
 
     def scrna_seq_assay(
         self,
@@ -3375,6 +3514,37 @@ class BiologicalVirtualMachine(VirtualMachine):
             n_cells=n_cells,
             batch_id=batch_id,
             params_path=params_path,
+        )
+
+    def supplemental_if_assay(
+        self,
+        vessel_id: str,
+        markers: list[str] | None = None,
+        **kwargs,
+    ) -> dict[str, Any]:
+        """
+        Simulate supplemental immunofluorescence assay.
+
+        Measures specific biomarkers via antibody staining (e.g., γ-H2AX for DNA damage).
+
+        Args:
+            vessel_id: Vessel identifier
+            markers: List of marker IDs to measure (e.g., ["gamma_h2ax"])
+                    If None, auto-selects based on compound's stress axis
+
+        Returns:
+            Dict with marker measurements, including:
+            - mean_intensity: Mean nuclear/cellular intensity
+            - fold_induction: Fold change vs baseline
+            - pct_positive: Percentage of cells exceeding threshold
+        """
+        if vessel_id not in self.vessel_states:
+            logger.warning(f"Vessel {vessel_id} not found")
+            return {"status": "error", "message": "Vessel not found"}
+        return self._supplemental_if_assay.measure(
+            self.vessel_states[vessel_id],
+            markers=markers,
+            **kwargs,
         )
 
     def _update_vessel_volume(self, vessel: VesselState, hours: float):

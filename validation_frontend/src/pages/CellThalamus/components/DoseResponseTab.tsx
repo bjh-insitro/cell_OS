@@ -210,7 +210,11 @@ const DoseResponseTab: React.FC<DoseResponseTabProps> = ({ selectedDesignId, onD
 
   const metrics = [
     { value: 'viability_pct', label: 'Viability (%)' },
-    { value: 'atp_signal', label: 'LDH Cytotoxicity (raw)' },
+    { value: 'viability_fraction', label: 'Viability Fraction (0-1)' },
+    { value: 'ldh_signal', label: 'LDH Signal (cytotoxicity)' },
+    { value: 'atp_signal', label: 'ATP Signal (mito proxy)' },
+    { value: 'gamma_h2ax_fold_induction', label: 'γ-H2AX Fold Induction' },
+    { value: 'gamma_h2ax_intensity', label: 'γ-H2AX Intensity' },
     { value: 'morph_er', label: 'ER Morphology' },
     { value: 'morph_mito', label: 'Mito Morphology' },
     { value: 'morph_nucleus', label: 'Nucleus Morphology' },

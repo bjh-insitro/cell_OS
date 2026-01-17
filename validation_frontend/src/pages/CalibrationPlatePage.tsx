@@ -4,6 +4,26 @@ import { Moon, Sun, RefreshCw } from 'lucide-react';
 import CalibrationPlateViewer from '../components/CalibrationPlateViewer';
 
 const AVAILABLE_DESIGNS = [
+  // Menadione Phase 0 Templates (NEW)
+  {
+    id: 'menadione_a',
+    name: 'MENADIONE_PHASE0_TEMPLATE_A',
+    description: 'Phase 0 Menadione dose-response - Template A (seed 1001)',
+    version: 'menadione_a'
+  },
+  {
+    id: 'menadione_b',
+    name: 'MENADIONE_PHASE0_TEMPLATE_B',
+    description: 'Phase 0 Menadione dose-response - Template B (seed 2002)',
+    version: 'menadione_b'
+  },
+  {
+    id: 'menadione_c',
+    name: 'MENADIONE_PHASE0_TEMPLATE_C',
+    description: 'Phase 0 Menadione dose-response - Template C (seed 3003)',
+    version: 'menadione_c'
+  },
+  // Existing Calibration Designs
   {
     id: 'microscope',
     name: 'CAL_384_MICROSCOPE_BEADS_DYES_v1',

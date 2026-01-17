@@ -9,12 +9,16 @@ from .base import AssaySimulator
 from .cell_painting import CellPaintingAssay
 from .scrna_seq import ScRNASeqAssay
 from .supplemental_if import SupplementalIFAssay
-from .viability import LDHViabilityAssay
+from .viability import CytotoxAssay
+
+# Backward compatibility alias
+LDHViabilityAssay = CytotoxAssay
 
 __all__ = [
     "AssaySimulator",
     "CellPaintingAssay",
-    "LDHViabilityAssay",
+    "CytotoxAssay",
+    "LDHViabilityAssay",  # Backward compatibility
     "ScRNASeqAssay",
     "SupplementalIFAssay",
 ]

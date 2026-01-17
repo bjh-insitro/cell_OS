@@ -100,6 +100,21 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
           if (!response.ok) throw new Error('Failed to load dynamic range design');
           const data = await response.json();
           setPlateData(data);
+        } else if (designVersion === 'menadione_a') {
+          const response = await fetch('/plate_designs/MENADIONE_PHASE0_TEMPLATE_A.json');
+          if (!response.ok) throw new Error('Failed to load Menadione Template A');
+          const data = await response.json();
+          setPlateData(data);
+        } else if (designVersion === 'menadione_b') {
+          const response = await fetch('/plate_designs/MENADIONE_PHASE0_TEMPLATE_B.json');
+          if (!response.ok) throw new Error('Failed to load Menadione Template B');
+          const data = await response.json();
+          setPlateData(data);
+        } else if (designVersion === 'menadione_c') {
+          const response = await fetch('/plate_designs/MENADIONE_PHASE0_TEMPLATE_C.json');
+          if (!response.ok) throw new Error('Failed to load Menadione Template C');
+          const data = await response.json();
+          setPlateData(data);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
@@ -138,6 +153,8 @@ export default function CalibrationPlateViewer({ isDarkMode, designVersion, onSi
     return <PlateViewerMicroscope plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   } else if (plateData.schema_version === 'liquid_handler_calibration_plate_v1') {
     return <PlateViewerLiquidHandler plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
+  } else if (plateData.schema_version === 'menadione_phase0_v1') {
+    return <PlateViewerMenadione plateData={plateData} isDarkMode={isDarkMode} onSimulate={onSimulate} />;
   }
 
   return (
@@ -1599,6 +1616,258 @@ function PlateViewerV3({ plateData, isDarkMode, onSimulate }: { plateData: any; 
             <div>• <strong>Local biology sanity:</strong> 2×2 tiling preserves neighbor relationships (not single-well checkerboard)</div>
             <div>• <strong>Spatial correction test:</strong> Tests whether spatial models need fewer parameters with decorrelated layout</div>
             <div>• <strong>Neighbor coupling probe:</strong> Does local variance inflate compared to v2? If so, v2 safer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Menadione Phase 0 Viewer (dose-response calibration with sentinels)
+function PlateViewerMenadione({ plateData, isDarkMode, onSimulate }: { plateData: any; isDarkMode: boolean; onSimulate?: (plateData: any) => void }) {
+  const rows = plateData.plate.rows;
+  const cols = plateData.plate.cols;
+
+  const downloadPlateJSON = () => {
+    const dataStr = JSON.stringify(plateData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    const exportFileDefaultName = `${plateData.plate.plate_id}.json`;
+
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  // Build well lookup from wells array
+  // Normalize well positions: "A01" -> "A1", "A10" -> "A10"
+  const normalizeWellPos = (pos: string): string => {
+    const match = pos.match(/^([A-P])(\d+)$/);
+    if (match) {
+      return `${match[1]}${parseInt(match[2], 10)}`;
+    }
+    return pos;
+  };
+
+  const wellMap = new Map<string, any>();
+  plateData.wells?.forEach((well: any) => {
+    const normalizedPos = normalizeWellPos(well.well_pos);
+    wellMap.set(normalizedPos, well);
+  });
+
+  // Dose color gradient (orange/red for menadione)
+  const getDoseColor = (dose: number): string => {
+    if (dose <= 0) return 'bg-slate-600/70'; // Vehicle
+    if (dose <= 5) return 'bg-orange-400/80';
+    if (dose <= 15) return 'bg-orange-500/85';
+    if (dose <= 35) return 'bg-orange-600/90';
+    if (dose <= 75) return 'bg-red-500/90';
+    return 'bg-red-600/95'; // 150 µM
+  };
+
+  // Sentinel colors
+  const getSentinelColor = (sentinelType: string): string => {
+    switch (sentinelType) {
+      case 'vehicle': return 'bg-white';
+      case 'mild_menadione': return 'bg-amber-400/90';
+      case 'strong_menadione': return 'bg-red-500/90';
+      default: return 'bg-white';
+    }
+  };
+
+  const getWellColor = (well: any): string => {
+    if (!well) return 'bg-slate-800/50';
+    if (well.is_sentinel) {
+      return getSentinelColor(well.sentinel_type);
+    }
+    return getDoseColor(well.dose_uM);
+  };
+
+  const getWellBorderColor = (well: any): string => {
+    if (!well) return '#334155';
+    if (well.is_sentinel) return '#fbbf24'; // Amber border for sentinels
+    return '#8b5cf6'; // Purple for A549
+  };
+
+  const wellData: WellData[] = [];
+  rows.forEach((row: string) => {
+    cols.forEach((col: number) => {
+      const wellId = `${row}${col}`;
+      const well = wellMap.get(wellId);
+
+      const tooltipLines: string[] = [];
+      if (well) {
+        tooltipLines.push(`${well.compound} ${well.dose_uM} µM`);
+        tooltipLines.push(well.cell_line);
+        if (well.is_sentinel) {
+          tooltipLines.push(`Sentinel (${well.sentinel_type})`);
+        }
+        if (well.zone) {
+          tooltipLines.push(`Zone: ${well.zone}`);
+        }
+      }
+
+      wellData.push({
+        id: wellId,
+        color: getWellColor(well),
+        borderColor: getWellBorderColor(well),
+        borderWidth: well?.is_sentinel ? 2 : 1,
+        tooltip: {
+          title: wellId,
+          lines: tooltipLines.length > 0 ? tooltipLines : ['Empty'],
+        },
+      });
+    });
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">
+              {plateData.plate.plate_id}
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
+              {plateData.intent}
+            </p>
+            <p className="text-sm text-slate-400">
+              384-well plate (16 rows × 24 columns) - Template {plateData.template?.template_id} (seed {plateData.template?.seed})
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {onSimulate && (
+              <button
+                onClick={() => onSimulate(plateData)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-all text-sm font-medium"
+              >
+                <Play className="h-4 w-4" />
+                Simulate
+              </button>
+            )}
+            <button
+              onClick={downloadPlateJSON}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-sm font-medium"
+            >
+              <Download className="h-4 w-4" />
+              Download JSON
+            </button>
+          </div>
+        </div>
+
+        <PlateViewer
+          format="384"
+          wells={wellData}
+          isDarkMode={isDarkMode}
+          size="medium"
+          showLabels={false}
+          showAxisLabels={true}
+        />
+
+        {/* Legend */}
+        <div className="mt-6 space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-white mb-3">Menadione Doses (fill):</div>
+            <div className="grid grid-cols-3 gap-x-8 gap-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-slate-600/70"></div>
+                <span className="text-slate-300">Vehicle (0 µM)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-400/80"></div>
+                <span className="text-slate-300">5 µM (~EC10)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-500/85"></div>
+                <span className="text-slate-300">15 µM (~EC25)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-600/90"></div>
+                <span className="text-slate-300">35 µM (~EC50)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-500/90"></div>
+                <span className="text-slate-300">75 µM (~EC75)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-600/95"></div>
+                <span className="text-slate-300">150 µM (~EC90)</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-white mb-3">Sentinels (amber border):</div>
+            <div className="grid grid-cols-3 gap-x-8 gap-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-white border-2 border-amber-400"></div>
+                <span className="text-slate-300">Vehicle ({plateData.sentinels?.vehicle?.count || 40} wells)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-amber-400/90 border-2 border-amber-400"></div>
+                <span className="text-slate-300">Mild 15µM ({plateData.sentinels?.mild_menadione?.count || 12} wells)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-500/90 border-2 border-amber-400"></div>
+                <span className="text-slate-300">Strong 75µM ({plateData.sentinels?.strong_menadione?.count || 12} wells)</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-white mb-3">Cell line (border):</div>
+            <div className="flex gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-purple-500 rounded"></div>
+                <span className="text-slate-300">A549 (all wells)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Statistics */}
+        <div className="mt-6 grid grid-cols-4 gap-4 text-center">
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="text-2xl font-bold text-orange-400">{plateData.statistics?.total_wells || 382}</div>
+            <div className="text-xs text-slate-400">Total Wells</div>
+          </div>
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="text-2xl font-bold text-amber-400">{plateData.statistics?.sentinel_wells || 64}</div>
+            <div className="text-xs text-slate-400">Sentinels</div>
+          </div>
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="text-2xl font-bold text-purple-400">{plateData.statistics?.experimental_wells || 318}</div>
+            <div className="text-xs text-slate-400">Experimental</div>
+          </div>
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="text-2xl font-bold text-green-400">{plateData.statistics?.reps_per_dose || 53}</div>
+            <div className="text-xs text-slate-400">Reps/Dose</div>
+          </div>
+        </div>
+
+        {/* Design Purpose callout */}
+        <div className="mt-6 p-4 rounded-lg bg-orange-900/20 border border-orange-700/50">
+          <div className="text-sm font-semibold text-orange-300 mb-2">
+            Phase 0 Design Purpose:
+          </div>
+          <div className="text-xs text-orange-200 space-y-1">
+            {plateData.design_goals?.map((goal: string, i: number) => (
+              <div key={i}>• {goal}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Template Info */}
+        <div className="mt-4 p-4 rounded-lg bg-indigo-900/20 border border-indigo-700/50">
+          <div className="text-sm font-semibold text-indigo-300 mb-2">
+            Template Information:
+          </div>
+          <div className="text-xs text-indigo-200 space-y-1">
+            <div>• <strong>Template ID:</strong> {plateData.template?.template_id}</div>
+            <div>• <strong>Seed:</strong> {plateData.template?.seed}</div>
+            <div>• <strong>Description:</strong> {plateData.template?.description}</div>
+            <div>• <strong>Sentinel positions:</strong> Fixed across all templates</div>
+            <div>• <strong>Experimental positions:</strong> Randomized per template</div>
           </div>
         </div>
       </div>

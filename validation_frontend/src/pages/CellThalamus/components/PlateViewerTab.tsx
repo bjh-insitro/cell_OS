@@ -1,16 +1,31 @@
 /**
  * Tab 6: Plate Viewer
  *
- * 96-well plate heatmaps with spatial visualization
+ * 96-well and 384-well plate heatmaps with spatial visualization
  */
 
 import React, { useState, useMemo } from 'react';
 import { useDesigns, usePlateData, useResults } from '../hooks/useCellThalamusData';
 
+type PlateFormat = '96' | '384';
+
 interface PlateViewerTabProps {
   selectedDesignId: string | null;
   onDesignChange: (designId: string | null) => void;
 }
+
+const PLATE_CONFIG: Record<PlateFormat, { rows: number; cols: number; rowLabels: string[] }> = {
+  '96': {
+    rows: 8,
+    cols: 12,
+    rowLabels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
+  },
+  '384': {
+    rows: 16,
+    cols: 24,
+    rowLabels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'],
+  },
+};
 
 const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDesignChange }) => {
   const { data: designs } = useDesigns();
@@ -21,6 +36,24 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
   const [isLiveMode, setIsLiveMode] = useState<boolean>(false);
 
   const { data: plateData, loading, error, refetch: refetchPlateData } = usePlateData(selectedDesignId, selectedPlate);
+
+  // Detect plate format from design metadata or plate data
+  const plateFormat: PlateFormat = useMemo(() => {
+    if (!selectedDesignId || !designs) return '96';
+    const design = designs.find(d => d.design_id === selectedDesignId);
+    if (design?.metadata?.plate_format === 384) return '384';
+    // Fallback: check if any well position has row > H or col > 12
+    if (plateData) {
+      for (const well of plateData) {
+        const row = well.well_id?.charCodeAt(0) - 65;
+        const col = parseInt(well.well_id?.substring(1) || '0');
+        if (row > 7 || col > 12) return '384';
+      }
+    }
+    return '96';
+  }, [selectedDesignId, designs, plateData]);
+
+  const { rows: numRows, cols: numCols, rowLabels } = PLATE_CONFIG[plateFormat];
 
   const allDesigns = useMemo(() => designs || [], [designs]);
   const completedDesigns = designs?.filter((d) => d.status === 'completed') || [];
@@ -59,11 +92,16 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
 
   const metrics = [
     { value: 'atp_signal', label: 'ATP Viability' },
+    { value: 'ldh_signal', label: 'LDH Signal' },
+    { value: 'viability_fraction', label: 'Viability (Ground Truth)' },
     { value: 'morph_er', label: 'ER Morphology' },
     { value: 'morph_mito', label: 'Mito Morphology' },
     { value: 'morph_nucleus', label: 'Nucleus Morphology' },
     { value: 'morph_actin', label: 'Actin Morphology' },
     { value: 'morph_rna', label: 'RNA Morphology' },
+    { value: 'gamma_h2ax_intensity', label: 'γ-H2AX Intensity' },
+    { value: 'gamma_h2ax_fold_induction', label: 'γ-H2AX Fold Induction' },
+    { value: 'gamma_h2ax_pct_positive', label: 'γ-H2AX % Positive' },
   ];
 
   // Parse well ID to row/col
@@ -73,24 +111,24 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
     return { row, col };
   };
 
-  // Create 96-well grid (8 rows × 12 cols)
+  // Create grid dynamically based on plate format
   const heatmapGrid = useMemo(() => {
     if (!plateData) return null;
 
-    const grid: (number | null)[][] = Array(8)
+    const grid: (number | null)[][] = Array(numRows)
       .fill(null)
-      .map(() => Array(12).fill(null));
+      .map(() => Array(numCols).fill(null));
 
     plateData.forEach((well) => {
       const { row, col } = parseWellId(well.well_id);
       const value = (well as any)[selectedMetric];
-      if (row >= 0 && row < 8 && col >= 0 && col < 12) {
+      if (row >= 0 && row < numRows && col >= 0 && col < numCols) {
         grid[row][col] = value;
       }
     });
 
     return grid;
-  }, [plateData, selectedMetric]);
+  }, [plateData, selectedMetric, numRows, numCols]);
 
   // Color scale (blue = low, red = high)
   const getColor = (value: number | null, min: number, max: number) => {
@@ -111,9 +149,9 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
     };
   }, [heatmapGrid]);
 
-  // Check if well is on edge
+  // Check if well is on edge (dynamic based on plate format)
   const isEdgeWell = (row: number, col: number) => {
-    return row === 0 || row === 7 || col === 0 || col === 11;
+    return row === 0 || row === numRows - 1 || col === 0 || col === numCols - 1;
   };
 
   // Calculate edge effect statistics
@@ -144,7 +182,10 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
     };
   }, [plateData, selectedMetric]);
 
-  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  // Well sizing based on plate format
+  const wellSize = plateFormat === '384' ? 'w-6 h-5' : 'w-16 h-14';
+  const wellGap = plateFormat === '384' ? 'mr-0.5' : 'mr-1';
+  const fontSize = plateFormat === '384' ? 'text-[8px]' : 'text-xs';
 
   return (
     <div className="space-y-6">
@@ -152,7 +193,7 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
       <div>
         <h2 className="text-2xl font-bold text-white mb-2">Plate Viewer</h2>
         <p className="text-slate-400">
-          96-well plate heatmaps with spatial visualization and edge effect analysis
+          {plateFormat}-well plate heatmaps with spatial visualization and edge effect analysis
         </p>
       </div>
 
@@ -326,7 +367,7 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
                 )}
               </h3>
               <p className="text-sm text-slate-400 mt-1">
-                96-well plate (8 rows × 12 columns)
+                {plateFormat}-well plate ({numRows} rows × {numCols} columns)
               </p>
             </div>
             {/* Color scale legend */}
@@ -342,25 +383,26 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
             </div>
           </div>
 
-          {/* 96-well grid */}
+          {/* Plate grid */}
           <div className="overflow-x-auto">
             <div className="inline-block min-w-full">
               {/* Column headers */}
               <div className="flex">
-                <div className="w-10"></div>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <div key={i} className="w-16 text-center text-xs text-slate-400 mb-1">
-                    {i + 1}
+                <div className={plateFormat === '384' ? 'w-6' : 'w-10'}></div>
+                {Array.from({ length: numCols }, (_, i) => (
+                  <div key={i} className={`${plateFormat === '384' ? 'w-6' : 'w-16'} ${wellGap} text-center ${fontSize} text-slate-400 mb-1`}>
+                    {/* Show fewer labels for 384-well to reduce crowding */}
+                    {plateFormat === '384' ? (i % 4 === 0 || i === 0 ? i + 1 : '') : i + 1}
                   </div>
                 ))}
               </div>
 
               {/* Rows */}
               {heatmapGrid &&
-                rows.map((rowLabel, rowIdx) => (
-                  <div key={rowLabel} className="flex items-center mb-1">
+                rowLabels.map((rowLabel, rowIdx) => (
+                  <div key={rowLabel} className={`flex items-center ${plateFormat === '384' ? 'mb-0.5' : 'mb-1'}`}>
                     {/* Row label */}
-                    <div className="w-10 text-xs text-slate-400 text-right pr-2">
+                    <div className={`${plateFormat === '384' ? 'w-6' : 'w-10'} ${fontSize} text-slate-400 text-right pr-2`}>
                       {rowLabel}
                     </div>
 
@@ -372,16 +414,19 @@ const PlateViewerTab: React.FC<PlateViewerTabProps> = ({ selectedDesignId, onDes
                       return (
                         <div
                           key={colIdx}
-                          className="w-16 h-14 mr-1 rounded border-2 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-violet-500 transition-all group relative"
+                          className={`${wellSize} ${wellGap} rounded border-2 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-violet-500 transition-all group relative`}
                           style={{
                             backgroundColor: getColor(value, min, max),
                             borderColor: isEdge ? '#f59e0b' : '#475569',
                           }}
                           title={`${wellId}: ${value?.toFixed(2) || 'N/A'}`}
                         >
-                          <span className="text-xs font-mono text-white opacity-60 group-hover:opacity-100">
-                            {wellId}
-                          </span>
+                          {/* Only show well ID on larger wells */}
+                          {plateFormat === '96' && (
+                            <span className={`${fontSize} font-mono text-white opacity-60 group-hover:opacity-100`}>
+                              {wellId}
+                            </span>
+                          )}
                           {/* Tooltip */}
                           <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
                             <div className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs whitespace-nowrap">

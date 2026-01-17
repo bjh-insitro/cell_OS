@@ -8,14 +8,14 @@ Handles storage and retrieval of Cell Thalamus experimental data:
 - Metadata (plate, day, operator, sentinel flags)
 """
 
-import sqlite3
-import logging
 import json
+import logging
 import os
-from typing import List, Dict, Any, Optional, Tuple
+import sqlite3
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,8 @@ class CellThalamusDB:
         cursor = self.conn.cursor()
 
         # Designs table - stores experimental design metadata
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS thalamus_designs (
                 design_id TEXT PRIMARY KEY,
                 phase INTEGER NOT NULL,
@@ -48,10 +49,12 @@ class CellThalamusDB:
                 created_at TEXT,
                 metadata TEXT
             )
-        """)
+        """
+        )
 
         # Results table - stores all experimental measurements
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS thalamus_results (
                 result_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 design_id TEXT NOT NULL,
@@ -72,8 +75,15 @@ class CellThalamusDB:
                 morph_actin REAL,
                 morph_rna REAL,
 
-                -- Scalar anchor (ATP viability)
-                atp_signal REAL,
+                -- Viability metrics
+                ldh_signal REAL,           -- LDH cytotoxicity (rises with death)
+                atp_signal REAL,           -- ATP signal (mito dysfunction proxy)
+                viability_fraction REAL,   -- Ground truth viability (0-1)
+
+                -- Supplemental IF: γ-H2AX (DNA damage marker)
+                gamma_h2ax_intensity REAL,
+                gamma_h2ax_fold_induction REAL,
+                gamma_h2ax_pct_positive REAL,
 
                 -- Optional: genotype for Phase 1+
                 genotype TEXT DEFAULT 'WT',
@@ -82,84 +92,137 @@ class CellThalamusDB:
 
                 FOREIGN KEY (design_id) REFERENCES thalamus_designs (design_id)
             )
-        """)
+        """
+        )
 
         # Create indices for fast queries
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_results_design
             ON thalamus_results(design_id)
-        """)
+        """
+        )
 
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_results_compound
             ON thalamus_results(compound, cell_line)
-        """)
+        """
+        )
 
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_results_sentinel
             ON thalamus_results(is_sentinel, compound)
-        """)
+        """
+        )
 
         self.conn.commit()
         logger.info("Cell Thalamus schema created")
 
-    def save_design(self, design_id: str, phase: int, cell_lines: List[str],
-                   compounds: List[str], metadata: Optional[Dict] = None,
-                   doses: Optional[List[float]] = None,
-                   timepoints: Optional[List[float]] = None):
+    def save_design(
+        self,
+        design_id: str,
+        phase: int,
+        cell_lines: list[str],
+        compounds: list[str],
+        metadata: Optional[dict] = None,
+        doses: Optional[list[float]] = None,
+        timepoints: Optional[list[float]] = None,
+    ):
         """Save an experimental design."""
         cursor = self.conn.cursor()
 
         # Merge doses and timepoints into metadata
         full_metadata = metadata.copy() if metadata else {}
         if doses is not None:
-            full_metadata['doses'] = doses
+            full_metadata["doses"] = doses
         if timepoints is not None:
-            full_metadata['timepoints'] = timepoints
+            full_metadata["timepoints"] = timepoints
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO thalamus_designs
             (design_id, phase, cell_lines, compounds, created_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            design_id,
-            phase,
-            json.dumps(cell_lines),
-            json.dumps(compounds),
-            datetime.now(PACIFIC_TZ).isoformat(),
-            json.dumps(full_metadata) if full_metadata else None
-        ))
+        """,
+            (
+                design_id,
+                phase,
+                json.dumps(cell_lines),
+                json.dumps(compounds),
+                datetime.now(PACIFIC_TZ).isoformat(),
+                json.dumps(full_metadata) if full_metadata else None,
+            ),
+        )
 
         self.conn.commit()
         logger.info(f"Saved design {design_id} (Phase {phase})")
 
-    def insert_result(self, design_id: str, well_id: str, cell_line: str,
-                     compound: str, dose_uM: float, timepoint_h: float,
-                     plate_id: str, day: int, operator: str,
-                     morphology: Dict[str, float], atp_signal: float,
-                     is_sentinel: bool = False, genotype: str = 'WT'):
+    def insert_result(
+        self,
+        design_id: str,
+        well_id: str,
+        cell_line: str,
+        compound: str,
+        dose_uM: float,
+        timepoint_h: float,
+        plate_id: str,
+        day: int,
+        operator: str,
+        morphology: dict[str, float],
+        ldh_signal: Optional[float] = None,
+        atp_signal: Optional[float] = None,
+        viability_fraction: Optional[float] = None,
+        is_sentinel: bool = False,
+        genotype: str = "WT",
+        gamma_h2ax_intensity: Optional[float] = None,
+        gamma_h2ax_fold_induction: Optional[float] = None,
+        gamma_h2ax_pct_positive: Optional[float] = None,
+    ):
         """Insert a single experimental result."""
         cursor = self.conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO thalamus_results
             (design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
              plate_id, day, operator, is_sentinel,
              morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna,
-             atp_signal, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
-            plate_id, day, operator, is_sentinel,
-            morphology['er'], morphology['mito'], morphology['nucleus'],
-            morphology['actin'], morphology['rna'],
-            atp_signal,
-            datetime.now(PACIFIC_TZ).isoformat()
-        ))
+             ldh_signal, atp_signal, viability_fraction,
+             gamma_h2ax_intensity, gamma_h2ax_fold_induction,
+             gamma_h2ax_pct_positive, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                design_id,
+                well_id,
+                cell_line,
+                compound,
+                dose_uM,
+                timepoint_h,
+                plate_id,
+                day,
+                operator,
+                is_sentinel,
+                morphology["er"],
+                morphology["mito"],
+                morphology["nucleus"],
+                morphology["actin"],
+                morphology["rna"],
+                ldh_signal,
+                atp_signal,
+                viability_fraction,
+                gamma_h2ax_intensity,
+                gamma_h2ax_fold_induction,
+                gamma_h2ax_pct_positive,
+                datetime.now(PACIFIC_TZ).isoformat(),
+            ),
+        )
 
         self.conn.commit()
 
-    def insert_results_batch(self, results: List[Dict[str, Any]]):
+    def insert_results_batch(self, results: list[dict[str, Any]]):
         """
         Insert multiple experimental results in a single transaction.
 
@@ -167,7 +230,9 @@ class CellThalamusDB:
             results: List of result dicts with keys:
                 design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
                 plate_id, day, operator, is_sentinel, morphology (dict),
-                atp_signal, genotype (optional)
+                atp_signal, genotype (optional),
+                gamma_h2ax_intensity (optional), gamma_h2ax_fold_induction (optional),
+                gamma_h2ax_pct_positive (optional)
         """
         if not results:
             return
@@ -178,42 +243,55 @@ class CellThalamusDB:
         # Prepare data tuples
         data = []
         for result in results:
-            morphology = result['morphology']
+            morphology = result["morphology"]
 
-            data.append((
-                result['design_id'],
-                result['well_id'],
-                result['cell_line'],
-                result['compound'],
-                result['dose_uM'],
-                result['timepoint_h'],
-                result['plate_id'],
-                result['day'],
-                result['operator'],
-                result['is_sentinel'],
-                morphology['er'],
-                morphology['mito'],
-                morphology['nucleus'],
-                morphology['actin'],
-                morphology['rna'],
-                result['atp_signal'],
-                timestamp
-            ))
+            data.append(
+                (
+                    result["design_id"],
+                    result["well_id"],
+                    result["cell_line"],
+                    result["compound"],
+                    result["dose_uM"],
+                    result["timepoint_h"],
+                    result["plate_id"],
+                    result["day"],
+                    result["operator"],
+                    result["is_sentinel"],
+                    morphology["er"],
+                    morphology["mito"],
+                    morphology["nucleus"],
+                    morphology["actin"],
+                    morphology["rna"],
+                    result.get("cytotox_signal")
+                    or result.get("ldh_signal"),  # Accept either field name
+                    result.get("atp_signal"),
+                    result.get("viability_fraction"),
+                    result.get("gamma_h2ax_intensity"),
+                    result.get("gamma_h2ax_fold_induction"),
+                    result.get("gamma_h2ax_pct_positive"),
+                    timestamp,
+                )
+            )
 
         # Batch insert
-        cursor.executemany("""
+        cursor.executemany(
+            """
             INSERT INTO thalamus_results
             (design_id, well_id, cell_line, compound, dose_uM, timepoint_h,
              plate_id, day, operator, is_sentinel,
              morph_er, morph_mito, morph_nucleus, morph_actin, morph_rna,
-             atp_signal, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, data)
+             ldh_signal, atp_signal, viability_fraction,
+             gamma_h2ax_intensity, gamma_h2ax_fold_induction,
+             gamma_h2ax_pct_positive, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            data,
+        )
 
         self.conn.commit()
         logger.info(f"Batch inserted {len(results)} results")
 
-    def get_results(self, design_id: str, filters: Optional[Dict] = None) -> List[Dict]:
+    def get_results(self, design_id: str, filters: Optional[dict] = None) -> list[dict]:
         """
         Retrieve results for a design with optional filters.
 
@@ -239,11 +317,11 @@ class CellThalamusDB:
 
         return [dict(row) for row in rows]
 
-    def get_sentinel_data(self, design_id: str) -> List[Dict]:
+    def get_sentinel_data(self, design_id: str) -> list[dict]:
         """Get all sentinel well data for SPC analysis."""
-        return self.get_results(design_id, filters={'is_sentinel': True})
+        return self.get_results(design_id, filters={"is_sentinel": True})
 
-    def get_morphology_matrix(self, design_id: str) -> Tuple[List[List[float]], List[str]]:
+    def get_morphology_matrix(self, design_id: str) -> tuple[list[list[float]], list[str]]:
         """
         Get morphology data as a matrix for dimensionality reduction.
 
@@ -257,23 +335,25 @@ class CellThalamusDB:
 
         for row in results:
             features = [
-                row['morph_er'],
-                row['morph_mito'],
-                row['morph_nucleus'],
-                row['morph_actin'],
-                row['morph_rna']
+                row["morph_er"],
+                row["morph_mito"],
+                row["morph_nucleus"],
+                row["morph_actin"],
+                row["morph_rna"],
             ]
             matrix.append(features)
-            well_ids.append(row['well_id'])
+            well_ids.append(row["well_id"])
 
         return matrix, well_ids
 
-    def get_designs(self, phase: Optional[int] = None) -> List[Dict]:
+    def get_designs(self, phase: Optional[int] = None) -> list[dict]:
         """Get all designs, optionally filtered by phase, ordered by most recent first."""
         cursor = self.conn.cursor()
 
         if phase is not None:
-            cursor.execute("SELECT * FROM thalamus_designs WHERE phase = ? ORDER BY created_at DESC", (phase,))
+            cursor.execute(
+                "SELECT * FROM thalamus_designs WHERE phase = ? ORDER BY created_at DESC", (phase,)
+            )
         else:
             cursor.execute("SELECT * FROM thalamus_designs ORDER BY created_at DESC")
 
@@ -283,13 +363,20 @@ class CellThalamusDB:
     def get_well_count(self, design_id: str) -> int:
         """Get the total number of wells for a design."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM thalamus_results WHERE design_id = ?", (design_id,))
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM thalamus_results WHERE design_id = ?", (design_id,)
+        )
         result = cursor.fetchone()
-        return result['count'] if result else 0
+        return result["count"] if result else 0
 
-    def get_dose_response_data(self, design_id: str, compound: str,
-                               cell_line: str, metric: str = 'atp_signal',
-                               timepoint: Optional[float] = None) -> List[Tuple[float, float, float, int]]:
+    def get_dose_response_data(
+        self,
+        design_id: str,
+        compound: str,
+        cell_line: str,
+        metric: str = "atp_signal",
+        timepoint: Optional[float] = None,
+    ) -> list[tuple[float, float, float, int]]:
         """
         Get dose-response data for a specific compound and cell line.
 
@@ -307,31 +394,37 @@ class CellThalamusDB:
 
         # Map morphology channel names to column names
         morph_map = {
-            'er': 'morph_er',
-            'mito': 'morph_mito',
-            'nucleus': 'morph_nucleus',
-            'actin': 'morph_actin',
-            'rna': 'morph_rna'
+            "er": "morph_er",
+            "mito": "morph_mito",
+            "nucleus": "morph_nucleus",
+            "actin": "morph_actin",
+            "rna": "morph_rna",
         }
 
         # Handle normalized viability percentage
-        if metric == 'viability_pct':
+        if metric == "viability_pct":
             # atp_signal now contains LDH cytotoxicity (high LDH = LOW viability)
             # Calculate viability as: 100 - (LDH / max_LDH) * 100
 
             # Get max LDH for this cell line (highest cytotoxicity = 0% viability)
             if timepoint is not None:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT MAX(atp_signal)
                     FROM thalamus_results
                     WHERE design_id = ? AND cell_line = ? AND timepoint_h = ? AND is_sentinel = 0
-                """, (design_id, cell_line, timepoint))
+                """,
+                    (design_id, cell_line, timepoint),
+                )
             else:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT MAX(atp_signal)
                     FROM thalamus_results
                     WHERE design_id = ? AND cell_line = ? AND is_sentinel = 0
-                """, (design_id, cell_line))
+                """,
+                    (design_id, cell_line),
+                )
             max_ldh = cursor.fetchone()[0]
 
             if not max_ldh or max_ldh == 0:
@@ -341,24 +434,31 @@ class CellThalamusDB:
             # Get compound data and calculate viability from LDH
             # viability = 100 - (ldh / max_ldh) * 100
             if timepoint is not None:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT dose_uM, 100.0 - (atp_signal / ? * 100.0) as viability_pct
                     FROM thalamus_results
                     WHERE design_id = ? AND compound = ? AND cell_line = ? AND timepoint_h = ? AND is_sentinel = 0
                     ORDER BY dose_uM
-                """, (max_ldh, design_id, compound, cell_line, timepoint))
+                """,
+                    (max_ldh, design_id, compound, cell_line, timepoint),
+                )
             else:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT dose_uM, 100.0 - (atp_signal / ? * 100.0) as viability_pct
                     FROM thalamus_results
                     WHERE design_id = ? AND compound = ? AND cell_line = ? AND is_sentinel = 0
                     ORDER BY dose_uM
-                """, (max_ldh, design_id, compound, cell_line))
+                """,
+                    (max_ldh, design_id, compound, cell_line),
+                )
             rows = cursor.fetchall()
 
             # Aggregate by dose: compute mean, std, n
-            from collections import defaultdict
             import math
+            from collections import defaultdict
+
             import numpy as np
 
             dose_groups = defaultdict(list)
@@ -409,8 +509,8 @@ class CellThalamusDB:
         rows = cursor.fetchall()
 
         # Aggregate by dose: compute mean, std, n
-        from collections import defaultdict
         import math
+        from collections import defaultdict
 
         dose_groups = defaultdict(list)
         for dose, value in rows:
