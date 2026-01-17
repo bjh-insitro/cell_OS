@@ -65,6 +65,21 @@ SEEDING_DENSITY = {
 }
 
 
+def init_worker():
+    """Initialize worker process by pre-loading parameters."""
+    import os
+    import random
+    import time
+
+    # Stagger worker startup to reduce database contention
+    # Random delay 0-0.5s per worker
+    time.sleep(random.random() * 0.5)
+
+    # Pre-load parameters once per worker (populates the module-level cache)
+    BiologicalVirtualMachine(simulation_speed=0)
+    logger.info(f"Worker {os.getpid()} ready")
+
+
 def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | None:
     """
     Execute a single well through the simulation, following real-world protocol.
@@ -265,13 +280,20 @@ def run_menadione_simulation(
             if len(results) % 10 == 0:
                 logger.info(f"Completed {len(results)}/{len(wells)} wells")
     else:
-        # Parallel execution
-        with Pool(workers) as pool:
+        # Parallel execution with worker initialization
+        # The initializer pre-loads parameters once per worker, avoiding
+        # database contention when all workers start simultaneously
+        logger.info("Initializing worker pool (this may take a few seconds)...")
+        with Pool(workers, initializer=init_worker) as pool:
+            logger.info("Worker pool ready, processing wells...")
             for i, result in enumerate(pool.imap_unordered(execute_well, args)):
                 if result:
                     results.append(result)
-                if (i + 1) % 50 == 0:
-                    logger.info(f"Completed {i + 1}/{len(wells)} wells")
+                # Progress every 10% or every 50 wells, whichever is smaller
+                progress_interval = max(1, min(50, len(wells) // 10))
+                if (i + 1) % progress_interval == 0 or (i + 1) == len(wells):
+                    pct = 100 * (i + 1) / len(wells)
+                    logger.info(f"Progress: {i + 1}/{len(wells)} wells ({pct:.0f}%)")
 
     # Save to database
     logger.info(f"Saving {len(results)} results to {db_path}")
