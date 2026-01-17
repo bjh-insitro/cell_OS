@@ -86,11 +86,17 @@ def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | 
     Returns:
         Result dict for database insertion, or None on error
     """
+    import os
+    import time
+
     well, design_id = args
+    worker_id = os.getpid()
+    start_time = time.time()
 
     try:
         # Create hardware instance for this worker
-        hardware = BiologicalVirtualMachine()
+        # simulation_speed=0 disables artificial delays for faster batch execution
+        hardware = BiologicalVirtualMachine(simulation_speed=0)
         vessel_id = f"{well.plate_id}_{well.well_id}"
 
         # === Step 1: Seed vessel (Day -1, PM) ===
@@ -182,10 +188,18 @@ def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | 
                 result["gamma_h2ax_fold_induction"] = gamma_data.get("fold_induction")
                 result["gamma_h2ax_pct_positive"] = gamma_data.get("pct_above_vehicle_p95")
 
+            elapsed = time.time() - start_time
+            logger.info(
+                f"✓ Well {well.well_id} done (worker {worker_id}, {elapsed:.1f}s, viab={ground_truth_viability:.2f})"
+            )
             return result
 
     except Exception as e:
-        logger.error(f"Error executing well {well.well_id}: {e}")
+        import traceback
+
+        elapsed = time.time() - start_time
+        logger.error(f"✗ Well {well.well_id} FAILED (worker {worker_id}, {elapsed:.1f}s): {e}")
+        logger.error(traceback.format_exc())
         return None
 
 
