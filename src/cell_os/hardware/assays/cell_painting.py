@@ -5,33 +5,47 @@ Simulates 5-channel morphology imaging (ER, Mito, Nucleus, Actin, RNA)
 with realistic biological and technical noise.
 """
 
-import re
 import logging
-import numpy as np
-from typing import Dict, Any, Optional, TYPE_CHECKING
+import re
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
-from .base import AssaySimulator
-from .assay_params import DEFAULT_ASSAY_PARAMS
-from .._impl import stable_u32, lognormal_multiplier, heavy_tail_shock, additive_floor_noise, apply_saturation, quantize_adc
-from ..run_context import pipeline_transform
+import numpy as np
+
 from ...biology import biology_core
+from ...contracts import CELL_PAINTING_CONTRACT, enforce_measurement_contract
+from .._impl import (
+    additive_floor_noise,
+    apply_saturation,
+    heavy_tail_shock,
+    lognormal_multiplier,
+    quantize_adc,
+    stable_u32,
+)
 from ..constants import (
+    CELL_PAINTING_DAMAGE_CV_CAP,
+    CELL_PAINTING_DAMAGE_CV_SCALE,
+    DEATH_REGIME_NOISE_MULTIPLIER,
     ENABLE_ER_STRESS,
+    ENABLE_INTERVENTION_COSTS,
     ENABLE_MITO_DYSFUNCTION,
     ENABLE_TRANSPORT_DYSFUNCTION,
-    ENABLE_INTERVENTION_COSTS,
     ER_STRESS_MORPH_ALPHA,
     MITO_DYSFUNCTION_MORPH_ALPHA,
+    MORPHOLOGY_COLLAPSE_STEEPNESS,
+    MORPHOLOGY_COLLAPSE_THRESHOLD,
+    MORPHOLOGY_DEATH_MIN_MULTIPLIER,
+    MORPHOLOGY_ONSET_MIN_FACTOR,
+    MORPHOLOGY_ONSET_TAU_H,
     TRANSPORT_DYSFUNCTION_MORPH_ALPHA,
     WASHOUT_INTENSITY_PENALTY,
     WASHOUT_INTENSITY_RECOVERY_H,
-    CELL_PAINTING_DAMAGE_CV_SCALE,
-    CELL_PAINTING_DAMAGE_CV_CAP,
 )
-from ..injections.segmentation_failure import SegmentationFailureInjection
 from ..injections.base import InjectionContext
-from ...contracts import enforce_measurement_contract, CELL_PAINTING_CONTRACT
+from ..injections.segmentation_failure import SegmentationFailureInjection
+from ..run_context import pipeline_transform
+from .assay_params import DEFAULT_ASSAY_PARAMS
+from .base import AssaySimulator
 
 if TYPE_CHECKING:
     from ..biological_virtual import VesselState
@@ -39,7 +53,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _cell_count_proxy_from_confluence(confluence: float, nominal_full_well: float = 10000.0) -> float:
+def _cell_count_proxy_from_confluence(
+    confluence: float, nominal_full_well: float = 10000.0
+) -> float:
     """
     Confluence-based proxy for cell count (cross-modal independence).
 
@@ -76,8 +92,8 @@ class CellPaintingAssay(AssaySimulator):
         experiment_seed: int,
         enable_channel_weights: bool = True,
         enable_segmentation_modes: bool = True,
-        enable_spatial_field: bool = True
-    ) -> Dict[str, Any]:
+        enable_spatial_field: bool = True,
+    ) -> dict[str, Any]:
         """
         Compute all structured imaging artifacts from vessel state (Layer A adapter).
 
@@ -105,57 +121,48 @@ class CellPaintingAssay(AssaySimulator):
         """
         from ...biology.imaging_artifacts_core import (
             compute_background_multipliers_by_channel,
+            compute_debris_field_modifiers,
             compute_segmentation_failure_modes,
             compute_segmentation_failure_probability_bump,
-            compute_debris_field_modifiers,
         )
 
-        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
-        initial_cells = float(getattr(vessel, 'initial_cells', 1.0))
+        debris_cells = float(getattr(vessel, "debris_cells", 0.0))
+        initial_cells = float(getattr(vessel, "initial_cells", 1.0))
         # Use confluence-based proxy (cross-modal independence)
         adherent_cells = _cell_count_proxy_from_confluence(vessel.confluence)
         confluence = float(vessel.confluence)
 
         # Determine if edge well
-        is_edge = self.vm._is_edge_well(well_position) if hasattr(self.vm, '_is_edge_well') else False
+        is_edge = (
+            self.vm._is_edge_well(well_position) if hasattr(self.vm, "_is_edge_well") else False
+        )
 
         # Background multipliers
         if enable_channel_weights:
             # Per-channel weights (RNA/Actin more sensitive to background)
-            channel_weights = {
-                'rna': 1.5,
-                'actin': 1.3,
-                'nucleus': 1.0,
-                'er': 0.8,
-                'mito': 0.8
-            }
+            channel_weights = {"rna": 1.5, "actin": 1.3, "nucleus": 1.0, "er": 0.8, "mito": 0.8}
             bg_mults = compute_background_multipliers_by_channel(
                 debris_cells=debris_cells,
                 adherent_cells=adherent_cells,
-                channel_weights=channel_weights
+                channel_weights=channel_weights,
             )
         else:
             # Scalar (backward compatible)
             bg_mults = compute_background_multipliers_by_channel(
-                debris_cells=debris_cells,
-                adherent_cells=adherent_cells,
-                channel_weights=None
+                debris_cells=debris_cells, adherent_cells=adherent_cells, channel_weights=None
             )
 
         # Segmentation failures (always compute scalar for backward compat)
         seg_scalar = compute_segmentation_failure_probability_bump(
-            debris_cells=debris_cells,
-            adherent_cell_count=adherent_cells
+            debris_cells=debris_cells, adherent_cell_count=adherent_cells
         )
 
-        seg_result = {'scalar_bump': seg_scalar}
+        seg_result = {"scalar_bump": seg_scalar}
         if enable_segmentation_modes:
             seg_modes = compute_segmentation_failure_modes(
-                debris_cells=debris_cells,
-                adherent_cell_count=adherent_cells,
-                confluence=confluence
+                debris_cells=debris_cells, adherent_cell_count=adherent_cells, confluence=confluence
             )
-            seg_result['modes'] = seg_modes
+            seg_result["modes"] = seg_modes
 
         # Spatial field
         spatial_result = None
@@ -165,20 +172,20 @@ class CellPaintingAssay(AssaySimulator):
                 adherent_cells=adherent_cells,
                 is_edge=is_edge,
                 well_id=well_position,
-                experiment_seed=experiment_seed
+                experiment_seed=experiment_seed,
             )
 
         return {
-            'background': bg_mults,
-            'segmentation': seg_result,
-            'spatial': spatial_result,
-            'debris_cells': debris_cells,
-            'initial_cells': initial_cells,
-            'adherent_cells': adherent_cells,
+            "background": bg_mults,
+            "segmentation": seg_result,
+            "spatial": spatial_result,
+            "debris_cells": debris_cells,
+            "initial_cells": initial_cells,
+            "adherent_cells": adherent_cells,
         }
 
     @enforce_measurement_contract(CELL_PAINTING_CONTRACT)
-    def measure(self, vessel: "VesselState", **kwargs) -> Dict[str, Any]:
+    def measure(self, vessel: "VesselState", **kwargs) -> dict[str, Any]:
         """
         Simulate Cell Painting morphology assay.
 
@@ -199,40 +206,38 @@ class CellPaintingAssay(AssaySimulator):
         state_before = (vessel.viability, vessel.confluence)
 
         # Layer C: Feature flag (off by default for backward compatibility)
-        enable_structured = kwargs.get('enable_structured_artifacts', False)
+        enable_structured = kwargs.get("enable_structured_artifacts", False)
 
         # Compute structured artifacts if enabled (Layer A adapter)
         if enable_structured:
-            well_position = kwargs.get('well_position', 'A1')
-            experiment_seed = kwargs.get('experiment_seed', 0)
+            well_position = kwargs.get("well_position", "A1")
+            experiment_seed = kwargs.get("experiment_seed", 0)
             self._structured_artifacts = self._compute_structured_imaging_artifacts(
-                vessel=vessel,
-                well_position=well_position,
-                experiment_seed=experiment_seed
+                vessel=vessel, well_position=well_position, experiment_seed=experiment_seed
             )
         else:
             self._structured_artifacts = None
 
         # Lazy load thalamus params
-        if not hasattr(self.vm, 'thalamus_params') or self.vm.thalamus_params is None:
+        if not hasattr(self.vm, "thalamus_params") or self.vm.thalamus_params is None:
             self.vm._load_cell_thalamus_params()
 
         vessel_id = vessel.vessel_id
         cell_line = vessel.cell_line
 
         # Get baseline morphology for this cell line
-        baseline = self.vm.thalamus_params['baseline_morphology'].get(cell_line, {})
+        baseline = self.vm.thalamus_params["baseline_morphology"].get(cell_line, {})
         if not baseline:
             logger.warning(f"No baseline morphology for {cell_line}, using A549")
-            baseline = self.vm.thalamus_params['baseline_morphology']['A549']
+            baseline = self.vm.thalamus_params["baseline_morphology"]["A549"]
 
         # Start with baseline
         morph = {
-            'er': baseline['er'],
-            'mito': baseline['mito'],
-            'nucleus': baseline['nucleus'],
-            'actin': baseline['actin'],
-            'rna': baseline['rna']
+            "er": baseline["er"],
+            "mito": baseline["mito"],
+            "nucleus": baseline["nucleus"],
+            "actin": baseline["actin"],
+            "rna": baseline["rna"],
         }
 
         # Apply persistent per-well latent biology (BEFORE compound effects)
@@ -270,8 +275,8 @@ class CellPaintingAssay(AssaySimulator):
         self._assert_measurement_purity(vessel, state_before)
 
         # Extract batch metadata
-        plate_id = kwargs.get('plate_id', 'P1')
-        batch_id = kwargs.get('batch_id', 'batch_default')
+        plate_id = kwargs.get("plate_id", "P1")
+        batch_id = kwargs.get("batch_id", "batch_default")
 
         # Compute washout artifact for signal_intensity (separate from morphology effects)
         # This represents the transient intensity penalty from handling stress during washout
@@ -290,7 +295,8 @@ class CellPaintingAssay(AssaySimulator):
             "signal_intensity": (
                 DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR
                 + (1 - DEFAULT_ASSAY_PARAMS.CP_DEAD_SIGNAL_FLOOR) * vessel.viability
-            ) * washout_intensity_factor,  # ASSUMPTION: See assay_params.py and ASSUMPTIONS_AND_BOUNDARIES.md
+            )
+            * washout_intensity_factor,  # ASSUMPTION: See assay_params.py and ASSUMPTIONS_AND_BOUNDARIES.md
             "transport_dysfunction_score": transport_dysfunction_score,
             "timestamp": datetime.now().isoformat(),
             # Pipeline drift metadata for epistemic control
@@ -298,20 +304,20 @@ class CellPaintingAssay(AssaySimulator):
             "batch_id": batch_id,
             "plate_id": plate_id,
             "measurement_modifiers": self.vm.run_context.get_measurement_modifiers(
-                self.vm.simulated_time, modality='imaging'
+                self.vm.simulated_time, modality="imaging"
             ),
             # Detector metadata: censoring flags for agent reasoning about measurement quality
             "detector_metadata": detector_metadata,
         }
 
         # Check for well failure
-        well_position = kwargs.get('well_position', 'A1')
+        well_position = kwargs.get("well_position", "A1")
         failure_result = self._apply_well_failure(morph, well_position, plate_id, batch_id)
         if failure_result:
-            result['morphology'] = failure_result['morphology']
-            result['morphology_measured'] = failure_result['morphology']
-            result['well_failure'] = failure_result['failure_mode']
-            result['qc_flag'] = 'FAIL'
+            result["morphology"] = failure_result["morphology"]
+            result["morphology_measured"] = failure_result["morphology"]
+            result["well_failure"] = failure_result["failure_mode"]
+            result["qc_flag"] = "FAIL"
 
         # Apply segmentation failure (adversarial measurement layer)
         # This changes sufficient statistics - not just noise
@@ -324,7 +330,17 @@ class CellPaintingAssay(AssaySimulator):
         result.update(cp_quality_metrics)
 
         # Add imaging artifacts for audit trail (always present, None if flag off)
-        result['imaging_artifacts'] = self._structured_artifacts
+        result["imaging_artifacts"] = self._structured_artifacts
+
+        # Add morphology regime weights for test/debug access
+        # These show the interpolation between stress and death signatures
+        result["morph_regime"] = {
+            "stress_weight": getattr(self, "_current_stress_weight", None),
+            "death_weight": getattr(self, "_current_death_weight", None),
+            "onset_factor": getattr(self, "_current_onset_factor", None),
+            "collapse_threshold": MORPHOLOGY_COLLAPSE_THRESHOLD,
+            "onset_tau_h": MORPHOLOGY_ONSET_TAU_H,
+        }
 
         return result
 
@@ -343,32 +359,31 @@ class CellPaintingAssay(AssaySimulator):
         # These are fractional shifts (not multipliers yet).
         vessel.well_biology = {
             # Baseline morphology offsets (vehicle replicates should show this)
-            "er_baseline_shift": float(rng.normal(0.0, 0.08)),       # ~8% sd
-            "mito_baseline_shift": float(rng.normal(0.0, 0.10)),     # ~10% sd
-            "rna_baseline_shift": float(rng.normal(0.0, 0.06)),      # ~6% sd
-
+            "er_baseline_shift": float(rng.normal(0.0, 0.08)),  # ~8% sd
+            "mito_baseline_shift": float(rng.normal(0.0, 0.10)),  # ~10% sd
+            "rna_baseline_shift": float(rng.normal(0.0, 0.06)),  # ~6% sd
             # Nucleus sits in both stain and focus worlds but weaker
             "nucleus_baseline_shift": float(rng.normal(0.0, 0.04)),  # ~4% sd
-
             # Actin is more "structure" than "stain"
-            "actin_baseline_shift": float(rng.normal(0.0, 0.05)),    # ~5% sd
-
+            "actin_baseline_shift": float(rng.normal(0.0, 0.05)),  # ~5% sd
             # Treatment response gain variation (lognormal so it's always positive)
             "stress_susceptibility": float(rng.lognormal(mean=0.0, sigma=0.15)),  # ~15% log-sd
         }
 
-    def _apply_well_biology_baseline(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+    def _apply_well_biology_baseline(
+        self, vessel: "VesselState", morph: dict[str, float]
+    ) -> dict[str, float]:
         """Apply persistent per-well baseline shifts to morphology."""
-        morph["er"] *= (1.0 + vessel.well_biology["er_baseline_shift"])
-        morph["mito"] *= (1.0 + vessel.well_biology["mito_baseline_shift"])
-        morph["rna"] *= (1.0 + vessel.well_biology["rna_baseline_shift"])
-        morph["nucleus"] *= (1.0 + vessel.well_biology["nucleus_baseline_shift"])
-        morph["actin"] *= (1.0 + vessel.well_biology["actin_baseline_shift"])
+        morph["er"] *= 1.0 + vessel.well_biology["er_baseline_shift"]
+        morph["mito"] *= 1.0 + vessel.well_biology["mito_baseline_shift"]
+        morph["rna"] *= 1.0 + vessel.well_biology["rna_baseline_shift"]
+        morph["nucleus"] *= 1.0 + vessel.well_biology["nucleus_baseline_shift"]
+        morph["actin"] *= 1.0 + vessel.well_biology["actin_baseline_shift"]
         return morph
 
     def _apply_compound_effects(
-        self, vessel: "VesselState", morph: Dict[str, float], baseline: Dict[str, float]
-    ) -> tuple[Dict[str, float], bool]:
+        self, vessel: "VesselState", morph: dict[str, float], baseline: dict[str, float]
+    ) -> tuple[dict[str, float], bool]:
         """Apply compound-induced morphology changes via stress axes."""
         # Read authoritative compound concentrations
         if self.vm.injection_mgr is not None and self.vm.injection_mgr.has_vessel(vessel.vessel_id):
@@ -383,12 +398,12 @@ class CellPaintingAssay(AssaySimulator):
                 continue
 
             # Look up compound params
-            compound_params = self.vm.thalamus_params['compounds'].get(compound_name, {})
+            compound_params = self.vm.thalamus_params["compounds"].get(compound_name, {})
             if not compound_params:
                 logger.warning(f"Unknown compound for morphology: {compound_name}")
                 continue
 
-            stress_axis = compound_params['stress_axis']
+            stress_axis = compound_params["stress_axis"]
 
             # Track microtubule compounds for transport dysfunction diagnostic
             if stress_axis == "microtubule":
@@ -398,53 +413,176 @@ class CellPaintingAssay(AssaySimulator):
             # Get adjusted potency from vessel metadata
             meta = vessel.compound_meta.get(compound_name)
             if meta:
-                ec50 = meta['ic50_uM']
-                hill_slope = meta['hill_slope']
-                potency_scalar = meta.get('potency_scalar', 1.0)
+                ec50 = meta["ic50_uM"]
+                hill_slope = meta["hill_slope"]
+                potency_scalar = meta.get("potency_scalar", 1.0)
             else:
-                ec50 = compound_params['ec50_uM']
-                hill_slope = compound_params['hill_slope']
+                ec50 = compound_params["ec50_uM"]
+                hill_slope = compound_params["hill_slope"]
                 potency_scalar = 1.0
 
-            intensity = compound_params['intensity']
-            axis_effects = self.vm.thalamus_params['stress_axes'][stress_axis]['channels']
+            intensity = compound_params["intensity"]
+            axis_effects = self.vm.thalamus_params["stress_axes"][stress_axis]["channels"]
 
             # Calculate dose response (Hill equation)
-            dose_effect = intensity * potency_scalar * (dose_uM ** hill_slope) / (ec50 ** hill_slope + dose_uM ** hill_slope)
+            dose_effect = (
+                intensity
+                * potency_scalar
+                * (dose_uM**hill_slope)
+                / (ec50**hill_slope + dose_uM**hill_slope)
+            )
 
             # Apply to each channel
             for channel, axis_strength in axis_effects.items():
-                morph[channel] *= (1.0 + dose_effect * axis_strength)
+                morph[channel] *= 1.0 + dose_effect * axis_strength
 
         return morph, has_microtubule_compound
 
-    def _apply_latent_stress_effects(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+    def _apply_latent_stress_effects(
+        self, vessel: "VesselState", morph: dict[str, float]
+    ) -> dict[str, float]:
         """
         Apply latent stress state effects (morphology-first mechanisms).
+
+        Phase 0.2: Two-regime morphology model
+        ======================================
+        Pre-collapse (viability > MORPHOLOGY_COLLAPSE_THRESHOLD): STRESS morphology
+            - Channel-specific signatures from ER stress, mito dysfunction, etc.
+            - Effect vectors point in stress-specific directions
+            - This is the informative "operating point" region
+
+        Post-collapse (viability <= MORPHOLOGY_COLLAPSE_THRESHOLD): DEATH morphology
+            - Morphology shifts to apoptotic/necrotic signature
+            - Effect vectors ROTATE toward "death direction" (not just "more stress")
+            - This is the uninformative "corpse" region
+
+        The transition creates a kink in the effect vector trajectory:
+        - Max effect magnitude may NOT be at the best operating point
+        - Effect vector DIRECTION changes at collapse
+        - Replicate similarity may drop at collapse (different death modes)
+
+        This forces the rubric to look at effect direction, not just magnitude.
 
         Model B for microtubule compounds:
         - Acute effect: Direct compound presence (instant removal on washout)
         - Chronic effect: Latent transport_dysfunction (decays via k_off)
 
         Total actin effect = (1 + acute) × (1 + chronic)
+
+        Returns:
+            morph: Updated morphology dict
+            Also stores on vessel:
+            - _morph_stress_weight: [0,1] stress regime weight
+            - _morph_death_weight: [0,1] death regime weight (= 1 - stress_weight)
         """
+        # ═══════════════════════════════════════════════════════════════════════════
+        # STRESS vs DEATH MORPHOLOGY TRANSITION
+        # ═══════════════════════════════════════════════════════════════════════════
+        viability = float(vessel.viability)
+
+        # Single gating function: death_weight derived from stress_weight
+        # Guarantees complementary weights that sum to 1.0 (clean rotation, no overlap)
+        # stress_weight = 1.0 at high viability, 0.0 at low viability
+        stress_weight = 1.0 / (
+            1.0
+            + np.exp(-MORPHOLOGY_COLLAPSE_STEEPNESS * (viability - MORPHOLOGY_COLLAPSE_THRESHOLD))
+        )
+        death_weight = 1.0 - stress_weight
+
+        # Store weights in instance variable for downstream use (noise coupling)
+        # NOTE: Cannot write to vessel state due to measurement contract.
+        # These are stored on self for intra-measurement use only.
+        self._current_stress_weight = float(stress_weight)
+        self._current_death_weight = float(death_weight)
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # MORPHOLOGY ONSET KINETICS (timepoint sensitivity)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Morphology effects take time to manifest even after stress states are elevated.
+        # This creates timepoint dependence (Phase 0: 24h vs 48h show different effects).
+        # Formula: onset_factor = min_factor + (1 - min_factor) * (1 - exp(-t/tau))
+        #
+        # At t=0h: onset_factor = min_factor (some immediate effect)
+        # At t=tau (12h): onset_factor ≈ 0.2 + 0.8*0.63 = 0.70
+        # At t=24h: onset_factor ≈ 0.2 + 0.8*0.86 = 0.89
+        # At t=48h: onset_factor ≈ 0.2 + 0.8*0.98 = 0.98 (near saturation)
+        #
+        # NOTE: Uses time_since_last_perturbation_h (allowed read, treatment-blind)
+        # This property uses vessel.last_update_time which is updated by advance_time().
+        time_since_treatment = vessel.time_since_last_perturbation_h
+        if time_since_treatment == float("inf"):
+            time_since_treatment = 0.0  # No treatment = no onset kinetics
+
+        if time_since_treatment > 0 and MORPHOLOGY_ONSET_TAU_H > 0:
+            raw_onset = 1.0 - np.exp(-time_since_treatment / MORPHOLOGY_ONSET_TAU_H)
+            onset_factor = (
+                MORPHOLOGY_ONSET_MIN_FACTOR + (1.0 - MORPHOLOGY_ONSET_MIN_FACTOR) * raw_onset
+            )
+        else:
+            # No treatment or tau=0: full effect immediately
+            onset_factor = 1.0
+
+        self._current_onset_factor = float(onset_factor)
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # STRESS MORPHOLOGY (normal stress-axis effects)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Stress effects are scaled by:
+        # - stress_weight: regime gating (fades as viability drops into death regime)
+        # - onset_factor: kinetics (effects take time to manifest after treatment)
+        combined_stress_scale = stress_weight * onset_factor
+
         if ENABLE_ER_STRESS and vessel.er_stress > 0:
-            morph['er'] *= (1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress)
+            morph["er"] *= 1.0 + ER_STRESS_MORPH_ALPHA * vessel.er_stress * combined_stress_scale
 
         if ENABLE_MITO_DYSFUNCTION and vessel.mito_dysfunction > 0:
-            morph['mito'] *= max(0.1, 1.0 - MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction)
+            mito_effect = (
+                MITO_DYSFUNCTION_MORPH_ALPHA * vessel.mito_dysfunction * combined_stress_scale
+            )
+            morph["mito"] *= max(0.1, 1.0 - mito_effect)
 
         if ENABLE_TRANSPORT_DYSFUNCTION:
             # --- Model B: Acute + Chronic for actin ---
             # Acute effect: Direct compound presence (dose-dependent, instant removal on washout)
+            # NOTE: acute_effect is NOT pre-weighted by viability - weighting happens below
             acute_effect = self._compute_acute_microtubule_effect(vessel)
 
             # Chronic effect: Latent transport_dysfunction (decays via k_off after washout)
             transport_dysfunction = float(getattr(vessel, "transport_dysfunction", 0.0) or 0.0)
-            chronic_effect = TRANSPORT_DYSFUNCTION_MORPH_ALPHA * transport_dysfunction
+            chronic_effect = (
+                TRANSPORT_DYSFUNCTION_MORPH_ALPHA * transport_dysfunction * combined_stress_scale
+            )
 
             # Apply Model B: baseline × (1 + acute) × (1 + chronic)
-            morph['actin'] *= (1.0 + acute_effect) * (1.0 + chronic_effect)
+            morph["actin"] *= (1.0 + acute_effect * combined_stress_scale) * (1.0 + chronic_effect)
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # DEATH MORPHOLOGY (apoptotic/necrotic signature)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # When viability drops below threshold, morphology shifts to death signature.
+        # This is a DIFFERENT direction in feature space than stress morphology:
+        #
+        # DEATH_MORPH_SIGNATURE: Defines the characteristic "death direction"
+        # Each value represents channel intensity change (single scalar per channel).
+        # NOTE: Real Cell Painting has multiple features per channel (intensity, texture,
+        # area, etc.). This is a simplified model encoding "intensity-like" behavior.
+        # Positive = increase, Negative = decrease (relative to baseline)
+        DEATH_MORPH_SIGNATURE = {
+            "nucleus": +0.30,  # Condensation → brighter intensity (area would decrease separately)
+            "mito": -0.40,  # Membrane permeabilization → dimmer, diffuse
+            "er": -0.35,  # Fragmentation → loss of structured signal
+            "actin": -0.45,  # Cytoskeleton disassembly → loss of fiber signal
+            "rna": -0.25,  # Degradation → reduced translation site signal
+        }
+
+        if death_weight > 0.01:  # Only apply if in death regime
+            for channel, death_effect in DEATH_MORPH_SIGNATURE.items():
+                # Compute multiplier with guardrail to prevent negative values
+                # At death_weight=1.0, worst case is 1.0 + (-0.45)*1.0 = 0.55
+                # MORPHOLOGY_DEATH_MIN_MULTIPLIER prevents tuning errors from going negative
+                raw_multiplier = 1.0 + death_effect * death_weight
+                clamped_multiplier = max(MORPHOLOGY_DEATH_MIN_MULTIPLIER, raw_multiplier)
+                morph[channel] *= clamped_multiplier
 
         return morph
 
@@ -478,29 +616,31 @@ class CellPaintingAssay(AssaySimulator):
 
             # Look up compound params from thalamus (NOT vessel.compound_meta)
             # This maintains treatment blinding - we only check if it's microtubule axis
-            compound_params = self.vm.thalamus_params['compounds'].get(compound_name, {})
+            compound_params = self.vm.thalamus_params["compounds"].get(compound_name, {})
             if not compound_params:
                 continue
 
-            stress_axis = compound_params.get('stress_axis', '')
-            if stress_axis != 'microtubule':
+            stress_axis = compound_params.get("stress_axis", "")
+            if stress_axis != "microtubule":
                 continue
 
             # Use base potency parameters (treatment blinding: don't read vessel metadata)
-            ic50 = float(compound_params.get('ec50_uM', 0.01))
-            hill_slope = float(compound_params.get('hill_slope', 1.5))
+            ic50 = float(compound_params.get("ec50_uM", 0.01))
+            hill_slope = float(compound_params.get("hill_slope", 1.5))
 
             # Acute effect: Hill equation on dose (saturates at ~0.30)
             # ACUTE_ALPHA = 0.30: ensures >5% acute effect at therapeutic doses
             # Higher than chronic MORPH_ALPHA because this is instantaneous response
             ACUTE_ALPHA = 0.30
             if ic50 > 0 and dose_uM > 0:
-                dose_effect = (dose_uM ** hill_slope) / (ic50 ** hill_slope + dose_uM ** hill_slope)
+                dose_effect = (dose_uM**hill_slope) / (ic50**hill_slope + dose_uM**hill_slope)
                 acute_effect = max(acute_effect, ACUTE_ALPHA * dose_effect)
 
         return float(acute_effect)
 
-    def _apply_contact_pressure_bias(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+    def _apply_contact_pressure_bias(
+        self, vessel: "VesselState", morph: dict[str, float]
+    ) -> dict[str, float]:
         """Apply contact pressure-dependent morphology bias (measurement confounder)."""
         p = float(np.clip(getattr(vessel, "contact_pressure", 0.0), 0.0, 1.0))
         if p > 0.01:
@@ -518,23 +658,27 @@ class CellPaintingAssay(AssaySimulator):
         return morph
 
     def _compute_transport_dysfunction_score(
-        self, vessel: "VesselState", morph: Dict[str, float], baseline: Dict[str, float], has_microtubule: bool
+        self,
+        vessel: "VesselState",
+        morph: dict[str, float],
+        baseline: dict[str, float],
+        has_microtubule: bool,
     ) -> float:
         """Compute transport dysfunction score from morphology (diagnostic only)."""
         if has_microtubule:
             return biology_core.compute_transport_dysfunction_score(
                 cell_line=vessel.cell_line,
                 stress_axis="microtubule",
-                actin_signal=morph['actin'],
-                mito_signal=morph['mito'],
-                baseline_actin=baseline['actin'],
-                baseline_mito=baseline['mito']
+                actin_signal=morph["actin"],
+                mito_signal=morph["mito"],
+                baseline_actin=baseline["actin"],
+                baseline_mito=baseline["mito"],
             )
         return 0.0
 
     def _apply_measurement_layer(
-        self, vessel: "VesselState", morph: Dict[str, float], **kwargs
-    ) -> tuple[Dict[str, float], Dict[str, Any]]:
+        self, vessel: "VesselState", morph: dict[str, float], **kwargs
+    ) -> tuple[dict[str, float], dict[str, Any]]:
         """Apply measurement layer: viability scaling, washout artifacts, debris artifacts, noise, batch effects.
 
         Measurement pipeline order:
@@ -559,7 +703,7 @@ class CellPaintingAssay(AssaySimulator):
                 - exposure_multiplier: Agent-controlled signal scaling (default 1.0)
         """
         t_measure = self.vm.simulated_time
-        tech_noise = self.vm.thalamus_params['technical_noise']
+        tech_noise = self.vm.thalamus_params["technical_noise"]
 
         # 1. Viability factor (biological signal attenuation)
         # ASSUMPTION: Dead cells retain CP_DEAD_SIGNAL_FLOOR signal. See assay_params.py
@@ -573,7 +717,7 @@ class CellPaintingAssay(AssaySimulator):
 
         # 3. Exposure multiplier (scales signal strength before detector)
         # Agent-controlled: trade-off between SNR (floor-limited) and saturation
-        exposure_multiplier = kwargs.get('exposure_multiplier', 1.0)
+        exposure_multiplier = kwargs.get("exposure_multiplier", 1.0)
         if exposure_multiplier != 1.0:
             for channel in morph:
                 morph[channel] *= exposure_multiplier
@@ -581,10 +725,10 @@ class CellPaintingAssay(AssaySimulator):
         # 4. Debris background fluorescence multiplier (Layer B: branch on flag)
         if self._structured_artifacts is not None:
             # Structured artifacts enabled (per-channel)
-            bg_mults = self._structured_artifacts['background']
-            if '__global__' in bg_mults:
+            bg_mults = self._structured_artifacts["background"]
+            if "__global__" in bg_mults:
                 # Scalar mode
-                debris_mult = bg_mults['__global__']
+                debris_mult = bg_mults["__global__"]
                 for channel in morph:
                     morph[channel] *= viability_factor * washout_multiplier * debris_mult
             else:
@@ -615,19 +759,23 @@ class CellPaintingAssay(AssaySimulator):
         from ..detector_stack import apply_detector_stack
 
         # Get realism config from run context (or override for counterfactual analysis)
-        realism_config = kwargs.get('realism_config_override') or self.vm.run_context.get_realism_config()
-        realism_config_source = "override" if 'realism_config_override' in kwargs else "run_context"
+        realism_config = (
+            kwargs.get("realism_config_override") or self.vm.run_context.get_realism_config()
+        )
+        realism_config_source = "override" if "realism_config_override" in kwargs else "run_context"
 
         # Get well position (parse from vessel_id or kwargs)
-        well_position = kwargs.get('well_position', vessel.vessel_id)
+        well_position = kwargs.get("well_position", vessel.vessel_id)
 
         # Create dedicated detector RNG (same strategy as optical materials)
         # Seed from (run_seed, "cell_painting_detector", well_position)
         import hashlib
+
         seed_string = f"cp_detector|{self.vm.run_context.seed}|{well_position}"
         hash_bytes = hashlib.blake2s(seed_string.encode(), digest_size=4).digest()
-        detector_seed = int.from_bytes(hash_bytes, byteorder='little')
+        detector_seed = int.from_bytes(hash_bytes, byteorder="little")
         import numpy as np
+
         rng_detector = np.random.default_rng(detector_seed)
 
         # Apply unified detector stack
@@ -642,47 +790,47 @@ class CellPaintingAssay(AssaySimulator):
             enable_pipeline=False,  # Pipeline drift handled separately in step 11
             enable_detector_bias=False,  # No detector bias for cells (only materials)
             run_seed=self.vm.run_context.seed,
-            realism_config=realism_config
+            realism_config=realism_config,
         )
 
         # Extract metadata (detector_stack returns all fields we need)
-        is_saturated = detector_metadata['is_saturated']
-        is_quantized = detector_metadata['is_quantized']
-        quant_step = detector_metadata['quant_step']
-        snr_floor_proxy = detector_metadata['snr_floor_proxy']
-        edge_distance = detector_metadata.get('edge_distance', 0.0)  # v7
-        qc_flags = detector_metadata.get('qc_flags', {})  # v7
+        is_saturated = detector_metadata["is_saturated"]
+        is_quantized = detector_metadata["is_quantized"]
+        quant_step = detector_metadata["quant_step"]
+        snr_floor_proxy = detector_metadata["snr_floor_proxy"]
+        edge_distance = detector_metadata.get("edge_distance", 0.0)  # v7
+        qc_flags = detector_metadata.get("qc_flags", {})  # v7
 
         # 11. Pipeline drift (batch-dependent feature extraction)
-        plate_id = kwargs.get('plate_id', 'P1')
-        batch_id = kwargs.get('batch_id', 'batch_default')
+        plate_id = kwargs.get("plate_id", "P1")
+        batch_id = kwargs.get("batch_id", "batch_default")
         # Shared factors re-enabled after fixing nutrient depletion bug (commit b241033)
         DIAGNOSTIC_DISABLE_SHARED_FACTORS = False
         if not DIAGNOSTIC_DISABLE_SHARED_FACTORS:
             morph = pipeline_transform(
-                morphology=morph,
-                context=self.vm.run_context,
-                batch_id=batch_id,
-                plate_id=plate_id
+                morphology=morph, context=self.vm.run_context, batch_id=batch_id, plate_id=plate_id
             )
         # else: skip pipeline_transform (no-op)
 
         # Compute realism config hash for auditability
         import json
+
         realism_config_str = json.dumps(realism_config, sort_keys=True)
-        realism_config_hash = hashlib.blake2s(realism_config_str.encode(), digest_size=4).hexdigest()
+        realism_config_hash = hashlib.blake2s(
+            realism_config_str.encode(), digest_size=4
+        ).hexdigest()
 
         # Assemble detector metadata (v7: includes edge_distance, qc_flags, realism provenance)
         detector_metadata = {
-            'is_saturated': is_saturated,
-            'is_quantized': is_quantized,
-            'quant_step': quant_step,
-            'snr_floor_proxy': snr_floor_proxy,
-            'exposure_multiplier': exposure_multiplier,  # Agent-controlled instrument setting
-            'edge_distance': edge_distance,  # v7: continuous edge distance (0 = center, 1 = edge)
-            'qc_flags': qc_flags,  # v7: outlier flags (is_outlier, pathology_type, affected_channel)
-            'realism_config_source': realism_config_source,  # v7: "run_context" or "override" (for provenance)
-            'realism_config_hash': realism_config_hash,  # v7: short hash for auditability
+            "is_saturated": is_saturated,
+            "is_quantized": is_quantized,
+            "quant_step": quant_step,
+            "snr_floor_proxy": snr_floor_proxy,
+            "exposure_multiplier": exposure_multiplier,  # Agent-controlled instrument setting
+            "edge_distance": edge_distance,  # v7: continuous edge distance (0 = center, 1 = edge)
+            "qc_flags": qc_flags,  # v7: outlier flags (is_outlier, pathology_type, affected_channel)
+            "realism_config_source": realism_config_source,  # v7: "run_context" or "override" (for provenance)
+            "realism_config_hash": realism_config_hash,  # v7: short hash for auditability
         }
 
         return morph, detector_metadata
@@ -698,7 +846,7 @@ class CellPaintingAssay(AssaySimulator):
         """
         from ...biology.imaging_artifacts_core import compute_background_noise_multiplier
 
-        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
+        debris_cells = float(getattr(vessel, "debris_cells", 0.0))
         # Use confluence-based proxy (cross-modal independence)
         adherent_cells = float(max(1.0, _cell_count_proxy_from_confluence(vessel.confluence)))
 
@@ -710,7 +858,7 @@ class CellPaintingAssay(AssaySimulator):
             adherent_cells=adherent_cells,
             base_multiplier=1.0,
             debris_coefficient=0.05,  # 5% inflation per 100% debris
-            max_multiplier=1.25  # Cap at 25% inflation
+            max_multiplier=1.25,  # Cap at 25% inflation
         )
 
         return multiplier
@@ -726,7 +874,7 @@ class CellPaintingAssay(AssaySimulator):
         """
         from ...biology.imaging_artifacts_core import compute_segmentation_failure_probability_bump
 
-        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
+        debris_cells = float(getattr(vessel, "debris_cells", 0.0))
         # Use confluence-based proxy (cross-modal independence)
         adherent_cells = _cell_count_proxy_from_confluence(vessel.confluence)
 
@@ -738,7 +886,7 @@ class CellPaintingAssay(AssaySimulator):
             adherent_cell_count=adherent_cells,
             base_probability=0.0,
             debris_coefficient=0.02,  # 2% failure bump per 100% debris ratio
-            max_probability=0.5  # Cap at 50% bump
+            max_probability=0.5,  # Cap at 50% bump
         )
 
         return prob_bump
@@ -753,14 +901,14 @@ class CellPaintingAssay(AssaySimulator):
                 # Deterministic penalty
                 recovery_fraction = time_since_washout / WASHOUT_INTENSITY_RECOVERY_H
                 washout_penalty = WASHOUT_INTENSITY_PENALTY * (1.0 - recovery_fraction)
-                washout_multiplier *= (1.0 - washout_penalty)
+                washout_multiplier *= 1.0 - washout_penalty
 
         # Stochastic contamination artifact
         if vessel.washout_artifact_until_time and t_measure < vessel.washout_artifact_until_time:
             remaining_time = vessel.washout_artifact_until_time - t_measure
             decay_fraction = remaining_time / WASHOUT_INTENSITY_RECOVERY_H
             artifact_effect = vessel.washout_artifact_magnitude * decay_fraction
-            washout_multiplier *= (1.0 - artifact_effect)
+            washout_multiplier *= 1.0 - artifact_effect
 
         return washout_multiplier
 
@@ -782,9 +930,9 @@ class CellPaintingAssay(AssaySimulator):
             - D=1.0: mult~4.0 (severe damage, ~4× variance)
         """
         # Extract damage from all three stress axes
-        er_damage = float(getattr(vessel, 'er_damage', 0.0))
-        mito_damage = float(getattr(vessel, 'mito_damage', 0.0))
-        transport_damage = float(getattr(vessel, 'transport_damage', 0.0))
+        er_damage = float(getattr(vessel, "er_damage", 0.0))
+        mito_damage = float(getattr(vessel, "mito_damage", 0.0))
+        transport_damage = float(getattr(vessel, "transport_damage", 0.0))
 
         # Use max damage (any axis can drive noise inflation)
         D = max(er_damage, mito_damage, transport_damage)
@@ -799,20 +947,23 @@ class CellPaintingAssay(AssaySimulator):
         a = 1.2
         b = 1.8
 
-        noise_mult = 1.0 + a * D + b * (D ** 2)
+        noise_mult = 1.0 + a * D + b * (D**2)
 
         # Bounded to prevent runaway (cap at 5.0)
         noise_mult = float(np.clip(noise_mult, 1.0, 5.0))
 
         return noise_mult
 
-    def _add_biological_noise(self, vessel: "VesselState", morph: Dict[str, float]) -> Dict[str, float]:
+    def _add_biological_noise(
+        self, vessel: "VesselState", morph: dict[str, float]
+    ) -> dict[str, float]:
         """
         Structured biology:
         - Per-well baseline shifts already applied (in _apply_well_biology_baseline)
         - Stress susceptibility as gain on stress-induced morphology
         - Small residual biological noise (do NOT crank this into amplitude mush)
         - STATE-DEPENDENT NOISE: Damage inflates outlier probability (heteroskedasticity)
+        - DEATH REGIME NOISE: Dying cells show heterogeneous morphology (different death modes)
         """
         bio_cfg = self.vm.thalamus_params.get("biological_noise", {})
         base_residual_cv = float(bio_cfg.get("cell_line_cv", 0.04))  # keep modest
@@ -840,6 +991,16 @@ class CellPaintingAssay(AssaySimulator):
         # channels, but not perfectly (base lognormal still varies per-channel).
         effective_cv = base_residual_cv * (1.0 + stress_level * (stress_multiplier - 1.0))
 
+        # DEATH REGIME NOISE COUPLING
+        # As cells die, morphology becomes heterogeneous (different death modes, segmentation
+        # artifacts, debris). This prevents "clean, crisp dead phenotypes" which don't exist
+        # in real microscopy. Noise inflates in proportion to death_weight.
+        death_weight = getattr(self, "_current_death_weight", 0.0)
+        if death_weight > 0.01:
+            # Linear noise inflation: at death_weight=1.0, CV multiplied by DEATH_REGIME_NOISE_MULTIPLIER
+            death_noise_factor = 1.0 + (DEATH_REGIME_NOISE_MULTIPLIER - 1.0) * death_weight
+            effective_cv *= death_noise_factor
+
         if effective_cv > 0:
             # Draw base lognormal per channel (existing behavior)
             base_factors = {}
@@ -847,8 +1008,8 @@ class CellPaintingAssay(AssaySimulator):
                 base_factors[ch] = lognormal_multiplier(self.vm.rng_assay, effective_cv)
 
             # Draw heavy-tail shock once (shared across all channels)
-            tech_noise = self.vm.thalamus_params.get('technical_noise', {})
-            p_heavy_base = tech_noise.get('heavy_tail_frequency', 0.0)
+            tech_noise = self.vm.thalamus_params.get("technical_noise", {})
+            p_heavy_base = tech_noise.get("heavy_tail_frequency", 0.0)
 
             # STATE-DEPENDENT OUTLIERS: Damage increases heavy-tail frequency
             # More damaged cells show more outlier behavior (irregular morphology, heterogeneity)
@@ -862,11 +1023,11 @@ class CellPaintingAssay(AssaySimulator):
                 # Heavy-tail shock enabled: overlay on base lognormal
                 shock = heavy_tail_shock(
                     rng=self.vm.rng_assay,
-                    nu=tech_noise.get('heavy_tail_nu', 4.0),
-                    log_scale=tech_noise.get('heavy_tail_log_scale', 0.35),
+                    nu=tech_noise.get("heavy_tail_nu", 4.0),
+                    log_scale=tech_noise.get("heavy_tail_log_scale", 0.35),
                     p_heavy=p_heavy,
-                    clip_min=tech_noise.get('heavy_tail_min_multiplier', 0.2),
-                    clip_max=tech_noise.get('heavy_tail_max_multiplier', 5.0)
+                    clip_min=tech_noise.get("heavy_tail_min_multiplier", 0.2),
+                    clip_max=tech_noise.get("heavy_tail_max_multiplier", 5.0),
                 )
             else:
                 # Heavy-tail shock dormant: no overlay
@@ -878,16 +1039,18 @@ class CellPaintingAssay(AssaySimulator):
 
         return morph
 
-    def _add_plating_artifacts(self, vessel: "VesselState", morph: Dict[str, float], t_measure: float) -> Dict[str, float]:
+    def _add_plating_artifacts(
+        self, vessel: "VesselState", morph: dict[str, float], t_measure: float
+    ) -> dict[str, float]:
         """Add plating artifact variance inflation (early timepoints unreliable)."""
         if vessel.plating_context is not None:
             time_since_seed = t_measure - vessel.seed_time
-            tau_recovery = vessel.plating_context['tau_recovery_h']
+            tau_recovery = vessel.plating_context["tau_recovery_h"]
 
-            post_dissoc_stress = vessel.plating_context['post_dissociation_stress']
+            post_dissoc_stress = vessel.plating_context["post_dissociation_stress"]
             artifact_magnitude = post_dissoc_stress * float(np.exp(-time_since_seed / tau_recovery))
 
-            clumpiness = vessel.plating_context['clumpiness']
+            clumpiness = vessel.plating_context["clumpiness"]
             clump_variance = clumpiness * float(np.exp(-time_since_seed / (tau_recovery * 0.5)))
 
             if artifact_magnitude > 0.01 or clump_variance > 0.01:
@@ -901,7 +1064,9 @@ class CellPaintingAssay(AssaySimulator):
         """Deterministic plate-level stain factor (like other batch factors)."""
         return self._get_batch_factor("stain", plate_id, batch_id, cv)
 
-    def _get_tile_focus_factor(self, plate_id: str, batch_id: str, well_position: str, cv: float) -> float:
+    def _get_tile_focus_factor(
+        self, plate_id: str, batch_id: str, well_position: str, cv: float
+    ) -> float:
         """
         Deterministic per-tile focus factor.
         Tile here means e.g. 4x4 blocks to mimic focus surface.
@@ -915,15 +1080,17 @@ class CellPaintingAssay(AssaySimulator):
         tile_id = f"{plate_id}_focusTile_{tile_r}_{tile_c}"
         return self._get_batch_factor("focus", tile_id, batch_id, cv)
 
-    def _add_technical_noise(self, vessel: "VesselState", morph: Dict[str, float], **kwargs) -> Dict[str, float]:
+    def _add_technical_noise(
+        self, vessel: "VesselState", morph: dict[str, float], **kwargs
+    ) -> dict[str, float]:
         """Add technical noise from plate/day/operator/well/edge effects."""
-        tech_noise = self.vm.thalamus_params['technical_noise']
+        tech_noise = self.vm.thalamus_params["technical_noise"]
 
-        plate_id = kwargs.get('plate_id', 'P1')
-        batch_id = kwargs.get('batch_id', 'batch_default')
-        day = kwargs.get('day', 1)
-        operator = kwargs.get('operator', 'OP1')
-        well_position = kwargs.get('well_position', 'A1')
+        plate_id = kwargs.get("plate_id", "P1")
+        batch_id = kwargs.get("batch_id", "batch_default")
+        day = kwargs.get("day", 1)
+        operator = kwargs.get("operator", "OP1")
+        well_position = kwargs.get("well_position", "A1")
 
         # Deterministic batch effects (seeded by context + batch ID)
         # Shared factors re-enabled after fixing nutrient depletion bug (commit b241033)
@@ -933,52 +1100,62 @@ class CellPaintingAssay(AssaySimulator):
             day_factor = 1.0
             operator_factor = 1.0
         else:
-            plate_factor = self._get_batch_factor('plate', plate_id, batch_id, tech_noise['plate_cv'])
-            day_factor = self._get_batch_factor('day', day, batch_id, tech_noise['day_cv'])
-            operator_factor = self._get_batch_factor('op', operator, batch_id, tech_noise['operator_cv'])
+            plate_factor = self._get_batch_factor(
+                "plate", plate_id, batch_id, tech_noise["plate_cv"]
+            )
+            day_factor = self._get_batch_factor("day", day, batch_id, tech_noise["day_cv"])
+            operator_factor = self._get_batch_factor(
+                "op", operator, batch_id, tech_noise["operator_cv"]
+            )
 
         # Per-channel well factor (breaks global multiplier dominance)
         # EXCHANGEABLE SAMPLING FIX (Attack 2): Use well_uid, not well_position
-        well_cv = tech_noise['well_cv']
+        well_cv = tech_noise["well_cv"]
         well_factors_per_channel = {}
         if well_cv > 0:
             # Get exchangeable well UID from RunContext
             well_uid = self.vm.run_context.get_well_uid(plate_id, well_position)
-            for channel in ['er', 'mito', 'nucleus', 'actin', 'rna']:
+            for channel in ["er", "mito", "nucleus", "actin", "rna"]:
                 # Deterministic per-channel: key to well_uid + channel (NOT position)
                 channel_seed = stable_u32(f"well_factor_{well_uid}_{channel}")
                 channel_rng = np.random.default_rng(channel_seed)
                 well_factors_per_channel[channel] = lognormal_multiplier(channel_rng, well_cv)
         else:
-            well_factors_per_channel = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
+            well_factors_per_channel = {ch: 1.0 for ch in ["er", "mito", "nucleus", "actin", "rna"]}
 
         # Edge effect
         # DIAGNOSTIC: Disable edge effect to isolate per-channel coupling
         if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
             edge_factor = 1.0
         else:
-            edge_effect = tech_noise.get('edge_effect', 0.0)
+            edge_effect = tech_noise.get("edge_effect", 0.0)
             is_edge = self._is_edge_well(well_position)
             edge_factor = (1.0 - edge_effect) if is_edge else 1.0
 
         # Run context modifiers (lot/instrument effects + temporal drift)
         # Pass t_measure and modality='imaging' for time-dependent drift
         t_measure = self.vm.simulated_time
-        meas_mods = self.vm.run_context.get_measurement_modifiers(t_measure, modality='imaging')
+        meas_mods = self.vm.run_context.get_measurement_modifiers(t_measure, modality="imaging")
         # DIAGNOSTIC: Disable gain to isolate per-channel coupling
         if DIAGNOSTIC_DISABLE_SHARED_FACTORS:
             gain = 1.0
-            channel_biases = {ch: 1.0 for ch in ['er', 'mito', 'nucleus', 'actin', 'rna']}
+            channel_biases = {ch: 1.0 for ch in ["er", "mito", "nucleus", "actin", "rna"]}
         else:
-            gain = meas_mods['gain']  # Includes batch effect + temporal drift
-            channel_biases = meas_mods['channel_biases']
+            gain = meas_mods["gain"]  # Includes batch effect + temporal drift
+            channel_biases = meas_mods["channel_biases"]
 
         # Add coupled nuisance factors
-        stain_cv = float(tech_noise.get("stain_cv", 0.05))   # new param
-        focus_cv = float(tech_noise.get("focus_cv", 0.04))   # new param
+        stain_cv = float(tech_noise.get("stain_cv", 0.05))  # new param
+        focus_cv = float(tech_noise.get("focus_cv", 0.04))  # new param
 
-        stain_factor = self._get_plate_stain_factor(plate_id, batch_id, stain_cv) if stain_cv > 0 else 1.0
-        focus_factor = self._get_tile_focus_factor(plate_id, batch_id, well_position, focus_cv) if focus_cv > 0 else 1.0
+        stain_factor = (
+            self._get_plate_stain_factor(plate_id, batch_id, stain_cv) if stain_cv > 0 else 1.0
+        )
+        focus_factor = (
+            self._get_tile_focus_factor(plate_id, batch_id, well_position, focus_cv)
+            if focus_cv > 0
+            else 1.0
+        )
 
         # STATE-DEPENDENT NOISE: Add per-measurement multiplicative noise scaled by damage
         # Damaged cells show higher measurement-to-measurement variance (irregular uptake, heterogeneous morphology)
@@ -1008,30 +1185,36 @@ class CellPaintingAssay(AssaySimulator):
             from src.cell_os.hardware.hardware_artifacts import get_hardware_bias
 
             # Get hardware sensitivity params
-            hardware_sensitivity = self.vm.thalamus_params.get('hardware_sensitivity', {}) if hasattr(self.vm, 'thalamus_params') and self.vm.thalamus_params else {}
+            hardware_sensitivity = (
+                self.vm.thalamus_params.get("hardware_sensitivity", {})
+                if hasattr(self.vm, "thalamus_params") and self.vm.thalamus_params
+                else {}
+            )
 
             hardware_bias = get_hardware_bias(
                 plate_id=plate_id,
                 batch_id=batch_id,
                 well_position=well_position,
-                instrument='el406_cellpainting',
-                operation='cell_painting',
+                instrument="el406_cellpainting",
+                operation="cell_painting",
                 seed=self.vm.run_context.seed,
                 tech_noise=tech_noise,
                 cell_line=vessel.cell_line,
                 cell_line_params=hardware_sensitivity,
-                run_context=self.vm.run_context
+                run_context=self.vm.run_context,
             )
 
-            hardware_factor = hardware_bias['combined_factor']
+            hardware_factor = hardware_bias["combined_factor"]
 
-        except (ImportError, Exception) as e:
+        except (ImportError, Exception):
             # Fallback: no hardware artifacts if import fails
             pass
 
         # Shared factors (plate/day/operator/edge/gain/hardware) - NOT per-channel well_factor
         # CANONICAL GAIN APPLICATION: gain applied exactly once here (includes batch + drift)
-        shared_tech_factor = plate_factor * day_factor * operator_factor * edge_factor * gain * hardware_factor
+        shared_tech_factor = (
+            plate_factor * day_factor * operator_factor * edge_factor * gain * hardware_factor
+        )
 
         # Apply shared factors + per-channel well factor + biases + coupled stain/focus
         for channel in morph:
@@ -1042,11 +1225,11 @@ class CellPaintingAssay(AssaySimulator):
             if channel in ("er", "mito"):
                 coupled = stain_factor
             elif channel == "rna":
-                coupled = stain_factor ** 0.9
+                coupled = stain_factor**0.9
             elif channel == "nucleus":
-                coupled = stain_factor ** 0.5
+                coupled = stain_factor**0.5
             elif channel == "actin":
-                coupled = stain_factor ** 0.2
+                coupled = stain_factor**0.2
             else:
                 coupled = 1.0
 
@@ -1054,10 +1237,12 @@ class CellPaintingAssay(AssaySimulator):
             if channel in ("nucleus", "actin"):
                 coupled *= focus_factor
             else:
-                coupled *= focus_factor ** 0.2
+                coupled *= focus_factor**0.2
 
             # Apply: shared factors × per-channel well factor × channel bias × coupled factors × damage noise
-            morph[channel] *= shared_tech_factor * well_factor * channel_bias * coupled * damage_noise_factor
+            morph[channel] *= (
+                shared_tech_factor * well_factor * channel_bias * coupled * damage_noise_factor
+            )
 
             # Focus-induced variance inflation for structure channels (fingerprint)
             if channel in ("nucleus", "actin") and focus_badness > 0:
@@ -1072,12 +1257,14 @@ class CellPaintingAssay(AssaySimulator):
         """Get deterministic batch effect factor."""
         if cv <= 0:
             return 1.0
-        rng = np.random.default_rng(stable_u32(f"{prefix}_{self.vm.run_context.seed}_{batch_id}_{identifier}"))
+        rng = np.random.default_rng(
+            stable_u32(f"{prefix}_{self.vm.run_context.seed}_{batch_id}_{identifier}")
+        )
         return lognormal_multiplier(rng, cv)
 
     def _is_edge_well(self, well_position: str, plate_format: int = 384) -> bool:
         """Detect if well is on plate edge."""
-        match = re.search(r'([A-P])(\d{1,2})$', well_position)
+        match = re.search(r"([A-P])(\d{1,2})$", well_position)
         if not match:
             return False
 
@@ -1085,12 +1272,12 @@ class CellPaintingAssay(AssaySimulator):
         col = int(match.group(2))
 
         if plate_format == 384:
-            return row in ['A', 'P'] or col in [1, 24]
+            return row in ["A", "P"] or col in [1, 24]
         elif plate_format == 96:
-            return row in ['A', 'H'] or col in [1, 12]
+            return row in ["A", "H"] or col in [1, 12]
         return False
 
-    def _add_additive_floor(self, morph: Dict[str, float]) -> Dict[str, float]:
+    def _add_additive_floor(self, morph: dict[str, float]) -> dict[str, float]:
         """
         Add detector read noise (additive floor).
 
@@ -1111,14 +1298,14 @@ class CellPaintingAssay(AssaySimulator):
         Returns:
             Morphology with additive floor applied and clamped at 0
         """
-        tech_noise = self.vm.thalamus_params['technical_noise']
+        tech_noise = self.vm.thalamus_params["technical_noise"]
 
         # Use canonical channel list (not morph.keys()) to avoid silent failures
         # if morph ever contains extra features
-        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+        channels = ["er", "mito", "nucleus", "actin", "rna"]
 
         # Check if any sigma is nonzero (golden-preserving: skip RNG if all 0)
-        sigmas = {ch: tech_noise.get(f'additive_floor_sigma_{ch}', 0.0) for ch in channels}
+        sigmas = {ch: tech_noise.get(f"additive_floor_sigma_{ch}", 0.0) for ch in channels}
 
         if any(s > 0 for s in sigmas.values()):
             for ch in channels:
@@ -1129,7 +1316,9 @@ class CellPaintingAssay(AssaySimulator):
 
         return morph
 
-    def _apply_saturation(self, morph: Dict[str, float]) -> tuple[Dict[str, float], Dict[str, bool]]:
+    def _apply_saturation(
+        self, morph: dict[str, float]
+    ) -> tuple[dict[str, float], dict[str, bool]]:
         """
         Apply detector saturation (dynamic range limits).
 
@@ -1156,37 +1345,36 @@ class CellPaintingAssay(AssaySimulator):
         Returns:
             Morphology with saturation applied (soft knee compression)
         """
-        tech_noise = self.vm.thalamus_params['technical_noise']
+        tech_noise = self.vm.thalamus_params["technical_noise"]
 
         # Use canonical channel list (not morph.keys())
-        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+        channels = ["er", "mito", "nucleus", "actin", "rna"]
 
         # Shared soft-knee parameters (apply to all channels)
-        knee_start_frac = tech_noise.get('saturation_knee_start_fraction', 0.85)
-        tau_frac = tech_noise.get('saturation_tau_fraction', 0.08)
+        knee_start_frac = tech_noise.get("saturation_knee_start_fraction", 0.85)
+        tau_frac = tech_noise.get("saturation_tau_fraction", 0.08)
 
         # Apply per-channel saturation (independent ceilings)
         # Track which channels saturated (for detector metadata)
         is_saturated = {}
         for ch in channels:
-            ceiling = tech_noise.get(f'saturation_ceiling_{ch}', 0.0)
+            ceiling = tech_noise.get(f"saturation_ceiling_{ch}", 0.0)
             if ceiling > 0:  # Only apply if enabled for this channel
                 y_pre = morph[ch]
                 y_sat = apply_saturation(
-                    y=y_pre,
-                    ceiling=ceiling,
-                    knee_start_frac=knee_start_frac,
-                    tau_frac=tau_frac
+                    y=y_pre, ceiling=ceiling, knee_start_frac=knee_start_frac, tau_frac=tau_frac
                 )
                 morph[ch] = y_sat
                 # Mark as saturated if within epsilon of ceiling
-                is_saturated[ch] = (y_sat >= ceiling - 0.001)
+                is_saturated[ch] = y_sat >= ceiling - 0.001
             else:
                 is_saturated[ch] = False
 
         return morph, is_saturated
 
-    def _apply_adc_quantization(self, morph: Dict[str, float]) -> tuple[Dict[str, float], Dict[str, float], Dict[str, bool]]:
+    def _apply_adc_quantization(
+        self, morph: dict[str, float]
+    ) -> tuple[dict[str, float], dict[str, float], dict[str, bool]]:
         """
         Apply ADC quantization (analog-to-digital conversion).
 
@@ -1216,15 +1404,15 @@ class CellPaintingAssay(AssaySimulator):
         Returns:
             Morphology with ADC quantization applied
         """
-        tech_noise = self.vm.thalamus_params['technical_noise']
+        tech_noise = self.vm.thalamus_params["technical_noise"]
 
         # Use canonical channel list (not morph.keys())
-        channels = ['er', 'mito', 'nucleus', 'actin', 'rna']
+        channels = ["er", "mito", "nucleus", "actin", "rna"]
 
         # Shared defaults
-        bits_default = int(tech_noise.get('adc_quant_bits_default', 0))
-        step_default = float(tech_noise.get('adc_quant_step_default', 0.0))
-        mode = tech_noise.get('adc_quant_rounding_mode', 'round_half_up')
+        bits_default = int(tech_noise.get("adc_quant_bits_default", 0))
+        step_default = float(tech_noise.get("adc_quant_step_default", 0.0))
+        mode = tech_noise.get("adc_quant_rounding_mode", "round_half_up")
 
         # Apply per-channel quantization
         # Track quantization metadata (for detector metadata)
@@ -1233,12 +1421,12 @@ class CellPaintingAssay(AssaySimulator):
 
         for ch in channels:
             # Per-channel overrides (fall back to defaults)
-            bits = int(tech_noise.get(f'adc_quant_bits_{ch}', bits_default))
-            step = float(tech_noise.get(f'adc_quant_step_{ch}', step_default))
+            bits = int(tech_noise.get(f"adc_quant_bits_{ch}", bits_default))
+            step = float(tech_noise.get(f"adc_quant_step_{ch}", step_default))
 
             # Get ceiling from saturation config (needed for bits-mode)
             # If saturation is dormant (ceiling=0), bits-mode will raise ValueError
-            ceiling = float(tech_noise.get(f'saturation_ceiling_{ch}', 0.0))
+            ceiling = float(tech_noise.get(f"saturation_ceiling_{ch}", 0.0))
 
             # Determine effective step (same logic as quantize_adc)
             effective_step = 0.0
@@ -1252,11 +1440,7 @@ class CellPaintingAssay(AssaySimulator):
             # Apply quantization (dormant if bits=0 and step=0.0)
             if bits > 0 or step > 0:
                 morph[ch] = quantize_adc(
-                    y=morph[ch],
-                    step=step,
-                    bits=bits,
-                    ceiling=ceiling,
-                    mode=mode
+                    y=morph[ch], step=step, bits=bits, ceiling=ceiling, mode=mode
                 )
                 is_quantized[ch] = True
                 quant_step[ch] = effective_step
@@ -1267,72 +1451,72 @@ class CellPaintingAssay(AssaySimulator):
         return morph, quant_step, is_quantized
 
     def _apply_well_failure(
-        self, morph: Dict[str, float], well_position: str, plate_id: str, batch_id: str
-    ) -> Optional[Dict]:
+        self, morph: dict[str, float], well_position: str, plate_id: str, batch_id: str
+    ) -> dict | None:
         """Apply random well failures (bubbles, contamination, etc.)."""
-        tech_noise = self.vm.thalamus_params.get('technical_noise', {})
-        failure_rate = tech_noise.get('well_failure_rate', 0.0)
+        tech_noise = self.vm.thalamus_params.get("technical_noise", {})
+        failure_rate = tech_noise.get("well_failure_rate", 0.0)
 
         if failure_rate <= 0:
             return None
 
         # Seed failures by run context + plate + well
         rng_failure = np.random.default_rng(
-            stable_u32(f"well_failure_{self.vm.run_context.seed}_{batch_id}_{plate_id}_{well_position}")
+            stable_u32(
+                f"well_failure_{self.vm.run_context.seed}_{batch_id}_{plate_id}_{well_position}"
+            )
         )
         if rng_failure.random() > failure_rate:
             return None
 
         # Select failure mode
-        failure_modes = self.vm.thalamus_params.get('well_failure_modes', {})
+        failure_modes = self.vm.thalamus_params.get("well_failure_modes", {})
         if not failure_modes:
             return None
 
         modes = list(failure_modes.keys())
-        probs = [failure_modes[mode].get('probability', 0.0) for mode in modes]
+        probs = [failure_modes[mode].get("probability", 0.0) for mode in modes]
         total_prob = sum(probs)
         if total_prob <= 0:
             return None
 
         probs = [p / total_prob for p in probs]
         selected_mode = rng_failure.choice(modes, p=probs)
-        effect = failure_modes[selected_mode].get('effect', 'no_signal')
+        effect = failure_modes[selected_mode].get("effect", "no_signal")
 
         # Apply failure effect
         failed_morph = morph.copy()
 
-        if effect == 'no_signal':
+        if effect == "no_signal":
             for channel in failed_morph:
                 failed_morph[channel] = rng_failure.uniform(0.1, 2.0)
-        elif effect == 'outlier_high':
+        elif effect == "outlier_high":
             for channel in failed_morph:
                 failed_morph[channel] *= rng_failure.uniform(5.0, 20.0)
-        elif effect == 'outlier_low':
+        elif effect == "outlier_low":
             for channel in failed_morph:
                 failed_morph[channel] *= rng_failure.uniform(0.05, 0.3)
-        elif effect == 'partial_signal':
+        elif effect == "partial_signal":
             failed_channels = rng_failure.choice(
                 list(failed_morph.keys()),
                 size=rng_failure.integers(1, len(failed_morph)),
-                replace=False
+                replace=False,
             )
             for channel in failed_channels:
                 failed_morph[channel] = rng_failure.uniform(0.1, 2.0)
-        elif effect == 'mixed_signal':
+        elif effect == "mixed_signal":
             mix_ratio = rng_failure.uniform(0.3, 0.7)
             for channel in failed_morph:
                 neighbor_signal = failed_morph[channel] * rng_failure.uniform(0.5, 2.0)
-                failed_morph[channel] = mix_ratio * failed_morph[channel] + (1 - mix_ratio) * neighbor_signal
+                failed_morph[channel] = (
+                    mix_ratio * failed_morph[channel] + (1 - mix_ratio) * neighbor_signal
+                )
 
-        return {
-            'morphology': failed_morph,
-            'failure_mode': selected_mode,
-            'effect': effect
-        }
+        return {"morphology": failed_morph, "failure_mode": selected_mode, "effect": effect}
 
     def _apply_segmentation_failure(
-        self, vessel: "VesselState", result: Dict[str, Any], **kwargs
-    ) -> Optional[Dict[str, Any]]:
+        self, vessel: "VesselState", result: dict[str, Any], **kwargs
+    ) -> dict[str, Any] | None:
         """
         Apply segmentation failure (adversarial measurement layer).
 
@@ -1350,26 +1534,27 @@ class CellPaintingAssay(AssaySimulator):
             Dict with updated fields or None if segmentation disabled
         """
         # Check if segmentation failure is enabled
-        enable_segmentation_failure = kwargs.get('enable_segmentation_failure', True)
+        enable_segmentation_failure = kwargs.get("enable_segmentation_failure", True)
         if not enable_segmentation_failure:
             return None
 
         # Initialize segmentation injection (shared instance for determinism)
-        if not hasattr(self, '_segmentation_injection'):
+        if not hasattr(self, "_segmentation_injection"):
             self._segmentation_injection = SegmentationFailureInjection()
 
         # Build injection context
         ctx = InjectionContext(
             simulated_time=self.vm.simulated_time,
             run_context=self.vm.run_context,
-            well_position=kwargs.get('well_position', 'A1'),
-            plate_id=kwargs.get('plate_id', 'P1')
+            well_position=kwargs.get("well_position", "A1"),
+            plate_id=kwargs.get("plate_id", "P1"),
         )
 
         # Create deterministic RNG for segmentation (separate from biology/assay streams)
         from .._impl import stable_u32
-        well_position = kwargs.get('well_position', 'A1')
-        plate_id = kwargs.get('plate_id', 'P1')
+
+        well_position = kwargs.get("well_position", "A1")
+        plate_id = kwargs.get("plate_id", "P1")
         seg_seed = stable_u32(f"segmentation_{self.vm.run_context.seed}_{plate_id}_{well_position}")
         rng = np.random.default_rng(seg_seed)
 
@@ -1378,44 +1563,48 @@ class CellPaintingAssay(AssaySimulator):
         # Extract parameters for segmentation quality computation
         confluence = vessel.confluence
         debris_level = self._estimate_debris_level(vessel)
-        focus_offset_um = kwargs.get('focus_offset_um', 0.0)
-        stain_scale = kwargs.get('stain_scale', 1.0)
+        focus_offset_um = kwargs.get("focus_offset_um", 0.0)
+        stain_scale = kwargs.get("stain_scale", 1.0)
 
         # Estimated cell count (before segmentation) - use confluence proxy
         estimated_count = int(_cell_count_proxy_from_confluence(vessel.confluence))
 
         # Apply segmentation distortion
-        observed_count, distorted_morphology, qc_metadata = self._segmentation_injection.hook_cell_painting_assay(
+        (
+            observed_count,
+            distorted_morphology,
+            qc_metadata,
+        ) = self._segmentation_injection.hook_cell_painting_assay(
             ctx=ctx,
             state=state,
             true_count=estimated_count,
-            true_morphology=result['morphology'].copy(),
+            true_morphology=result["morphology"].copy(),
             confluence=confluence,
             debris_level=debris_level,
             focus_offset_um=focus_offset_um,
             stain_scale=stain_scale,
-            rng=rng
+            rng=rng,
         )
 
         # ADDITIONAL debris-driven segmentation failure (Layer B: branch on flag)
         # This is separate from the quality degradation in compute_segmentation_quality()
         # Debris confounds segmentation algorithms beyond just reducing quality
-        seg_quality_original = qc_metadata['segmentation_quality']
+        seg_quality_original = qc_metadata["segmentation_quality"]
 
         if self._structured_artifacts is not None:
             # Structured artifacts enabled (modes-based)
-            seg = self._structured_artifacts['segmentation']
-            if 'modes' in seg:
+            seg = self._structured_artifacts["segmentation"]
+            if "modes" in seg:
                 # Use merge/split modes
-                modes = seg['modes']
+                modes = seg["modes"]
                 # TODO: Apply merge/split distortions to morphology (not implemented yet)
                 # For now, use combined probability as quality reduction
-                total_failure_prob = modes['p_merge'] + modes['p_split']
+                total_failure_prob = modes["p_merge"] + modes["p_split"]
                 seg_quality_adjusted = seg_quality_original * (1.0 - total_failure_prob)
                 seg_fail_prob_bump = total_failure_prob
             else:
                 # Fall back to scalar
-                seg_fail_prob_bump = seg['scalar_bump']
+                seg_fail_prob_bump = seg["scalar_bump"]
                 seg_quality_adjusted = seg_quality_original * (1.0 - seg_fail_prob_bump)
         else:
             # Phase 1 scalar artifacts (backward compatible)
@@ -1426,24 +1615,24 @@ class CellPaintingAssay(AssaySimulator):
 
         # Update result with segmentation distortions (use adjusted quality)
         updates = {
-            'cell_count_estimated': estimated_count,
-            'cell_count_observed': observed_count,
-            'morphology': distorted_morphology,
-            'morphology_measured': distorted_morphology,
-            'segmentation_quality': seg_quality_adjusted,  # Adjusted for debris bump
-            'segmentation_quality_pre_debris': seg_quality_original,  # Original (for debugging)
-            'debris_seg_fail_bump': seg_fail_prob_bump,  # Debris contribution (for debugging)
-            'segmentation_qc_passed': qc_metadata['qc_passed'],
-            'segmentation_warnings': qc_metadata['qc_warnings'],
-            'merge_count': qc_metadata['merge_count'],
-            'split_count': qc_metadata['split_count'],
-            'size_bias': qc_metadata['size_bias'],
+            "cell_count_estimated": estimated_count,
+            "cell_count_observed": observed_count,
+            "morphology": distorted_morphology,
+            "morphology_measured": distorted_morphology,
+            "segmentation_quality": seg_quality_adjusted,  # Adjusted for debris bump
+            "segmentation_quality_pre_debris": seg_quality_original,  # Original (for debugging)
+            "debris_seg_fail_bump": seg_fail_prob_bump,  # Debris contribution (for debugging)
+            "segmentation_qc_passed": qc_metadata["qc_passed"],
+            "segmentation_warnings": qc_metadata["qc_warnings"],
+            "merge_count": qc_metadata["merge_count"],
+            "split_count": qc_metadata["split_count"],
+            "size_bias": qc_metadata["size_bias"],
         }
 
         # If QC failed, mark result
-        if not qc_metadata['qc_passed']:
-            updates['qc_flag'] = 'SEGMENTATION_FAIL'
-            updates['data_quality'] = 'poor'
+        if not qc_metadata["qc_passed"]:
+            updates["qc_flag"] = "SEGMENTATION_FAIL"
+            updates["data_quality"] = "poor"
 
         return updates
 
@@ -1458,9 +1647,9 @@ class CellPaintingAssay(AssaySimulator):
         - High death rates
         """
         # ACTUAL debris from wash/fixation (preferred if available)
-        if hasattr(vessel, 'debris_cells') and vessel.debris_cells > 0:
+        if hasattr(vessel, "debris_cells") and vessel.debris_cells > 0:
             # Normalize to [0, 1] range using initial cells as anchor
-            initial_cells = getattr(vessel, 'initial_cells', 10000.0)
+            initial_cells = getattr(vessel, "initial_cells", 10000.0)
             if initial_cells > 0:
                 return float(min(1.0, vessel.debris_cells / initial_cells))
 
@@ -1473,7 +1662,7 @@ class CellPaintingAssay(AssaySimulator):
 
         return debris
 
-    def _compute_cp_quality_metrics(self, vessel: "VesselState") -> Dict[str, Any]:
+    def _compute_cp_quality_metrics(self, vessel: "VesselState") -> dict[str, Any]:
         """
         Compute Cell Painting quality degradation from debris and handling loss.
 
@@ -1495,8 +1684,8 @@ class CellPaintingAssay(AssaySimulator):
 
         # Extract state - use confluence proxy
         live_cells = _cell_count_proxy_from_confluence(vessel.confluence)
-        debris_cells = float(getattr(vessel, 'debris_cells', 0.0))
-        cells_lost = float(getattr(vessel, 'cells_lost_to_handling', 0.0))
+        debris_cells = float(getattr(vessel, "debris_cells", 0.0))
+        cells_lost = float(getattr(vessel, "cells_lost_to_handling", 0.0))
 
         # Total cell material (live + debris + lost)
         total_material = live_cells + debris_cells + cells_lost + eps
@@ -1524,10 +1713,10 @@ class CellPaintingAssay(AssaySimulator):
 
         # Get adhesion heterogeneity (spatial clumpiness of debris)
         adhesion_heterogeneity = 0.3  # Default
-        if hasattr(self.vm, 'thalamus_params') and self.vm.thalamus_params:
-            hardware_sens = self.vm.thalamus_params.get('hardware_sensitivity', {})
-            cell_params = hardware_sens.get(vessel.cell_line, hardware_sens.get('DEFAULT', {}))
-            adhesion_heterogeneity = cell_params.get('adhesion_heterogeneity', 0.3)
+        if hasattr(self.vm, "thalamus_params") and self.vm.thalamus_params:
+            hardware_sens = self.vm.thalamus_params.get("hardware_sensitivity", {})
+            cell_params = hardware_sens.get(vessel.cell_line, hardware_sens.get("DEFAULT", {}))
+            adhesion_heterogeneity = cell_params.get("adhesion_heterogeneity", 0.3)
 
         # ASSUMPTION: Segmentation yield degrades linearly with debris. See assay_params.py
         c_base = DEFAULT_ASSAY_PARAMS.SEGMENTATION_C_BASE
@@ -1563,7 +1752,7 @@ class CellPaintingAssay(AssaySimulator):
         # 8. Edge damage from aspiration/dispense (position-dependent artifacts)
         # Aspiration at fixed position (9 o'clock) creates L-R asymmetry
         # Shows up as: worse segmentation, more noise, amplified debris effects
-        edge_damage_score = float(getattr(vessel, 'edge_damage_score', 0.0))
+        edge_damage_score = float(getattr(vessel, "edge_damage_score", 0.0))
 
         # Initialize edge damage diagnostic variables
         edge_damage_seg_penalty = 0.0
@@ -1572,28 +1761,29 @@ class CellPaintingAssay(AssaySimulator):
 
         if edge_damage_score > 0:
             try:
-                from src.cell_os.hardware.aspiration_effects import get_edge_damage_contribution_to_cp_quality
+                from src.cell_os.hardware.aspiration_effects import (
+                    get_edge_damage_contribution_to_cp_quality,
+                )
 
                 edge_effects = get_edge_damage_contribution_to_cp_quality(
-                    edge_damage_score=edge_damage_score,
-                    debris_load=debris_load
+                    edge_damage_score=edge_damage_score, debris_load=debris_load
                 )
 
                 # Apply edge damage effects
                 # 1. Reduce segmentation yield (damaged cells fail segmentation)
-                seg_penalty = edge_effects['segmentation_yield_penalty']
+                seg_penalty = edge_effects["segmentation_yield_penalty"]
                 edge_damage_seg_penalty = seg_penalty  # Track for diagnostics
-                segmentation_yield *= (1.0 - seg_penalty)
+                segmentation_yield *= 1.0 - seg_penalty
                 segmentation_yield = float(np.clip(segmentation_yield, 0.0, 1.0))
                 n_segmented = int(round(live_cells * segmentation_yield))
 
                 # 2. Amplify noise (irregular morphology)
-                edge_damage_noise_mult = edge_effects['noise_multiplier']  # Track for diagnostics
+                edge_damage_noise_mult = edge_effects["noise_multiplier"]  # Track for diagnostics
                 noise_mult *= edge_damage_noise_mult
                 noise_mult = float(np.clip(noise_mult, 1.0, 5.0))
 
                 # 3. Amplify debris interference (damaged cells + debris = especially bad)
-                debris_amplification = edge_effects['debris_amplification']
+                debris_amplification = edge_effects["debris_amplification"]
                 edge_damage_debris_amp = debris_amplification  # Track for diagnostics
                 effective_debris_load = debris_load * debris_amplification
 
@@ -1607,23 +1797,23 @@ class CellPaintingAssay(AssaySimulator):
                 pass
 
         return {
-            'debris_load': debris_load,
-            'debris_numerator': debris_cells,  # For debugging: explicit numerator
-            'debris_denominator': live_cells + debris_cells,  # For debugging: explicit denominator
-            'handling_loss_fraction': handling_loss,
-            'adhesion_heterogeneity': adhesion_heterogeneity,  # Spatial clumpiness
-            'clumpiness_amplifier': clumpiness_amplifier,  # Segmentation penalty multiplier
-            'cp_quality': cp_quality_final,
-            'cp_quality_pre_artifact': cp_quality,  # Before artifact penalty
-            'segmentation_yield': segmentation_yield,
-            'n_segmented': n_segmented,
-            'n_cells_measured': n_segmented,  # Alias for backward compatibility
-            'noise_mult': noise_mult,
-            'artifact_level': artifact_level,
-            'artifact_penalty': artifact_penalty,
+            "debris_load": debris_load,
+            "debris_numerator": debris_cells,  # For debugging: explicit numerator
+            "debris_denominator": live_cells + debris_cells,  # For debugging: explicit denominator
+            "handling_loss_fraction": handling_loss,
+            "adhesion_heterogeneity": adhesion_heterogeneity,  # Spatial clumpiness
+            "clumpiness_amplifier": clumpiness_amplifier,  # Segmentation penalty multiplier
+            "cp_quality": cp_quality_final,
+            "cp_quality_pre_artifact": cp_quality,  # Before artifact penalty
+            "segmentation_yield": segmentation_yield,
+            "n_segmented": n_segmented,
+            "n_cells_measured": n_segmented,  # Alias for backward compatibility
+            "noise_mult": noise_mult,
+            "artifact_level": artifact_level,
+            "artifact_penalty": artifact_penalty,
             # Edge damage diagnostics (position-dependent artifacts)
-            'edge_damage_score': edge_damage_score,  # Cumulative damage (0-1, saturates)
-            'edge_damage_seg_penalty': edge_damage_seg_penalty,  # Segmentation penalty (0-0.15)
-            'edge_damage_noise_mult': edge_damage_noise_mult,  # Noise amplification (1.0-1.5×)
-            'edge_damage_debris_amp': edge_damage_debris_amp  # Debris amplification (1.0-1.3×)
+            "edge_damage_score": edge_damage_score,  # Cumulative damage (0-1, saturates)
+            "edge_damage_seg_penalty": edge_damage_seg_penalty,  # Segmentation penalty (0-0.15)
+            "edge_damage_noise_mult": edge_damage_noise_mult,  # Noise amplification (1.0-1.5×)
+            "edge_damage_debris_amp": edge_damage_debris_amp,  # Debris amplification (1.0-1.3×)
         }

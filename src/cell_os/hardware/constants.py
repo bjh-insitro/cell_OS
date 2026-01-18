@@ -150,6 +150,26 @@ ENABLE_SYNERGISTIC_COUPLING = True
 SYNERGY_GATE_S0 = 0.2  # Stress threshold below which synergy doesn't activate (suppresses noise)
 SYNERGY_K_HAZARD = 0.035  # Synergy hazard coefficient (per hour): h = k * gate(S_er) * gate(S_mito)
 
+# Morphology regime transition (stress → death)
+# Below collapse threshold, morphology shifts from "stressed cells" to "dying/dead cells"
+# This is a DIRECTION CHANGE in feature space, not just "more stress"
+MORPHOLOGY_COLLAPSE_THRESHOLD = 0.40  # Viability below which death morphology dominates
+MORPHOLOGY_COLLAPSE_STEEPNESS = 15.0  # Sigmoid steepness (higher = sharper transition)
+MORPHOLOGY_DEATH_MIN_MULTIPLIER = 0.05  # Floor for death signature multipliers (prevents negative)
+
+# Death morphology noise coupling
+# As cells die, measurement noise increases (heterogeneous death modes, debris, artifacts)
+# This prevents "clean, crisp dead phenotypes" which don't exist in real microscopy
+DEATH_REGIME_NOISE_MULTIPLIER = 2.5  # Noise inflation at full death_weight
+
+# Morphology onset kinetics (timepoint sensitivity)
+# Morphology changes take time to manifest even after stress states are elevated.
+# This creates timepoint dependence: 24h vs 48h readouts show different effect magnitudes.
+# Formula: onset_factor = 1 - exp(-time_since_treatment / tau)
+# Phase 0 context: 24h and 48h timepoints should show different morphology signatures.
+MORPHOLOGY_ONSET_TAU_H = 12.0  # Characteristic time for morphology effects to manifest
+MORPHOLOGY_ONSET_MIN_FACTOR = 0.2  # Minimum onset factor (allows some immediate effect)
+
 # Baseline viability dynamics
 # Healthy attached cells in culture are not 100% viable - there's slow baseline turnover
 HEALTHY_ATTACHED_VIABILITY = 0.98  # Viability of healthy attached cells after media change
