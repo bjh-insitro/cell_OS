@@ -54,18 +54,25 @@ Data can be acquired in pyxscope on any available scope in lab 250. Slack #nikon
 
 ## Experimental Design (Phase 0)
 
-### Doses
+### Doses (Shoulder-Focused)
 
-| Dose Level |
-|------------|
-| Vehicle |
-| Point1 |
-| Point2 |
-| Point3 |
-| Point4 |
-| Point5 |
+**Philosophy**: Phase 0 is NOT a toxicology study. The goal is to find the pre-collapse shoulder where morphology shifts are maximal while viability remains pooled-compatible.
 
-Doses should bracket sub-threshold through near-toxic based on prior knowledge or a brief scout. Perfect optimization is not required.
+| Dose | ~EC | Expected Viability | Purpose |
+|------|-----|-------------------|---------|
+| 0 µM | - | ~97% | Vehicle baseline |
+| 2 µM | EC10 | ~90% | Subthreshold |
+| 4 µM | EC20 | ~80% | Early shoulder |
+| 6 µM | EC30 | ~70% | Mid-shoulder (operating point candidate) |
+| 8 µM | EC40 | ~60% | Upper shoulder (operating point candidate) |
+| 15 µM | EC80 | ~20% | Collapse anchor (diagnostic only) |
+
+**Rationale**: Dense sampling in the 60-90% viability range (EC10-EC40) where:
+- Morphology channels can diverge (stress effects dominate, not death)
+- Operating point candidates are abundant
+- Viability remains compatible with pooled screening
+
+The 15 µM collapse anchor confirms where the cliff is but is NOT eligible as an operating point.
 
 ### Timepoints
 
@@ -79,10 +86,11 @@ Doses should bracket sub-threshold through near-toxic based on prior knowledge o
 
 ### Sentinels (per plate)
 
-- Vehicle control
-- Fixed menadione dose (same wells across plates)
+- **Vehicle sentinels** (40 wells): Edge + interior positions for edge effect quantification
+- **Shoulder sentinel** (12 wells, 6 µM): Mid-shoulder dose for SPC (~70% viability)
+- **Collapse sentinel** (12 wells, 15 µM): Collapse anchor for SPC (~20% viability)
 
-Sentinels are used to assess run-to-run stability, not biological interpretation.
+Sentinels are used to assess run-to-run stability, not biological interpretation. The sentinel doses match the experimental range to provide meaningful SPC baselines.
 
 ---
 
@@ -173,6 +181,62 @@ Phase 0 is considered successful if:
 3. Technical noise is measurable and subordinate to biological signal
 
 If these criteria are not met, Phase 0 iterates or stops.
+
+---
+
+## Phase 0 Simulation Result
+
+**Operating Point: 6 µM menadione @ 24 hours**
+
+| Metric | Value |
+|--------|-------|
+| Viability | 64% |
+| Effect magnitude | 9.16 (vs noise baseline 2.13) |
+| Replicate similarity | 0.999 |
+| Dose η² | 0.52 |
+| Template η² | 0.018 |
+| Passage η² | 0.011 |
+
+### Key Findings
+
+1. **48h is excluded**: Even 6 µM shows only 11% viability at 48h. The 24h timepoint is the only viable operating regime.
+
+2. **Dose dominates technical factors**: Dose explains 52% of morphological variance; template and passage together explain < 3%.
+
+3. **The operating point is variance-mediated**: Under deterministic simulation (zero biological noise), no shoulder exists—viability transitions too sharply from >85% to <50%. The shoulder at 6 µM/24h emerges only when biological heterogeneity smears the stress response. This is not a nuisance; it is the phenomenon. The operating point exists precisely because cells differ in their stress sensitivity.
+
+4. **Deterministic NO-GO is expected**: Simulations without biological variance correctly return NO-GO. This confirms the rubric is not a just-so story generator—it refuses to invent operating points where none exist.
+
+### Frozen Artifacts
+
+- `data/phase0_golden/df_wells.parquet` — raw well-level data
+- `data/phase0_golden/gonogo_report.json` — decision report with full metrics
+- `data/phase0_golden/simulation.db` — complete simulation database
+
+---
+
+## Go/No-Go Decision Framework
+
+**See: [PHASE_0_GO_NOGO_SPECIFICATION.md](PHASE_0_GO_NOGO_SPECIFICATION.md)**
+
+The go/no-go specification defines:
+- 6 required plots with exact data aggregations
+- Pass/fail criteria for each plot
+- Binary GO/NO-GO rubric
+
+**GO if ALL of:**
+1. Morphology shift at {6, 8} µM > 2× plate-to-plate noise
+2. Within-condition replicate similarity > 0.7
+3. Candidate dose viability is 50-85% (shoulder, not collapse)
+4. Dose is the dominant axis in PCA (>50% of PC1)
+5. Sentinel SPC shows no flagged plates
+
+**NO-GO if ANY of:**
+1. No morphology signal above noise
+2. Points cluster by template/passage, not dose
+3. Replicate similarity < 0.5
+4. 15 µM viability > 50% (assay broken)
+5. >2 plates flagged by sentinel SPC
 
 ---
 
@@ -329,9 +393,9 @@ For each passage, 24h and 48h timepoints are seeded from the same cell split to 
 ### Treatment layout and plate maps
 
 Sentinel wells are fixed in the same positions on every plate:
-- Vehicle control
-- A fixed mild menadione dose
-- A fixed strong menadione dose
+- **Vehicle** (40 wells): 0 µM DMSO
+- **Shoulder sentinel** (12 wells): 6 µM menadione (~70% viability)
+- **Collapse sentinel** (12 wells): 15 µM menadione (~20% viability)
 
 Fixed sentinels enable SPC-style monitoring and rapid identification of untrustworthy runs.
 

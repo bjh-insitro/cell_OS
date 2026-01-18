@@ -1,0 +1,199 @@
+{
+  "design_id": "menadione_phase0_79eefa33",
+  "timestamp": "2026-01-18T00:11:58.860212+00:00",
+  "decision": "GO",
+  "operating_point": {
+    "dose_uM": 6.0,
+    "timepoint_h": 24.0
+  },
+  "flagged_plates": [],
+  "metrics": {
+    "noise_baseline": 2.133844916500701,
+    "best_effect_mag": 9.15826476919765,
+    "eta_squared": {
+      "dose_eta_sq": 0.5157858779909299,
+      "template_eta_sq": 0.017907881859961037,
+      "passage_eta_sq": 0.011073007637205316
+    },
+    "collapse_viability": 0.13791406222755714
+  },
+  "criteria_results": {
+    "signal_exists": true,
+    "reproducible": true,
+    "viability_shoulder": true,
+    "dose_dominates": "True",
+    "sentinels_stable": true,
+    "assay_working": "True",
+    "no_signal": "False"
+  },
+  "condition_summary": [
+    {
+      "dose_uM": 0.0,
+      "timepoint_h": 24.0,
+      "viability_mean": 0.9704408781090756,
+      "viability_sem": 0.00017264134820599652,
+      "viability_n": 9,
+      "effect_mag_mean": 0.0,
+      "effect_mag_sem": 0.0,
+      "effect_mag_n": 9,
+      "replicate_similarity": 1.0
+    },
+    {
+      "dose_uM": 0.0,
+      "timepoint_h": 48.0,
+      "viability_mean": 0.9616556604498321,
+      "viability_sem": 0.0005221511909648922,
+      "viability_n": 9,
+      "effect_mag_mean": 0.0,
+      "effect_mag_sem": 0.0,
+      "effect_mag_n": 9,
+      "replicate_similarity": 1.0
+    },
+    {
+      "dose_uM": 2.0,
+      "timepoint_h": 24.0,
+      "viability_mean": 0.9623352762262315,
+      "viability_sem": 0.002517113216188356,
+      "viability_n": 9,
+      "effect_mag_mean": 0.5464336374272301,
+      "effect_mag_sem": 0.050087676514715164,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.4087022589553914
+    },
+    {
+      "dose_uM": 2.0,
+      "timepoint_h": 48.0,
+      "viability_mean": 0.7088173315090613,
+      "viability_sem": 0.06274235508783967,
+      "viability_n": 9,
+      "effect_mag_mean": 6.92284070263683,
+      "effect_mag_sem": 1.7774366460300373,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9703227669220544
+    },
+    {
+      "dose_uM": 4.0,
+      "timepoint_h": 24.0,
+      "viability_mean": 0.8445655419731329,
+      "viability_sem": 0.025591175954882306,
+      "viability_n": 9,
+      "effect_mag_mean": 3.3482242641204465,
+      "effect_mag_sem": 0.7542273196068789,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9946756244231528
+    },
+    {
+      "dose_uM": 4.0,
+      "timepoint_h": 48.0,
+      "viability_mean": 0.2386810888773111,
+      "viability_sem": 0.0461949522386961,
+      "viability_n": 9,
+      "effect_mag_mean": 19.76378720964041,
+      "effect_mag_sem": 1.2909751047902371,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9988851690123263
+    },
+    {
+      "dose_uM": 6.0,
+      "timepoint_h": 24.0,
+      "viability_mean": 0.6356276541109982,
+      "viability_sem": 0.042550959737777366,
+      "viability_n": 9,
+      "effect_mag_mean": 9.15826476919765,
+      "effect_mag_sem": 1.2161397895006765,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9988243232383023
+    },
+    {
+      "dose_uM": 6.0,
+      "timepoint_h": 48.0,
+      "viability_mean": 0.10955318069616976,
+      "viability_sem": 0.017073164880251995,
+      "viability_n": 9,
+      "effect_mag_mean": 23.58010678886617,
+      "effect_mag_sem": 0.47870976213738453,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9989266033570874
+    },
+    {
+      "dose_uM": 8.0,
+      "timepoint_h": 24.0,
+      "viability_mean": 0.49711203150572647,
+      "viability_sem": 0.03689477737744463,
+      "viability_n": 9,
+      "effect_mag_mean": 13.004493002689314,
+      "effect_mag_sem": 1.1527924713377744,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.99855323332106
+    },
+    {
+      "dose_uM": 8.0,
+      "timepoint_h": 48.0,
+      "viability_mean": 0.07576541317919751,
+      "viability_sem": 0.007682969917829755,
+      "viability_n": 9,
+      "effect_mag_mean": 24.563043977158898,
+      "effect_mag_sem": 0.32539210860969753,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9988733159828631
+    },
+    {
+      "dose_uM": 15.0,
+      "timepoint_h": 24.0,
+      "viability_mean": 0.22805812076408444,
+      "viability_sem": 0.01821636903856402,
+      "viability_n": 9,
+      "effect_mag_mean": 20.378549377635817,
+      "effect_mag_sem": 0.6421154141406814,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9988977223625208
+    },
+    {
+      "dose_uM": 15.0,
+      "timepoint_h": 48.0,
+      "viability_mean": 0.04777000369102987,
+      "viability_sem": 0.002962586962845773,
+      "viability_n": 9,
+      "effect_mag_mean": 25.272674196588476,
+      "effect_mag_sem": 0.2928545219981035,
+      "effect_mag_n": 9,
+      "replicate_similarity": 0.9988443257201267
+    }
+  ],
+  "spc_control_limits": {
+    "24.0": {
+      "vehicle_viability": [
+        0.9686721757111724,
+        0.9703171503789796,
+        0.9719621250467868
+      ],
+      "shoulder_viability": [
+        0.1629207451644641,
+        0.6655246727345283,
+        1.1681286003045925
+      ],
+      "collapse_viability": [
+        0.012182151962202015,
+        0.23225739714262644,
+        0.45233264232305087
+      ]
+    },
+    "48.0": {
+      "vehicle_viability": [
+        0.9566886747253428,
+        0.9615510738388511,
+        0.9664134729523594
+      ],
+      "shoulder_viability": [
+        -0.046006254194116566,
+        0.08596375018884479,
+        0.21793375457180614
+      ],
+      "collapse_viability": [
+        0.013719032083251315,
+        0.043320578072491435,
+        0.07292212406173156
+      ]
+    }
+  }
+}

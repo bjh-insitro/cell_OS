@@ -61,6 +61,10 @@ FEED_VOLUME_UL = 50.0  # Fresh medium volume during feed
 SEED_VOLUME_UL = 50.0  # Cell suspension volume during seeding
 RESIDUAL_VOLUME_UL = 15.0  # Residual after aspiration (~10-20 µL typical)
 
+# Module-level variable for multiprocessing workers to access noise config
+# Set by run_menadione_simulation before spawning workers
+_WORKER_BIO_NOISE_CONFIG: dict | None = None
+
 # Seeding densities (cells/well) - differential based on endpoint timepoint
 # Target: ~70-80% confluence at endpoint for all timepoints
 SEEDING_DENSITY = {
@@ -69,11 +73,19 @@ SEEDING_DENSITY = {
 }
 
 
-def init_worker(quiet: bool = False):
-    """Initialize worker process by pre-loading parameters."""
+def init_worker(quiet: bool = False, bio_noise_config: dict | None = None):
+    """Initialize worker process by pre-loading parameters.
+
+    Args:
+        quiet: Suppress verbose logging
+        bio_noise_config: Noise configuration from design's variance_model
+    """
     import os
     import random
     import time
+
+    global _WORKER_BIO_NOISE_CONFIG
+    _WORKER_BIO_NOISE_CONFIG = bio_noise_config
 
     # Suppress verbose logging from biological_virtual in quiet mode
     if quiet:
@@ -84,9 +96,13 @@ def init_worker(quiet: bool = False):
     time.sleep(random.random() * 0.5)
 
     # Pre-load parameters once per worker (populates the module-level cache)
-    BiologicalVirtualMachine(simulation_speed=0)
+    # Noise config comes from design's variance_model, NOT hard-coded here
+    BiologicalVirtualMachine(simulation_speed=0, bio_noise_config=bio_noise_config)
     if not quiet:
-        logger.info(f"Worker {os.getpid()} ready")
+        noise_status = (
+            "enabled" if bio_noise_config and bio_noise_config.get("enabled") else "disabled"
+        )
+        logger.info(f"Worker {os.getpid()} ready (noise: {noise_status})")
 
 
 def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | None:
@@ -120,7 +136,10 @@ def execute_well(args: tuple[MenadioneWellAssignment, str]) -> dict[str, Any] | 
     try:
         # Create hardware instance for this worker
         # simulation_speed=0 disables artificial delays for faster batch execution
-        hardware = BiologicalVirtualMachine(simulation_speed=0)
+        # bio_noise_config comes from design's variance_model (set in init_worker)
+        hardware = BiologicalVirtualMachine(
+            simulation_speed=0, bio_noise_config=_WORKER_BIO_NOISE_CONFIG
+        )
         vessel_id = f"{well.plate_id}_{well.well_id}"
 
         # === Step 1: Seed vessel (Day -1, PM) ===
@@ -228,6 +247,7 @@ def run_menadione_simulation(
     workers: int | None = None,
     db_path: str = "data/menadione_phase0.db",
     quiet: bool = False,
+    variance_mode: str = "realistic",
 ) -> str:
     """
     Run Menadione Phase 0 simulation.
@@ -237,11 +257,15 @@ def run_menadione_simulation(
         workers: Number of parallel workers (defaults to CPU count)
         db_path: Path to output database
         quiet: Suppress per-well logging, show only progress
+        variance_mode: Variance model for simulation. One of:
+            - "deterministic": No stochastic noise (for debugging/testing)
+            - "conservative": Modest CVs with visible error bars
+            - "realistic": Production-level variance (default)
 
     Returns:
         Design ID of the completed simulation
     """
-    global _QUIET_MODE
+    global _QUIET_MODE, _WORKER_BIO_NOISE_CONFIG
     _QUIET_MODE = quiet
 
     # Suppress verbose logging from biological_virtual in quiet mode
@@ -250,9 +274,15 @@ def run_menadione_simulation(
 
     start_time = time.time()
 
-    # Create design
-    design = create_menadione_design()
+    # Create design - includes variance_model that defines noise behavior
+    design = create_menadione_design(variance_mode=variance_mode)
     wells = design.generate_design()
+
+    # Get noise config FROM THE DESIGN - this is the canonical source
+    # The design owns the variance policy, the runner just executes it
+    # Pass design_id so seed is derived from it (reproducible per-design)
+    bio_noise_config = design.variance_model.to_bio_noise_config(design_id=design.design_id)
+    _WORKER_BIO_NOISE_CONFIG = bio_noise_config  # For single-threaded mode
 
     # Filter for quick mode
     if mode == "quick":
@@ -267,6 +297,18 @@ def run_menadione_simulation(
         f"Design summary: {summary['experimental_wells']} experimental, {summary['sentinel_wells']} sentinels"
     )
     logger.info(f"γ-H2AX wells: {summary['gamma_h2ax_wells']}")
+
+    # Log variance model from design - critical for understanding output variability
+    vm = design.variance_model
+    if vm.enabled:
+        bio = vm.biology_noise
+        logger.info(
+            f"Variance model: ENABLED (growth_cv={bio.get('growth_cv', 0)}, "
+            f"stress_cv={bio.get('stress_sensitivity_cv', 0)}, "
+            f"plate_fraction={bio.get('plate_level_fraction', 0)})"
+        )
+    else:
+        logger.info("Variance model: DISABLED (deterministic simulation)")
 
     # Log protocol info
     logger.info("Protocol: 24h attachment → Feed → Dose → Incubate to endpoint")
@@ -297,9 +339,10 @@ def run_menadione_simulation(
         # Parallel execution with worker initialization
         # The initializer pre-loads parameters once per worker, avoiding
         # database contention when all workers start simultaneously
+        # Pass bio_noise_config from design so workers use the same variance model
         if not quiet:
             logger.info("Initializing worker pool (this may take a few seconds)...")
-        with Pool(workers, initializer=partial(init_worker, quiet)) as pool:
+        with Pool(workers, initializer=partial(init_worker, quiet, bio_noise_config)) as pool:
             if not quiet:
                 logger.info("Worker pool ready, processing wells...")
             for i, result in enumerate(pool.imap_unordered(execute_well, args)):
@@ -315,7 +358,7 @@ def run_menadione_simulation(
     logger.info(f"Saving {len(results)} results to {db_path}")
     db = CellThalamusDB(db_path=db_path)
 
-    # Save design metadata
+    # Save design metadata - includes variance_model for traceability
     db.save_design(
         design_id=design.design_id,
         phase=0,  # Phase 0 = dose-response calibration
@@ -348,6 +391,9 @@ def run_menadione_simulation(
                 "imaging_instrument": "Nikon Ti2",
                 "brightfield_instrument": "Spark Cyto",
             },
+            # Variance model - critical for understanding error bars
+            # This answers "why do these error bars exist" with "because the design says so"
+            "variance_model": design.variance_model.to_dict(),
         },
         doses=design.doses_uM,
         timepoints=design.timepoints_h,
@@ -378,6 +424,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--quiet", "-q", action="store_true", help="Suppress per-well logging, show only progress"
     )
+    parser.add_argument(
+        "--variance-mode",
+        choices=["deterministic", "conservative", "realistic"],
+        default="realistic",
+        help="Variance model: deterministic (no noise), conservative, or realistic (default)",
+    )
 
     args = parser.parse_args()
 
@@ -386,6 +438,7 @@ if __name__ == "__main__":
         workers=args.workers,
         db_path=args.db,
         quiet=args.quiet,
+        variance_mode=args.variance_mode,
     )
 
     print(f"\n✓ Simulation complete: {design_id}")
